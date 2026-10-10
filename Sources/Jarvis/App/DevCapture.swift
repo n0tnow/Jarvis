@@ -15,12 +15,14 @@ enum DevCapture {
 
         await settle()
 
-        // Compact HUD (default dev state: working task)
-        DemoScenario.apply(.working, to: store)
+        // Compact HUD, every state (also proves the fixed size visually)
         w.showCompactHUD(); await settle()
-        snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_working", in: directory)
-        DemoScenario.apply(.idle, to: store); await settle(300)
-        snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_idle", in: directory)
+        for state in JarvisState.allCases {
+            DemoScenario.apply(state, to: store)
+            await settle(700)
+            snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_\(state.rawValue)", in: directory)
+            if state == .completed || state == .error { DemoScenario.resetDemoTask(store) }
+        }
         w.hideCompactHUD()
 
         // Full HUD, every state

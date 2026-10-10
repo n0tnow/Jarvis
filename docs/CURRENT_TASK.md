@@ -1,19 +1,19 @@
 # Current Task
 
 Version:
-V0.1
+V0.1.1 (V0.1 + user-requested UX fixes; V0.1 baseline d827a9e was manually tested by the user, direction approved)
 
 Task:
-Native macOS Foundation + HUD
+V0.1.1 — (A) fixed-size Compact HUD, (B) ambient neural-network background, (C) modifier-only global hotkeys ⌥⌘ / ⌥⌘⌘
 
 State:
-READY FOR USER MANUAL TEST
+IN PROGRESS
 
 Last Successful Step:
 Automated verification completed: `scripts/verify.sh` → VERIFY PASSED (17/17 unit tests; smoke 28 PASS / 0 FAIL / 2 SKIP; signature, plist, permission audit, idle CPU all PASS). Screenshots re-captured from the current build. All project-memory docs written.
 
 Current Step:
-Waiting for user manual verification of `build/Jarvis.app`.
+A DONE (commit: fix(compact-hud)): Compact HUD is now a canonical fixed 392×448 (`CompactHUDLayout.size`); root cause was `sizingOptions=.preferredContentSize` + `fittingSize` in WindowManager. Smoke test measures the real frame across all 7 states. NEXT: B (neural background, Full HUD), then C (⌥⌘ / ⌥⌘⌘ hotkeys).
 
 Next Step:
 User follows the "Manual test checklist" in `README.md` and reports results. Only after the user approves V0.1: update PROJECT_STATE (MANUALLY VERIFIED), then — with explicit approval — plan V0.2.

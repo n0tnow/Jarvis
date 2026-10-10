@@ -17,12 +17,16 @@ struct CompactHUDView: View {
             if app.preferences.showDeveloperControls {
                 DevStateStrip(compact: true)
             }
+            Spacer(minLength: 0)   // absorbs slack: the frame below is fixed, content never resizes the window
         }
         .padding(Theme.Spacing.l)
-        .frame(width: 392)
+        .frame(width: CompactHUDLayout.size.width, height: CompactHUDLayout.size.height, alignment: .top)
         .background(HUDSurface(cornerRadius: Theme.Radius.xl, showsGrid: true))
         .environment(\.colorScheme, .dark)
-        // Leave room for the window shadow without clipping the rounded surface.
+        .animation(app.preferences.effectiveReduceMotion ? nil : .easeInOut(duration: CompactHUDLayout.transition),
+                   value: app.store.state)
+        .animation(app.preferences.effectiveReduceMotion ? nil : .easeInOut(duration: CompactHUDLayout.transition),
+                   value: app.store.activeTask?.status)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("JARVIS compact HUD")
     }
@@ -74,10 +78,15 @@ struct CompactHUDView: View {
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text("SYSTEM STATE").jarvisLabel(Theme.Opacity.textTertiary)
-                StateChip(state: store.state)
-                Text(store.state.summary)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Color.jarvisSecondary)
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    StateChip(state: store.state)
+                    Text(store.state.summary)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Color.jarvisSecondary)
+                        .lineLimit(1)
+                }
+                .id(store.state)                       // crossfade on state change (content only)
+                .transition(contentTransition)
             }
             Spacer(minLength: 0)
         }
@@ -87,55 +96,75 @@ struct CompactHUDView: View {
 
     // MARK: Task
 
-    @ViewBuilder
+    /// Fixed-height card: the *inside* changes with the task (crossfade), the card itself never resizes.
     private func taskCard(_ store: JarvisStore) -> some View {
-        if let task = store.activeTask {
-            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                HStack {
-                    Text("ACTIVE TASK").jarvisLabel(Theme.Opacity.textTertiary)
-                    Spacer()
-                    TaskStatusChip(status: task.status)
-                }
-                Text(task.title)
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Color.jarvisPrimary)
-                    .lineLimit(2)
-
-                if let step = task.currentStep, let number = task.currentStepNumber {
-                    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.s) {
-                        Text("STEP \(number)/\(task.steps.count)").jarvisLabel(Theme.Opacity.textTertiary)
-                        Text(step.title).font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary).lineLimit(1)
-                    }
-                }
-
-                SegmentedProgress(steps: task.steps)
-
-                HStack {
-                    Text("\(task.completedStepCount) of \(task.steps.count) steps complete")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Color.jarvisSecondary)
-                    Spacer()
-                    HStack(spacing: Theme.Spacing.xs) {
-                        Image(systemName: "timer").font(.system(size: 10)).accessibilityHidden(true)
-                        ElapsedText(task: task, isVisible: app.hud.isCompactVisible)
-                    }
-                    .font(Theme.Typography.mono)
-                    .foregroundStyle(Color.jarvisSecondary)
-                }
+        let task = store.activeTask
+        return ZStack(alignment: .topLeading) {
+            HUDCardBackground()
+            Group {
+                if let task { activeTaskContent(task) } else { emptyTaskContent }
             }
             .padding(Theme.Spacing.m)
-            .background(HUDCardBackground())
-            .accessibilityElement(children: .contain)
-        } else {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("ACTIVE TASK").jarvisLabel(Theme.Opacity.textTertiary)
-                Text("No active task").font(Theme.Typography.headline).foregroundStyle(Color.jarvisSecondary)
-                Text("Tasks started later will appear here.").font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Theme.Spacing.m)
-            .background(HUDCardBackground())
+            .id(task.map { "\($0.id)-\($0.status.rawValue)-\($0.completedStepCount)" } ?? "none")
+            .transition(contentTransition)
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: CompactHUDLayout.taskCardHeight, alignment: .top)
+        .clipped()
+        .accessibilityElement(children: .contain)
+    }
+
+    private func activeTaskContent(_ task: JarvisTask) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            HStack {
+                Text("ACTIVE TASK").jarvisLabel(Theme.Opacity.textTertiary)
+                Spacer()
+                TaskStatusChip(status: task.status)
+            }
+            Text(task.title)
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Color.jarvisPrimary)
+                .lineLimit(2)
+
+            if let step = task.currentStep, let number = task.currentStepNumber {
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.s) {
+                    Text("STEP \(number)/\(task.steps.count)").jarvisLabel(Theme.Opacity.textTertiary)
+                    Text(step.title).font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary).lineLimit(1)
+                }
+            }
+
+            SegmentedProgress(steps: task.steps)
+
+            HStack {
+                Text("\(task.completedStepCount) of \(task.steps.count) steps complete")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Color.jarvisSecondary)
+                Spacer()
+                HStack(spacing: Theme.Spacing.xs) {
+                    Image(systemName: "timer").font(.system(size: 10)).accessibilityHidden(true)
+                    ElapsedText(task: task, isVisible: app.hud.isCompactVisible)
+                }
+                .font(Theme.Typography.mono)
+                .foregroundStyle(Color.jarvisSecondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var emptyTaskContent: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Text("ACTIVE TASK").jarvisLabel(Theme.Opacity.textTertiary)
+            Text("No active task").font(Theme.Typography.headline).foregroundStyle(Color.jarvisSecondary)
+            Text("Tasks started later will appear here.").font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    /// Subtle, short, internal-only transition; none under Reduce Motion.
+    private var contentTransition: AnyTransition {
+        app.preferences.effectiveReduceMotion ? .identity : .opacity.combined(with: .offset(y: 3))
     }
 
     // MARK: Actions

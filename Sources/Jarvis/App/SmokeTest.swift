@@ -62,6 +62,31 @@ enum SmokeTest {
         let compactAX = compactWindow().map(AccessibilityAudit.interactiveElements(in:)) ?? []
         let compactUnlabeled = compactAX.filter { $0.label.isEmpty }
         auditLabels("Compact HUD", compactAX, compactUnlabeled)
+
+        // --- Compact HUD geometry must be IDENTICAL in every state (and with/without a task / dev strip)
+        if let panel = compactWindow() {
+            let expected = panel.frame.size
+            check("Compact HUD uses the canonical fixed size", abs(expected.width - CompactHUDLayout.size.width) < 0.5
+                  && abs(expected.height - CompactHUDLayout.size.height) < 0.5, "frame=\(expected)")
+            let originalTop = panel.frame.maxY, originalX = panel.frame.minX
+            var drift: [String] = []
+            DemoScenario.resetDemoTask(store)
+            for dev in [true, false] {
+                context.preferences.showDeveloperControls = dev
+                for state in JarvisState.allCases {
+                    DemoScenario.apply(state, to: store)
+                    await settle(120)
+                    if panel.frame.size != expected || abs(panel.frame.maxY - originalTop) > 0.5 || abs(panel.frame.minX - originalX) > 0.5 {
+                        drift.append("\(state.rawValue)/dev=\(dev): \(panel.frame)")
+                    }
+                    if state == .completed || state == .error { DemoScenario.resetDemoTask(store) }
+                }
+            }
+            context.preferences.showDeveloperControls = true
+            check("Compact HUD size and position never change across all 7 states (dev strip on/off, task/no task)",
+                  drift.isEmpty, drift.joined(separator: "; "))
+        }
+        DemoScenario.resetDemoTask(store)
         w.hideCompactHUD()
         check("Compact HUD closes", await waitUntil { !w.isCompactHUDOpen && !hud.isCompactVisible })
 

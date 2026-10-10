@@ -6,7 +6,6 @@ import SwiftUI
 @MainActor
 final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
     private enum Layout {
-        static let compactWidth: CGFloat = 392
         static let compactGap: CGFloat = 6
         static let screenMargin: CGFloat = 8
         static let fullPreferred = NSSize(width: 1480, height: 920)
@@ -28,7 +27,6 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
     private(set) var fullMinimumSize = Layout.fullMinimum
 
     private var lastCompactResignHide = Date.distantPast
-    private var compactTop: CGFloat = 0
 
     var isCompactHUDOpen: Bool { compactPanel?.isVisible ?? false }
     var isFullHUDOpen: Bool { fullWindow?.isVisible ?? false }
@@ -68,11 +66,11 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
 
     private func makeCompactPanel() -> HUDPanel {
         let controller = NSHostingController(rootView: AnyView(CompactHUDView().environment(context)))
-        controller.sizingOptions = [.preferredContentSize]
+        controller.sizingOptions = []   // geometry is ours (CompactHUDLayout.size), never SwiftUI's intrinsic size
         compactController = controller
 
         let panel = HUDPanel(
-            contentRect: NSRect(x: 0, y: 0, width: Layout.compactWidth, height: 420),
+            contentRect: NSRect(origin: .zero, size: CompactHUDLayout.size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -87,10 +85,7 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
     }
 
     private func positionCompact(_ panel: HUDPanel) {
-        if let view = compactController?.view {
-            view.layoutSubtreeIfNeeded()
-            panel.setContentSize(NSSize(width: Layout.compactWidth, height: view.fittingSize.height))
-        }
+        panel.setContentSize(CompactHUDLayout.size)
         let size = panel.frame.size
         let anchor = anchorProvider?()
         let screen = screenContaining(anchor.map { NSPoint(x: $0.midX, y: $0.midY) } ?? NSEvent.mouseLocation)
@@ -99,8 +94,8 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
         let centerX = anchor?.midX ?? (visible.maxX - size.width / 2 - 12)
         let x = min(max(centerX - size.width / 2, visible.minX + Layout.screenMargin),
                     visible.maxX - size.width - Layout.screenMargin)
-        compactTop = min(anchor?.minY ?? visible.maxY, visible.maxY) - Layout.compactGap
-        panel.setFrameOrigin(NSPoint(x: x, y: compactTop - size.height))
+        let top = min(anchor?.minY ?? visible.maxY, visible.maxY) - Layout.compactGap
+        panel.setFrameOrigin(NSPoint(x: x, y: top - size.height))
     }
 
     // MARK: Full HUD
@@ -213,12 +208,6 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
         guard let window = notification.object as? NSWindow, window === compactPanel, window.isVisible else { return }
         lastCompactResignHide = Date()
         hideCompactHUD()
-    }
-
-    /// Keeps the Compact HUD pinned under the menu bar when its content height changes.
-    func windowDidResize(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === compactPanel, window.isVisible else { return }
-        window.setFrameOrigin(NSPoint(x: window.frame.origin.x, y: compactTop - window.frame.height))
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
