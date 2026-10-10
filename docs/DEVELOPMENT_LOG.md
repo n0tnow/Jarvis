@@ -52,3 +52,25 @@ DEC-011. JARVIS-009 resolved.
 
 ### Remaining Work
 User manual test of V0.1. No `v0.1` tag until approved.
+
+## 2026-10-10 — V0.1.1: compact stability, neural background, global hotkeys
+
+### Goal
+Three user-requested fixes after manual V0.1 testing (overall direction approved): (A) Compact HUD must not resize between states, (B) subtle ambient neural-network visuals, (C) global ⌥⌘ / ⌥⌘⌘ shortcuts. No V0.2 work.
+
+### Changes
+- **A** `CompactHUDLayout` (392×448), window `sizingOptions=[]`, fixed-height task card, 0.2 s inner crossfade (off under Reduce Motion). Root cause: `.preferredContentSize` + `fittingSize`. Commit `fix(compact-hud)`.
+- **B** `NeuralGraph`/`NeuralSimulation` (pure, seeded) + `NeuralNetworkNSView` (Core Graphics, CADisplayLink 5–15 fps by state, torn down when hidden/Reduce Motion) behind the Full HUD only; core frame rate made state-based. Commit `feat(hud)`; DEC-012.
+- **C** `ModifierChordMachine` (pure) + `GlobalHotkeyService` (permission-free polling) + `toggleFullHUD`; Settings info rows + off switch; version → 0.1.1. DEC-013, DEC-014.
+
+### Tests
+Unit 36/36 (was 17): chord machine (single, double, timeout, early Option release, repeat flood, resets, invalidation by other key/click/Shift, cooldown), service, neural graph/simulation, compact constants. Smoke: compact frame constant across 7 states × dev strip on/off × task/no task; neural lifecycle + Reduce Motion + hidden stop; scripted ⌥⌘/⌥⌘⌘ → real WindowManager (Compact never flashes during Full chord, no duplicate windows). CPU table in PROJECT_STATE.
+
+### Problems found
+Settings window too short for the new section (fixed); capture tool lost compact focus intermittently (retry added); first neural pass was nearly invisible and +3 pts CPU (visibility raised, frame rates lowered, core fps made state-based).
+
+### Decisions
+DEC-012, DEC-013, DEC-014.
+
+### Remaining Work
+User manual test (README checklist: fixed compact size, global shortcuts from another app, neural look, Reduce Motion). No tag until approved.

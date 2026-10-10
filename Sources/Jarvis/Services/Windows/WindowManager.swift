@@ -119,6 +119,11 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
         Log.windows.debug("full HUD hidden")
     }
 
+    func toggleFullHUD() {
+        guard let window = fullWindow, window.isVisible else { return showFullHUD(section: nil) }
+        if window.isKeyWindow && NSApp.isActive { hideFullHUD() } else { bringFullHUDForward() }
+    }
+
     func bringFullHUDForward() {
         if let window = fullWindow, window.isVisible {
             NSApp.activate()
@@ -171,7 +176,7 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
         hideCompactHUD()
         if settingsWindow == nil {
             let window = SettingsWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 440, height: 300),
+                contentRect: NSRect(x: 0, y: 0, width: 460, height: 650),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false

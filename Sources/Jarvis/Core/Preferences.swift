@@ -8,6 +8,7 @@ final class Preferences {
     private enum Key {
         static let reduceMotion = "prefs.reduceMotion"
         static let showDeveloperControls = "prefs.showDeveloperControls"
+        static let globalShortcuts = "prefs.globalShortcutsEnabled"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -22,6 +23,11 @@ final class Preferences {
         didSet { defaults.set(showDeveloperControls, forKey: Key.showDeveloperControls) }
     }
 
+    /// Global ⌥⌘ / ⌥⌘⌘ shortcuts (permission-free modifier polling). On by default; this is the off switch.
+    var globalShortcutsEnabled: Bool {
+        didSet { defaults.set(globalShortcutsEnabled, forKey: Key.globalShortcuts) }
+    }
+
     /// Mirrors System Settings ▸ Accessibility ▸ Display ▸ Reduce motion.
     private(set) var systemReduceMotion: Bool
 
@@ -34,6 +40,7 @@ final class Preferences {
         self.defaults = defaults
         reduceMotion = defaults.bool(forKey: Key.reduceMotion)
         showDeveloperControls = defaults.object(forKey: Key.showDeveloperControls) as? Bool ?? true
+        globalShortcutsEnabled = defaults.object(forKey: Key.globalShortcuts) as? Bool ?? true
         systemReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         motionObserver = NSWorkspace.shared.notificationCenter.addObserver(

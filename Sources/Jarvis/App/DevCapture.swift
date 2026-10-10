@@ -20,6 +20,8 @@ enum DevCapture {
         for state in JarvisState.allCases {
             DemoScenario.apply(state, to: store)
             await settle(700)
+            // The panel auto-hides if another app steals focus mid-capture; re-open it if so.
+            if !w.isCompactHUDOpen { w.showCompactHUD(); await settle(500) }
             snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_\(state.rawValue)", in: directory)
             if state == .completed || state == .error { DemoScenario.resetDemoTask(store) }
         }
@@ -40,6 +42,12 @@ enum DevCapture {
             await settle(500)
             snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "full_section_\(section.rawValue)", in: directory)
         }
+        // Settings window
+        w.hideFullHUD(); w.showSettings(); await settle(700)
+        snapshot(of: NSApp.windows.first { $0 is SettingsWindow }, name: "settings", in: directory)
+        NSApp.windows.first { $0 is SettingsWindow }?.orderOut(nil)
+        w.showFullHUD(section: .dashboard); await settle(500)
+
         // Minimum window size (layout stress test)
         context.hud.section = .dashboard
         DemoScenario.apply(.waitingForApproval, to: store)

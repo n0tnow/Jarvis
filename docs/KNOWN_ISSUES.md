@@ -15,6 +15,15 @@ Next: Check with VoiceOver (README checklist item 12). If names are missing, mov
 Status: Open · NON-BLOCKING / MANUAL TEST REQUIRED
 Description: All captures were taken on a 1× external display. Core Graphics/vector drawing should be fine on 2×, unverified.
 
+### JARVIS-011 — Physical global hotkeys not verified from another application
+Status: Open · MANUAL TEST REQUIRED
+Description: Chord logic (17 unit tests) and the service → WindowManager path (smoke, scripted modifier timeline) are automated. Real ⌥⌘ / ⌥⌘⌘ presses while Finder/another app is focused were NOT performed (synthesizing key events into other apps was not attempted). Real-hardware timing (is 0.30 s comfortable for a double ⌘?) needs the user.
+Next: README checklist → Global shortcuts. If the window is too tight/loose, change `ModifierChordMachine.window`.
+
+### JARVIS-012 — Hotkey polling cost and chord limits
+Status: Open · NON-BLOCKING
+Description: Permission-free detection requires sampling: ≈0.3 % of one core at rest (12 Hz), 60 Hz only while Option is held. Compact fires ~0.3 s after ⌥⌘ (disambiguation latency; immediate if Option is released first). ⌥⌘+key/click and ⌥⌘⇧/⌃ are ignored by design. A very fast tap (< ~80 ms of Option) while idle-polling at 12 Hz could be missed; chords hold Option long enough in practice. Disable via Settings → Enable global shortcuts.
+
 ### JARVIS-003 — Real-click OPEN JARVIS, real ESC on Full HUD, resize-drag, click-outside dismissal not externally automated
 Status: Open · MANUAL TEST REQUIRED
 Description: The user declined further System Events automation; per policy no permission was added. Covered instead by in-process checks (real ESC `NSEvent` through the responder chain; `showFullHUD`; `windowWillResize`). Real menu-bar click open/close and compact ESC *were* observed earlier via System Events.
@@ -26,11 +35,11 @@ Next: gate behind `#if DEBUG`/a dev build config when a distribution build exist
 
 ### JARVIS-005 — Memory is not released after closing the Full HUD
 Status: Open · NON-BLOCKING
-Description: RSS ≈ 40 MB idle → ≈ 95 MB after Full HUD is first opened; windows/hosting views are kept for fast reopen. Acceptable for V0.1.
+Description: RSS ≈ 40 MB idle → ≈ 95 MB after Full HUD is first opened (≈ 110 MB with Compact open); windows/hosting views are kept for fast reopen. Acceptable for V0.1.
 
 ### JARVIS-006 — Menu-bar icon animation costs ~1.5 % of a core in animated states
 Status: Open · NON-BLOCKING
-Description: 0.5 s timer redraws the status button in listening/thinking/working. 0 % otherwise. Reduce Motion stops it.
+Description: (V0.1.1: Full HUD animating ≈ 10–12.5 % of a core — neural layer adds ~2–3 points.) 0.5 s timer redraws the status button in listening/thinking/working. 0 % otherwise. Reduce Motion stops it.
 
 ### JARVIS-007 — Minimum window (980×620) is dense; centre column scrolls
 Status: Open · NON-BLOCKING (polish)
@@ -45,6 +54,9 @@ Status: Open · FUTURE MILESTONE
 Description: Store mutations target "first active task" (need task-id addressing for V0.4); `AgentSlot/ToolSlot/ProjectSummary/ApprovalRequest` not Codable; no "interrupted" task status; `setState` has no arbitration among STT/LLM/task engine; `LocalCommandHandler` has no response channel (V0.2); `isFullHUDOpen` is `isVisible` (true even if occluded); `observeContinuously` has no cancel handle. See `ARCHITECTURE.md` → extension points.
 
 ## Resolved
+
+### JARVIS-R08 — Compact HUD resized when the state changed
+Resolved 2026-10-10 (V0.1.1). Window followed SwiftUI intrinsic height. Fixed canonical size (DEC-014), fixed-height task card, smoke test measures the frame across all states. Awaits user's manual confirmation (README checklist).
 
 ### JARVIS-R01 — Demo state switching left tasks incoherent
 Resolved 2026-10-10. Leaving Approval stranded the task as "Awaiting approval"; Working-from-Error was a no-op; Completed/Error/Idle showed a RUNNING task. Fix: `JarvisTask.complete/fail`, `JarvisStore.completeActiveTask/failActiveTask/clearPendingApproval`, `DemoScenario.apply` rules; 6 unit tests + smoke checks.

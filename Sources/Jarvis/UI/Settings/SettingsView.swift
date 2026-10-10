@@ -24,12 +24,22 @@ struct SettingsView: View {
                 Text("Shows the state simulator in the Compact and Full HUD.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Global shortcuts") {
+                Toggle("Enable global shortcuts", isOn: $prefs.globalShortcutsEnabled)
+                LabeledContent("Compact HUD") { Text("⌥⌘").font(.system(size: 16, weight: .medium, design: .rounded)) }
+                Text("Hold Option, then press Command.").font(.caption).foregroundStyle(.secondary)
+                LabeledContent("Full HUD") { Text("⌥⌘⌘").font(.system(size: 16, weight: .medium, design: .rounded)) }
+                Text("Hold Option, then press Command twice in quick succession (within 0.3 s). Either Command key works.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("Needs no macOS permission. Chords that include another key, a click, Shift or Control are ignored.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section {
                 LabeledContent("Version", value: "\(AppInfo.version) (\(AppInfo.milestone))")
                 LabeledContent("Permissions", value: "None requested")
             }
         }
         .formStyle(.grouped)
-        .frame(width: 440, height: 300)
+        .frame(width: 460, height: 650)
     }
 }

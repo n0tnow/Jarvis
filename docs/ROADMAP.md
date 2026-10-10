@@ -1,10 +1,11 @@
 # Roadmap
 
-Only V0.1 has been built. Everything else is PLANNED — do not start a milestone without explicit user approval.
+Only V0.1 and V0.1.1 have been built. Everything else is PLANNED — do not start a milestone without explicit user approval.
 
 | Version | Scope | Status |
 |---|---|---|
-| V0.1 | Native macOS foundation + HUD | READY FOR MANUAL TEST |
+| V0.1 | Native macOS foundation + HUD (user-tested, direction approved) | superseded by V0.1.1 below |
+| V0.1.1 | Compact HUD fixed size · neural background · ⌥⌘ / ⌥⌘⌘ global shortcuts (UX fixes, no new capabilities) | READY FOR MANUAL TEST |
 | V0.2 | Text conversation + intelligence/command router | PLANNED |
 | V0.3 | Subscription-based Codex/Claude worker integration (no paid API dependency unless explicitly approved) | PLANNED |
 | V0.4 | Persistent task engine + long-running background jobs | PLANNED |

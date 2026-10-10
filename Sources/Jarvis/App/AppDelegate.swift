@@ -4,12 +4,26 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var context: AppContext!
     private var statusItem: StatusItemController!
+    private(set) var hotkeys: GlobalHotkeyService!
     private let options = LaunchOptions()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         context = AppContext()
         statusItem = StatusItemController(context: context)
         context.windowManager.anchorProvider = { [weak self] in self?.statusItem.buttonFrameOnScreen }
+
+        let windows = context.windows
+        hotkeys = GlobalHotkeyService { action in
+            switch action {
+            case .toggleCompact: windows.toggleCompactHUD()
+            case .toggleFull: windows.toggleFullHUD()
+            }
+        }
+        let prefs = context.preferences
+        let service = hotkeys!
+        observeContinuously(track: { _ = prefs.globalShortcutsEnabled },
+                            onChange: { prefs.globalShortcutsEnabled ? service.start() : service.stop() })
+        if prefs.globalShortcutsEnabled { service.start() }
 
         if let state = options.state { DemoScenario.apply(state, to: context.store) }
         if options.openCompact { context.windows.showCompactHUD() }

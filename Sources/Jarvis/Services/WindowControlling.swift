@@ -19,6 +19,8 @@ protocol JarvisWindowControlling: AnyObject {
     /// Opens the Full HUD (or brings it forward) and optionally navigates to a section.
     func showFullHUD(section: HUDSection?)
     func hideFullHUD()
+    /// Hidden → show; visible and frontmost → hide; visible but behind other windows → bring forward.
+    func toggleFullHUD()
     func bringFullHUDForward()
 
     func showSettings()

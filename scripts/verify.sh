@@ -23,7 +23,7 @@ check "arm64 binary" sh -c "lipo -archs $APP/Contents/MacOS/Jarvis | grep -q arm
 print "== Permission audit"
 ! plutil -p $APP/Contents/Info.plist | grep -qi "UsageDescription" && pass "no NS*UsageDescription keys" || fail "no NS*UsageDescription keys"
 [ -z "$(codesign -d --entitlements - $APP 2>/dev/null | grep -v -E '^Executable=')" ] && pass "no entitlements" || fail "no entitlements"
-! grep -rEl "AVCaptureDevice|CGRequestScreenCapture|CGPreflightScreenCapture|AXIsProcessTrusted|NSAppleScript|SFSpeechRecognizer|CNContactStore|CLLocationManager|UNUserNotificationCenter" Sources \
+! grep -rEl "AVCaptureDevice|CGRequestScreenCapture|CGPreflightScreenCapture|AXIsProcessTrusted|NSAppleScript|SFSpeechRecognizer|addGlobalMonitorForEvents|CGEventTapCreate|RegisterEventHotKey|IOHIDManager|CNContactStore|CLLocationManager|UNUserNotificationCenter" Sources \
   && pass "no permission-gated API usage in sources" || fail "permission-gated API usage found in sources"
 
 print "== Smoke test (real window manager, store, status item)"

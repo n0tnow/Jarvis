@@ -2,7 +2,7 @@
 
 A native macOS menu-bar AI operating layer (long-term). **V0.1 is only the application foundation + HUD**: native shell, state architecture, Compact HUD, Full HUD, demo data. There is **no AI, no voice, no network, and no macOS permission request** in this version.
 
-- **Version:** V0.1 (`0.1.0`) — **READY FOR MANUAL TEST** (not yet manually verified by the user)
+- **Version:** V0.1.1 (`0.1.1`) — **READY FOR MANUAL TEST**. (V0.1 was manually tested by the user: direction approved; V0.1.1 adds three requested fixes — not yet verified by the user.)
 - Handoff for agents: `PROJECT_STATE.md`, `AGENTS.md` (includes the Git workflow: `main` only, linear history)
 
 ## Requirements
@@ -19,6 +19,8 @@ scripts/verify.sh             # full automated verification
 scripts/test.sh               # unit tests only
 ```
 
+**Global shortcuts** (work while any app is focused; no permission): hold **Option** and press **Command** → toggle Compact HUD (fires ~0.3 s later unless it turns out to be a double press). Hold **Option** and press **Command twice quickly** (within 0.3 s) → toggle Full HUD. Either Command key. Ignored if you add another key, a click, Shift or Control (so ⌥⌘D, ⌥⌘-click etc. are untouched). Turn off in Settings → Enable global shortcuts.
+
 Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact HUD).
 
 ## Current features
@@ -26,7 +28,9 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | Feature | Status |
 |---|---|
 | Menu bar item with state-specific glyphs | IMPLEMENTED · AUTOMATED TESTED (partial) · MANUAL TEST REQUIRED |
-| Compact HUD (state, active task, step, elapsed, progress, Open/Pause/Stop, command) | IMPLEMENTED · MANUAL TEST REQUIRED |
+| Compact HUD (fixed 392×448 in every state; task, step, elapsed, progress, Open/Pause/Stop, command) | IMPLEMENTED · AUTOMATED TESTED (frame measured across states) · MANUAL TEST REQUIRED |
+| Ambient neural-network background (Full HUD, state-reactive, pauses when hidden / Reduce Motion) | IMPLEMENTED · AUTOMATED TESTED (lifecycle) · VISUALLY VERIFIED · MANUAL TEST REQUIRED |
+| Global shortcuts ⌥⌘ (Compact) and ⌥⌘⌘ (Full), no permission needed | IMPLEMENTED · AUTOMATED TESTED (logic + scripted integration) · **MANUAL TEST REQUIRED** (physical keys from another app) |
 | Full HUD (Dashboard, Tasks, System; Report/Memory placeholders) | IMPLEMENTED · MANUAL TEST REQUIRED |
 | JARVIS Core visualization for all 7 states | IMPLEMENTED · VISUALLY VERIFIED (screenshots) |
 | Window-management layer for future UI self-control | IMPLEMENTED · AUTOMATED TESTED |
@@ -80,6 +84,11 @@ V0.2 — text conversation + command router. **Do not start until the user appro
 10. Right-click the menu bar icon → menu works (Open JARVIS, Settings…, Quit). Open Settings: toggle Reduce Motion (animation stops/slows) and Show Developer Controls (strip disappears).
 11. Look at quality: contrast, text size, glass/blur, the "JARVIS is present" feel. Test on a Retina display and, if available, a second display and light/dark menu bar.
 12. **VoiceOver check (MANUAL VERIFICATION REQUIRED):** with VoiceOver on, focus the Compact HUD buttons (OPEN JARVIS / PAUSE / STOP / state chips) and confirm each announces a sensible name; in the Approval state confirm "Approval required: Run multiplayer tests" is announced.
-13. Activity Monitor: JARVIS should be ~0% CPU when idle/HUDs closed.
+13. Activity Monitor: JARVIS should be ≈0–0.5% CPU when idle/HUDs closed (hotkey polling is tiny).
+
+### V0.1.1 additions
+14. **Compact HUD fixed size:** open the Compact HUD and click through all seven state chips (Idle, Listening, Thinking, Working, Approval, Complete, Error), also after STOP (no active task) and with Settings → Show Developer Controls off. The outer window's **width and height and position must never change** (no jump, no clipping); only the inside crossfades quickly. Turn on Settings → Reduce Motion: the crossfade disappears.
+15. **Global shortcuts (from Finder or another app, not JARVIS):** press **⌥⌘** (Option held, tap Command) → Compact HUD opens; again → it closes. Press **⌥⌘⌘** (Option held, tap Command twice quickly) → the **Full HUD opens directly — the Compact HUD must not flash first**; again → it closes (or comes forward if it was behind another window). Holding the keys down must not open duplicate windows or flicker. Try ⌥⌘D (Dock hide) / ⌥⌘-click: JARVIS must not react. Is 0.3 s comfortable for the double Command? Tell me if not. Settings shows both shortcuts and an on/off switch.
+16. **Neural background:** Full HUD → Listening (gentle inward pulses), Thinking (busiest), Working (steady flow), Approval (slow, few), Complete (one settling ripple then calm), Error (brief disruption then calm), Idle (nearly static). It should be **subtle** and text must stay perfectly readable. Settings → Reduce Motion: the network becomes a static drawing. Close the Full HUD: Activity Monitor CPU returns to ≈0–2%. (Expected while animating: ≈10–13% of one core, ≈3% when Idle/Approval.)
 
 Report anything odd and I'll add it to `docs/KNOWN_ISSUES.md`.

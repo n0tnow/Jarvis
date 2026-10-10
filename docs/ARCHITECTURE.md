@@ -1,6 +1,6 @@
 # Architecture (V0.1)
 
-Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Decisions behind it: `DECISIONS.md`.
+Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.1.1. Decisions behind it: `DECISIONS.md`.
 
 ## Shape
 
@@ -32,7 +32,7 @@ State ↔ task coherence is enforced in the demo layer (`DemoScenario.apply`): i
 
 ## Windows
 
-- **Compact HUD** — `HUDPanel` (borderless, floating, `canBecomeKey`). Anchored under the status item; hides on resign-key (0.25 s guard prevents the dismissing click from re-opening it); ESC via `cancelOperation`; height follows SwiftUI content (`NSHostingController.sizingOptions = .preferredContentSize`, top edge pinned).
+- **Compact HUD** — `HUDPanel` (borderless, floating, `canBecomeKey`). Anchored under the status item; hides on resign-key (0.25 s guard prevents the dismissing click from re-opening it); ESC via `cancelOperation`; **fixed canonical size** `CompactHUDLayout.size` (392×448, DEC-014): window and SwiftUI root share it, `sizingOptions = []`, task card fixed-height, only inner content crossfades.
 - **Full HUD** — `FullHUDWindow` (borderless, resizable, clear background, normal level, movable by background). Sized to ~90 % of the visible frame (max 1480×920) on the screen of the menu bar item/pointer; centered. **Minimum size is enforced in `windowWillResize`** (NSHostingView overwrites `contentMinSize`). ESC/⌘W close it. Layout adapts at <1200 pt width (`hudIsNarrow`).
 - **Settings** — `SettingsWindow` (titled; ESC/⌘W close).
 
@@ -41,7 +41,12 @@ State ↔ task coherence is enforced in the demo layer (`DemoScenario.apply`): i
 - Glass = `NSVisualEffectView` (`.hudWindow`) + deep-ink tint + hairline; fonts are system fonts; tokens in `UI/Theme/Theme.swift`.
 - JARVIS Core: `CoreRenderer` (Core Graphics) inside `CoreNSView`, driven by a `CADisplayLink` (≤24 fps) that exists **only while** `isAnimating` (HUD visible ∧ Reduce Motion off). Hidden/idle = one static frame, 0 CPU. Rationale/measurements: DEC-006.
 - Menu bar icon: cached template `NSImage`s per (state, frame); a 0.5 s timer runs only for listening/thinking/working.
-- Nothing polls; elapsed-time labels tick at 1 Hz only while the task runs and the surface is visible.
+- Neural background (Full HUD only, DEC-012): `NeuralGraph` (seeded, generated once) + `NeuralSimulation` (≤14 pulses) are pure; `NeuralNetworkNSView` draws with Core Graphics on a `CADisplayLink` at 5–15 fps by state, torn down when hidden / Reduce Motion; SwiftUI (`NeuralBackground`) only forwards state changes. The core's own frame rate is also state-based (10–24 fps).
+- Nothing else polls except the hotkey service (below); elapsed-time labels tick at 1 Hz only while the task runs and the surface is visible.
+
+## Global shortcuts (DEC-013)
+
+`GlobalHotkeyService` (Services/Input) polls modifier state (12 Hz at rest / 60 Hz while Option is held; permission-free) → pure `ModifierChordMachine` → `JarvisWindowControlling.toggleCompactHUD()` / `toggleFullHUD()` (wired in `AppDelegate`). Compact = hold ⌥ + press ⌘; Full = hold ⌥ + press ⌘ twice within 0.30 s (Compact never flashes first). `toggleFullHUD`: hidden → show; frontmost → hide; visible but behind → bring forward. Toggle in Settings.
 
 ## Dev tooling (compiled into the binary; inert without launch args)
 

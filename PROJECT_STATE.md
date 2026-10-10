@@ -4,7 +4,7 @@
 
 ## Current Version
 
-V0.1 (app version string `0.1.0`)
+V0.1.1 (app version `0.1.1`) — V0.1 baseline `d827a9e` was manually tested by the user (direction approved); V0.1.1 = three requested UX fixes
 
 ## Current Milestone
 
@@ -12,12 +12,12 @@ Native macOS Foundation + HUD
 
 ## Status
 
-**V0.1 — READY FOR MANUAL TEST**
-(Automated verification passed. Not manually verified by the user. Do NOT mark COMPLETE and do NOT start V0.2 until the user approves.)
+**V0.1.1 — READY FOR MANUAL TEST**
+(Automated verification passed. The V0.1.1 changes are not yet manually verified by the user. Do NOT mark COMPLETE, tag, or start V0.2 until the user approves.)
 
 ## Current Objective
 
-Hand V0.1 to the user for manual UI/UX testing of `build/Jarvis.app`.
+Hand V0.1.1 to the user for manual testing of `build/Jarvis.app`: (A) fixed-size Compact HUD, (B) neural background, (C) ⌥⌘ / ⌥⌘⌘ global shortcuts.
 
 ## Completed (IMPLEMENTED)
 
@@ -36,6 +36,12 @@ Hand V0.1 to the user for manual UI/UX testing of `build/Jarvis.app`.
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
 
+## V0.1.1 additions (IMPLEMENTED · AUTOMATED TESTED)
+
+- **A. Compact HUD fixed geometry:** 392×448 via `CompactHUDLayout`; root cause was `.preferredContentSize`+`fittingSize`; smoke test measures the real frame across 7 states × dev strip on/off × task/none. Inner crossfade 0.2 s (off under Reduce Motion). DEC-014.
+- **B. Neural background (Full HUD only):** seeded 45-node graph, bounded pulse simulation, AppKit/Core Graphics display link 5–15 fps by state; paused when hidden, static under Reduce Motion; Compact HUD intentionally has none. DEC-012.
+- **C. Global shortcuts:** ⌥⌘ → Compact; ⌥⌘⌘ → Full (second ⌘ within 0.30 s, Compact never flashes first), either ⌘ key, permission-free polling (12 Hz rest / 60 Hz while ⌥ held), ignores ⌥⌘+key/click/Shift/Control; Settings shows them + off switch. DEC-013. **Physical use from another app is MANUAL TEST REQUIRED.**
+
 ## In Progress
 
 Nothing. Waiting for user manual verification.
@@ -52,12 +58,13 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 **AUTOMATED TESTED** (`scripts/verify.sh` → `VERIFY PASSED`; 2026-10-10):
 - Build (release) OK; bundle `build/Jarvis.app` assembled; ad-hoc signature valid (strict/deep); arm64; Info.plist lints; `LSUIElement=true`.
-- 17/17 unit tests (task model, store, command handler, state↔task coherence).
+- 36/36 unit tests (task model, store, command handler, state↔task coherence, chord machine, hotkey service, neural graph/simulation, compact constants).
 - Smoke test (real window manager/store/status item): 28 PASS, 0 FAIL, 2 SKIP (in-process accessibility audit — SwiftUI AX tree not materialized without an AX client).
   Covers: status item has image+frame; app survives last-window-close policy; Compact open/close; Full open/close, fits screen, centered, min size enforced; display link running while Full HUD open and stopped when hidden; menu-bar icon timer runs only in animated states; reopen preserves section/activity/steps/clock; **real ESC `NSEvent`** dismisses Full and Compact; `showFullHUD(section: .report)` navigates; all 7 states coherent with task + icon tooltip; pause/resume.
 - Permission audit: no `NS*UsageDescription` keys, no entitlements, no permission-gated API usage in sources.
 - Console: no stdout/stderr output from the app during smoke/capture/launch runs.
-- Resources (release, M5): idle/closed ≈ 0% CPU, ~40 MB; Compact open ≈ 1%; Full HUD open + animating ≈ 9% of one core; Full HUD closed with Working state ≈ 1.6% (menu-bar icon timer only).
+- Resources (release, M5, % of ONE core; V0.1 baseline → V0.1.1):
+  idle/HUDs closed ≈0% → ≈0.3% (12 Hz hotkey polling) · Compact open ≈1% → ≈2% (Working) · Full HUD animating ≈9% → Listening ≈10%, Working ≈11%, Thinking ≈12.5% · Full Idle/Approval ≈3% · closed with Working ≈1.6% → ≈1.7% · RSS 40 MB idle, ≈95–110 MB after first HUD open.
 
 **VISUALLY VERIFIED** (in-process captures, `captures/`): Compact (idle/working), Full HUD all 7 states, Tasks/Report/System/Memory sections, Full HUD at minimum size. Screen was 1× (no Retina check).
 
@@ -69,7 +76,7 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Important Decisions
 
-See `docs/DECISIONS.md` (DEC-001…DEC-011). Key ones:
+See `docs/DECISIONS.md` (DEC-001…DEC-014). Key ones:
 - Native Swift/SwiftUI/AppKit only (no Electron/React/Tauri/web UI).
 - UI/window state (`HUDState`) separated from application/task state (`JarvisStore`); closing HUDs never touches tasks.
 - All window control goes through `JarvisWindowControlling`.
@@ -98,7 +105,7 @@ None.
 
 ## Git
 
-`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; baseline commit pushed; **no `v0.1` tag yet** (tag only after user approval). Policy: `AGENTS.md` → Git Workflow, DEC-011.
+`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; commits: baseline `d827a9e`, then V0.1.1 commits; **no tag yet** (tag only after user approval — convention to decide with the user: `v0.1.1`). Policy: `AGENTS.md` → Git Workflow, DEC-011.
 
 ## Last Updated
 

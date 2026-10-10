@@ -199,6 +199,54 @@ enum SmokeTest {
         DemoScenario.apply(.idle, to: store)
         check("Menu bar icon timer is stopped in Idle", await waitUntil { !statusItem.isAnimationTimerActive })
 
+        // --- Global shortcuts → real WindowManager (scripted modifier timeline; physical keys NOT used here)
+        check("Global hotkey service is running by default", (NSApp.delegate as? AppDelegate)?.hotkeys?.isRunning == true)
+        let sys = GlobalHotkeyService.systemSample()
+        check("System modifier sample is readable without permissions", sys.time > 0 && sys.secondsSinceOtherInput >= 0)
+        w.hideCompactHUD(); w.hideFullHUD(); _ = await waitUntil { !w.isCompactHUDOpen && !w.isFullHUDOpen }
+        var clock = 0.0
+        var held: (opt: Bool, cmd: Bool) = (false, false)
+        var compactSeenDuringFullChord = false
+        var trackCompact = false
+        let scripted = GlobalHotkeyService(
+            sampler: { ModifierSample(time: clock, option: held.opt, command: held.cmd, other: false, secondsSinceOtherInput: 1000) },
+            perform: { action in
+                switch action {
+                case .toggleCompact: w.toggleCompactHUD()
+                case .toggleFull: w.toggleFullHUD()
+                }
+            })
+        func drive(_ seconds: Double, _ opt: Bool, _ cmd: Bool) async {
+            held = (opt, cmd)
+            let end = clock + seconds
+            while clock < end {
+                clock += 0.016
+                scripted.poll()
+                if trackCompact && w.isCompactHUDOpen { compactSeenDuringFullChord = true }
+                try? await Task.sleep(for: .milliseconds(2))
+            }
+        }
+        await drive(0.5, false, false)
+        await drive(0.45, true, true)                                  // ⌥⌘ held → Compact after the window
+        check("⌥⌘ opens the Compact HUD", await waitUntil { w.isCompactHUDOpen })
+        await drive(0.3, false, false)
+        await drive(0.45, true, true)                                  // again → toggles it closed
+        check("⌥⌘ again closes the Compact HUD", await waitUntil { !w.isCompactHUDOpen })
+        await drive(0.5, false, false)
+        trackCompact = true
+        await drive(0.08, true, true); await drive(0.08, true, false); await drive(0.3, true, true)   // ⌥⌘⌘
+        check("⌥⌘⌘ opens the Full HUD", await waitUntil { w.isFullHUDOpen })
+        await drive(0.6, true, true)
+        trackCompact = false
+        check("Full chord never flashed the Compact HUD first", !compactSeenDuringFullChord)
+        await drive(0.5, false, false)
+        await drive(0.08, true, true); await drive(0.08, true, false); await drive(0.3, true, true)   // ⌥⌘⌘ again
+        await settle(400)
+        check("⌥⌘⌘ again toggles (hides when frontmost, otherwise brings forward) with no duplicate windows",
+              NSApp.windows.filter { $0 is FullHUDWindow }.count == 1 && (!w.isFullHUDOpen || !NSApp.isActive || fullWindow()?.isKeyWindow == true),
+              "open=\(w.isFullHUDOpen) appActive=\(NSApp.isActive)")
+        w.hideFullHUD(); w.hideCompactHUD()
+
         // --- Task controls
         DemoScenario.resetDemoTask(store)
         store.pauseActiveTask()

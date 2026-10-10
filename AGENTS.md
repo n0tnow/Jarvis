@@ -24,6 +24,8 @@ Then run `git status` and `git log --oneline -10` (always, before editing), and 
 - Verify after meaningful changes: `scripts/verify.sh` (tests + bundle + permission audit + smoke test + idle CPU).
 - Distinguish automated testing from user manual verification. Never mark something working, verified or COMPLETE unless it was actually tested; never mark "manually verified" unless the user did it.
 - Do not request macOS permissions (Microphone, Accessibility, Screen Recording, Automation) until the feature that needs them exists. Do not request them just to automate tests.
+- Never drive per-frame animation from SwiftUI `TimelineView`/`Canvas` (≈30 % CPU, DEC-006/012): use the AppKit renderers (display link, torn down when hidden, off under Reduce Motion).
+- No global event monitors/taps (`addGlobalMonitorForEvents`, `CGEventTap`, Carbon hotkeys) without explicit user approval — they need privacy permissions (DEC-008/013). `scripts/verify.sh` greps for them.
 - Keep demo data inside `Sources/Jarvis/Services/Demo`; production code must not depend on it.
 - Update `docs/CURRENT_TASK.md` at meaningful checkpoints, `docs/DECISIONS.md` after architectural decisions, `docs/KNOWN_ISSUES.md` for persistent bugs (mark Resolved, don't delete). Before ending a significant session update `PROJECT_STATE.md`, `docs/CURRENT_TASK.md`, `docs/DEVELOPMENT_LOG.md`.
 - Documentation must reflect reality. Use the states: PLANNED · IN PROGRESS · IMPLEMENTED · AUTOMATED TESTED · MANUAL TEST REQUIRED · MANUALLY VERIFIED · BLOCKED.

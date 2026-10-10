@@ -6,6 +6,6 @@ enum Log {
 }
 
 enum AppInfo {
-    static let version = "0.1.0"
-    static let milestone = "V0.1"
+    static let version = "0.1.1"
+    static let milestone = "V0.1.1"
 }
