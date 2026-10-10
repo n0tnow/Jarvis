@@ -432,7 +432,7 @@ enum SmokeTest {
         w.hideCompactHUD(); w.hideFullHUD(); _ = await waitUntil { !w.isCompactHUDOpen && !w.isFullHUDOpen }
         w.showFullHUD(section: .dashboard); _ = await waitUntil { w.isFullHUDOpen }
         check("Full HUD composer is focused (NSTextView first responder)", await waitUntil { editor(in: fullWindow()) is ComposerTextView })
-        print("INFO  Full HUD: NSApp.isActive=\(NSApp.isActive) window.isKey=\(fullWindow()?.isKeyWindow ?? false) frontmostApp=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?")")
+        print("INFO  Full HUD: level=\(fullWindow()?.level.rawValue ?? -1) occlusionVisible=\(fullWindow()?.occlusionState.contains(.visible) ?? false) NSApp.isActive=\(NSApp.isActive) window.isKey=\(fullWindow()?.isKeyWindow ?? false) frontmostApp=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?")")
         if let tv = editor(in: fullWindow()) {
             let singleLine = composerHeight(tv)
             let sample = "pasted ✓ Türkçe ğüşiöç İI ıi"

@@ -112,6 +112,10 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
         fullWindow = window
         if !window.isVisible { sizeAndCenter(window) }
         context.hud.isFullHUDVisible = true
+        // A non-activating panel of an INACTIVE app would otherwise sit behind the frontmost app's windows
+        // (e.g. opened by the global shortcut). Float while presented; windowDidResignKey drops it to normal
+        // so it never permanently covers other apps.
+        window.level = .floating
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
         Log.windows.debug("full HUD shown")
@@ -132,6 +136,7 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
     func bringFullHUDForward() {
         hideCompactHUD()   // exclusivity (Full was visible but behind: Compact must not appear next to it)
         if let window = fullWindow, window.isVisible {
+            window.level = .floating
             NSApp.activate()
             window.makeKeyAndOrderFront(nil)
         } else {
@@ -218,6 +223,7 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
     // MARK: NSWindowDelegate
 
     func windowDidResignKey(_ notification: Notification) {
+        if let window = notification.object as? NSWindow, window === fullWindow { window.level = .normal }
         guard let window = notification.object as? NSWindow, window === compactPanel, window.isVisible else { return }
         lastCompactResignHide = Date()
         hideCompactHUD()
