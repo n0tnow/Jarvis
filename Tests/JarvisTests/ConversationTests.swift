@@ -151,7 +151,9 @@ struct RoutingTests {
         #expect(intent("belleği göster") == .openSection(.memory))
         #expect(intent("ana ekranı aç") == .openSection(.dashboard))
         #expect(intent("görevi duraklat") == .pauseTask)
-        #expect(intent("devam et") == .resumeTask)
+        #expect(intent("devam et") == nil)                 // bare Turkish "continue" is ordinary chat
+        #expect(intent("Jarvis devam et") == .resumeTask)
+        #expect(intent("görevi sürdür") == .resumeTask)
         #expect(intent("görevi durdur") == .stopTask)
         #expect(intent("durum nedir") == .showStatus)
         #expect(intent("ne yapıyorsun") == .showStatus)
@@ -163,8 +165,8 @@ struct RoutingTests {
     @Test func statusAndTaskControl() {
         for s in ["What are you doing?", "what state are you in", "What's your status?", "status", "Jarvis, what are you working on?"] { #expect(intent(s) == .showStatus, "\(s)") }
         for s in ["Pause the current task.", "pause", "pause task", "Jarvis pause the task", "can you pause the task"] { #expect(intent(s) == .pauseTask, "\(s)") }
-        for s in ["Resume the task", "resume", "continue", "continue the task"] { #expect(intent(s) == .resumeTask, "\(s)") }
-        for s in ["Stop the current task.", "stop", "cancel task", "abort"] { #expect(intent(s) == .stopTask, "\(s)") }
+        for s in ["Resume the task", "resume", "continue the task", "Jarvis, continue", "ok resume"] { #expect(intent(s) == .resumeTask, "\(s)") }
+        for s in ["Stop the current task.", "stop", "cancel task", "abort", "stop it", "Jarvis, cancel"] { #expect(intent(s) == .stopTask, "\(s)") }
     }
 
     @Test func hudCommands() {
@@ -174,6 +176,7 @@ struct RoutingTests {
         #expect(intent("open compact") == .openCompactHUD)
         #expect(intent("open full hud") == .openFullHUD)
         #expect(intent("open jarvis") == .openFullHUD)
+        #expect(intent("Jarvis, open") == .openFullHUD)
         #expect(intent("clear conversation") == .clearConversation)
         #expect(intent("Clear chat!") == .clearConversation)
     }
@@ -435,5 +438,105 @@ struct ConversationFlowTests {
     @Test func v02RegistersNoProvider() {
         #expect(IntelligenceProviderRegistry().provider(for: .reasoning) == nil)
         #expect(IntelligenceProviderRegistry().provider(for: .worker) == nil)
+    }
+}
+
+@MainActor
+@Suite("Reply feedback line")
+struct FeedbackTests {
+    @Test func feedbackTracksLatestCompletedReplyAndClears() {
+        let store = ConversationStore()
+        #expect(store.feedbackLine == nil)
+        store.appendUser("hello")
+        #expect(store.feedbackLine == nil)                              // the user's own message is not feedback
+        store.appendJarvis("Hello.\nSecond line")
+        #expect(store.feedbackLine == "Hello. Second line")             // single line
+        let id = store.beginJarvisResponse(route: .reasoning)
+        #expect(store.feedbackLine == "Hello. Second line")             // pending response doesn't replace it
+        store.appendDelta(id, "Streaming…")
+        store.finish(id)
+        #expect(store.feedbackLine == "Streaming…")
+        store.clear()
+        #expect(store.feedbackLine == nil)
+    }
+}
+
+
+/// Regressions from the routing review: each input here was mis-routed before the fix.
+@Suite("Routing regressions")
+struct RoutingRegressionTests {
+    private let router = IntelligenceRouter()
+    private func intent(_ s: String) -> JarvisIntent? { if case .command(let i, _) = router.route(s) { return i } else { return nil } }
+    private func kind(_ s: String) -> RouteKind { router.route(s).kind }
+
+    @Test func statusPhrasingsAfterFillerRemoval() {
+        for s in ["what's the status?", "what is the status", "what is my status", "status report", "How's the task going?", "what are you doing right now",
+                  "what's going on", "Şu anda ne yapıyorsun", "durumun nasıl"] { #expect(intent(s) == .showStatus, "\(s)") }
+    }
+
+    @Test func turkishDativeAndOtherSuffixedForms() {
+        #expect(intent("ayarlara git") == .openSettings)
+        #expect(intent("rapora git") == .openSection(.report))
+        #expect(intent("sisteme git") == .openSection(.system))
+        #expect(intent("görevlere git") == .openSection(.tasks))
+        #expect(intent("hafızaya git") == .openSection(.memory))
+        #expect(intent("ana ekrana git") == .openSection(.dashboard))
+        #expect(intent("dashboard'u aç") == .openSection(.dashboard))
+    }
+
+    @Test func fillersCannotHideAddressesOrLeadIns() {
+        for s in ["please can you open the report", "hey jarvis please can you show tasks", "hey, open the report", "hi can you open the report",
+                  "open the report jarvis please", "please jarvis open the report", "I'd like to see the report", "let's open the report",
+                  "get the report", "check the system", "pull up tasks", "list tasks", "show all tasks", "open the report for me"] {
+            #expect(intent(s) != nil && ({ if case .openSection = intent(s)! { return true } else { return false } })(), "\(s)")
+        }
+        #expect(intent("ok stop") == .stopTask)
+        #expect(intent("okay pause") == .pauseTask)
+        #expect(intent("stop jarvis please") == .stopTask)
+        #expect(intent("go compact") == .openCompactHUD)
+        #expect(intent("switch to compact") == .openCompactHUD)
+        #expect(intent("maximize") == .openFullHUD)
+    }
+
+    @Test func greetingsRemainGreetings() {
+        for s in ["hey there", "hi", "hello", "hey Jarvis", "hello jarvis"] { #expect(kind(s) == .local, "\(s)") }
+    }
+
+    @Test func ambiguousBareWordsAreChatNotCommands() {
+        for s in ["continue", "devam", "clear", "temizle", "iptal", "iptal et", "cancel", "open", "show", "aç", "tam", "show me", "open my", "home", "panel", "task", "switch to main", "git switch main"] {
+            #expect(intent(s) == nil, "\(s)")
+        }
+        // …but they work when JARVIS is addressed
+        #expect(intent("Jarvis, clear") == .clearConversation)
+        #expect(intent("Jarvis, cancel") == .stopTask)
+        #expect(intent("go home") == .openSection(.dashboard))
+    }
+
+    @Test func replyLanguageComesFromTheInput() {
+        func lang(_ s: String) -> ReplyLanguage? {
+            switch router.route(s) {
+            case .localResponse(_, let l), .reasoningRequired(_, let l), .workerRequired(_, let l), .command(_, let l): return l
+            default: return nil
+            }
+        }
+        #expect(lang("selam") == .tr)
+        #expect(lang("tesekkurler") == .tr)
+        #expect(lang("sag ol") == .tr)
+        #expect(lang("bana bir hikaye anlat") == .tr)
+        #expect(lang("Tell me about İstanbul") == .tr || lang("Tell me about İstanbul") == .en)   // either is acceptable; must not crash
+        #expect(lang("explain quantum mechanics") == .en)
+    }
+
+    @Test func workerHeuristicIsNarrower() {
+        for s in ["How long does the build take?", "how do I build good habits", "Write an email about the project", "Write a scene for my story",
+                  "Add the project meeting to my calendar"] { #expect(kind(s) == .reasoning, "\(s)") }
+        for s in ["Fix my Unity multiplayer system.", "build the project", "run the tests", "hatayı düzelt", "kodu düzelt", "projeyi derle", "scripti çalıştır"] {
+            #expect(kind(s) == .worker, "\(s)")
+        }
+    }
+
+    @Test func smartQuotesAreDeletedLikeApostrophes() {
+        #expect(InputNormalizer.normalize("what‘s the status").text == "whats status")
+        #expect(InputNormalizer.normalize("Jarvis’i kapat").text == "kapat")
     }
 }

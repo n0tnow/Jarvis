@@ -17,6 +17,8 @@ final class ConversationService {
     private var responseTask: Task<Void, Never>?
     private var responseMessageID: UUID?
     private(set) var isResponding = false
+    /// True once a provider is registered (never in V0.2).
+    var hasProviders: Bool { !providers.providers.isEmpty }
 
     init(store: JarvisStore, conversation: ConversationStore, windows: any JarvisWindowControlling,
          router: IntelligenceRouter = IntelligenceRouter(), providers: IntelligenceProviderRegistry = IntelligenceProviderRegistry()) {
@@ -36,6 +38,7 @@ final class ConversationService {
 
         conversation.appendUser(text)
         let decision = router.route(text)
+        defer { announceLatestReply() }
 
         switch decision {
         case .command(let intent, let lang):
@@ -55,6 +58,12 @@ final class ConversationService {
             conversation.appendJarvis(Phrasebook.unsupported(lang), tone: .notice, route: .unsupported)
         }
         return decision
+    }
+
+    /// VoiceOver users otherwise hear nothing when a reply lands in a text field / panel.
+    private func announceLatestReply() {
+        guard let last = conversation.last, last.role == .jarvis, last.status == .complete else { return }
+        Announcer.announce(last.content, high: last.tone == .notice)
     }
 
     /// Interrupts an in-flight provider response (what a future barge-in will call). No-op when idle.

@@ -12,6 +12,12 @@ final class ConversationStore {
 
     private(set) var messages: [ConversationMessage] = []
 
+    /// One-line summary of the latest JARVIS reply for the command field (Compact + Full). Expires so a status
+    /// like "step 4 of 6" is not shown as if it were live; cleared with the conversation.
+    private(set) var feedbackLine: String?
+    static let feedbackLifetime: TimeInterval = 20
+    @ObservationIgnored private var feedbackExpiry: Task<Void, Never>?
+
     init() {}
 
     @discardableResult
@@ -22,7 +28,9 @@ final class ConversationStore {
     @discardableResult
     func appendJarvis(_ text: String, tone: MessageTone = .normal, route: RouteKind? = nil,
                       status: MessageStatus = .complete) -> ConversationMessage {
-        append(ConversationMessage(role: .jarvis, content: text, status: status, tone: tone, route: route))
+        let message = append(ConversationMessage(role: .jarvis, content: text, status: status, tone: tone, route: route))
+        if status == .complete { setFeedback(text) }
+        return message
     }
 
     // MARK: Streaming-ready API (used by intelligence providers; no fake streaming in V0.2)
@@ -38,6 +46,7 @@ final class ConversationStore {
 
     func finish(_ id: UUID) {
         update(id) { $0.status = .complete }
+        if let m = messages.last(where: { $0.id == id }) { setFeedback(m.content) }
     }
 
     func fail(_ id: UUID, reason: String) {
@@ -57,7 +66,21 @@ final class ConversationStore {
         }
     }
 
-    func clear() { messages.removeAll() }
+    func clear() {
+        messages.removeAll()
+        setFeedback(nil)
+    }
+
+    private func setFeedback(_ text: String?) {
+        feedbackExpiry?.cancel()
+        feedbackLine = text.map { $0.replacingOccurrences(of: "\n", with: " ") }
+        guard text != nil else { return }
+        feedbackExpiry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.feedbackLifetime))
+            guard !Task.isCancelled else { return }
+            self?.feedbackLine = nil
+        }
+    }
 
     var last: ConversationMessage? { messages.last }
 

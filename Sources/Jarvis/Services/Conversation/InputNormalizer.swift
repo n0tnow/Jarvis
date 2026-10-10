@@ -19,50 +19,66 @@ struct NormalizedInput: Equatable, Sendable {
 /// "Raporu Aç!" → "raporu ac", "Jarvis, show me the report." → "show report".
 enum InputNormalizer {
     private static let jarvisTokens: Set<String> = ["jarvis", "jarvisi", "jarvise", "jarvisin", "jarvisle"]
-    private static let greetingLeaders: Set<String> = ["hey", "ok", "okay", "hi", "yo", "hello", "selam", "merhaba"]
+    /// "ok"/"okay" never carry meaning; "hey/hi/yo/hello" are dropped only when a real request follows (≥2 tokens),
+    /// so "hey there" / "hi" stay greetings.
+    private static let silentLeaders: Set<String> = ["ok", "okay"]
+    private static let greetingLeaders: Set<String> = ["hey", "hi", "yo", "hello", "selam", "merhaba"]
     private static let fillers: Set<String> = ["the", "a", "me", "my", "please", "pls", "lutfen", "bana", "simdi", "now"]
-    /// Polite lead-ins, removed only when something follows them.
+    /// Polite lead-ins, removed only when something follows them (apostrophes are deleted before matching: "I'd" → "id").
     private static let leadIns: [[String]] = [
         ["can", "you"], ["could", "you"], ["would", "you"], ["will", "you"],
-        ["i", "want", "you", "to"], ["i", "would", "like", "to"], ["i", "d", "like", "to"], ["i", "want", "to"],
-        ["let", "s"], ["lets"],
+        ["i", "want", "you", "to"], ["i", "would", "like", "to"], ["id", "like", "to"], ["id", "like"], ["i", "want", "to"], ["i", "wanna"],
+        ["lets"], ["let", "s"],
     ]
     private static let turkishLetters = CharacterSet(charactersIn: "çğıöşüÇĞİÖŞÜ")
+    /// Folded Turkish function/content words — lets "bana bir hikaye anlat" (no diacritics) get a Turkish reply.
+    private static let turkishWords: Set<String> = [
+        "bana", "bir", "ne", "nasil", "neden", "icin", "anlat", "hakkinda", "nedir", "musun", "misin", "selam", "merhaba",
+        "tesekkurler", "sagol", "lutfen", "gorevi", "gorevleri", "raporu", "ayarlari", "sistemi", "gunaydin", "yapiyorsun", "durumun",
+    ]
 
     static func normalize(_ raw: String) -> NormalizedInput {
-        let language: ReplyLanguage = raw.rangeOfCharacter(from: turkishLetters) != nil ? .tr : .en
-
         // Fold: lowercase + strip diacritics (ç→c ğ→g ö→o ş→s ü→u, İ→i), then dotless ı→i.
         var folded = raw.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en"))
             .lowercased()
             .replacingOccurrences(of: "ı", with: "i")
-        folded = folded.replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "’", with: "")
+        for quote in ["'", "’", "‘", "ʼ", "`"] { folded = folded.replacingOccurrences(of: quote, with: "") }
 
         // Anything that isn't a-z / 0-9 becomes a separator; split collapses repeated whitespace.
         let cleaned = String(folded.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : " " })
         var tokens = cleaned.split(separator: " ").map(String.init)
 
-        // Optional "Jarvis" address: leading ("hey jarvis, …", "jarvis …") and trailing ("… jarvis").
+        let language: ReplyLanguage =
+            (raw.rangeOfCharacter(from: turkishLetters) != nil || tokens.contains(where: turkishWords.contains)) ? .tr : .en
+
+        // 1. Fillers first, so "please", "now"… can't hide an address or a lead-in
+        //    ("please can you open the report", "stop jarvis please").
+        tokens.removeAll { fillers.contains($0) }
+
+        // 2. Optional "Jarvis" address, leading or trailing ("hey jarvis, …", "… jarvis").
         var addressed = false
-        if tokens.count >= 2, greetingLeaders.contains(tokens[0]), jarvisTokens.contains(tokens[1]) {
-            addressed = true               // "hey jarvis, open report" → "open report"; "hey jarvis" → ""
-            tokens.removeFirst(2)
-        } else if let first = tokens.first, jarvisTokens.contains(first) {
+        if let i = tokens.firstIndex(where: jarvisTokens.contains), i <= 1,
+           tokens[..<i].allSatisfy({ silentLeaders.contains($0) || greetingLeaders.contains($0) }) {
             addressed = true
-            tokens.removeFirst()
+            tokens.removeFirst(i + 1)
         }
         if let last = tokens.last, jarvisTokens.contains(last) {
             addressed = true
             tokens.removeLast()
         }
 
-        // Polite lead-ins ("can you pause the task" → "pause task"), only if something follows.
+        // 3. Leaders: "ok stop" → "stop"; "hey open the report" → "open report" (but "hey there" stays a greeting).
+        if let first = tokens.first {
+            if silentLeaders.contains(first), tokens.count > 1 { tokens.removeFirst() }
+            else if greetingLeaders.contains(first), tokens.count > 2 { tokens.removeFirst() }
+        }
+
+        // 4. Polite lead-ins ("can you pause the task" → "pause task"), only if something follows.
         for lead in leadIns where tokens.count > lead.count && Array(tokens.prefix(lead.count)) == lead {
             tokens.removeFirst(lead.count)
             break
         }
 
-        tokens.removeAll { fillers.contains($0) }
         return NormalizedInput(original: raw, text: tokens.joined(separator: " "), tokens: tokens,
                                addressedJarvis: addressed, language: language)
     }
