@@ -9,6 +9,8 @@ Task:
 State:
 READY FOR USER MANUAL TEST
 
+Manual feedback: the user tested V0.1.1, found the UI acceptable and reported one bug — Compact and Full visible together — now FIXED (DEC-015, JARVIS-R09). That fix is the only change since the previous checkpoint.
+
 Last Successful Step:
 `scripts/verify.sh` → VERIFY PASSED (36/36 unit tests; smoke incl. compact-geometry, neural lifecycle, scripted hotkey→window integration). Captures regenerated. Docs updated. See `PROJECT_STATE.md` for numbers.
 

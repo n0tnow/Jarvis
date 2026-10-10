@@ -38,7 +38,12 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
 
     // MARK: Compact HUD
 
+    // INVARIANT (V0.1.1): the Compact HUD and the Full HUD are never visible at the same time.
+    // It lives here, in the only code that shows these windows — callers (menu bar, hotkeys, views, and any
+    // future text/voice/LLM command) get it for free and must not try to "close the other one first".
+
     func showCompactHUD() {
+        hideFullHUD()   // exclusivity: only one primary HUD surface
         let panel = compactPanel ?? makeCompactPanel()
         compactPanel = panel
         positionCompact(panel)
@@ -125,6 +130,7 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
     }
 
     func bringFullHUDForward() {
+        hideCompactHUD()   // exclusivity (Full was visible but behind: Compact must not appear next to it)
         if let window = fullWindow, window.isVisible {
             NSApp.activate()
             window.makeKeyAndOrderFront(nil)

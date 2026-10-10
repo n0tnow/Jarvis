@@ -55,6 +55,9 @@ Description: Store mutations target "first active task" (need task-id addressing
 
 ## Resolved
 
+### JARVIS-R09 — Compact and Full HUD could be visible at the same time
+Resolved 2026-10-10 (V0.1.1, reported by the user's manual test). Invariant enforced centrally in `WindowManager` (DEC-015); 12 smoke checks, mutation-verified.
+
 ### JARVIS-R08 — Compact HUD resized when the state changed
 Resolved 2026-10-10 (V0.1.1). Window followed SwiftUI intrinsic height. Fixed canonical size (DEC-014), fixed-height task card, smoke test measures the frame across all states. Awaits user's manual confirmation (README checklist).
 

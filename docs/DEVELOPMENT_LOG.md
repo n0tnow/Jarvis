@@ -74,3 +74,14 @@ DEC-012, DEC-013, DEC-014.
 
 ### Remaining Work
 User manual test (README checklist: fixed compact size, global shortcuts from another app, neural look, Reduce Motion). No tag until approved.
+
+## 2026-10-10 — V0.1.1 final fix: exclusive HUD presentation
+
+### Manual test feedback
+The user manually inspected V0.1.1 and found the overall UI acceptable. One final issue: Compact and Full HUD could be visible simultaneously (e.g. Full open → menu-bar icon/⌥⌘ → Compact opens next to it). Other earlier MANUAL TEST REQUIRED items are NOT recorded as user-verified (the user only reported this issue).
+
+### Change
+Root cause: one-directional exclusivity. `showCompactHUD` now hides Full; `bringFullHUDForward` hides Compact (`showFullHUD` already did). Lives only in `WindowManager` (DEC-015).
+
+### Tests
+12 new smoke checks on the real WindowManager: show Compact/Full from every starting state, menu-bar icon click action, OPEN JARVIS, ⌥⌘/⌥⌘⌘ through the real hotkey service (Compact never re-flashes), Full-behind toggle brings forward without Compact, 10× rapid repeats with no duplicate windows, an exclusivity assertion at every checkpoint, Compact still 392×448. Mutation check: removing the fix makes 5 of them fail.

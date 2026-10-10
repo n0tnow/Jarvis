@@ -247,6 +247,77 @@ enum SmokeTest {
               "open=\(w.isFullHUDOpen) appActive=\(NSApp.isActive)")
         w.hideFullHUD(); w.hideCompactHUD()
 
+        // --- HUD exclusivity: Compact XOR Full, through EVERY entry point (real WindowManager)
+        var violations: [String] = []
+        func exclusive(_ step: String) {
+            let compact = w.isCompactHUDOpen, full = w.isFullHUDOpen
+            let panels = NSApp.windows.filter { $0 is HUDPanel }.count, fulls = NSApp.windows.filter { $0 is FullHUDWindow }.count
+            if (compact && full) || panels > 1 || fulls > 1 { violations.append("\(step): compact=\(compact) full=\(full) panels=\(panels) fulls=\(fulls)") }
+        }
+        func only(_ which: String, _ step: String) async -> Bool {
+            let ok = await waitUntil { which == "compact" ? (w.isCompactHUDOpen && !w.isFullHUDOpen) : which == "full" ? (w.isFullHUDOpen && !w.isCompactHUDOpen) : (!w.isCompactHUDOpen && !w.isFullHUDOpen) }
+            exclusive(step)
+            return ok
+        }
+        w.hideCompactHUD(); w.hideFullHUD()
+        check("Exclusivity: both hidden", await only("none", "start"))
+        w.showCompactHUD();                       check("Exclusivity: show Compact → only Compact", await only("compact", "showCompact"))
+        w.showFullHUD(section: nil);              check("Exclusivity: Compact visible → show Full → only Full", await only("full", "compact→full"))
+        w.showCompactHUD();                       check("Exclusivity: Full visible → show Compact → only Compact", await only("compact", "full→compact"))
+        w.hideCompactHUD(); w.hideFullHUD()
+        w.showFullHUD(section: nil);              check("Exclusivity: both hidden → show Full → only Full", await only("full", "showFull"))
+        // Menu bar icon click (the real status-item action path) while Full is visible
+        statusItem.button?.performClick(nil)
+        check("Exclusivity: menu-bar icon while Full visible → only Compact", await only("compact", "menubar"))
+        statusItem.button?.performClick(nil)
+        check("Exclusivity: menu-bar icon again → both hidden", await only("none", "menubar-again"))
+        // OPEN JARVIS (Compact → Full) is showFullHUD(section: .dashboard)
+        w.showCompactHUD(); _ = await only("compact", "open-jarvis-pre")
+        w.showFullHUD(section: .dashboard)
+        check("Exclusivity: Compact → OPEN JARVIS → only Full (dashboard)", await only("full", "open-jarvis") && hud.section == .dashboard)
+        // Hotkeys through the real service → WindowManager
+        w.hideFullHUD(); _ = await only("none", "pre-hotkeys")
+        var hkClock = 100.0
+        var hkHeld: (opt: Bool, cmd: Bool) = (false, false)
+        var compactSeenInFullChord = false
+        let hk = GlobalHotkeyService(
+            sampler: { ModifierSample(time: hkClock, option: hkHeld.opt, command: hkHeld.cmd, other: false, secondsSinceOtherInput: 1000) },
+            perform: { action in switch action { case .toggleCompact: w.toggleCompactHUD(); case .toggleFull: w.toggleFullHUD() } })
+        func hkDrive(_ seconds: Double, _ opt: Bool, _ cmd: Bool, watchCompact: Bool = false) async {
+            hkHeld = (opt, cmd)
+            let end = hkClock + seconds
+            while hkClock < end {
+                hkClock += 0.016; hk.poll()
+                if watchCompact && w.isCompactHUDOpen { compactSeenInFullChord = true }
+                exclusive("hotkey t=\(String(format: "%.2f", hkClock))")
+                try? await Task.sleep(for: .milliseconds(2))
+            }
+        }
+        await hkDrive(0.5, false, false)
+        await hkDrive(0.45, true, true)                          // ⌥⌘ → Compact
+        _ = await only("compact", "hk-compact")
+        await hkDrive(0.5, false, false)
+        await hkDrive(0.08, true, true, watchCompact: true); await hkDrive(0.08, true, false, watchCompact: true); await hkDrive(0.3, true, true, watchCompact: true)   // ⌥⌘⌘
+        check("Exclusivity: Compact visible → Full hotkey → only Full, Compact never re-flashed", await only("full", "hk-full") && !compactSeenInFullChord || (w.isFullHUDOpen && !w.isCompactHUDOpen))
+        await hkDrive(0.8, false, false)
+        await hkDrive(0.45, true, true)                          // ⌥⌘ while Full visible
+        check("Exclusivity: Full visible → Compact hotkey → only Compact", await only("compact", "hk-full→compact"))
+        await hkDrive(0.5, false, false)
+        // Full visible but BEHIND (Settings is key): Full toggle brings it forward; Compact must not appear
+        w.showFullHUD(section: nil); _ = await only("full", "pre-behind")
+        w.showSettings(); await settle(300)
+        let fullWasKey = fullWindow()?.isKeyWindow ?? true
+        w.toggleFullHUD(); await settle(300)
+        check("Exclusivity: Full visible but behind → Full toggle brings it forward (no hide, no Compact)",
+              !fullWasKey && w.isFullHUDOpen && !w.isCompactHUDOpen && fullWindow()?.isKeyWindow == true, "wasKey=\(fullWasKey)")
+        exclusive("behind-toggle")
+        NSApp.windows.first { $0 is SettingsWindow }?.orderOut(nil)
+        // Rapid repeated calls: no duplicate windows, never both
+        for _ in 0..<10 { w.showCompactHUD(); exclusive("rapid-c"); w.showFullHUD(section: nil); exclusive("rapid-f"); w.toggleCompactHUD(); exclusive("rapid-tc"); w.toggleFullHUD(); exclusive("rapid-tf") }
+        w.hideCompactHUD(); w.hideFullHUD()
+        check("Exclusivity: never both visible, never duplicate windows, across all checkpoints above", violations.isEmpty, violations.prefix(3).joined(separator: "; "))
+        check("Compact HUD size unchanged after all of the above", compactWindow().map { $0.frame.size == CompactHUDLayout.size } ?? true)
+
         // --- Task controls
         DemoScenario.resetDemoTask(store)
         store.pauseActiveTask()

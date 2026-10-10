@@ -38,6 +38,8 @@ Hand V0.1.1 to the user for manual testing of `build/Jarvis.app`: (A) fixed-size
 
 ## V0.1.1 additions (IMPLEMENTED · AUTOMATED TESTED)
 
+- **D. HUD exclusivity** (user-reported, fixed): Compact XOR Full enforced in `WindowManager` (DEC-015); 12 smoke checks, mutation-verified.
+
 - **A. Compact HUD fixed geometry:** 392×448 via `CompactHUDLayout`; root cause was `.preferredContentSize`+`fittingSize`; smoke test measures the real frame across 7 states × dev strip on/off × task/none. Inner crossfade 0.2 s (off under Reduce Motion). DEC-014.
 - **B. Neural background (Full HUD only):** seeded 45-node graph, bounded pulse simulation, AppKit/Core Graphics display link 5–15 fps by state; paused when hidden, static under Reduce Motion; Compact HUD intentionally has none. DEC-012.
 - **C. Global shortcuts:** ⌥⌘ → Compact; ⌥⌘⌘ → Full (second ⌘ within 0.30 s, Compact never flashes first), either ⌘ key, permission-free polling (12 Hz rest / 60 Hz while ⌥ held), ignores ⌥⌘+key/click/Shift/Control; Settings shows them + off switch. DEC-013. **Physical use from another app is MANUAL TEST REQUIRED.**
@@ -76,7 +78,7 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Important Decisions
 
-See `docs/DECISIONS.md` (DEC-001…DEC-014). Key ones:
+See `docs/DECISIONS.md` (DEC-001…DEC-015). Key ones:
 - Native Swift/SwiftUI/AppKit only (no Electron/React/Tauri/web UI).
 - UI/window state (`HUDState`) separated from application/task state (`JarvisStore`); closing HUDs never touches tasks.
 - All window control goes through `JarvisWindowControlling`.

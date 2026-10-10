@@ -32,6 +32,7 @@ State ↔ task coherence is enforced in the demo layer (`DemoScenario.apply`): i
 
 ## Windows
 
+- **Invariant (DEC-015):** Compact XOR Full visible, enforced only in `WindowManager`.
 - **Compact HUD** — `HUDPanel` (borderless, floating, `canBecomeKey`). Anchored under the status item; hides on resign-key (0.25 s guard prevents the dismissing click from re-opening it); ESC via `cancelOperation`; **fixed canonical size** `CompactHUDLayout.size` (392×448, DEC-014): window and SwiftUI root share it, `sizingOptions = []`, task card fixed-height, only inner content crossfades.
 - **Full HUD** — `FullHUDWindow` (borderless, resizable, clear background, normal level, movable by background). Sized to ~90 % of the visible frame (max 1480×920) on the screen of the menu bar item/pointer; centered. **Minimum size is enforced in `windowWillResize`** (NSHostingView overwrites `contentMinSize`). ESC/⌘W close it. Layout adapts at <1200 pt width (`hudIsNarrow`).
 - **Settings** — `SettingsWindow` (titled; ESC/⌘W close).
