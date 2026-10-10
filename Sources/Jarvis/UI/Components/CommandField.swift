@@ -5,6 +5,7 @@ struct CommandField: View {
     @Environment(AppContext.self) private var app
     @Binding var text: String
     var placeholder = "Type a command…"
+    var origin: InputOrigin = .fullHUD
     /// Called when ESC is pressed with an empty field (dismiss the surface).
     var onCancel: () -> Void
 
@@ -54,7 +55,7 @@ struct CommandField: View {
     private func submit() {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        app.commands.submit(trimmed)
+        app.conversationService.submit(trimmed, origin: origin)
         text = ""
     }
 }

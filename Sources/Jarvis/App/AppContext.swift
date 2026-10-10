@@ -11,7 +11,8 @@ final class AppContext {
     let hud: HUDState
     let preferences: Preferences
 
-    @ObservationIgnored private(set) var commands: LocalCommandHandler!
+    let conversation: ConversationStore
+    @ObservationIgnored private(set) var conversationService: ConversationService!
     @ObservationIgnored private(set) var windowManager: WindowManager!
 
     /// Views and (later) the intent layer talk to windows only through this protocol.
@@ -21,8 +22,9 @@ final class AppContext {
         store = JarvisStore()
         hud = HUDState()
         preferences = Preferences()
+        conversation = ConversationStore()
         if seedDemoData { DemoScenario.seed(store) }
-        commands = LocalCommandHandler(store: store)
         windowManager = WindowManager(context: self)
+        conversationService = ConversationService(store: store, conversation: conversation, windows: windowManager)
     }
 }

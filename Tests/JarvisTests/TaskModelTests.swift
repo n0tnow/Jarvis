@@ -97,18 +97,6 @@ struct StoreTests {
         for i in 0..<(JarvisStore.activityCapacity + 50) { store.log("e\(i)") }
         #expect(store.activity.count == JarvisStore.activityCapacity)
     }
-
-    @Test func commandIsRecordedLocally() {
-        let store = makeStore()
-        let handler = LocalCommandHandler(store: store)
-        let before = store.activity.count
-        handler.submit("  test  ")
-        #expect(store.activity.count == before + 1)
-        #expect(store.activity.last?.message == "test")
-        #expect(store.activity.last?.kind == .command)
-        handler.submit("   ")
-        #expect(store.activity.count == before + 1)
-    }
 }
 
 @MainActor
