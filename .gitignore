@@ -1,0 +1,35 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# SwiftPM / Swift
+.build/
+.swiftpm/
+Package.resolved
+*.xcworkspace/xcuserdata/
+DerivedData/
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# JARVIS build output & dev captures
+/build/
+/captures/
+
+# Secrets (none are used in V0.1 — keep it that way)
+.env
+.env.*
+*.pem
+*.p12
+*.key
+secrets.*
