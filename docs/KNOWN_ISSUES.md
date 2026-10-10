@@ -53,7 +53,21 @@ Description: No @FocusState management, no shortcuts for Approve/Deny or section
 Status: Open · FUTURE MILESTONE
 Description: Store mutations target "first active task" (need task-id addressing for V0.4); `AgentSlot/ToolSlot/ProjectSummary/ApprovalRequest` not Codable; no "interrupted" task status; `setState` has no arbitration among STT/LLM/task engine; `LocalCommandHandler` has no response channel (V0.2); `isFullHUDOpen` is `isVisible` (true even if occluded); `observeContinuously` has no cancel handle. See `ARCHITECTURE.md` → extension points.
 
+### JARVIS-013 — Deterministic router limits (V0.2)
+Status: Open · NON-BLOCKING
+Description: Matching is alias/phrase based, not NLP: unusual phrasings fall through to "needs a provider" (truthful, never a wrong action). A bare "stop"/"close"/"clear"/"open" is treated as a command. Turkish coverage is a small explicit alias set; replies are English except for Turkish input. Worker-vs-reasoning is a keyword heuristic (verb + technical noun).
+
+### JARVIS-014 — Conversation is in-memory only
+Status: Open · FUTURE MILESTONE (V0.4/V0.8)
+Description: Messages are Codable and bounded (500) but not persisted; cleared on quit. No real provider exists (V0.3), so streaming/cancellation are exercised only by unit tests with fake providers.
+
 ## Resolved
+
+### JARVIS-R10 — "narrow" layout never applied to the Full HUD top bar
+Resolved 2026-10-10 (V0.2). `FullHUDView` injected `hudIsNarrow` for its children but read it itself, so the top bar always used the wide layout; at 980 pt the long "AWAITING APPROVAL" chip widened the whole layout and clipped the right column. Fix: `FullHUDBody` child reads the injected value; narrow top bar uses text-only tabs, no version tag and the short state label. Visible in `captures/full_minsize_waiting.png`.
+
+### JARVIS-R11 — V0.2 review findings fixed
+Resolved 2026-10-10: replies were silent to VoiceOver (now announced by `ConversationService`); Compact feedback hard-clipped mid-word (now tail-ellipsis overlay, hover shows full text) and never expired (20 s); stale accessibility hint; a fixed-height conversation panel could push approval buttons out of view at minimum size (flexible panel, approval card moved directly under the core); routing: fillers hid `Jarvis`/lead-ins ("please can you…", "…, Jarvis please"), Turkish dative forms/status phrasings missing, bare words (`continue`, `clear`, `iptal`, `open`, `aç`, `tam`) hijacked chat (now only when JARVIS is addressed), `build` was both verb and noun, non-code "write an email about the project" went to a worker, diacritic-free Turkish got English replies. 17 regression tests.
 
 ### JARVIS-R09 — Compact and Full HUD could be visible at the same time
 Resolved 2026-10-10 (V0.1.1, reported by the user's manual test). Invariant enforced centrally in `WindowManager` (DEC-015); 12 smoke checks, mutation-verified.

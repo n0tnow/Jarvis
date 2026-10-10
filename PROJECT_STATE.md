@@ -4,20 +4,20 @@
 
 ## Current Version
 
-V0.1.1 (app version `0.1.1`) — V0.1 baseline `d827a9e` was manually tested by the user (direction approved); V0.1.1 = three requested UX fixes
+V0.2 — Text conversation + intelligence router (on top of V0.1.1; app version string still `0.1.1`). V0.1 baseline `d827a9e` and V0.1.1 were manually tested by the user (direction approved; one bug found and fixed in `1b64d07`).
 
 ## Current Milestone
 
-Native macOS Foundation + HUD
+V0.2: text conversation + deterministic command router + provider boundary (no real AI)
 
 ## Status
 
-**V0.1.1 — READY FOR MANUAL TEST**
-(Automated verification passed. The V0.1.1 changes are not yet manually verified by the user. Do NOT mark COMPLETE, tag, or start V0.2 until the user approves.)
+**V0.2 — READY FOR MANUAL TEST**
+(Automated verification passed. V0.2 is not yet manually verified by the user. Do NOT mark COMPLETE or tag, and do NOT start V0.3 / connect any AI provider until the user approves.)
 
 ## Current Objective
 
-Hand V0.1.1 to the user for manual testing of `build/Jarvis.app`: (A) fixed-size Compact HUD, (B) neural background, (C) ⌥⌘ / ⌥⌘⌘ global shortcuts.
+Hand V0.2 to the user for manual testing of `build/Jarvis.app` (README checklist items 17–22): type commands in English/Turkish, conversation panel, Compact one-line feedback, truthful "provider not connected" replies.
 
 ## Completed (IMPLEMENTED)
 
@@ -35,6 +35,14 @@ Hand V0.1.1 to the user for manual testing of `build/Jarvis.app`: (A) fixed-size
 - Settings: Reduce Motion, Show Developer Controls, Launch at Login (disabled placeholder, NOT implemented).
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
+
+## V0.2 additions (IMPLEMENTED · AUTOMATED TESTED · MANUAL TEST REQUIRED)
+
+- **Pipeline (DEC-016):** `InputNormalizer` → `IntelligenceRouter` (command | local reply | worker-required | reasoning-required | unsupported) → `ConversationService` → `CommandExecutor` (windows only via `JarvisWindowControlling`; tasks via `JarvisStore`) → `ConversationStore` → UI. Text is not privileged: voice/LLM will call the same service/router/executor.
+- **Deterministic commands, EN + TR:** open report/tasks/system/memory/dashboard/settings; status ("what are you doing?" from real state); pause/resume/stop task; open compact/full, close; clear conversation; hello/thanks. Anything else → classified reasoning/worker → truthful "none is connected yet" (nothing faked/started). Bare ambiguous words need addressing JARVIS.
+- **Provider boundary (DEC-017):** `IntelligenceProvider` (streaming, cancellable) + registry, **empty in V0.2**. Subscription-first rule: no API keys, no paid-API code, no ChatGPT/Claude web scraping; `verify.sh` fails on network/API-key/endpoint references. Fully offline.
+- **UI (DEC-018):** thin-row Conversation panel on the Dashboard (not a chat app), one-line latest-reply feedback in both command fields (tail-truncated, expires after 20 s, hover for full text), VoiceOver announcement of replies, command field focuses on open. Compact stays 392×448.
+- **Fixes along the way:** narrow-layout top bar bug (JARVIS-R10), approval card ordering at minimum size, review findings (JARVIS-R11).
 
 ## V0.1.1 additions (IMPLEMENTED · AUTOMATED TESTED)
 
@@ -60,11 +68,12 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 **AUTOMATED TESTED** (`scripts/verify.sh` → `VERIFY PASSED`; 2026-10-10):
 - Build (release) OK; bundle `build/Jarvis.app` assembled; ad-hoc signature valid (strict/deep); arm64; Info.plist lints; `LSUIElement=true`.
-- 36/36 unit tests (task model, store, command handler, state↔task coherence, chord machine, hotkey service, neural graph/simulation, compact constants).
+- 81/81 unit tests (task model, store, state↔task coherence, chord machine, hotkey service, neural graph/simulation, compact constants, **normalization, EN/TR alias routing, intelligence routing + 17 routing regressions, command execution with a fake window controller, conversation flow, provider streaming/cancellation/failure with fake providers, feedback line**).
 - Smoke test (real window manager/store/status item): 28 PASS, 0 FAIL, 2 SKIP (in-process accessibility audit — SwiftUI AX tree not materialized without an AX client).
   Covers: status item has image+frame; app survives last-window-close policy; Compact open/close; Full open/close, fits screen, centered, min size enforced; display link running while Full HUD open and stopped when hidden; menu-bar icon timer runs only in animated states; reopen preserves section/activity/steps/clock; **real ESC `NSEvent`** dismisses Full and Compact; `showFullHUD(section: .report)` navigates; all 7 states coherent with task + icon tooltip; pause/resume.
 - Permission audit: no `NS*UsageDescription` keys, no entitlements, no permission-gated API usage in sources.
 - Console: no stdout/stderr output from the app during smoke/capture/launch runs.
+- V0.2 CPU (release, M5, % of one core): idle/closed ≈0.2 % · Compact open Working ≈1.8 % · Full HUD Idle ≈3.3 %, Working ≈11 %, Thinking ≈12 % (no meaningful regression vs V0.1.1; conversation panel adds nothing per frame).
 - Resources (release, M5, % of ONE core; V0.1 baseline → V0.1.1):
   idle/HUDs closed ≈0% → ≈0.3% (12 Hz hotkey polling) · Compact open ≈1% → ≈2% (Working) · Full HUD animating ≈9% → Listening ≈10%, Working ≈11%, Thinking ≈12.5% · Full Idle/Approval ≈3% · closed with Working ≈1.6% → ≈1.7% · RSS 40 MB idle, ≈95–110 MB after first HUD open.
 
@@ -78,7 +87,7 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Important Decisions
 
-See `docs/DECISIONS.md` (DEC-001…DEC-015). Key ones:
+See `docs/DECISIONS.md` (DEC-001…DEC-018). Key ones:
 - Native Swift/SwiftUI/AppKit only (no Electron/React/Tauri/web UI).
 - UI/window state (`HUDState`) separated from application/task state (`JarvisStore`); closing HUDs never touches tasks.
 - All window control goes through `JarvisWindowControlling`.

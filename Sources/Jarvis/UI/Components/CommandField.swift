@@ -1,11 +1,17 @@
 import SwiftUI
 
-/// Single-line command input. In V0.1 it only talks to `LocalCommandHandler` (no AI).
+/// Single-line command input. Submits to `ConversationService` (deterministic router in V0.2; no AI, no network).
 struct CommandField: View {
     @Environment(AppContext.self) private var app
     @Binding var text: String
     var placeholder = "Type a command…"
     var origin: InputOrigin = .fullHUD
+    /// Shown in place of the placeholder while the field is empty: the latest JARVIS reply, one line,
+    /// tail-truncated with "…" (full text on hover). Never changes the field's size.
+    var feedback: String? = nil
+    /// Becomes true when the surface appears → focus the field so typing works immediately.
+    var focusTrigger = false
+    @FocusState private var focused: Bool
     /// Called when ESC is pressed with an empty field (dismiss the surface).
     var onCancel: () -> Void
 
@@ -16,8 +22,11 @@ struct CommandField: View {
                 .foregroundStyle(Theme.Palette.accent)
                 .accessibilityHidden(true)
 
-            TextField(placeholder, text: $text)
+            TextField(text: $text, prompt: promptText) { Text("Command") }
                 .textFieldStyle(.plain)
+                .overlay(alignment: .leading) { feedbackOverlay }
+                .focused($focused)
+                .onChange(of: focusTrigger) { _, now in if now { DispatchQueue.main.async { focused = true } } }
                 .font(Theme.Typography.body)
                 .foregroundStyle(Color.jarvisPrimary)
                 .onSubmit(submit)
@@ -26,7 +35,7 @@ struct CommandField: View {
                 }
                 .accessibilityLabel("Command input")
                 .accessibilityIdentifier("command.field")
-                .accessibilityHint("Type a command and press Return. V0.1 stores it locally; no AI is connected.")
+                .accessibilityHint("Type a command and press Return. Replies appear in the conversation and are announced.")
 
             Button(action: submit) {
                 Image(systemName: "return")
@@ -52,10 +61,33 @@ struct CommandField: View {
         )
     }
 
+    private var showsFeedback: Bool { feedback != nil && text.isEmpty }
+
+    /// With feedback showing, the native prompt is blank and this overlay draws the line (tail ellipsis, no hit testing).
+    private var promptText: Text {
+        showsFeedback ? Text("") : Text(placeholder).foregroundColor(Color.white.opacity(Theme.Opacity.textTertiary))
+    }
+
+    @ViewBuilder
+    private var feedbackOverlay: some View {
+        if showsFeedback, let feedback {
+            Text("Jarvis: \(feedback)")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Color.jarvisSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .allowsHitTesting(false)
+                .help(feedback)
+                .accessibilityHidden(true)   // announced via VoiceOver when it arrives
+        }
+    }
+
     private func submit() {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { text = ""; return }   // whitespace-only: clear it so ESC still dismisses
         app.conversationService.submit(trimmed, origin: origin)
         text = ""
+        focused = true
     }
 }

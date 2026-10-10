@@ -42,6 +42,31 @@ enum DevCapture {
             await settle(500)
             snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "full_section_\(section.rawValue)", in: directory)
         }
+        // Conversation scenarios
+        let svc = context.conversationService!
+        DemoScenario.resetDemoTask(store)
+        context.conversation.clear()
+        context.hud.section = .dashboard
+        w.showCompactHUD(); await settle(700)
+        snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_cmd_before", in: directory)
+        svc.submit("What are you doing?", origin: .compactHUD); await settle(500)
+        snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_cmd_after", in: directory)
+        svc.submit("Show tasks.", origin: .compactHUD); await settle(900)
+        snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "full_cmd_nav_tasks", in: directory)
+        svc.submit("Open the report."); await settle(500)
+        snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "full_cmd_nav_report", in: directory)
+        context.hud.section = .dashboard
+        context.conversation.clear()
+        svc.submit("hello"); svc.submit("What are you doing?"); await settle(600)
+        snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "full_conv_short", in: directory)
+        for cmd in ["Pause the current task.", "pause", "raporu aç", "Explain quantum mechanics.", "Fix my Unity multiplayer system.",
+                    "Resume the task.", "thanks", "What state are you in?", "stop", "stop", "status"] { svc.submit(cmd) }
+        context.hud.section = .dashboard
+        await settle(800)
+        snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "full_conv_many", in: directory)
+        DemoScenario.resetDemoTask(store)
+        context.conversation.clear()
+
         // Settings window
         w.hideFullHUD(); w.showSettings(); await settle(700)
         snapshot(of: NSApp.windows.first { $0 is SettingsWindow }, name: "settings", in: directory)

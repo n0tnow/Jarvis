@@ -26,6 +26,11 @@ print "== Permission audit"
 ! grep -rEl "AVCaptureDevice|CGRequestScreenCapture|CGPreflightScreenCapture|AXIsProcessTrusted|NSAppleScript|SFSpeechRecognizer|addGlobalMonitorForEvents|CGEventTapCreate|RegisterEventHotKey|IOHIDManager|CNContactStore|CLLocationManager|UNUserNotificationCenter" Sources \
   && pass "no permission-gated API usage in sources" || fail "permission-gated API usage found in sources"
 
+! grep -rEl "URLSession|URLRequest|NWConnection|NWPathMonitor|CFNetwork|WKWebView|WebKit|Network\\.framework" Sources \
+  && pass "no network/web code in sources (V0.2 is fully offline)" || fail "network/web code found in sources"
+! grep -rIEi "(api[_-]?key|bearer |openai\\.com|api\\.anthropic)" Sources | grep -v "^\\S*://" | grep -viE "^[^:]+:[0-9]+:\\s*(//|///)" \
+  && pass "no API keys / provider endpoints in sources" || fail "API key or provider endpoint reference in sources"
+
 print "== Smoke test (real window manager, store, status item)"
 log=$(mktemp)
 $APP/Contents/MacOS/Jarvis --smoke-test >$log 2>&1; rc=$?

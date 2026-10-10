@@ -85,3 +85,27 @@ Root cause: one-directional exclusivity. `showCompactHUD` now hides Full; `bring
 
 ### Tests
 12 new smoke checks on the real WindowManager: show Compact/Full from every starting state, menu-bar icon click action, OPEN JARVIS, ⌥⌘/⌥⌘⌘ through the real hotkey service (Compact never re-flashes), Full-behind toggle brings forward without Compact, 10× rapid repeats with no duplicate windows, an exclusivity assertion at every checkpoint, Compact still 392×448. Mutation check: removing the fix makes 5 of them fail.
+
+## 2026-10-10 — V0.2: text conversation + intelligence router
+
+### Goal
+Conversation domain, deterministic command routing, execution layer and a future provider boundary — with NO real AI (subscription-first rule). Prerequisite V0.1.1 gate passed first (`1b64d07`).
+
+### Changes
+- Models/Core: `ConversationMessage`, `ConversationStore` (bounded, streaming-ready, feedback line), `JarvisIntent`/`RouteDecision`.
+- Services/Conversation: `InputNormalizer`, `CommandRouter` (EN+TR aliases), `LocalConversation`, `IntelligenceRouter`, `IntelligenceProvider`+registry, `Phrasebook`, `CommandExecutor`, `ConversationService`. V0.1 `LocalCommandHandler` removed.
+- UI: `ConversationPanel`, command-field feedback + focus, Compact feedback line (392×448 unchanged), `Announcer` (VoiceOver), approval card placement, narrow-layout top-bar fix.
+- Tooling: smoke test now runs the 7 acceptance scenarios against the real WindowManager; `verify.sh` asserts no network/API-key code; DevCapture conversation scenarios.
+- Process: 3 read-only subagents (UI review, routing edge-case review; architecture covered by earlier reviews). Their findings are in JARVIS-R11 / R10.
+
+### Tests
+Unit 81 (was 36); smoke 65 PASS (+2 SKIP) incl. 7 acceptance scenarios + 40 repeated commands; `verify.sh` PASS.
+
+### Problems found
+LazyVStack scroll-to-newest bug; routing false positives/negatives (see JARVIS-R11); narrow-layout env bug since V0.1 (JARVIS-R10).
+
+### Decisions
+DEC-016, DEC-017, DEC-018.
+
+### Remaining Work
+User manual test of V0.2. Then V0.3 (subscription-backed provider) only with approval; verify current official CLI/desktop/agent tooling first. No tag yet.

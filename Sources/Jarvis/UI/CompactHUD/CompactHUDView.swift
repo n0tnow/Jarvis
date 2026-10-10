@@ -13,7 +13,9 @@ struct CompactHUDView: View {
             stateRow(store)
             taskCard(store)
             actions(store)
-            CommandField(text: $command, placeholder: "Command", onCancel: { app.windows.hideCompactHUD() })
+            CommandField(text: $command, placeholder: "Command", origin: .compactHUD,
+                         feedback: app.conversation.feedbackLine, focusTrigger: app.hud.isCompactVisible,
+                         onCancel: { app.windows.hideCompactHUD() })
             if app.preferences.showDeveloperControls {
                 DevStateStrip(compact: true)
             }

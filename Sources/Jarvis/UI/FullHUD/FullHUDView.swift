@@ -3,15 +3,20 @@ import SwiftUI
 /// The large "JARVIS is present" surface. Navigation is driven by `HUDState.section`, so any code
 /// (including a future voice/intent layer) can switch views via `windows.showFullHUD(section:)`.
 struct FullHUDView: View {
+    var body: some View {
+        GeometryReader { geo in
+            // The injected value is only visible to CHILDREN — hence the separate FullHUDBody that reads it.
+            FullHUDBody().environment(\.hudIsNarrow, geo.size.width < 1200)
+        }
+    }
+}
+
+private struct FullHUDBody: View {
     @Environment(AppContext.self) private var app
     @State private var command = ""
     @Environment(\.hudIsNarrow) private var isNarrow
 
-    var body: some View {
-        GeometryReader { geo in
-            content.environment(\.hudIsNarrow, geo.size.width < 1200)
-        }
-    }
+    var body: some View { content }
 
     private var content: some View {
         ZStack {
@@ -49,14 +54,16 @@ struct FullHUDView: View {
                     .accessibilityHidden(true)
                 Text("JARVIS").font(Theme.Typography.wordmark).tracking(isNarrow ? 3 : 5).foregroundStyle(Color.jarvisPrimary)
                     .lineLimit(1).fixedSize()
-                Tag(text: AppInfo.milestone)
+                if !isNarrow { Tag(text: AppInfo.milestone) }
             }
 
             sectionTabs
 
             Spacer(minLength: Theme.Spacing.l)
 
-            StateChip(state: app.store.state)
+            // The longest label ("AWAITING APPROVAL") would make the bar wider than a 980 pt window and drag the whole layout with it.
+            StatusChip(text: isNarrow ? app.store.state.shortLabel : app.store.state.label,
+                       symbol: app.store.state.symbolName, tint: app.store.state.tint)
 
             Button {
                 app.windows.hideFullHUD()
@@ -138,7 +145,8 @@ struct FullHUDView: View {
             if app.preferences.showDeveloperControls {
                 DevStateStrip()
             }
-            CommandField(text: $command, placeholder: "Type a command — V0.1 stores it locally, no AI connected", onCancel: { app.windows.hideFullHUD() })
+            CommandField(text: $command, placeholder: "Command JARVIS — e.g. “open the report”, “what are you doing?”", origin: .fullHUD,
+                         feedback: app.conversation.feedbackLine, focusTrigger: app.hud.isFullHUDVisible, onCancel: { app.windows.hideFullHUD() })
         }
         .padding(.horizontal, Theme.Spacing.xl)
         .padding(.top, Theme.Spacing.s)

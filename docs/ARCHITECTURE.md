@@ -1,6 +1,6 @@
 # Architecture (V0.1)
 
-Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.1.1. Decisions behind it: `DECISIONS.md`.
+Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.2. Decisions behind it: `DECISIONS.md`.
 
 ## Shape
 
@@ -29,6 +29,21 @@ Views read `AppContext` from the SwiftUI environment (`@Environment(AppContext.s
 `JarvisState` (7 cases) is the single value every surface renders. `JarvisStore.setState` is a plain setter; `.completed` auto-returns to `.idle` after 6 s. Tasks are Codable value types (`JarvisTask`, `TaskStep`) with a pause-aware clock; **progress = completed steps / total steps** and nothing else.
 
 State ↔ task coherence is enforced in the demo layer (`DemoScenario.apply`): idle pauses a running task; working/approval need a live task; completed completes it; error fails it; listening/thinking are foreground-only (a task may keep running). Real task logic (V0.4) must own these transitions instead.
+
+## Conversation & command pipeline (V0.2 — DEC-016/017/018)
+
+```
+raw text ─► InputNormalizer ─► IntelligenceRouter ──┬─ .command(JarvisIntent)      ─► CommandExecutor ─► JarvisWindowControlling / JarvisStore
+ (typed now;     fold, "Jarvis"      (pure: WHERE?)   ├─ .localResponse(greeting…)   ─► Phrasebook
+  voice/LLM      prefix, fillers                      ├─ .reasoningRequired/.workerRequired ─► IntelligenceProviderRegistry (EMPTY in V0.2 → truthful "not connected")
+  later)                                              └─ .unsupported
+ConversationService (orchestrates, cancellation) ─► ConversationStore (messages, streaming-ready) ─► ConversationPanel / command-field feedback
+```
+- **Pure vs. effectful.** Normalizer, `CommandRouter`, `LocalConversation`, `IntelligenceRouter` are pure and unit-tested (alias tables in `CommandRouter`). Effects live only in `CommandExecutor` (windows/tasks) and `ConversationService` (store writes, provider tasks).
+- **Window invariant preserved.** The executor calls `showFullHUD(section:)` etc.; Compact XOR Full is `WindowManager`'s job (DEC-015).
+- **State.** Deterministic commands never touch `JarvisState`; only a (future) provider request sets `.thinking` → `.idle`.
+- **Provider boundary.** `IntelligenceProvider.respond(to:) -> AsyncThrowingStream<IntelligenceEvent>`; `ConversationService.cancelCurrentResponse()` is the barge-in hook; messages support `pending → streaming → complete/failed`. Tests drive it with fake providers; V0.2 registers none. **V0.3 handoff:** implement a subscription-backed provider (official CLI/desktop/agent mechanisms only — no API keys, no web scraping) and `register` it; replace the "not connected" branch automatically because the router already classifies reasoning vs worker requests.
+- **Compact origin.** Simple replies show as one line in the command field (fixed 392×448); navigation opens the Full HUD; reasoning/worker requests open the Full HUD Dashboard.
 
 ## Windows
 

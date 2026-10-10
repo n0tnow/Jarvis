@@ -318,6 +318,90 @@ enum SmokeTest {
         check("Exclusivity: never both visible, never duplicate windows, across all checkpoints above", violations.isEmpty, violations.prefix(3).joined(separator: "; "))
         check("Compact HUD size unchanged after all of the above", compactWindow().map { $0.frame.size == CompactHUDLayout.size } ?? true)
 
+        // --- V0.2 acceptance scenarios (real ConversationService → CommandExecutor → WindowManager/JarvisStore)
+        let svc = context.conversationService!
+        let convo = context.conversation
+        func resetWorld() async {
+            w.hideCompactHUD(); w.hideFullHUD()
+            DemoScenario.resetDemoTask(store); store.setState(.working)
+            convo.clear(); hud.section = .dashboard
+            _ = await waitUntil { !w.isCompactHUDOpen && !w.isFullHUDOpen }
+        }
+        func lastReply() -> String { convo.messages.last(where: { $0.role == .jarvis })?.content ?? "" }
+        violations.removeAll()
+
+        // 1. "Open the report." typed from the Compact HUD
+        await resetWorld()
+        w.showCompactHUD(); _ = await only("compact", "s1-pre")
+        svc.submit("Open the report.", origin: .compactHUD)
+        check("V0.2 #1 'Open the report.' → Compact closes, Full opens on Report, both messages stored",
+              await only("full", "s1") && hud.section == .report && convo.messages.map(\.role) == [.user, .jarvis]
+              && convo.messages.first?.content == "Open the report." && lastReply() == "Opening the report.")
+
+        // 2. "What are you doing?" — from real state, no network/LLM, no state change
+        let stateBefore = store.state
+        svc.submit("What are you doing?")
+        check("V0.2 #2 'What are you doing?' answers from the real task/state, changes nothing",
+              lastReply() == "I'm working on “Multiplayer Synchronization” — step 4 of 6: Compile." && store.state == stateBefore && w.isFullHUDOpen)
+
+        // 3. "Pause the current task."
+        let activityBeforePause = store.activity.count
+        svc.submit("Pause the current task.")
+        check("V0.2 #3 'Pause the current task.' pauses the real task, confirms, logs activity",
+              store.activeTask?.status == .paused && lastReply().hasPrefix("Task paused") && store.activity.count > activityBeforePause
+              && store.activity.last?.message.hasPrefix("Paused") == true)
+        svc.submit("resume")
+
+        // 4. Turkish
+        hud.section = .dashboard
+        svc.submit("raporu aç")
+        check("V0.2 #4 'raporu aç' navigates exactly like the English command (Turkish reply)",
+              hud.section == .report && lastReply() == "Raporu açıyorum." && w.isFullHUDOpen && !w.isCompactHUDOpen)
+
+        // 5. Reasoning-required, no fake intelligence
+        let windowsBefore = (w.isCompactHUDOpen, w.isFullHUDOpen), stateBefore5 = store.state
+        let decision = svc.submit("Explain quantum mechanics.")
+        check("V0.2 #5 'Explain quantum mechanics.' → reasoning-required, truthful not-connected reply, no state/window change",
+              decision?.kind == .reasoning && lastReply().contains("none is connected yet") && convo.messages.last?.tone == .notice
+              && store.state == stateBefore5 && windowsBefore == (w.isCompactHUDOpen, w.isFullHUDOpen))
+
+        // 6. From Compact: "Show tasks." — Compact disappears, Full on Tasks, Compact geometry unaffected
+        w.showCompactHUD(); _ = await only("compact", "s6-pre")
+        svc.submit("Show tasks.", origin: .compactHUD)
+        let compactStillFixed = compactWindow().map { $0.frame.size == CompactHUDLayout.size } ?? false
+        check("V0.2 #6 'Show tasks.' from Compact → Compact hides, Full opens on Tasks, Compact geometry unchanged",
+              await only("full", "s6") && hud.section == .tasks && compactStillFixed)
+        // Compact must also stay 392×448 while replies/long text flow through it
+        w.showCompactHUD(); _ = await only("compact", "s6b-pre")
+        svc.submit("What are you doing?", origin: .compactHUD)
+        svc.submit(String(repeating: "very long text ", count: 60), origin: .compactHUD)   // reasoning → opens Full from Compact
+        _ = await only("full", "s6b")
+        w.showCompactHUD(); _ = await only("compact", "s6c-pre")
+        svc.submit("hello", origin: .compactHUD)
+        await settle(300)
+        check("V0.2 Compact HUD stays 392×448 while replies and very long input flow through it",
+              compactWindow()?.frame.size == CompactHUDLayout.size, "\(compactWindow()?.frame.size ?? .zero)")
+
+        // 7. Repeated commands: no duplicates, order preserved, never both HUDs
+        await resetWorld()
+        let script = ["hello", "open the report", "status", "show tasks", "pause", "resume", "go to system", "open compact", "hello", "show memory",
+                      "close jarvis", "open dashboard", "what are you doing?", "explain relativity", "ayarları aç", "close", "open full hud", "open compact", "status", "thanks"]
+        var expectedMessages = 0
+        for cmd in script + script {
+            svc.submit(cmd); expectedMessages += 2
+            exclusive("s7 \(cmd)")
+            if cmd == "open dashboard" || cmd == "ayarları aç" { await settle(60) }
+        }
+        NSApp.windows.first { $0 is SettingsWindow }?.orderOut(nil)
+        await settle(200)
+        let roles = convo.messages.map(\.role)
+        check("V0.2 #7 40 repeated commands: order intact, no duplicate windows, never both HUDs visible",
+              convo.messages.count == expectedMessages && roles.enumerated().allSatisfy { ($0.offset % 2 == 0) == ($0.element == .user) } && violations.isEmpty,
+              "messages=\(convo.messages.count)/\(expectedMessages) \(violations.prefix(2))")
+        w.hideCompactHUD(); w.hideFullHUD()
+        await resetWorld()
+        check("V0.2 has no intelligence provider registered (offline: no API keys, no network)", !svc.hasProviders && !svc.isResponding)
+
         // --- Task controls
         DemoScenario.resetDemoTask(store)
         store.pauseActiveTask()

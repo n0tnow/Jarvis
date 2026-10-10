@@ -9,9 +9,9 @@ struct CenterStage: View {
         let task = store.activeTask
 
         ViewThatFits(in: .vertical) {
-            stack(store, task, core: coreView(store, task).frame(maxWidth: 560, minHeight: 200, idealHeight: 260, maxHeight: .infinity))
+            stack(store, task, core: coreView(store, task).frame(maxWidth: 560, minHeight: 170, idealHeight: 240, maxHeight: .infinity))
             ScrollView(.vertical, showsIndicators: false) {
-                stack(store, task, core: coreView(store, task).frame(maxWidth: 360).frame(height: 190))
+                stack(store, task, core: coreView(store, task).frame(maxWidth: 360).frame(height: store.pendingApproval == nil ? 180 : 130))
             }
         }
         .animation(.easeOut(duration: Theme.Duration.standard), value: store.pendingApproval)
@@ -32,10 +32,12 @@ extension CenterStage {
     private func stack<Core: View>(_ store: JarvisStore, _ task: JarvisTask?, core: Core) -> some View {
         VStack(spacing: Theme.Spacing.m) {
             core
+            // A pending approval sits directly under the core so it can never be pushed below the fold.
             if let request = store.pendingApproval, store.state == .waitingForApproval {
                 ApprovalCard(request: request)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
+            ConversationPanel().frame(minHeight: 88, idealHeight: 150, maxHeight: store.pendingApproval == nil ? 176 : 112)
             TaskFocusStrip(task: task)
         }
     }
@@ -106,11 +108,7 @@ private struct ApprovalCard: View {
         .accessibilityElement(children: .contain)
         .onAppear {
             // Tell VoiceOver an approval is pending; the card otherwise appears silently.
-            NSAccessibility.post(
-                element: NSApp as Any,
-                notification: .announcementRequested,
-                userInfo: [.announcement: "Approval required: \(request.title)", .priority: NSAccessibilityPriorityLevel.high.rawValue]
-            )
+            Announcer.announce("Approval required: \(request.title)", high: true)
         }
     }
 

@@ -1,8 +1,8 @@
 # JARVIS
 
-A native macOS menu-bar AI operating layer (long-term). **V0.1 is only the application foundation + HUD**: native shell, state architecture, Compact HUD, Full HUD, demo data. There is **no AI, no voice, no network, and no macOS permission request** in this version.
+A native macOS menu-bar AI operating layer (long-term). V0.1 was the native foundation + HUD; **V0.2 adds text conversation and a deterministic command router**. There is still **no AI model, no voice, no network, no API keys, and no macOS permission request**: JARVIS understands a fixed set of English/Turkish commands and answers honestly that anything else needs an intelligence provider that isn't connected yet (V0.3).
 
-- **Version:** V0.1.1 (`0.1.1`) — **READY FOR MANUAL TEST**. (V0.1 was manually tested by the user: direction approved; V0.1.1 adds three requested fixes — not yet verified by the user.)
+- **Version:** V0.2 — **READY FOR MANUAL TEST** (app version string `0.1.1`+V0.2 changes; V0.1/V0.1.1 were manually tested by the user: direction approved, one bug fixed `1b64d07`).
 - Handoff for agents: `PROJECT_STATE.md`, `AGENTS.md` (includes the Git workflow: `main` only, linear history)
 
 ## Requirements
@@ -21,6 +21,19 @@ scripts/test.sh               # unit tests only
 
 **Global shortcuts** (work while any app is focused; no permission): hold **Option** and press **Command** → toggle Compact HUD (fires ~0.3 s later unless it turns out to be a double press). Hold **Option** and press **Command twice quickly** (within 0.3 s) → toggle Full HUD. Either Command key. Ignored if you add another key, a click, Shift or Control (so ⌥⌘D, ⌥⌘-click etc. are untouched). Turn off in Settings → Enable global shortcuts.
 
+**Commands you can type** (Full HUD or Compact command field; optional “Jarvis,” prefix, case/punctuation ignored):
+
+| Say | Does |
+|---|---|
+| open / show / go to the report · tasks · system · memory · dashboard · settings | opens the Full HUD on that section (Compact closes) |
+| what are you doing? · status · what state are you in? | answers from the real state/task |
+| pause / resume / stop (the task) | controls the demo task, confirms, logs activity |
+| open compact · open full hud · open Jarvis · close Jarvis | HUD control |
+| clear conversation | clears the conversation |
+| hello · thanks | tiny local replies |
+| raporu aç · görevleri göster · ayarları aç · sistemi aç · belleği göster · görevi duraklat · devam et · görevi durdur · durum nedir · sohbeti temizle · Jarvis'i kapat | Turkish equivalents |
+| anything else (“Explain quantum mechanics.”, “Fix my Unity multiplayer system.”) | classified as reasoning/worker-required → truthful “none is connected yet”; nothing is faked or started |
+
 Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact HUD).
 
 ## Current features
@@ -30,6 +43,8 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | Menu bar item with state-specific glyphs | IMPLEMENTED · AUTOMATED TESTED (partial) · MANUAL TEST REQUIRED |
 | Compact HUD (fixed 392×448 in every state; task, step, elapsed, progress, Open/Pause/Stop, command) | IMPLEMENTED · AUTOMATED TESTED (frame measured across states) · MANUAL TEST REQUIRED |
 | Ambient neural-network background (Full HUD, state-reactive, pauses when hidden / Reduce Motion) | IMPLEMENTED · AUTOMATED TESTED (lifecycle) · VISUALLY VERIFIED · MANUAL TEST REQUIRED |
+| **Text commands** (EN + TR) → router → executor → real UI/task actions; Conversation panel; honest "provider not connected" replies | IMPLEMENTED · AUTOMATED TESTED (unit + 7 acceptance scenarios on the real WindowManager) · MANUAL TEST REQUIRED |
+| Intelligence provider boundary (streaming, cancellable; none registered) | IMPLEMENTED (interface only) · AUTOMATED TESTED with fake providers |
 | Global shortcuts ⌥⌘ (Compact) and ⌥⌘⌘ (Full), no permission needed | IMPLEMENTED · AUTOMATED TESTED (logic + scripted integration) · **MANUAL TEST REQUIRED** (physical keys from another app) |
 | Full HUD (Dashboard, Tasks, System; Report/Memory placeholders) | IMPLEMENTED · MANUAL TEST REQUIRED |
 | JARVIS Core visualization for all 7 states | IMPLEMENTED · VISUALLY VERIFIED (screenshots) |
@@ -85,6 +100,14 @@ V0.2 — text conversation + command router. **Do not start until the user appro
 11. Look at quality: contrast, text size, glass/blur, the "JARVIS is present" feel. Test on a Retina display and, if available, a second display and light/dark menu bar.
 12. **VoiceOver check (MANUAL VERIFICATION REQUIRED):** with VoiceOver on, focus the Compact HUD buttons (OPEN JARVIS / PAUSE / STOP / state chips) and confirm each announces a sensible name; in the Approval state confirm "Approval required: Run multiplayer tests" is announced.
 13. Activity Monitor: JARVIS should be ≈0–0.5% CPU when idle/HUDs closed (hotkey polling is tiny).
+
+### V0.2 additions (text conversation + command router)
+17. Full HUD → type `open the report` + Return: the Report section opens, the **Conversation panel** (Dashboard) records `YOU open the report` / `JARVIS Opening the report.`; the command field clears, keeps focus, and shows the last reply as one grey line.
+18. Try `what are you doing?`, `pause the current task`, `resume`, `status`, `Jarvis, show me the tasks`, `raporu aç`, `görevleri göster`, `hello`, `thanks`, `clear conversation`. Replies must reflect the real demo task (title, step, paused/running). `pause` twice → “already paused” notice; with no task (after `stop`) → “no active task” notice.
+19. `Explain quantum mechanics.` and `Fix my Unity multiplayer system.` → an amber notice saying no provider/worker is connected. **No fake answer, no state change.**
+20. Compact HUD: type `what are you doing?` → one truncated reply line in the command field; the window stays exactly 392×448. Type `show tasks` → Compact disappears, Full HUD opens on Tasks (never both visible). Paste a very long text → still no resize.
+21. Blank/space-only Return does nothing. 50 quick submissions keep order and never duplicate windows. The conversation should read like a command history, not a messenger — tell me if it is too dense, too small, or too chatty.
+22. Offline check: disconnect from the network; everything above still works (nothing uses the network).
 
 ### V0.1.1 additions
 - **HUD exclusivity:** only one HUD is ever visible. Full open → click the menu-bar icon or press ⌥⌘ → Full closes, Compact opens. Compact open → OPEN JARVIS or ⌥⌘⌘ → Compact closes, Full opens. Never both.
