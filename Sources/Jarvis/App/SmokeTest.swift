@@ -45,6 +45,13 @@ enum SmokeTest {
             }
         }
 
+        func neuralViews(in window: NSWindow?) -> [NeuralNetworkNSView] {
+            var found: [NeuralNetworkNSView] = []
+            func walk(_ v: NSView) { if let c = v as? NeuralNetworkNSView { found.append(c) }; v.subviews.forEach(walk) }
+            if let content = window?.contentView { walk(content) }
+            return found
+        }
+
         let w = context.windows
         let store = context.store
         let hud = context.hud
@@ -115,6 +122,22 @@ enum SmokeTest {
               await waitUntil { coreViews(in: fullWindow()).contains { $0.isDisplayLinkActive } })
         check("Menu bar icon timer runs in Working", statusItem.isAnimationTimerActive)
 
+        // --- Neural background lifecycle
+        check("Neural background exists in the Full HUD (decorative, 45 nodes)",
+              neuralViews(in: fullWindow()).first?.nodeCount == 45 && neuralViews(in: fullWindow()).first?.hitTest(.zero) == nil)
+        check("Neural animation runs while Full HUD is open + Working (≤15 fps)",
+              await waitUntil { neuralViews(in: fullWindow()).contains { $0.isDisplayLinkActive && $0.currentFPS > 0 && $0.currentFPS <= 15 } })
+        DemoScenario.apply(.idle, to: store)
+        check("Neural animation drops to the calm frame rate in Idle",
+              await waitUntil { neuralViews(in: fullWindow()).contains { $0.isDisplayLinkActive && $0.currentFPS <= 6 } })
+        DemoScenario.apply(.working, to: store)
+        context.preferences.reduceMotion = true
+        check("Reduce Motion stops neural AND core animation (static frames)",
+              await waitUntil { !neuralViews(in: fullWindow()).contains { $0.isDisplayLinkActive } && !coreViews(in: fullWindow()).contains { $0.isDisplayLinkActive } })
+        context.preferences.reduceMotion = false
+        check("Animation resumes when Reduce Motion is turned off",
+              await waitUntil { neuralViews(in: fullWindow()).contains { $0.isDisplayLinkActive } })
+
         // --- Close / reopen, state preserved (HUD-only and app state)
         hud.section = .tasks
         store.log("smoke marker", kind: .system)
@@ -123,6 +146,8 @@ enum SmokeTest {
         let elapsedBefore = store.activeTask?.elapsed(at: .now) ?? 0
         w.hideFullHUD()
         check("Full HUD closes", await waitUntil { !w.isFullHUDOpen && !hud.isFullHUDVisible })
+        check("Neural display link stops once the Full HUD is hidden",
+              await waitUntil { !neuralViews(in: fullWindow()).contains { $0.isDisplayLinkActive } })
         check("Display link stops once the Full HUD is hidden",
               await waitUntil { !coreViews(in: fullWindow()).contains { $0.isDisplayLinkActive } })
         w.showFullHUD(section: nil)

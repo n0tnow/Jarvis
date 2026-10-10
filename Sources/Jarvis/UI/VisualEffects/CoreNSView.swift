@@ -8,7 +8,7 @@ import QuartzCore
 /// `CADisplayLink` that is capped to `maxFPS` and exists only while `isAnimating` is true and the view is in a window.
 /// When not animating it draws one static frame and consumes nothing.
 final class CoreNSView: NSView {
-    var state: JarvisState = .idle { didSet { invalidateStaticFrame() } }
+    var state: JarvisState = .idle { didSet { invalidateStaticFrame(); applyFrameRate() } }
     var stateEnteredAt: Date = .now { didSet { invalidateStaticFrame() } }
     var steps: [StepStatus] = [] { didSet { invalidateStaticFrame() } }
     var tint: NSColor = .white { didSet { invalidateStaticFrame() } }
@@ -65,7 +65,16 @@ final class CoreNSView: NSView {
     }
 
     private func applyFrameRate() {
-        displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: 8, maximum: Float(maxFPS), preferred: Float(maxFPS))
+        // Slow-moving states (idle/waiting/error) don't need a high frame rate; saves CPU for the neural layer.
+        let target: Double
+        switch state {
+        case .idle, .error: target = 10
+        case .waitingForApproval: target = 12
+        case .completed: target = 20
+        case .listening, .thinking, .working: target = maxFPS
+        }
+        let fps = Float(min(maxFPS, target))
+        displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: min(8, fps), maximum: fps, preferred: fps)
     }
 
     @objc private func tick(_ link: CADisplayLink) {

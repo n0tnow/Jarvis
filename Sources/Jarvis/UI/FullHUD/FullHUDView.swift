@@ -17,6 +17,13 @@ struct FullHUDView: View {
         ZStack {
             HUDSurface(cornerRadius: Theme.Radius.xl + 4, showsGrid: true)
 
+            // Ambient neural network: behind all content, decorative, paused when hidden / Reduce Motion.
+            NeuralBackground(state: app.store.state,
+                             isAnimating: app.hud.isFullHUDVisible && !app.preferences.effectiveReduceMotion)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl + 4, style: .continuous))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+
             VStack(spacing: 0) {
                 topBar
                 Rectangle().fill(Color.white.opacity(Theme.Opacity.hairline)).frame(height: 0.8)

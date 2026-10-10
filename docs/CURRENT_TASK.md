@@ -13,7 +13,7 @@ Last Successful Step:
 Automated verification completed: `scripts/verify.sh` → VERIFY PASSED (17/17 unit tests; smoke 28 PASS / 0 FAIL / 2 SKIP; signature, plist, permission audit, idle CPU all PASS). Screenshots re-captured from the current build. All project-memory docs written.
 
 Current Step:
-A DONE (commit: fix(compact-hud)): Compact HUD is now a canonical fixed 392×448 (`CompactHUDLayout.size`); root cause was `sizingOptions=.preferredContentSize` + `fittingSize` in WindowManager. Smoke test measures the real frame across all 7 states. NEXT: B (neural background, Full HUD), then C (⌥⌘ / ⌥⌘⌘ hotkeys).
+A DONE (commit: fix(compact-hud)): Compact HUD is now a canonical fixed 392×448 (`CompactHUDLayout.size`); root cause was `sizingOptions=.preferredContentSize` + `fittingSize` in WindowManager. Smoke test measures the real frame across all 7 states. B DONE (commit: feat(hud) neural background; DEC-012; 24/24 unit tests; smoke covers lifecycle/Reduce Motion). NEXT: C (⌥⌘ / ⌥⌘⌘ hotkeys), then docs + verify + captures.
 
 Next Step:
 User follows the "Manual test checklist" in `README.md` and reports results. Only after the user approves V0.1: update PROJECT_STATE (MANUALLY VERIFIED), then — with explicit approval — plan V0.2.
