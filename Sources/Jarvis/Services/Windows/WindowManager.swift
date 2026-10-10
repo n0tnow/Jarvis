@@ -145,12 +145,14 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
 
         let window = FullHUDWindow(
             contentRect: NSRect(origin: .zero, size: Layout.fullPreferred),
-            styleMask: [.borderless, .resizable],
+            styleMask: [.borderless, .resizable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
         configureTransparentChrome(window)
         window.level = .normal
+        window.hidesOnDeactivate = false       // NSPanel default is true: the HUD must stay when another app is clicked
+        window.isFloatingPanel = false
         window.isMovableByWindowBackground = true
         window.contentView = host
         window.delegate = self

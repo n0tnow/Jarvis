@@ -109,3 +109,17 @@ DEC-016, DEC-017, DEC-018.
 
 ### Remaining Work
 User manual test of V0.2. Then V0.3 (subscription-backed provider) only with approval; verify current official CLI/desktop/agent tooling first. No tag yet.
+
+## 2026-10-10 — V0.2.1: native clipboard / text editing
+
+### Trigger
+User: cannot paste into the JARVIS input.
+
+### Investigation (proof, not assumption)
+A smoke reproduction first failed against the unfixed app: `NSApp.mainMenu == nil`; ⌘V/⌘C/⌘Z did nothing in the focused field editor. Second finding from instrumentation: with another app frontmost, `NSApp.activate()` was denied, the regular-window Full HUD stayed non-key (no typing possible). The hotkey poller was ruled out (reads modifier state only).
+
+### Changes
+`AppMenu` (Edit menu); `ComposerField` NSTextView composer replacing the SwiftUI TextField; Full HUD is a non-activating NSPanel; `ComposerKeyPolicy`; smoke editing suite (real key events via `NSApp.postEvent`, pasteboard saved/restored — dev tool only); 7 new unit tests (88 total).
+
+### Decisions
+DEC-019. JARVIS-R12.

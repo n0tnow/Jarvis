@@ -146,7 +146,7 @@ private struct FullHUDBody: View {
                 DevStateStrip()
             }
             CommandField(text: $command, placeholder: "Command JARVIS — e.g. “open the report”, “what are you doing?”", origin: .fullHUD,
-                         feedback: app.conversation.feedbackLine, focusTrigger: app.hud.isFullHUDVisible, onCancel: { app.windows.hideFullHUD() })
+                         feedback: app.conversation.feedbackLine, focusTrigger: app.hud.isFullHUDVisible, maxLines: 6, onCancel: { app.windows.hideFullHUD() })
         }
         .padding(.horizontal, Theme.Spacing.xl)
         .padding(.top, Theme.Spacing.s)

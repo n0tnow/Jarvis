@@ -45,6 +45,10 @@ ConversationService (orchestrates, cancellation) ─► ConversationStore (messa
 - **Provider boundary.** `IntelligenceProvider.respond(to:) -> AsyncThrowingStream<IntelligenceEvent>`; `ConversationService.cancelCurrentResponse()` is the barge-in hook; messages support `pending → streaming → complete/failed`. Tests drive it with fake providers; V0.2 registers none. **V0.3 handoff:** implement a subscription-backed provider (official CLI/desktop/agent mechanisms only — no API keys, no web scraping) and `register` it; replace the "not connected" branch automatically because the router already classifies reasoning vs worker requests.
 - **Compact origin.** Simple replies show as one line in the command field (fixed 392×448); navigation opens the Full HUD; reasoning/worker requests open the Full HUD Dashboard.
 
+## Text input (V0.2.1, DEC-019)
+
+`AppMenu` installs the standard main menu (Edit) so native editing shortcuts reach the focused `NSTextView` via the responder chain. `CommandField` hosts `ComposerField` (NSTextView in an NSScrollView): plain-text paste, Return/Shift+Return policy (`ComposerKeyPolicy`, pure + tested), bounded height (Full ≤6 lines then scrolls; Compact fixed 1 line). Both HUDs are non-activating panels (key without app activation).
+
 ## Windows
 
 - **Invariant (DEC-015):** Compact XOR Full visible, enforced only in `WindowManager`.

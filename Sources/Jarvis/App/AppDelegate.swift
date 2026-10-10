@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let options = LaunchOptions()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         context = AppContext()
         statusItem = StatusItemController(context: context)
         context.windowManager.anchorProvider = { [weak self] in self?.statusItem.buttonFrameOnScreen }
@@ -48,6 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         Log.app.info("JARVIS launched")
     }
+
+    @objc func showSettings(_ sender: Any?) { context.windows.showSettings() }
 
     /// Closing HUDs must never quit JARVIS: the menu bar item is the app.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

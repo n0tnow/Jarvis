@@ -4,7 +4,7 @@
 
 ## Current Version
 
-V0.2 — Text conversation + intelligence router (on top of V0.1.1; app version string still `0.1.1`). V0.1 baseline `d827a9e` and V0.1.1 were manually tested by the user (direction approved; one bug found and fixed in `1b64d07`).
+V0.2.1 — V0.2 (text conversation + intelligence router) plus the native text-editing fix (on top of V0.1.1; app version string still `0.1.1`). V0.1 baseline `d827a9e` and V0.1.1 were manually tested by the user (direction approved; one bug found and fixed in `1b64d07`).
 
 ## Current Milestone
 
@@ -35,6 +35,10 @@ Hand V0.2 to the user for manual testing of `build/Jarvis.app` (README checklist
 - Settings: Reduce Motion, Show Developer Controls, Launch at Login (disabled placeholder, NOT implemented).
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
+
+## V0.2.1 additions (IMPLEMENTED · AUTOMATED TESTED · physical keyboard MANUAL TEST REQUIRED)
+
+- **Native editing (DEC-019, JARVIS-R12):** root cause proven (accessory app had no main menu → ⌘V/⌘C/⌘X/⌘A/⌘Z dead; plus regular-window Full HUD could not become key when activation was denied). Fix: `AppMenu` (Edit menu) + `ComposerField` NSTextView composer (plain paste, multiline, Return/Shift+Return, IME-safe, bounded height, internal scroll) + non-activating Full HUD panel. Smoke test sends real ⌘ key events and checks paste/copy/cut/select-all/undo/redo, multiline paste not submitting, Compact 100-line paste staying 392×448, focus transfer in both directions. No clipboard monitoring or logging.
 
 ## V0.2 additions (IMPLEMENTED · AUTOMATED TESTED · MANUAL TEST REQUIRED)
 

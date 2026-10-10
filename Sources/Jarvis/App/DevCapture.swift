@@ -67,6 +67,24 @@ enum DevCapture {
         DemoScenario.resetDemoTask(store)
         context.conversation.clear()
 
+        // Composer with pasted multiline code (Full) and a long paste (Compact)
+        if let tv = (NSApp.windows.first { $0 is FullHUDWindow }?.firstResponder as? NSTextView) {
+            tv.string = "func add(_ a: Int, _ b: Int) -> Int {\n    return a + b\n}\n\n// Türkçe: ğüşiöç ✓\nlet x = add(1, 2)\nprint(x)"
+            tv.didChangeText()
+            await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "full_composer_multiline", in: directory)
+            tv.string = ""; tv.didChangeText()
+        }
+        w.showCompactHUD(); await settle(600)
+        if let tv = (NSApp.windows.first { $0 is HUDPanel }?.firstResponder as? NSTextView) {
+            tv.string = (1...40).map { "pasted log line \($0): something went wrong in module \($0)" }.joined(separator: "\n")
+            tv.didChangeText()
+            await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_composer_long_paste", in: directory)
+            tv.string = ""; tv.didChangeText()
+        }
+        w.hideCompactHUD(); w.showFullHUD(section: .dashboard); await settle(500)
+
         // Settings window
         w.hideFullHUD(); w.showSettings(); await settle(700)
         snapshot(of: NSApp.windows.first { $0 is SettingsWindow }, name: "settings", in: directory)

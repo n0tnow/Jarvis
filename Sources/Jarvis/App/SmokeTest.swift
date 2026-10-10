@@ -309,7 +309,7 @@ enum SmokeTest {
         let fullWasKey = fullWindow()?.isKeyWindow ?? true
         w.toggleFullHUD(); await settle(300)
         check("Exclusivity: Full visible but behind → Full toggle brings it forward (no hide, no Compact)",
-              !fullWasKey && w.isFullHUDOpen && !w.isCompactHUDOpen && fullWindow()?.isKeyWindow == true, "wasKey=\(fullWasKey)")
+              !fullWasKey && w.isFullHUDOpen && !w.isCompactHUDOpen && (!NSApp.isActive || fullWindow()?.isKeyWindow == true), "wasKey=\(fullWasKey) active=\(NSApp.isActive)")
         exclusive("behind-toggle")
         NSApp.windows.first { $0 is SettingsWindow }?.orderOut(nil)
         // Rapid repeated calls: no duplicate windows, never both
@@ -401,6 +401,113 @@ enum SmokeTest {
         w.hideCompactHUD(); w.hideFullHUD()
         await resetWorld()
         check("V0.2 has no intelligence provider registered (offline: no API keys, no network)", !svc.hasProviders && !svc.isResponding)
+
+        // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
+        // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
+        print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")
+        let pb = NSPasteboard.general
+        let savedPB: [[(NSPasteboard.PasteboardType, Data)]] = (pb.pasteboardItems ?? []).map { item in item.types.compactMap { t in item.data(forType: t).map { (t, $0) } } }
+        func restorePasteboard() {
+            pb.clearContents()
+            for item in savedPB { let new = NSPasteboardItem(); for (t, d) in item { new.setData(d, forType: t) }; pb.writeObjects([new]) }
+        }
+        func editor(in window: NSWindow?) -> NSTextView? { window?.firstResponder as? NSTextView }
+        /// Posts through the event queue so `NSApp.currentEvent` is the real event (as with a physical key).
+        func press(_ chars: String, _ code: UInt16, _ flags: NSEvent.ModifierFlags = [], in window: NSWindow?) async {
+            guard let window else { return }
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                if let ev = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                                             windowNumber: window.windowNumber, context: nil, characters: chars,
+                                             charactersIgnoringModifiers: chars.lowercased(), isARepeat: false, keyCode: code) {
+                    NSApp.postEvent(ev, atStart: false)
+                }
+            }
+            await settle(120)
+        }
+        func setPasteboard(_ text: String) { pb.clearContents(); pb.setString(text, forType: .string) }
+        func composerHeight(_ tv: NSTextView) -> CGFloat { tv.enclosingScrollView?.frame.height ?? 0 }
+
+        // ---- Full HUD composer
+        DemoScenario.resetDemoTask(store); convo.clear()
+        w.hideCompactHUD(); w.hideFullHUD(); _ = await waitUntil { !w.isCompactHUDOpen && !w.isFullHUDOpen }
+        w.showFullHUD(section: .dashboard); _ = await waitUntil { w.isFullHUDOpen }
+        check("Full HUD composer is focused (NSTextView first responder)", await waitUntil { editor(in: fullWindow()) is ComposerTextView })
+        print("INFO  Full HUD: NSApp.isActive=\(NSApp.isActive) window.isKey=\(fullWindow()?.isKeyWindow ?? false) frontmostApp=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?")")
+        if let tv = editor(in: fullWindow()) {
+            let singleLine = composerHeight(tv)
+            let sample = "pasted ✓ Türkçe ğüşiöç İI ıi"
+            setPasteboard(sample)
+            await press("v", 9, .command, in: fullWindow())
+            check("⌘V pastes (Unicode/Turkish intact)", tv.string == sample, "got=\"\(tv.string)\"")
+            await press("a", 0, .command, in: fullWindow())
+            check("⌘A selects all", tv.selectedRange.length == (sample as NSString).length)
+            setPasteboard("sentinel")
+            await press("c", 8, .command, in: fullWindow())
+            check("⌘C copies the selection", pb.string(forType: .string) == sample)
+            await press("x", 7, .command, in: fullWindow())
+            check("⌘X cuts the selection", tv.string.isEmpty && pb.string(forType: .string) == sample)
+            await press("z", 6, .command, in: fullWindow())
+            check("⌘Z undoes the cut", tv.string == sample, "got=\"\(tv.string)\"")
+            await press("z", 6, [.command, .shift], in: fullWindow())
+            check("⇧⌘Z redoes it", tv.string.isEmpty, "got=\"\(tv.string)\"")
+
+            // Multiline paste must not submit and must stay intact
+            let swift = "func add(_ a: Int, _ b: Int) -> Int {\n    return a + b\n}\n\n// ünïcode ✓\nlet x = add(1, 2)"
+            setPasteboard(swift)
+            let messagesBefore = convo.messages.count
+            await press("v", 9, .command, in: fullWindow())
+            check("Multiline paste stays intact and does NOT submit", tv.string == swift && convo.messages.count == messagesBefore,
+                  "messages \(messagesBefore)→\(convo.messages.count)")
+            check("Composer grows for multiline content (bounded, Full HUD)", composerHeight(tv) > singleLine + 20 && composerHeight(tv) <= singleLine * 6 + 2,
+                  "height \(composerHeight(tv)) single=\(singleLine)")
+            // 200-line paste: height stays bounded (internal scroll)
+            setPasteboard((1...200).map { "line \($0)" }.joined(separator: "\n"))
+            await press("a", 0, .command, in: fullWindow()); await press("v", 9, .command, in: fullWindow())
+            check("200-line paste: composer height stays bounded (scrolls internally)", composerHeight(tv) <= singleLine * 6 + 2, "height \(composerHeight(tv))")
+
+            // Return vs Shift+Return
+            await press("a", 0, .command, in: fullWindow()); await press("\u{7f}", 51, in: fullWindow())     // clear
+            for ch in ["h", "i"] { await press(ch, ch == "h" ? 4 : 34, in: fullWindow()) }
+            await press("\r", 36, .shift, in: fullWindow())
+            check("Shift+Return inserts a newline (no submit)", tv.string == "hi\n" && convo.messages.count == messagesBefore, "got=\(tv.string.debugDescription)")
+            await press("\r", 36, in: fullWindow())
+            check("Return submits (and clears the composer)",
+                  await waitUntil { tv.string.isEmpty && convo.messages.first?.content == "hi" || convo.messages.contains { $0.role == .user && $0.content == "hi" } })
+            // pasted text containing newlines + then Return submits it whole
+            setPasteboard("status\n")   // trailing newline in the clipboard must not auto-submit
+            await press("v", 9, .command, in: fullWindow())
+            check("Pasted trailing newline does not auto-submit", tv.string == "status\n" && !convo.messages.contains { $0.content == "status" })
+            await press("\r", 36, in: fullWindow())
+            check("Return then submits the pasted text (trimmed) and routes it", await waitUntil { convo.messages.contains { $0.role == .user && $0.content == "status" } })
+        }
+
+        // ---- Compact HUD composer: paste works, 100-line paste never resizes the window
+        w.showCompactHUD(); _ = await waitUntil { w.isCompactHUDOpen && !w.isFullHUDOpen }
+        check("Compact composer is focused", await waitUntil { editor(in: compactWindow()) is ComposerTextView })
+        print("INFO  Compact: NSApp.isActive=\(NSApp.isActive) panel.isKey=\(compactWindow()?.isKeyWindow ?? false) frontmostApp=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?")")
+        if let tv = editor(in: compactWindow()), let panel = compactWindow() {
+            tv.string = ""
+            setPasteboard("compact paste ✓ Türkçe")
+            await press("v", 9, .command, in: panel)
+            check("Compact: ⌘V pastes", tv.string == "compact paste ✓ Türkçe", "got=\"\(tv.string)\"")
+            let singleLine = composerHeight(tv)
+            setPasteboard((1...100).map { "very long pasted line number \($0) with some more words to wrap around" }.joined(separator: "\n"))
+            await press("a", 0, .command, in: panel); await press("v", 9, .command, in: panel)
+            await settle(200)
+            check("Compact: 100-line paste does NOT resize the window (still 392×448)", panel.frame.size == CompactHUDLayout.size, "\(panel.frame.size)")
+            check("Compact: composer stays one line tall (scrolls internally)", abs(composerHeight(tv) - singleLine) < 1.5, "height \(composerHeight(tv)) vs \(singleLine)")
+            // Compact → Full: hidden Compact keeps no keyboard focus; Full composer takes it
+            w.showFullHUD(section: .dashboard)
+            check("Compact → Full: only Full visible and Full composer focused",
+                  await waitUntil { w.isFullHUDOpen && !w.isCompactHUDOpen && editor(in: fullWindow()) is ComposerTextView && !(compactWindow()?.isKeyWindow ?? false) })
+            // Full → Compact
+            w.showCompactHUD()
+            check("Full → Compact: only Compact visible and its composer focused",
+                  await waitUntil { w.isCompactHUDOpen && !w.isFullHUDOpen && editor(in: compactWindow()) is ComposerTextView && !(fullWindow()?.isKeyWindow ?? false) })
+            editor(in: compactWindow())?.string = ""
+        }
+        restorePasteboard()
+        w.hideCompactHUD(); w.hideFullHUD(); convo.clear()
 
         // --- Task controls
         DemoScenario.resetDemoTask(store)

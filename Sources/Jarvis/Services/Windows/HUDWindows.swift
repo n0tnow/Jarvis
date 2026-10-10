@@ -29,7 +29,11 @@ final class SettingsWindow: NSWindow {
 
 /// Borderless, resizable, transparent window for the Full HUD.
 /// Rounded glass chrome is drawn by SwiftUI; the window itself is clear.
-final class FullHUDWindow: NSWindow {
+///
+/// It is a NON-ACTIVATING panel on purpose: when JARVIS is opened from another app (global shortcut), macOS does
+/// not honour `NSApp.activate()` for an accessory app, so a regular window would stay non-key and could not
+/// receive typing or ⌘V until clicked. A non-activating panel can become key without app activation.
+final class FullHUDWindow: NSPanel {
     var onCancel: (() -> Void)?
 
     override var canBecomeKey: Bool { true }

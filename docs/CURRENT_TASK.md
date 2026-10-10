@@ -1,30 +1,29 @@
 # Current Task
 
 Version:
-V0.2 — Text conversation + intelligence router (on V0.1.1; V0.1.1 final fix `1b64d07` already pushed)
+V0.2.1 (native text-editing fix on top of V0.2) → V0.3 (real intelligence providers) IN PROGRESS
 
 Task:
-V0.2 implemented: conversation domain/store, deterministic EN/TR command router, executor, IntelligenceRouter, provider boundary (no provider registered), Full HUD conversation panel, Compact one-line feedback.
+V0.2.1 DONE and pushed (see git log: `fix(input): restore native clipboard and text editing`). V0.3 starts: provider research → ProviderManager → real subscription-backed provider(s) (Codex / Claude Code, officially supported mechanisms only; NO API keys) → streaming → cancellation → Settings/UI → real tests.
 
 State:
-READY FOR USER MANUAL TEST
+V0.3 IN PROGRESS — phase A (provider research)
 
 Last Successful Step:
-`scripts/verify.sh` → VERIFY PASSED (81 unit tests; smoke incl. 7 V0.2 acceptance scenarios on the real WindowManager; no network/API-key code). Captures regenerated.
+V0.2.1 verified: 88 unit tests, smoke 85 PASS / 0 FAIL / 2 SKIP, verify.sh PASS; idle/Compact/Full CPU unchanged.
 
 Current Step:
-Waiting for the user's manual test of `build/Jarvis.app` (README checklist items 17–22, plus 14–16 from V0.1.1).
+A. Provider research: inspect local `codex` / `claude`, read official docs, write docs/PROVIDER_RESEARCH.md.
 
 Next Step:
-User reports. Only after approval: decide tags (`v0.1.1`/`v0.2`?) and plan V0.3 (subscription-backed provider — verify current official tooling first; NO API keys, NO paid-API code, NO web scraping). **Do NOT start V0.3 or connect a provider before that.**
+B discovery → C ProviderManager → D/E providers → F streaming → G cancellation → H Settings/UI → I real provider test → J verify.sh policy update + final verification. STOP at V0.3 status; do NOT start V0.4.
 
 Files Being Worked On:
-None.
+docs/PROVIDER_RESEARCH.md (new)
 
 Blocked By:
-User manual verification.
+Nothing yet.
 
 Notes:
-- Manual still required: typing real commands (EN/TR), Compact feedback readability, VoiceOver announcement of replies/approval (JARVIS-001), physical global hotkeys (JARVIS-011), real OPEN JARVIS click, Retina, second display.
-- Build `scripts/build_app.sh`; verify `scripts/verify.sh`; captures `build/Jarvis.app/Contents/MacOS/Jarvis --capture captures` (git-ignored).
-- Git: `main` only, linear; no tags; no AI trailers on new commits.
+- Subscription-first (DEC-017) still binds: no API keys, no paid endpoints, no scraping, no cookies/tokens extraction. verify.sh currently forbids ALL network/provider code — its policy must be replaced by a focused rule when providers land (V0.3 item).
+- Git: main only, no tags, no AI trailers.

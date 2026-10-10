@@ -109,6 +109,11 @@ V0.2 — text conversation + command router. **Do not start until the user appro
 21. Blank/space-only Return does nothing. 50 quick submissions keep order and never duplicate windows. The conversation should read like a command history, not a messenger — tell me if it is too dense, too small, or too chatty.
 22. Offline check: disconnect from the network; everything above still works (nothing uses the network).
 
+### V0.2.1 additions (native text editing)
+23. In another app copy some text (try multiline code or a log with Turkish characters) → open JARVIS → ⌘V pastes it in **both** the Compact and Full command inputs. ⌘A/⌘C/⌘X/⌘Z/⇧⌘Z and right-click → Paste/Copy also work. Test after opening JARVIS with the **⌥⌘ / ⌥⌘⌘ shortcut while another app is frontmost** — you must be able to type/paste immediately without clicking first.
+24. Pasting several lines must NOT submit; **Return** submits, **Shift+Return** (or Option+Return) adds a line. A pasted trailing newline does not submit. In the Full HUD the input grows up to 6 lines then scrolls; in Compact it stays one line (scrolls) and the window stays exactly 392×448 even for a 100-line paste.
+25. Compact → Full and Full → Compact: typing always goes to the visible one.
+
 ### V0.1.1 additions
 - **HUD exclusivity:** only one HUD is ever visible. Full open → click the menu-bar icon or press ⌥⌘ → Full closes, Compact opens. Compact open → OPEN JARVIS or ⌥⌘⌘ → Compact closes, Full opens. Never both.
 14. **Compact HUD fixed size:** open the Compact HUD and click through all seven state chips (Idle, Listening, Thinking, Working, Approval, Complete, Error), also after STOP (no active task) and with Settings → Show Developer Controls off. The outer window's **width and height and position must never change** (no jump, no clipping); only the inside crossfades quickly. Turn on Settings → Reduce Motion: the crossfade disappears.

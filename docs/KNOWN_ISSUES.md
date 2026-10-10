@@ -63,6 +63,9 @@ Description: Messages are Codable and bounded (500) but not persisted; cleared o
 
 ## Resolved
 
+### JARVIS-R12 — Could not paste (⌘V) / ⌘C ⌘X ⌘A ⌘Z in the command input; Full HUD could not take keyboard focus from another app
+Resolved 2026-10-10 (V0.2.1, user-reported). Root cause: no main menu in an accessory app (so no Edit-menu key equivalents) + Full HUD was a regular window that stays non-key when `NSApp.activate()` is denied. Fix and rationale: DEC-019. Proven first by a failing smoke reproduction (`mainMenu == nil`, ⌘V/⌘C/⌘Z ignored), then passing. Physical keyboard use still MANUAL TEST REQUIRED.
+
 ### JARVIS-R10 — "narrow" layout never applied to the Full HUD top bar
 Resolved 2026-10-10 (V0.2). `FullHUDView` injected `hudIsNarrow` for its children but read it itself, so the top bar always used the wide layout; at 980 pt the long "AWAITING APPROVAL" chip widened the whole layout and clipped the right column. Fix: `FullHUDBody` child reads the injected value; narrow top bar uses text-only tabs, no version tag and the short state label. Visible in `captures/full_minsize_waiting.png`.
 
