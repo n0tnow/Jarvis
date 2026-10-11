@@ -21,6 +21,14 @@ enum ProcessTree {
         return result
     }
 
+    /// Resident memory of a process in bytes (nil if gone). For reporting a provider's memory impact — never for control flow.
+    static func residentBytes(of pid: pid_t) -> UInt64? {
+        var info = proc_taskinfo()
+        let size = Int32(MemoryLayout<proc_taskinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &info, size) == size else { return nil }
+        return info.pti_resident_size
+    }
+
     static func isAlive(_ pid: pid_t) -> Bool { kill(pid, 0) == 0 || errno == EPERM }
 
     /// Current parent pid (nil if the process is gone). Used to make sure a snapshotted pid still belongs to the family
@@ -58,6 +66,7 @@ final class ManagedProcess: @unchecked Sendable {
     private let process = Process()
     private let outPipe = Pipe(), errPipe = Pipe(), inPipe = Pipe()
     private let lock = NSLock()
+    private let writeQueue = DispatchQueue(label: "jarvis.managedprocess.stdin")
     private var exitCode: Int32?
     private var exitWaiters: [CheckedContinuation<Int32, Never>] = []
     private var stderrBuffer = Data()
@@ -83,7 +92,9 @@ final class ManagedProcess: @unchecked Sendable {
     var stderrTail: String { lock.lock(); defer { lock.unlock() }; return String(decoding: stderrBuffer, as: UTF8.self) }
 
     /// Launches and returns complete stdout lines (raw bytes; decode per line).
-    func start(stdin: Data?) throws -> AsyncStream<Data> {
+    /// `keepStdinOpen` is for long-lived workers (the local model): the initial data is written, stdin stays open and
+    /// `send(_:)` / `closeStdin()` talk to the process afterwards.
+    func start(stdin: Data?, keepStdinOpen: Bool = false) throws -> AsyncStream<Data> {
         let stream = AsyncStream<Data> { cont in
             lock.lock(); continuation = cont; lock.unlock()
         }
@@ -132,11 +143,22 @@ final class ManagedProcess: @unchecked Sendable {
         lock.lock(); started = true; let alreadyExited = exitCode != nil; lock.unlock()
         if !alreadyExited { ProcessRegistry.shared.add(self) }
         let input = inPipe.fileHandleForWriting
-        DispatchQueue.global().async {
+        writeQueue.async {
             if let stdin, !stdin.isEmpty { try? input.write(contentsOf: stdin) }
-            try? input.close()
+            if !keepStdinOpen { try? input.close() }
         }
         return stream
+    }
+
+    /// Writes to a process started with `keepStdinOpen` (serialised; a dead process just drops the bytes).
+    func send(_ data: Data) {
+        let input = inPipe.fileHandleForWriting
+        writeQueue.async { try? input.write(contentsOf: data) }
+    }
+
+    func closeStdin() {
+        let input = inPipe.fileHandleForWriting
+        writeQueue.async { try? input.close() }
     }
 
     private func forceFinishOutput() {
@@ -217,12 +239,12 @@ final class ManagedProcess: @unchecked Sendable {
     struct RunResult: Sendable { var exitCode: Int32; var output: String; var errorOutput: String = ""; var timedOut: Bool }
 
     static func runOnce(executable: String, arguments: [String], environment: [String: String],
-                        workingDirectory: String = NSTemporaryDirectory(), timeout: TimeInterval) async -> RunResult? {
+                        workingDirectory: String = NSTemporaryDirectory(), timeout: TimeInterval, maxOutput: Int = 64 * 1024) async -> RunResult? {
         let p = ManagedProcess(executable: executable, arguments: arguments, environment: environment, workingDirectory: workingDirectory)
         guard let stream = try? p.start(stdin: nil) else { return nil }
         let collector = Task { () -> String in
             var text = ""
-            for await line in stream { text += String(decoding: line, as: UTF8.self) + "\n"; if text.count > 64 * 1024 { break } }
+            for await line in stream { text += String(decoding: line, as: UTF8.self) + "\n"; if text.utf8.count > maxOutput { break } }
             return text
         }
         let timeoutTask = Task { try? await Task.sleep(for: .seconds(timeout)); if !Task.isCancelled { await p.cancel() } }
