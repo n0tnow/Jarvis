@@ -20,8 +20,14 @@ struct CLIProvider: IntelligenceProvider {
     func respond(to request: IntelligenceRequest) -> AsyncThrowingStream<IntelligenceEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task { await self.run(request, continuation) }
+            RunTracker.shared.add(request.id, task)
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// Resolves only when the run for `requestID` — including killing and reaping its process — has fully finished.
+    func waitUntilStopped(_ requestID: UUID) async {
+        await RunTracker.shared.finish(requestID)
     }
 
     // MARK: Run
@@ -60,6 +66,8 @@ struct CLIProvider: IntelligenceProvider {
         let args = spec.arguments(sessionID: sessionID, newSessionID: newID, workingDirectory: workingDirectory)
         let prompt = Data(spec.stdinPrompt(for: effective).utf8)
 
+        // Cancelled while still resolving/queued (STOP pressed before launch): never start the CLI or spend quota.
+        if Task.isCancelled { return .cancelled }
         try? FileManager.default.createDirectory(atPath: workingDirectory, withIntermediateDirectories: true)
         let proc = ManagedProcess(executable: executablePath, arguments: args, environment: environment, workingDirectory: workingDirectory)
         let stream: AsyncStream<Data>
@@ -107,12 +115,17 @@ struct CLIProvider: IntelligenceProvider {
             }
         } onCancel: {
             userCancelled.set()
-            Task { await proc.cancel() }
+            Task.detached { await proc.cancel() }          // not a child of the cancelled task
         }
 
         // stdout is closed; the process normally exits within milliseconds. Give it a moment, then make sure it is
         // really gone before reporting anything (no zombies / orphans).
-        if !(await Self.waitForExit(proc, timeout: finished ? 5 : 3)) { await proc.cancel() }
+        // Teardown runs SHIELDED: in a cancelled task `Task.sleep` returns immediately, which would turn these waits into a
+        // busy loop and collapse the SIGINT→SIGTERM→SIGKILL grace periods.
+        let natural = finished ? 5.0 : 3.0
+        await Task.detached {
+            if !(await Self.waitForExit(proc, timeout: natural)) { await proc.cancel() }
+        }.value
         let code = await proc.waitForExit()
         let stderr = proc.stderrTail
 
@@ -148,4 +161,21 @@ final class AtomicFlag: @unchecked Sendable {
     private let lock = NSLock(); private var flag = false
     func set() { lock.lock(); flag = true; lock.unlock() }
     var value: Bool { lock.lock(); defer { lock.unlock() }; return flag }
+}
+
+/// Tracks the Task behind each in-flight provider run so a cancel can be awaited to completion.
+final class RunTracker: @unchecked Sendable {
+    static let shared = RunTracker()
+    private let lock = NSLock()
+    private var tasks: [UUID: Task<Void, Never>] = [:]
+
+    func add(_ id: UUID, _ task: Task<Void, Never>) { lock.lock(); tasks[id] = task; lock.unlock() }
+
+    private func take(_ id: UUID) -> Task<Void, Never>? { lock.lock(); defer { lock.unlock() }; return tasks[id] }
+    private func remove(_ id: UUID) { lock.lock(); tasks[id] = nil; lock.unlock() }
+
+    func finish(_ id: UUID) async {
+        await take(id)?.value
+        remove(id)
+    }
 }

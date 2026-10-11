@@ -18,18 +18,27 @@ protocol ProviderLineParser: AnyObject {
 }
 
 enum ProviderErrorClassifier {
+    private static func has(_ text: String, _ patterns: [String]) -> Bool {
+        patterns.contains { text.range(of: $0, options: [.regularExpression]) != nil }
+    }
+
     /// Heuristics over free-text error messages (vendor wording varies; codes are used first when available).
+    /// Status numbers are matched as standalone tokens (not inside UUIDs, `file.js:401:12`, versions): a UUID or a stack-trace `file.js:401:12` must not look like an auth error,
+    /// and session-loss is checked first because its message contains a UUID.
     static func classify(_ text: String, provider id: ProviderID) -> ProviderError? {
         let t = text.lowercased()
-        if t.contains("not logged in") || t.contains("please run /login") || t.contains("401") || t.contains("unauthorized")
-            || t.contains("authentication") || t.contains("invalid api key") || t.contains("sign in") { return .authenticationRequired(id) }
-        if t.contains("usage limit") || t.contains("limit reached") || t.contains("rate limit") || t.contains("rate_limit")
-            || t.contains("429") || t.contains("too many requests") || t.contains("quota") { return .rateLimited(id, resetsAt: nil) }
-        if t.contains("no conversation found") || t.contains("session not found") || t.contains("thread not found") || t.contains("no such session") { return .sessionLost(id) }
-        if t.contains("network") || t.contains("enotfound") || t.contains("econnrefused") || t.contains("offline")
-            || t.contains("unable to connect") || t.contains("failed to lookup") || t.contains("dns") || t.contains("internet") { return .networkUnavailable(id) }
-        if t.contains("overloaded") || t.contains("503") || t.contains("502") || t.contains("server error") || t.contains("unavailable") { return .unavailable(id, "service") }
+        if has(t, ["no conversation found", "session not found", "thread not found", "no such session", "could not find session", "unknown session"]) { return .sessionLost(id) }
+        if has(t, ["not logged in", "please run /login", "(?<![\\w:./-])401(?![\\w:-])", "unauthorized", "authentication", "invalid api key", "sign in", "log in again"]) { return .authenticationRequired(id) }
+        if has(t, ["usage limit", "limit reached", "rate limit", "rate_limit", "(?<![\\w:./-])429(?![\\w:-])", "too many requests", "\\bquota\\b"]) { return .rateLimited(id, resetsAt: nil) }
+        if has(t, ["network", "enotfound", "econnrefused", "offline", "unable to connect", "failed to lookup", "\\bdns\\b", "internet connection"]) { return .networkUnavailable(id) }
+        if has(t, ["overloaded", "(?<![\\w:./-])50[023](?![\\w:-])", "server error", "service unavailable"]) { return .unavailable(id, "service") }
         return nil
+    }
+
+    /// Provider-reported session ids go into argv later (`--resume <id>`): accept only plain tokens, never anything that
+    /// could parse as a flag or contain spaces.
+    static func isSafeSessionID(_ id: String) -> Bool {
+        id.range(of: #"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"#, options: .regularExpression) != nil
     }
 }
 
@@ -56,7 +65,7 @@ final class ClaudeStreamParser: ProviderLineParser {
         validEvents += 1
         switch o["type"] as? String {
         case "system":
-            if o["subtype"] as? String == "init", let sid = o["session_id"] as? String { return [.session(sid)] }
+            if o["subtype"] as? String == "init", let sid = o["session_id"] as? String, ProviderErrorClassifier.isSafeSessionID(sid) { return [.session(sid)] }
             return []
 
         case "stream_event":
@@ -137,7 +146,7 @@ final class CodexEventParser: ProviderLineParser {
         validEvents += 1
         switch o["type"] as? String {
         case "thread.started":
-            if let tid = o["thread_id"] as? String { return [.session(tid)] }
+            if let tid = o["thread_id"] as? String, ProviderErrorClassifier.isSafeSessionID(tid) { return [.session(tid)] }
             return []
 
         case "item.completed", "item.updated":

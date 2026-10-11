@@ -37,6 +37,9 @@ protocol IntelligenceProvider: Sendable {
     func supports(_ kind: IntelligenceRequestKind) -> Bool
     /// Must honour `Task.isCancelled` / stream termination so a response can be interrupted (future barge-in).
     func respond(to request: IntelligenceRequest) -> AsyncThrowingStream<IntelligenceEvent, Error>
+    /// Returns only once everything started for `requestID` is really gone (process dead). Called after a cancel so a new
+    /// turn can never overlap a dying one. Default: nothing to wait for.
+    func waitUntilStopped(_ requestID: UUID) async
 }
 
 /// Holds connected providers. In V0.2 it is intentionally EMPTY, so every reasoning/worker request gets the
@@ -55,4 +58,5 @@ struct IntelligenceProviderRegistry: Sendable {
 
 extension IntelligenceProvider {
     var providerID: ProviderID? { nil }
+    func waitUntilStopped(_ requestID: UUID) async {}
 }

@@ -22,6 +22,15 @@ enum ProcessTree {
     }
 
     static func isAlive(_ pid: pid_t) -> Bool { kill(pid, 0) == 0 || errno == EPERM }
+
+    /// Current parent pid (nil if the process is gone). Used to make sure a snapshotted pid still belongs to the family
+    /// we are cleaning up and was not recycled by an unrelated process.
+    static func parent(of pid: pid_t) -> pid_t? {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+        return pid_t(info.pbi_ppid)
+    }
 }
 
 /// Every live provider process, so application termination can clean up.
@@ -118,13 +127,10 @@ final class ManagedProcess: @unchecked Sendable {
             DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.forceFinishOutput() }
         }
 
-        lock.lock(); started = true; lock.unlock()
-        ProcessRegistry.shared.add(self)
-        do { try process.run() } catch {
-            lock.lock(); started = false; lock.unlock()
-            ProcessRegistry.shared.remove(self)
-            throw error
-        }
+        // Register only AFTER a successful launch: a concurrent killAll() must never read the pid of an unlaunched Process.
+        try process.run()
+        lock.lock(); started = true; let alreadyExited = exitCode != nil; lock.unlock()
+        if !alreadyExited { ProcessRegistry.shared.add(self) }
         let input = inPipe.fileHandleForWriting
         DispatchQueue.global().async {
             if let stdin, !stdin.isEmpty { try? input.write(contentsOf: stdin) }
@@ -134,8 +140,10 @@ final class ManagedProcess: @unchecked Sendable {
     }
 
     private func forceFinishOutput() {
-        lock.lock(); let cont = continuation; continuation = nil; lock.unlock()
+        lock.lock(); let rest = outSplitter.flush(); let cont = continuation; continuation = nil; lock.unlock()
         outPipe.fileHandleForReading.readabilityHandler = nil
+        errPipe.fileHandleForReading.readabilityHandler = nil     // a grandchild holding stderr must not keep this fd/handler alive
+        if let rest { cont?.yield(rest) }
         cont?.finish()
     }
 
@@ -171,20 +179,26 @@ final class ManagedProcess: @unchecked Sendable {
         let pid = processIdentifier
         var family = ProcessTree.descendants(of: pid)          // snapshot BEFORE signalling (children re-parent once the parent dies)
         kill(pid, SIGINT)
-        if await waitUntilExited(timeout: 1.5) { reap(family); return }
+        if await waitUntilExited(timeout: 1.5) { reap(family, parent: pid); return }
         family += ProcessTree.descendants(of: pid)
         kill(pid, SIGTERM)
-        if await waitUntilExited(timeout: 1.0) { reap(family); return }
+        if await waitUntilExited(timeout: 1.0) { reap(family, parent: pid); return }
         family += ProcessTree.descendants(of: pid)
         for k in family { kill(k, SIGKILL) }
         kill(pid, SIGKILL)
         _ = await waitUntilExited(timeout: 1.0)
-        reap(family)
+        reap(family, parent: pid)
     }
 
     /// Any helper that outlived the parent is killed (SIGKILL), so cancelling can never leave orphans behind.
-    private func reap(_ pids: [pid_t]) {
-        for k in Set(pids) where ProcessTree.isAlive(k) { kill(k, SIGKILL) }
+    /// PID-reuse safe: a snapshotted pid is only killed while its parent is still the original process, one of its
+    /// family, or launchd (re-parented orphan) — never an unrelated process that happened to get the same number.
+    private func reap(_ pids: [pid_t], parent original: pid_t) {
+        let family = Set(pids)
+        for k in family where ProcessTree.isAlive(k) {
+            guard let pp = ProcessTree.parent(of: k), pp == 1 || pp == original || family.contains(pp) else { continue }
+            kill(k, SIGKILL)
+        }
     }
 
     /// Synchronous SIGKILL of the process and all descendants (also used at app termination).
@@ -199,7 +213,8 @@ final class ManagedProcess: @unchecked Sendable {
 
     // MARK: One-shot helper (version / auth checks)
 
-    struct RunResult: Sendable { var exitCode: Int32; var output: String; var timedOut: Bool }
+    /// `errorOutput` matters: real `codex login status` prints its verdict on stderr. Diagnostics/status parsing only.
+    struct RunResult: Sendable { var exitCode: Int32; var output: String; var errorOutput: String = ""; var timedOut: Bool }
 
     static func runOnce(executable: String, arguments: [String], environment: [String: String],
                         workingDirectory: String = NSTemporaryDirectory(), timeout: TimeInterval) async -> RunResult? {
@@ -214,6 +229,6 @@ final class ManagedProcess: @unchecked Sendable {
         let code = await p.waitForExit()
         timeoutTask.cancel()
         let out = await collector.value
-        return RunResult(exitCode: code, output: out, timedOut: p.wasCancelled)
+        return RunResult(exitCode: code, output: out, errorOutput: p.stderrTail, timedOut: p.wasCancelled)
     }
 }

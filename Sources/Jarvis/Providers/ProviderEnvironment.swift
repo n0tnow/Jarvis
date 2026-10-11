@@ -13,6 +13,8 @@ enum ProviderEnvironment {
         "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS",
     ]
 
+    private static let pathVariables: Set<String> = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS"]
+
     /// Names that must NEVER reach a provider (kept here only so tests/verification can assert the scrub).
     static let forbidden: Set<String> = [
         "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN",
@@ -23,7 +25,14 @@ enum ProviderEnvironment {
 
     static func make(base: [String: String] = ProcessInfo.processInfo.environment, extraPath: [String] = []) -> [String: String] {
         var env: [String: String] = [:]
-        for (key, value) in base where allowed.contains(key) && !forbidden.contains(key) { env[key] = value }
+        for (key, value) in base where allowed.contains(key) && !forbidden.contains(key) {
+            // A stray relative/nonexistent config location could redirect where the vendor CLI looks for its auth files.
+            if pathVariables.contains(key) {
+                var isDir: ObjCBool = false
+                guard value.hasPrefix("/"), FileManager.default.fileExists(atPath: value, isDirectory: &isDir), isDir.boolValue else { continue }
+            }
+            env[key] = value
+        }
         let defaultPath = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         let existing = (base["PATH"] ?? "").split(separator: ":").map(String.init)
         var seen = Set<String>(), path: [String] = []

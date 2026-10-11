@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 enum InputOrigin: Sendable { case fullHUD, compactHUD, other }
 
@@ -37,17 +38,20 @@ final class StreamCoalescer {
 /// Provider-backed answers stream into the store; deterministic commands NEVER touch a provider.
 /// Text input is not privileged: voice/LLM-tool callers use `submit` (or the router/executor) the same way.
 @MainActor
+@Observable
 final class ConversationService {
-    private let store: JarvisStore
-    let conversation: ConversationStore
-    private let windows: any JarvisWindowControlling
-    private let router: IntelligenceRouter
-    private let resolver: any IntelligenceProviderResolving
-    private var executor: CommandExecutor!
+    @ObservationIgnored private let store: JarvisStore
+    @ObservationIgnored let conversation: ConversationStore
+    @ObservationIgnored private let windows: any JarvisWindowControlling
+    @ObservationIgnored private let router: IntelligenceRouter
+    @ObservationIgnored private let resolver: any IntelligenceProviderResolving
+    @ObservationIgnored private var executor: CommandExecutor!
 
     /// The in-flight provider response (cancel = STOP GENERATION / barge-in foundation).
-    private var responseTask: Task<Void, Never>?
-    private var responseMessageID: UUID?
+    @ObservationIgnored private var responseTask: Task<Void, Never>?
+    @ObservationIgnored private var responseMessageID: UUID?
+    /// True only if THIS service moved JARVIS into Thinking (so it never clobbers a state someone else set).
+    @ObservationIgnored private var ownsThinking = false
     private(set) var isResponding = false
     private(set) var respondingProvider: ProviderID?
     private(set) var respondingProviderName: String?
@@ -133,13 +137,18 @@ final class ConversationService {
         let messageID = conversation.beginJarvisResponse(route: .reasoning)
         responseMessageID = messageID
         isResponding = true
-        if store.state == .idle || store.state == .completed { store.setState(.thinking) }
+        if store.state == .idle || store.state == .completed { store.setState(.thinking); ownsThinking = true }
 
         responseTask = Task { [weak self] in await self?.runProviderRequest(kind, prompt: prompt, language: language, messageID: messageID) }
     }
 
     private func runProviderRequest(_ kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID) async {
         let resolution = await resolver.resolve(kind)
+        if Task.isCancelled {                                   // STOP pressed while the provider was still being resolved
+            conversation.markCancelled(messageID)
+            endResponse(messageID); announceLatestReply()
+            return
+        }
         guard case .ready(let resolved) = resolution else {
             if case .unavailable(let error) = resolution { conversation.setNotice(messageID, Self.message(for: error, language)) }
             endResponse(messageID)
@@ -157,6 +166,7 @@ final class ConversationService {
                                           sessionID: resolver.sessionID(for: resolved.id))
         let coalescer = StreamCoalescer(conversation: conversation, id: messageID)
         var outcome = ProviderOutcome.completed
+        var sawFinished = false
 
         do {
             for try await event in resolved.provider.respond(to: request) {
@@ -164,10 +174,10 @@ final class ConversationService {
                 switch event {
                 case .session(let s): resolver.recordSession(s, for: resolved.id)
                 case .textDelta(let d): coalescer.append(d)
-                case .finished: break
+                case .finished: sawFinished = true
                 }
             }
-            try Task.checkCancellation()    // a cancelled stream may end silently instead of throwing
+            if !sawFinished { try Task.checkCancellation() }    // a cancelled stream may end silently; a COMPLETE answer stays complete
         } catch is CancellationError {
             outcome = .cancelled
         } catch let error as ProviderError {
@@ -176,6 +186,9 @@ final class ConversationService {
             outcome = .failed(.generic)
         }
         coalescer.flushNow()
+        // A cancelled consumer stops iterating at once; wait until the provider has really killed and reaped its process,
+        // so the next turn can never overlap (or `--resume` the same session as) a dying one.
+        await resolved.provider.waitUntilStopped(request.id)
 
         let hasContent = !(conversation.messages.last(where: { $0.id == messageID })?.content.isEmpty ?? true)
         switch outcome {
@@ -212,7 +225,8 @@ final class ConversationService {
         responseMessageID = nil
         respondingProvider = nil
         respondingProviderName = nil
-        if store.state == .thinking { store.setState(.idle) }   // back to calm; provider errors never leave JARVIS stuck
+        if ownsThinking, store.state == .thinking { store.setState(.idle) }   // back to calm; provider errors never leave JARVIS stuck
+        ownsThinking = false
     }
 
     static func message(for error: ProviderError, _ language: ReplyLanguage) -> String {

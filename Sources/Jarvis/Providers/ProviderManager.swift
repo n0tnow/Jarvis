@@ -107,8 +107,10 @@ final class ProviderManager: IntelligenceProviderResolving {
     }
 
     func makeProvider(_ id: ProviderID, path: String) -> CLIProvider {
+        // Codex prints nothing while it reasons, so it gets a longer idle limit than Claude Code (which streams).
         CLIProvider(spec: id == .claudeCode ? ClaudeCodeSpec() : CodexSpec(), executablePath: path, workingDirectory: workingDirectory,
-                    environment: ProviderEnvironment.make(base: environmentBase, extraPath: locator.extraPathDirectories()))
+                    environment: ProviderEnvironment.make(base: environmentBase, extraPath: locator.extraPathDirectories()),
+                    idleTimeout: id == .codex ? 300 : 120)
     }
 
     func error(for status: ProviderStatus) -> ProviderError {
@@ -134,6 +136,8 @@ final class ProviderManager: IntelligenceProviderResolving {
         guard let id else { return }
         activeProvider = id
         statuses[id]?.state = .running
+        // Switching providers: sessions of the others would resume without this provider's exchanges (A→B→A) → rebuild context.
+        for other in sessions.keys where other != id { sessions[other] = nil }
     }
 
     func providerFinished(_ id: ProviderID?, outcome: ProviderOutcome) {
@@ -147,7 +151,8 @@ final class ProviderManager: IntelligenceProviderResolving {
             case .notInstalled: statuses[id]?.state = .notInstalled
             case .rateLimited(_, let reset): statuses[id]?.state = .rateLimited(until: reset ?? Date().addingTimeInterval(15 * 60))
             case .sessionLost: sessions[id] = nil; statuses[id]?.state = .ready
-            default: statuses[id]?.state = .ready          // transient (network, crash, timeout): usable again next time
+            case .timedOut, .processFailed, .malformedOutput: sessions[id] = nil; statuses[id]?.state = .ready   // a possibly broken session is not reused
+            default: statuses[id]?.state = .ready          // transient (network): usable again next time
             }
         }
     }
@@ -180,9 +185,27 @@ enum ProviderProbe {
             status.state = .unavailable("auth check failed to launch"); return status
         }
         if auth.timedOut { status.state = .unavailable("auth check timed out") }
-        else if auth.exitCode == 0 { status.state = .ready }
+        else if auth.exitCode == 0 { status.state = billingMode(id, output: auth.output + "\n" + auth.errorOutput) }
         else if auth.exitCode == 1 { status.state = .authenticationRequired }
         else { status.state = .unavailable("auth check exit \(auth.exitCode)") }
         return status
+    }
+}
+
+extension ProviderProbe {
+    /// "Logged in" is not enough: a login made with an API key would silently bill the metered API. JARVIS only runs on
+    /// SUBSCRIPTION sign-in (Codex "ChatGPT", Claude "claude.ai"); anything else is reported unavailable, not ready.
+    static func billingMode(_ id: ProviderID, output: String) -> ProviderState {
+        switch id {
+        case .codex:
+            return output.lowercased().contains("chatgpt") ? .ready : .unavailable("signed in with an API key, not a ChatGPT subscription")
+        case .claudeCode:
+            if let start = output.firstIndex(of: "{"), let end = output.lastIndex(of: "}"),
+               let obj = (try? JSONSerialization.jsonObject(with: Data(output[start...end].utf8))) as? [String: Any],
+               let method = obj["authMethod"] as? String, method != "claude.ai" {
+                return .unavailable("signed in with an API key / console login, not a Claude subscription")
+            }
+            return .ready
+        }
     }
 }

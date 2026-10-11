@@ -309,6 +309,34 @@ struct CLIProviderTests {
         #expect((try? String(contentsOfFile: "\(dir)/stdin.txt", encoding: .utf8))?.hasSuffix("[Request]\nExplain") == true)
     }
 
+    @Test func waitUntilStoppedReturnsOnlyAfterTheProcessIsGone() async {
+        let dir = FakeCLI.makeDir()
+        let s = FakeCLI.script("echo $$ > \(dir)/pid\ncat >/dev/null\nsleep 60", in: dir)
+        let p = provider(s, dir: dir)
+        let req = FakeCLI.request()
+        let consumer = Task { for try await _ in p.respond(to: req) {} }
+        let pid = await FakeCLI.pid(from: "\(dir)/pid")!
+        consumer.cancel()
+        _ = await consumer.result
+        await p.waitUntilStopped(req.id)
+        #expect(!FakeCLI.alive(pid), "waitUntilStopped returned while the process was still alive")
+    }
+
+    @Test func cancelBeforeLaunchNeverStartsTheCLI() async {
+        let dir = FakeCLI.makeDir()
+        let s = FakeCLI.script("echo launched > \(dir)/launched\ncat >/dev/null", in: dir)
+        let p = provider(s, dir: dir)
+        let task = Task { () -> Bool in
+            try? await Task.sleep(nanoseconds: 300_000_000)           // cancelled while "resolving"
+            do { for try await _ in p.respond(to: FakeCLI.request()) {} } catch { return true }
+            return Task.isCancelled
+        }
+        task.cancel()
+        _ = await task.value
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        #expect(!FileManager.default.fileExists(atPath: "\(dir)/launched"))
+    }
+
     @Test func workerRequestsAreNotSupportedByProviders() {
         let p = CLIProvider(spec: ClaudeCodeSpec(), executablePath: "/x", workingDirectory: "/w", environment: [:])
         #expect(p.supports(.reasoning) && !p.supports(.worker))

@@ -133,14 +133,42 @@ struct ProviderManagerTests {
         #expect(h.manager.status(.codex).state == .ready)                           // transient errors don't brick a provider
     }
 
+    @Test func switchingProvidersDropsTheOthersSessionsSoContextIsRebuilt() {
+        let h = ProviderHarness()
+        h.manager.recordSession("claude-sess", for: .claudeCode)
+        h.manager.providerStarted(.codex)                                        // A → B
+        #expect(h.manager.sessionID(for: .claudeCode) == nil)                    // B → A must not resume A's stale session
+        h.manager.recordSession("codex-thread", for: .codex)
+        h.manager.providerFinished(.codex, outcome: .completed)
+        h.manager.providerStarted(.codex)
+        #expect(h.manager.sessionID(for: .codex) == "codex-thread")              // same provider keeps its session
+    }
+
+    @Test func brokenSessionsAreNotReusedAfterFailures() {
+        for error in [ProviderError.timedOut(.codex), .processFailed(.codex, exitCode: 2), .malformedOutput(.codex)] {
+            let h = ProviderHarness()
+            h.manager.recordSession("t", for: .codex); h.manager.providerStarted(.codex)
+            h.manager.recordSession("t", for: .codex)
+            h.manager.providerFinished(.codex, outcome: .failed(error))
+            #expect(h.manager.sessionID(for: .codex) == nil, "\(error)")
+        }
+    }
+
+    @Test func codexGetsALongerIdleLimitThanClaude() {
+        let h = ProviderHarness()
+        #expect(h.manager.makeProvider(.codex, path: "/x").idleTimeout > h.manager.makeProvider(.claudeCode, path: "/x").idleTimeout)
+    }
+
     @Test func sessionsArePerProviderAndResettable() {
         let h = ProviderHarness()
         h.manager.recordSession("a", for: .claudeCode); h.manager.recordSession("b", for: .codex)
         #expect(h.manager.sessionID(for: .claudeCode) == "a" && h.manager.sessionID(for: .codex) == "b" && h.manager.sessionID(for: nil) == nil)
-        h.manager.providerStarted(.claudeCode); h.manager.providerFinished(.claudeCode, outcome: .failed(.sessionLost(.claudeCode)))
-        #expect(h.manager.sessionID(for: .claudeCode) == nil && h.manager.sessionID(for: .codex) == "b")
-        h.manager.resetSessions()
-        #expect(h.manager.sessionID(for: .codex) == nil)
+        h.manager.providerStarted(.claudeCode)                                     // switching to Claude drops Codex's session (context is rebuilt on return)
+        #expect(h.manager.sessionID(for: .claudeCode) == "a" && h.manager.sessionID(for: .codex) == nil)
+        h.manager.providerFinished(.claudeCode, outcome: .failed(.sessionLost(.claudeCode)))
+        #expect(h.manager.sessionID(for: .claudeCode) == nil)
+        h.manager.recordSession("c", for: .claudeCode); h.manager.resetSessions()
+        #expect(h.manager.sessionID(for: .claudeCode) == nil)
     }
 }
 
@@ -165,20 +193,33 @@ struct ProviderProbeTests {
         let root = FakeCLI.makeDir()
         for (dir, version) in [("a", "2.1.267 (Claude Code)"), ("b", "2.1.277 (Claude Code)")] {
             try! FileManager.default.createDirectory(atPath: "\(root)/\(dir)", withIntermediateDirectories: true)
-            FakeCLI.script("case \"$1\" in --version) echo '\(version)';; auth) echo '{\"loggedIn\":true}'; exit 0;; esac", in: "\(root)/\(dir)", name: "claude")
+            FakeCLI.script("case \"$1\" in --version) echo '\(version)';; auth) echo '{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}'; exit 0;; esac", in: "\(root)/\(dir)", name: "claude")
         }
         let s = await ProviderProbe.check(.claudeCode, locator: locator(root: root, dirs: [root + "/a", root + "/b"]), override: nil, environment: FakeCLI.env(), timeout: 5)
         #expect(s.version == "2.1.277" && s.executablePath == root + "/b/claude" && s.state == .ready)
 
         for (code, expected) in [(1, ProviderState.authenticationRequired), (0, .ready)] {
             let dir = FakeCLI.makeDir()
-            FakeCLI.script("case \"$1\" in --version) echo 'codex-cli 0.153.4';; login) echo 'status'; exit \(code);; esac", in: dir, name: "codex")
+            FakeCLI.script("case \"$1\" in --version) echo 'codex-cli 0.153.4';; login) echo 'Logged in using ChatGPT' >&2; exit \(code);; esac", in: dir, name: "codex")
             let st = await ProviderProbe.check(.codex, locator: locator(root: dir, dirs: [dir]), override: nil, environment: FakeCLI.env(), timeout: 5)
             #expect(st.state == expected && st.version == "0.153.4")
         }
         let weird = FakeCLI.makeDir()
         FakeCLI.script("case \"$1\" in --version) echo 'codex-cli 0.1.0';; login) exit 9;; esac", in: weird, name: "codex")
         #expect((await ProviderProbe.check(.codex, locator: locator(root: weird, dirs: [weird]), override: nil, environment: FakeCLI.env(), timeout: 5)).state == .unavailable("auth check exit 9"))
+    }
+
+    @Test func apiKeyLoginsAreNotSubscriptionsAndAreNeverReady() async {
+        let codex = FakeCLI.makeDir()
+        FakeCLI.script("case \"$1\" in --version) echo 'codex-cli 0.153.4';; login) echo 'Logged in using an API key - sk-REDACTED' >&2; exit 0;; esac", in: codex, name: "codex")
+        let c = await ProviderProbe.check(.codex, locator: locator(root: codex, dirs: [codex]), override: nil, environment: FakeCLI.env(), timeout: 5)
+        if case .unavailable(let why) = c.state { #expect(why.contains("API key")) } else { Issue.record("API-key Codex login must not be ready: \(c.state)") }
+        let claude = FakeCLI.makeDir()
+        FakeCLI.script("case \"$1\" in --version) echo '2.1.277';; auth) echo '{\"loggedIn\":true,\"authMethod\":\"api_key\"}'; exit 0;; esac", in: claude, name: "claude")
+        let k = await ProviderProbe.check(.claudeCode, locator: locator(root: claude, dirs: [claude]), override: nil, environment: FakeCLI.env(), timeout: 5)
+        if case .unavailable = k.state {} else { Issue.record("API-key Claude login must not be ready: \(k.state)") }
+        #expect(ProviderProbe.billingMode(.claudeCode, output: "{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}") == .ready)
+        #expect(ProviderProbe.billingMode(.codex, output: "Logged in using ChatGPT") == .ready)
     }
 
     @Test func brokenOrHungExecutablesAreUnavailableNotReady() async {
@@ -390,6 +431,95 @@ struct ProviderChainTests {
         #expect(h.manager.status(.claudeCode).state == .authenticationRequired)           // state learned from the run
         #expect(h.lastReply?.content.contains("claude auth login") == true)
         #expect(h.store.activity.last?.message.contains("authentication required") == true)
+    }
+}
+
+// MARK: - Service-level races found in review
+
+/// Resolver whose resolution is slow, to model "STOP pressed while still resolving".
+@MainActor
+final class SlowResolver: IntelligenceProviderResolving {
+    var launches = 0
+    var delay: Duration = .milliseconds(400)
+    var stopDelay: Duration = .zero
+    var hold = false
+    var hasProviders: Bool { true }
+    func resolve(_ kind: IntelligenceRequestKind) async -> ProviderResolution {
+        try? await Task.sleep(for: delay)
+        return .ready(ResolvedProvider(provider: CountingProvider(owner: self, hold: hold), id: nil))
+    }
+    func sessionID(for id: ProviderID?) -> String? { nil }
+    func recordSession(_ session: String, for id: ProviderID?) {}
+    func providerStarted(_ id: ProviderID?) {}
+    func providerFinished(_ id: ProviderID?, outcome: ProviderOutcome) {}
+    func resetSessions() {}
+}
+
+struct CountingProvider: IntelligenceProvider {
+    let owner: SlowResolver
+    var hold = false                                           // keep streaming until cancelled
+    let id = "counting", displayName = "Counting"
+    func supports(_ kind: IntelligenceRequestKind) -> Bool { true }
+    func respond(to request: IntelligenceRequest) -> AsyncThrowingStream<IntelligenceEvent, Error> {
+        let hold = self.hold
+        return AsyncThrowingStream { c in
+            let t = Task { @MainActor in
+                owner.launches += 1
+                if hold { try? await Task.sleep(for: .seconds(30)) }
+                c.yield(.textDelta("answer")); c.yield(.finished); c.finish()
+            }
+            c.onTermination = { _ in t.cancel() }
+        }
+    }
+    func waitUntilStopped(_ requestID: UUID) async {
+        let d = await owner.stopDelay
+        await Task.detached { try? await Task.sleep(for: d) }.value        // shielded from the (cancelled) caller, like the real provider
+    }
+}
+
+@MainActor
+@Suite("Service races (review)", .serialized)
+struct ServiceRaceTests {
+    private func make(_ resolver: SlowResolver) -> (ConversationService, ConversationStore, JarvisStore) {
+        let store = JarvisStore(); DemoScenario.seed(store)
+        let convo = ConversationStore()
+        return (ConversationService(store: store, conversation: convo, windows: FakeWindows(), resolver: resolver), convo, store)
+    }
+
+    @Test func stopWhileStillResolvingNeverReachesTheProvider() async {
+        let r = SlowResolver()
+        let (svc, convo, store) = make(r)
+        svc.submit("Explain neural networks.")
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        #expect(svc.cancelCurrentResponse())
+        await svc.waitUntilIdle()
+        #expect(r.launches == 0)
+        #expect(convo.messages.last?.tone == .notice && !svc.isResponding && store.state == .idle)
+    }
+
+    @Test func aNewTurnCannotStartUntilTheStoppedProviderIsReallyGone() async {
+        let r = SlowResolver(); r.delay = .milliseconds(10); r.stopDelay = .milliseconds(500); r.hold = true
+        let (svc, convo, _) = make(r)
+        svc.submit("First question please.")
+        try? await Task.sleep(nanoseconds: 60_000_000)
+        svc.cancelCurrentResponse()
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        #expect(svc.isResponding)                                                  // still stopping → the composer must not start an overlapping turn
+        svc.submit("Second question please.")
+        #expect(convo.messages.last?.content.contains("still answering") == true)
+        await svc.waitUntilIdle()
+        #expect(!svc.isResponding)
+    }
+
+    @Test func doesNotClobberAStateSomeoneElseOwns() async {
+        let r = SlowResolver(); r.delay = .milliseconds(50)
+        let (svc, _, store) = make(r)
+        store.setState(.working)                                                   // e.g. a task is working
+        svc.submit("Explain neural networks."); await svc.waitUntilIdle()
+        #expect(store.state == .working)                                           // never forced to Thinking nor reset to Idle
+        store.setState(.completed)
+        svc.submit("Explain more."); await svc.waitUntilIdle()
+        #expect(store.state == .idle)                                              // it did own Thinking this time
     }
 }
 

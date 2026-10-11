@@ -18,8 +18,9 @@ struct ProviderEnvironmentTests {
     }
 
     @Test func userChosenConfigLocationsAndProxiesPass() {
-        let env = ProviderEnvironment.make(base: ["CLAUDE_CONFIG_DIR": "/c", "CODEX_HOME": "/h", "HTTPS_PROXY": "http://p:1", "PATH": ""])
-        #expect(env["CLAUDE_CONFIG_DIR"] == "/c" && env["CODEX_HOME"] == "/h" && env["HTTPS_PROXY"] == "http://p:1")
+        let c = NSTemporaryDirectory(), h = "/tmp"                     // must be absolute AND existing
+        let env = ProviderEnvironment.make(base: ["CLAUDE_CONFIG_DIR": c, "CODEX_HOME": h, "HTTPS_PROXY": "http://p:1", "PATH": ""])
+        #expect(env["CLAUDE_CONFIG_DIR"] == c && env["CODEX_HOME"] == h && env["HTTPS_PROXY"] == "http://p:1")
     }
 
     @Test func pathIsDeduplicatedAndHasSystemFallbacks() {
@@ -326,5 +327,46 @@ struct ProviderSpecTests {
     @Test func instructionForbidsFakeActions() {
         let t = JarvisInstruction.text.lowercased()
         #expect(t.contains("no tools") && t.contains("never claim") && t.count < 700)
+    }
+}
+
+
+@Suite("Review regressions (security / correctness)")
+struct ReviewRegressionTests {
+    @Test func digitsInsideUUIDsOrStackTracesAreNotHttpStatusCodes() {
+        let uuid = "No conversation found with session ID 4015f2a1-4290-429a-b401-5025029429a0"
+        #expect(ProviderErrorClassifier.classify(uuid, provider: .claudeCode) == .sessionLost(.claudeCode))
+        #expect(ProviderErrorClassifier.classify("at module.run (file.js:401:12)", provider: .codex) == nil)
+        #expect(ProviderErrorClassifier.classify("request 429abc failed", provider: .codex) == nil)
+        #expect(ProviderErrorClassifier.classify("unexpected status 401 Unauthorized", provider: .codex) == .authenticationRequired(.codex))
+        #expect(ProviderErrorClassifier.classify("HTTP 429 Too Many Requests", provider: .codex) == .rateLimited(.codex, resetsAt: nil))
+        #expect(ProviderErrorClassifier.classify("lookup failed: dns error", provider: .codex) == .networkUnavailable(.codex))
+    }
+
+    @Test func providerReportedSessionIdsCannotBecomeFlags() {
+        for bad in ["--dangerously-bypass-approvals-and-sandbox", "-s", "a b", "", "x;rm", "../x", String(repeating: "a", count: 200)] {
+            #expect(!ProviderErrorClassifier.isSafeSessionID(bad), "\(bad)")
+        }
+        for good in ["9d16530c-134f-4b8d-a816-c19510c9e732", "01a12798-6495-7a81-ae96-8eae8d098a5b", "sess-1", "thread_9"] { #expect(ProviderErrorClassifier.isSafeSessionID(good)) }
+        let claude = ClaudeStreamParser()
+        #expect(claude.parse(line: Data("{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"--resume\"}".utf8)).isEmpty)
+        let codex = CodexEventParser()
+        #expect(codex.parse(line: Data("{\"type\":\"thread.started\",\"thread_id\":\"--yolo\"}".utf8)).isEmpty)
+    }
+
+    @Test func configLocationsMustBeAbsoluteExistingDirectories() {
+        let dir = NSTemporaryDirectory()
+        let env = ProviderEnvironment.make(base: ["CLAUDE_CONFIG_DIR": "relative/dir", "CODEX_HOME": "/definitely/not/here", "XDG_CONFIG_HOME": dir, "HOME": "/Users/x"])
+        #expect(env["CLAUDE_CONFIG_DIR"] == nil && env["CODEX_HOME"] == nil)
+        #expect(env["XDG_CONFIG_HOME"] == dir && env["HOME"] == "/Users/x")
+    }
+
+    @Test func lineSplitterIsBoundedAgainstNewlineFloods() {
+        var s = LineSplitter()
+        let chunk = Data(repeating: UInt8(ascii: "x"), count: 1_048_576)
+        var lines = 0
+        for _ in 0..<10 { lines += s.feed(chunk).count }
+        #expect(lines == 0 && s.overflowed)
+        #expect(s.flush() == nil || (s.flush()?.count ?? 0) <= LineSplitter.maxLineBytes)
     }
 }
