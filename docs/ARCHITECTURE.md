@@ -1,6 +1,6 @@
 # Architecture (V0.1)
 
-Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.2. Decisions behind it: `DECISIONS.md`.
+Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.3. Decisions behind it: `DECISIONS.md`.
 
 ## Shape
 
@@ -48,6 +48,23 @@ ConversationService (orchestrates, cancellation) ─► ConversationStore (messa
 ## Text input (V0.2.1, DEC-019)
 
 `AppMenu` installs the standard main menu (Edit) so native editing shortcuts reach the focused `NSTextView` via the responder chain. `CommandField` hosts `ComposerField` (NSTextView in an NSScrollView): plain-text paste, Return/Shift+Return policy (`ComposerKeyPolicy`, pure + tested), bounded height (Full ≤6 lines then scrolls; Compact fixed 1 line). Both HUDs are non-activating panels (key without app activation).
+
+## Providers (V0.3 — DEC-020/021; research: `PROVIDER_RESEARCH.md`)
+
+```
+ConversationService ─► IntelligenceProviderResolving ◄── ProviderManager (discovery, readiness, selection, sessions, states)
+        │                                                    │ ExecutableLocator (GUI PATH is not trusted) · ProviderProbe (`--version`, `auth status` / `login status`)
+        │ stream of IntelligenceEvent (.session/.textDelta/.finished, typed ProviderError)
+        ▼                                                    ▼
+ StreamCoalescer ─► ConversationStore            CLIProvider = CLIProviderSpec (args/stdin/parser) + ManagedProcess + ProviderLineParser
+                                                      ├─ ClaudeCodeSpec: `claude -p --output-format stream-json --verbose --include-partial-messages --tools "" --safe-mode …`
+                                                      └─ CodexSpec:      `codex exec [resume <id>] --json -s read-only --disable shell_tool …`
+```
+- **No shell, no API keys, no JARVIS network client.** Child env is an allowlist (`ProviderEnvironment`); prompts go over stdin; private empty working dir; short "no tools, never claim actions" instruction.
+- **ManagedProcess:** byte-safe line splitting (UTF-8 safe), bounded stderr (diagnostics only, never an answer), real cancellation SIGINT→SIGTERM→SIGKILL of the process AND descendants (`proc_listchildpids`), `ProcessRegistry.killAll()` on app termination.
+- **Providers never see deterministic commands or `workerRequired` requests** (router decides first; `CLIProvider.supports(.worker) == false`).
+- **Continuity:** Claude `--session-id`/`--resume`; Codex `thread_id` → `exec resume`; fresh sessions (first turn, provider switch, failed resume) get a bounded context of previous provider-answered exchanges only.
+- **State:** JARVIS goes Thinking only for a real provider generation and returns to Idle on completion/cancel/failure (never stuck in Error).
 
 ## Windows
 

@@ -1,8 +1,8 @@
 # JARVIS
 
-A native macOS menu-bar AI operating layer (long-term). V0.1 was the native foundation + HUD; **V0.2 adds text conversation and a deterministic command router**. There is still **no AI model, no voice, no network, no API keys, and no macOS permission request**: JARVIS understands a fixed set of English/Turkish commands and answers honestly that anything else needs an intelligence provider that isn't connected yet (V0.3).
+A native macOS menu-bar AI operating layer (long-term). V0.1 was the native foundation + HUD; V0.2 added text conversation and a deterministic command router; **V0.3 connects real intelligence**: anything that isn't a built-in command is answered by **your own signed-in Claude Code or Codex** (subscription-backed, conversation-only, tools disabled). JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; autonomous project work is not enabled yet (V0.4).
 
-- **Version:** V0.2 — **READY FOR MANUAL TEST** (app version string `0.1.1`+V0.2 changes; V0.1/V0.1.1 were manually tested by the user: direction approved, one bug fixed `1b64d07`).
+- **Version:** V0.3 — real intelligence via your own Codex / Claude Code subscriptions — **READY FOR MANUAL TEST** (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user). Details: `docs/PROVIDER_RESEARCH.md`.
 - Handoff for agents: `PROJECT_STATE.md`, `AGENTS.md` (includes the Git workflow: `main` only, linear history)
 
 ## Requirements
@@ -32,7 +32,8 @@ scripts/test.sh               # unit tests only
 | clear conversation | clears the conversation |
 | hello · thanks | tiny local replies |
 | raporu aç · görevleri göster · ayarları aç · sistemi aç · belleği göster · görevi duraklat · devam et · görevi durdur · durum nedir · sohbeti temizle · Jarvis'i kapat | Turkish equivalents |
-| anything else (“Explain quantum mechanics.”, “Fix my Unity multiplayer system.”) | classified as reasoning/worker-required → truthful “none is connected yet”; nothing is faked or started |
+| anything else (“Explain how neural networks work.”, “Explain this Swift function: …”) | answered by the selected provider (Claude Code / Codex), streamed into the Conversation panel; **stop generating** (or the STOP GENERATION button, ⌘.) cancels it |
+| autonomous work (“Fix my Unity multiplayer, run it and keep working until it passes.”) | classified `workerRequired`: **no provider is started**; JARVIS says execution isn't enabled yet (task engine = V0.4) |
 
 Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact HUD).
 
@@ -44,7 +45,8 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | Compact HUD (fixed 392×448 in every state; task, step, elapsed, progress, Open/Pause/Stop, command) | IMPLEMENTED · AUTOMATED TESTED (frame measured across states) · MANUAL TEST REQUIRED |
 | Ambient neural-network background (Full HUD, state-reactive, pauses when hidden / Reduce Motion) | IMPLEMENTED · AUTOMATED TESTED (lifecycle) · VISUALLY VERIFIED · MANUAL TEST REQUIRED |
 | **Text commands** (EN + TR) → router → executor → real UI/task actions; Conversation panel; honest "provider not connected" replies | IMPLEMENTED · AUTOMATED TESTED (unit + 7 acceptance scenarios on the real WindowManager) · MANUAL TEST REQUIRED |
-| Intelligence provider boundary (streaming, cancellable; none registered) | IMPLEMENTED (interface only) · AUTOMATED TESTED with fake providers |
+| **Real intelligence:** Claude Code (token streaming) and Codex (message-level) via their official CLIs; Auto / Codex / Claude Code selection; follow-up context; STOP GENERATION that really kills the process; provider status in Settings | IMPLEMENTED · **REAL TESTED** through the JARVIS stack (`--provider-live-test`) · MOCK TESTED (fake CLIs, 183 unit tests) · MANUAL TEST REQUIRED |
+| Native text editing (⌘V/⌘C/⌘X/⌘A/⌘Z), multiline composer | IMPLEMENTED · AUTOMATED TESTED (real key events) · physical keyboard MANUAL TEST REQUIRED |
 | Global shortcuts ⌥⌘ (Compact) and ⌥⌘⌘ (Full), no permission needed | IMPLEMENTED · AUTOMATED TESTED (logic + scripted integration) · **MANUAL TEST REQUIRED** (physical keys from another app) |
 | Full HUD (Dashboard, Tasks, System; Report/Memory placeholders) | IMPLEMENTED · MANUAL TEST REQUIRED |
 | JARVIS Core visualization for all 7 states | IMPLEMENTED · VISUALLY VERIFIED (screenshots) |
@@ -108,6 +110,17 @@ V0.2 — text conversation + command router. **Do not start until the user appro
 20. Compact HUD: type `what are you doing?` → one truncated reply line in the command field; the window stays exactly 392×448. Type `show tasks` → Compact disappears, Full HUD opens on Tasks (never both visible). Paste a very long text → still no resize.
 21. Blank/space-only Return does nothing. 50 quick submissions keep order and never duplicate windows. The conversation should read like a command history, not a messenger — tell me if it is too dense, too small, or too chatty.
 22. Offline check: disconnect from the network; everything above still works (nothing uses the network).
+
+### V0.3 additions (real providers)
+**Prerequisite:** be signed in with the vendor's own flow: `claude auth login` (Claude Code) and/or `codex login` (Codex ships inside the ChatGPT app). Settings → Intelligence provider shows each provider's real state (READY / SIGN-IN REQUIRED / NOT INSTALLED) and has a Refresh button. JARVIS never asks for keys or passwords.
+26. Settings → Intelligence provider: both providers should read READY (with versions). Try Auto, Claude Code, Codex.
+27. Full HUD: type `Explain what a neural network is.` → the Conversation badge shows **THINKING · <provider>** with **STOP GENERATION**, text appears (Claude Code token by token; Codex as a whole message), then the badge returns to `<PROVIDER> · READY`. The JARVIS state chip returns to Idle.
+28. Copy a multi-line Swift function from another app, paste it into JARVIS (⌘V), type a new line (Shift+Return) `Explain this function.`, Return → the answer refers to your code. Then `Explain that more simply.` → context-aware follow-up.
+29. Start a long answer (`Write a long essay about the history of computing.`) and press **STOP GENERATION** (or type `stop generating`): output stops within a second. In Terminal `pgrep -lx claude codex` must show no process started by JARVIS afterwards (the Claude desktop app has its own `claude` processes).
+30. Settings: choose a provider that isn't READY (e.g. rename the path or sign out of one) and ask something → a clear message with the official sign-in command, **no silent fallback** to the other provider. Deterministic commands (`raporu aç`, `show tasks`, `pause the task`) must never start a provider (no THINKING badge).
+31. From the Compact HUD ask a normal question → Compact closes, Full HUD opens, answer streams there. Compact stays 392×448.
+32. Quit JARVIS while an answer is streaming → no `claude`/`codex` child process is left behind.
+Note: each request uses a little of your subscription (Codex ≈14k input tokens per trivial request, Claude ≈5k); Claude Code's and Codex's usage limits are shared with your other use of them.
 
 ### V0.2.1 additions (native text editing)
 23. In another app copy some text (try multiline code or a log with Turkish characters) → open JARVIS → ⌘V pastes it in **both** the Compact and Full command inputs. ⌘A/⌘C/⌘X/⌘Z/⇧⌘Z and right-click → Paste/Copy also work. Test after opening JARVIS with the **⌥⌘ / ⌥⌘⌘ shortcut while another app is frontmost** — you must be able to type/paste immediately without clicking first.

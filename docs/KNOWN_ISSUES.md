@@ -53,15 +53,48 @@ Description: No @FocusState management, no shortcuts for Approve/Deny or section
 Status: Open · FUTURE MILESTONE
 Description: Store mutations target "first active task" (need task-id addressing for V0.4); `AgentSlot/ToolSlot/ProjectSummary/ApprovalRequest` not Codable; no "interrupted" task status; `setState` has no arbitration among STT/LLM/task engine; `LocalCommandHandler` has no response channel (V0.2); `isFullHUDOpen` is `isVisible` (true even if occluded); `observeContinuously` has no cancel handle. See `ARCHITECTURE.md` → extension points.
 
+### JARVIS-015 — Codex streams per message, not per token
+Status: Open · NON-BLOCKING (documented provider limitation)
+Description: `codex exec --json` emits each `agent_message` complete; token-level deltas exist only in `codex app-server`, which OpenAI labels experimental/unsupported for production. JARVIS shows Codex answers as they arrive at message granularity and does not fake streaming. Claude Code streams token by token (REAL TESTED).
+
+### JARVIS-016 — Provider policy limits (Anthropic / OpenAI)
+Status: Open · MANUAL VERIFICATION (policy) / FUTURE
+Description: Anthropic permits an end user to sign in to the *unmodified* Claude Code binary with their own subscription but forbids third-party apps from offering Claude.ai login, routing requests through subscription credentials for users, or handling credentials. JARVIS only drives the user's own installed, signed-in binary and never touches credentials — fine for personal local use; **must be re-reviewed before any redistribution**. OpenAI documents ChatGPT-managed auth in automation as "advanced" (API keys are the recommended default for CI) and does not address other desktop apps. Also: subscription limits are shared with the user's other Claude Code / Codex use; requests carry overhead (~14k input tokens for Codex, ~5k for Claude on a trivial prompt).
+
+### JARVIS-017 — Codex binary lives inside ChatGPT.app
+Status: Open · NON-BLOCKING
+Description: Not on PATH; found at `/Applications/ChatGPT.app/Contents/Resources/codex` (codex-cli 0.153.4). App updates may move it or change flags (`--disable <feature>` names are version-specific). A custom path can be set in Settings. Provider sessions/transcripts are stored by the CLIs under `~/.claude` and `~/.codex` (their normal behaviour).
+
+### JARVIS-018 — Provider requests are sequential; no queue
+Status: Open · NON-BLOCKING
+Description: A second provider question while one is generating is refused with "still answering" (deterministic commands still work). Sessions are per provider; after STOP the half-finished session is kept (the next question resumes it).
+
+### JARVIS-019 — Provider processes survive a hard kill of JARVIS
+Status: Open · NON-BLOCKING
+Description: Normal quit, SIGTERM/SIGINT/SIGHUP all kill any running provider tree. A `kill -9` or crash of JARVIS cannot run cleanup, so an in-flight `claude`/`codex` child may finish on its own (bounded by its own run).
+
+### JARVIS-020 — Provider CPU/limits while streaming
+Status: Open · NON-BLOCKING
+Description: With the Full HUD open (neural animation) a streaming answer costs JARVIS ≈20 % of one core plus the provider's own ≈7–16 %. Subscription usage limits are shared with the user's other Claude/Codex use.
+
 ### JARVIS-013 — Deterministic router limits (V0.2)
 Status: Open · NON-BLOCKING
 Description: Matching is alias/phrase based, not NLP: unusual phrasings fall through to "needs a provider" (truthful, never a wrong action). A bare "stop"/"close"/"clear"/"open" is treated as a command. Turkish coverage is a small explicit alias set; replies are English except for Turkish input. Worker-vs-reasoning is a keyword heuristic (verb + technical noun).
 
 ### JARVIS-014 — Conversation is in-memory only
 Status: Open · FUTURE MILESTONE (V0.4/V0.8)
-Description: Messages are Codable and bounded (500) but not persisted; cleared on quit. No real provider exists (V0.3), so streaming/cancellation are exercised only by unit tests with fake providers.
+Description: Messages are Codable and bounded (500) but not persisted; cleared on quit. Provider-side sessions are kept by the CLIs.
 
 ## Resolved
+
+### JARVIS-R13 — Orphaned grandchildren after cancel (V0.3, found by the real-process tests)
+Resolved. `proc_listchildpids` returns a PID *count* with a buffer (not bytes), so descendant discovery silently returned nothing and `cancel()` could leave helpers running. Fixed + `cancelLeavesNoOrphanedGrandchildren` / `processIgnoringSigintAndSigtermIsKilled` tests; REAL TESTED with Claude Code and Codex (no survivors).
+
+### JARVIS-R14 — Race: lingering exit reported as a user cancel (V0.3)
+Resolved. After stdout EOF the process may still be exiting; cleaning it up was misreported as `.cancelled`. User cancellation is now tracked separately from internal cleanup.
+
+### JARVIS-R15 — Live test left the stored provider preference changed (V0.3)
+Resolved. `defer` never ran because the tool ends with `exit()`; the preference is now restored explicitly (and the stored value was reset to Auto).
 
 ### JARVIS-R12 — Could not paste (⌘V) / ⌘C ⌘X ⌘A ⌘Z in the command input; Full HUD could not take keyboard focus from another app
 Resolved 2026-10-10 (V0.2.1, user-reported). Root cause: no main menu in an accessory app (so no Edit-menu key equivalents) + Full HUD was a regular window that stays non-key when `NSApp.activate()` is denied. Fix and rationale: DEC-019. Proven first by a failing smoke reproduction (`mainMenu == nil`, ⌘V/⌘C/⌘Z ignored), then passing. Physical keyboard use still MANUAL TEST REQUIRED.

@@ -123,3 +123,23 @@ A smoke reproduction first failed against the unfixed app: `NSApp.mainMenu == ni
 
 ### Decisions
 DEC-019. JARVIS-R12.
+
+## 2026-10-11 — V0.3: real intelligence providers
+
+### Goal
+Connect real intelligence without API keys: the user's own signed-in Claude Code / Codex, conversation only, streaming, real STOP, continuity, provider selection. Workers stay V0.4. Prerequisite V0.2.1 gate passed first.
+
+### Changes
+Research doc (`58c6948`); `Providers/` layer (discovery, probe, manager, CLIProvider, ManagedProcess, parsers); ConversationService provider path (coalesced streaming, busy refusal, cancel, retry-once on lost session, state ownership); provider badge/STOP/Settings/System row; `--provider-live-test`; focused `verify.sh` provider policy (DEC-020); DEC-021.
+
+### Tests
+183 unit (was 88), smoke 85 PASS, verify PASSED. REAL TESTED with both providers (see PROJECT_STATE). A/B CPU vs the V0.2.1 build: no regression.
+
+### Problems found (all fixed)
+`proc_listchildpids` count-vs-bytes bug left orphan grandchildren (found by real-process tests); lingering exit misreported as cancel; live test left the user's provider preference changed; test parallelism made real-process tests flaky (suite now `--no-parallel`); **Codex writes `login status` to stderr, so the billing-mode check wrongly marked it UNAVAILABLE — found only by the real run (the fake CLI printed to stdout); fixed and the fake now mirrors reality.** Reviewer findings (session-id-as-flag, unbounded line buffer, loose HTTP-status regex, stale sessions after failures/provider switch, cancel-while-resolving, state clobbering) fixed with regression tests.
+
+### Decisions
+DEC-020, DEC-021.
+
+### Remaining Work
+User manual test of V0.3. No tag. V0.4 only with approval.

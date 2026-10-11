@@ -4,20 +4,20 @@
 
 ## Current Version
 
-V0.2.1 — V0.2 (text conversation + intelligence router) plus the native text-editing fix (on top of V0.1.1; app version string still `0.1.1`). V0.1 baseline `d827a9e` and V0.1.1 were manually tested by the user (direction approved; one bug found and fixed in `1b64d07`).
+V0.3 — real intelligence through the user's own Claude Code / Codex subscriptions (on top of V0.2.1; app version string still `0.1.1`). V0.1–V0.2.1 were manually tested by the user.
 
 ## Current Milestone
 
-V0.2: text conversation + deterministic command router + provider boundary (no real AI)
+V0.3: real intelligence providers (conversation only; autonomous workers are V0.4)
 
 ## Status
 
-**V0.2 — READY FOR MANUAL TEST**
-(Automated verification passed. V0.2 is not yet manually verified by the user. Do NOT mark COMPLETE or tag, and do NOT start V0.3 / connect any AI provider until the user approves.)
+**V0.3 — READY FOR MANUAL TEST**
+(Automated + REAL verification passed. Not manually verified by the user. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.4.)
 
 ## Current Objective
 
-Hand V0.2 to the user for manual testing of `build/Jarvis.app` (README checklist items 17–22): type commands in English/Turkish, conversation panel, Compact one-line feedback, truthful "provider not connected" replies.
+Hand V0.3 to the user: manual test of `build/Jarvis.app` with their own signed-in Claude Code / Codex (README checklist items 26–32).
 
 ## Completed (IMPLEMENTED)
 
@@ -35,6 +35,14 @@ Hand V0.2 to the user for manual testing of `build/Jarvis.app` (README checklist
 - Settings: Reduce Motion, Show Developer Controls, Launch at Login (disabled placeholder, NOT implemented).
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
+
+## V0.3 additions (IMPLEMENTED · REAL TESTED · MOCK TESTED · UI MANUAL TEST REQUIRED)
+
+- **Providers (DEC-020/021, `docs/PROVIDER_RESEARCH.md`):** `ProviderManager` (states notInstalled/installed/authRequired/ready/running/rateLimited/unavailable/failed; Auto → Claude Code then Codex; explicit choice never silently falls back), `ExecutableLocator` (GUI PATH not trusted: override, PATH, ~/.local/bin, Homebrew, nvm, `/Applications/ChatGPT.app/Contents/Resources/codex`; highest version wins), `ProviderProbe` (`--version`, `claude auth status` / `codex login status` — Codex prints its verdict on **stderr**; an API-key login is reported UNAVAILABLE, never READY), `CLIProvider` (ClaudeCodeSpec / CodexSpec), `ManagedProcess` (the only `Process` launch point; argv array, stdin prompt, env allowlist that scrubs API keys, SIGINT→SIGTERM→SIGKILL of the whole process tree, `killAll` on quit/signals).
+- **Conversation-only:** Claude `--tools "" --safe-mode --permission-prompts none`; Codex `-s read-only` + `--disable shell_tool/browser_use/computer_use/plugins/hooks/apps/memories`; private empty cwd; short JARVIS instruction. `workerRequired` and deterministic commands never reach a provider.
+- **Streaming/continuity/stop:** Claude token deltas, Codex message-level (documented limitation); 40 ms UI coalescing; official sessions (`--resume` / `exec resume`) with bounded-context fallback; STOP GENERATION (button, ⌘., "stop generating") kills the real process; next turn waits until the old one is gone.
+- **UI:** provider badge + STOP in the Conversation panel, System-panel row, Settings provider section (preference, status, refresh, custom paths, login instructions). Compact stays 392×448; long answers go to the Full HUD. State is Thinking only during real generation.
+- **Review hardening (read-only reviewer):** provider-reported session ids validated (cannot become flags), config dirs must be absolute existing directories, line splitter byte-capped, status numbers matched as standalone tokens, idle timeout longer for Codex, failed/timed-out sessions never reused, sessions dropped on provider switch, cancel-while-resolving launches nothing, JARVIS never clobbers a state it does not own.
 
 ## V0.2.1 additions (IMPLEMENTED · AUTOMATED TESTED · physical keyboard MANUAL TEST REQUIRED)
 
@@ -58,7 +66,7 @@ Hand V0.2 to the user for manual testing of `build/Jarvis.app` (README checklist
 
 ## In Progress
 
-Nothing. Waiting for user manual verification.
+Nothing. Waiting for user manual verification of V0.3.
 
 ## Pending (outside V0.1)
 
@@ -69,6 +77,12 @@ Everything in `docs/ROADMAP.md` from V0.2 onward — PLANNED, not started.
 See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MANUAL VERIFICATION REQUIRED; Retina rendering not verified (dev machine screen was 1×).
 
 ## Tested
+
+**V0.3 (2026-10-11) — `scripts/verify.sh` → VERIFY PASSED:** 183 unit tests (serial, real child processes) · smoke 85 PASS / 0 FAIL / 2 SKIP · focused provider policy rules · idle CPU ≈0.2 %.
+- **REAL TESTED** (`Jarvis --provider-live-test`, real requests through ConversationService → ProviderManager → provider → parser → store): Claude Code 2.1.277 and Codex 0.153.4 — exact-reply, complete 30-number answer, incremental streaming (Claude: real deltas; Codex: one message, as documented), follow-up context (PINEAPPLE), STOP kills the process tree with no orphans (Claude 0.6 s, Codex 1.6 s), UI recovers, deterministic command launches no provider, worker request launches no provider.
+- **MOCK TESTED** (fake CLIs): crash, timeout (idle/total), rate limit, auth required, malformed output, session loss + retry, provider switching, process-group/orphan kill, SIGTERM-ignoring process, app-termination cleanup, busy refusal, API-key login rejection, env scrubbing.
+- **MANUAL TEST REQUIRED:** real typing/Stop button/⌘. in the HUD, Settings picker feel, Compact→Full hand-off by eye, multi-minute answers, subscription limit hit, quitting mid-stream.
+- CPU (release, M5, % of one core; A/B against the V0.2.1 build on the same machine shows no regression — the host is busier than during the V0.2 numbers below): closed ≈0.2 % · Compact working ≈1.2 % · Full idle ≈4.5 % · Full thinking/working ≈15–17 % (V0.2.1 build: identical). Real streaming with Full HUD open: JARVIS ≈20 % + provider ≈7–16 %. RSS 65 MB idle, ≈150 MB with Full HUD.
 
 **AUTOMATED TESTED** (`scripts/verify.sh` → `VERIFY PASSED`; 2026-10-10):
 - Build (release) OK; bundle `build/Jarvis.app` assembled; ad-hoc signature valid (strict/deep); arm64; Info.plist lints; `LSUIElement=true`.
@@ -91,7 +105,7 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Important Decisions
 
-See `docs/DECISIONS.md` (DEC-001…DEC-018). Key ones:
+See `docs/DECISIONS.md` (DEC-001…DEC-021). Key ones:
 - Native Swift/SwiftUI/AppKit only (no Electron/React/Tauri/web UI).
 - UI/window state (`HUDState`) separated from application/task state (`JarvisStore`); closing HUDs never touches tasks.
 - All window control goes through `JarvisWindowControlling`.
@@ -116,12 +130,12 @@ None.
 
 ## Next Action
 
-**Wait for the user's manual V0.1 test** (checklist in `README.md` → "Manual test checklist"). Do not begin V0.2 until the user approves V0.1.
+**Wait for the user's manual V0.3 test** (`README.md` → V0.3 additions, items 26–32). Do not start V0.4 (persistent task engine / workers) without approval.
 
 ## Git
 
-`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; commits: baseline `d827a9e`, then V0.1.1 commits; **no tag yet** (tag only after user approval — convention to decide with the user: `v0.1.1`). Policy: `AGENTS.md` → Git Workflow, DEC-011.
+`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; V0.3 commits start at `58c6948`; **no tag**; no AI co-author trailers (user rule). Policy: `AGENTS.md` → Git Workflow, DEC-011.
 
 ## Last Updated
 
-2026-10-10 — Git workflow established and verified V0.1 baseline published to origin/main. Status unchanged: READY FOR MANUAL TEST.
+2026-10-11 — V0.3 implemented, REAL TESTED with both providers, verified. READY FOR MANUAL TEST.
