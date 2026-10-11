@@ -34,6 +34,7 @@ enum CommandRouter {
         "report": (.section(.report), .en), "reports": (.section(.report), .en),
         "rapor": (.section(.report), .tr), "raporu": (.section(.report), .tr), "raporlar": (.section(.report), .tr), "raporlari": (.section(.report), .tr), "rapora": (.section(.report), .tr),
         "tasks": (.section(.tasks), .en), "task": (.section(.tasks), .en), "task list": (.section(.tasks), .en), "tasklist": (.section(.tasks), .en),
+        "proposals": (.section(.tasks), .en), "proposal": (.section(.tasks), .en), "suggestions": (.section(.tasks), .en), "suggestion": (.section(.tasks), .en), "oneriler": (.section(.tasks), .tr),
         "gorevler": (.section(.tasks), .tr), "gorevleri": (.section(.tasks), .tr), "gorevlerim": (.section(.tasks), .tr), "gorev listesi": (.section(.tasks), .tr),
         "gorevlere": (.section(.tasks), .tr), "gorevi": (.section(.tasks), .tr),
         "agents": (.section(.agents), .en), "agent": (.section(.agents), .en), "workers": (.section(.agents), .en), "worker": (.section(.agents), .en), "observatory": (.section(.agents), .en),

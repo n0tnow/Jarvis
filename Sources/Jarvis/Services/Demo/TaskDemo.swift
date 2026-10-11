@@ -80,4 +80,19 @@ enum TaskDemo {
             _ = await context.taskEngine.submit(goal: "Fix the failing calculation test (demo \(i + 1))", kind: .development, workspacePath: makeProject())
         }
     }
+
+    /// Runs one scripted task to completion so the proactive layer leaves a pending proposal, plus a critical one (dev/perf only).
+    @MainActor static func leaveProposals(context: AppContext) async {
+        let runner = DemoAgentRunner(audit: context.audit)
+        context.taskEngine.agents = runner
+        context.opportunities.settings = { AutonomySettings(mode: .askBeforeActing) }
+        guard case .success(let id) = await context.taskEngine.submit(goal: "Fix the failing calculation test", kind: .development, workspacePath: makeProject()) else { return }
+        await context.taskEngine.waitUntilFinished(id)
+        try? await Task.sleep(for: .milliseconds(600))
+        if let root = context.taskEngine.view(id)?.task.workspaceRoot {
+            _ = await context.opportunities.ingest(RawFinding(origin: .systemMaintenance, title: "Push the branch to origin", summary: "Committed locally only.", category: .maintenance,
+                                                               evidence: [EvidenceItem(kind: .taskResult, summary: "The task changed calc.py", reference: "calc.py")], affectedPaths: ["calc.py"],
+                                                               originTaskID: id, projectRoot: root, eventKey: "demo:critical"))
+        }
+    }
 }

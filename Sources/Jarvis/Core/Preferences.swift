@@ -18,6 +18,9 @@ final class Preferences {
         static let allowFreeCloud = "prefs.routing.allowFreeCloud"
         static let localIdleUnload = "prefs.local.idleUnloadSeconds"
         static let projectRoot = "prefs.tasks.projectRoot"
+        static let autonomyMode = "prefs.autonomy.mode"
+        static let proactiveEnabled = "prefs.autonomy.proactiveEnabled"
+        static let showProposals = "prefs.autonomy.showProposals"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -52,6 +55,12 @@ final class Preferences {
     var allowFreeCloudInAuto: Bool { didSet { defaults.set(allowFreeCloudInAuto, forKey: Key.allowFreeCloud) } }
     /// The project folder autonomous tasks may work in (V0.4). Empty = none chosen: development tasks are not started.
     var projectRoot: String { didSet { defaults.set(projectRoot, forKey: Key.projectRoot) } }
+    /// V0.5 autonomy: how much initiative JARVIS may take. Conservative default: it asks before acting.
+    var autonomyMode: AutonomyMode { didSet { defaults.set(autonomyMode.rawValue, forKey: Key.autonomyMode) } }
+    /// Event-driven proactive reasoning (findings after tasks). Off = no opportunities, no extra provider calls.
+    var proactiveReasoningEnabled: Bool { didSet { defaults.set(proactiveReasoningEnabled, forKey: Key.proactiveEnabled) } }
+    var showProposals: Bool { didSet { defaults.set(showProposals, forKey: Key.showProposals) } }
+    var autonomySettings: AutonomySettings { AutonomySettings(mode: autonomyMode, proactiveEnabled: proactiveReasoningEnabled, showProposals: showProposals) }
     /// Seconds of inactivity before the local model is unloaded from memory.
     var localIdleUnloadSeconds: Double { didSet { defaults.set(localIdleUnloadSeconds, forKey: Key.localIdleUnload) } }
 
@@ -77,6 +86,9 @@ final class Preferences {
         allowFreeCloudInAuto = defaults.object(forKey: Key.allowFreeCloud) as? Bool ?? true
         localIdleUnloadSeconds = defaults.object(forKey: Key.localIdleUnload) as? Double ?? 300
         projectRoot = defaults.string(forKey: Key.projectRoot) ?? ""
+        autonomyMode = defaults.string(forKey: Key.autonomyMode).flatMap(AutonomyMode.init(rawValue:)) ?? .askBeforeActing
+        proactiveReasoningEnabled = defaults.object(forKey: Key.proactiveEnabled) as? Bool ?? true
+        showProposals = defaults.object(forKey: Key.showProposals) as? Bool ?? true
         systemReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         motionObserver = NSWorkspace.shared.notificationCenter.addObserver(

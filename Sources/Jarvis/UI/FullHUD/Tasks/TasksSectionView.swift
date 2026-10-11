@@ -10,11 +10,13 @@ struct TasksSectionView: View {
         let attention = views.filter { $0.task.state == .waitingForApproval || $0.task.state == .interrupted }
         let running = views.filter { [.created, .planning, .ready, .running].contains($0.task.state) }
         let recent = views.filter { $0.task.state.isTerminal }.prefix(15)
+        let noTasks = views.isEmpty && app.opportunities.pending.isEmpty
 
         ScrollView {
             VStack(spacing: Theme.Spacing.m) {
                 ProjectBar()
-                if views.isEmpty { emptyState }
+                ProposalsGroup()
+                if noTasks { emptyState }
                 if !attention.isEmpty { group("NEEDS YOUR ATTENTION", attention) }
                 if !running.isEmpty { group("ACTIVE", running) }
                 if !recent.isEmpty { group("RECENT", Array(recent)) }
@@ -136,6 +138,7 @@ struct EngineTaskCard: View {
                     Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Color.jarvisTertiary).frame(width: 10).accessibilityHidden(true)
                     Text(view.task.title).font(Theme.Typography.headline).foregroundStyle(Color.jarvisPrimary).lineLimit(2).multilineTextAlignment(.leading)
                     Spacer(minLength: Theme.Spacing.s)
+                    if view.task.origin.isProactive { Tag(text: view.task.origin.label) }
                     Tag(text: view.task.kind == .development ? "DEV" : "READ-ONLY")
                     TaskStatusChip(status: task.status)
                 }

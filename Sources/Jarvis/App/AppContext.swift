@@ -36,6 +36,9 @@ final class AppContext {
     let taskEngine: TaskEngine
     let taskBridge: TaskBridge
     let taskIntake: TaskIntake
+    // V0.5 proactive layer: decides (never executes) — approved/auto actions become normal V0.4 tasks
+    let opportunities: OpportunityEngine
+    let proposalService: ProposalService
     @ObservationIgnored private var sleepObservers: [NSObjectProtocol] = []
     private(set) var persistenceError: String?
     /// Automated runs (smoke/capture/--no-providers) use a throw-away data directory and NEVER touch real providers.
@@ -94,6 +97,8 @@ final class AppContext {
         leases = FileLeaseManager(repository: repo)
         taskEngine = TaskEngine(repository: repo, artifacts: artifacts, audit: audit, leases: leases, agents: ManagerAgentRunner(manager: agents))
         taskIntake = TaskIntake(engine: taskEngine, preferences: preferences)
+        opportunities = OpportunityEngine(repository: repo, audit: audit, tasks: taskEngine)
+        proposalService = ProposalService(repository: repo, engine: opportunities)
 
         if stubIntelligence {
             // Stub at construction (not on first refresh): nothing may reach a real provider, its service, or the network.
@@ -124,9 +129,17 @@ final class AppContext {
         // --- V0.4: task engine glue (events → activity feed; finished tasks → conversation; launch recovery; sleep/wake) ---
         let store = self.store
         taskEngine.onEvent = { [weak store] message, kind in store?.log(message, kind: kind, persist: false) }       // the engine already persisted it with its task id
+        let prefs = preferences
+        opportunities.settings = { [weak prefs] in prefs?.autonomySettings ?? AutonomySettings() }
+        opportunities.onEvent = { [weak store] message, kind in store?.log(message, kind: kind, persist: false) }
+        taskEngine.onReviewSuggestions = { [weak self] task, step, run, suggestions in
+            guard let self else { return }
+            Task { @MainActor in await self.opportunities.reviewSuggestions(task: task, stepID: step, runID: run, suggestions: suggestions) }
+        }
         taskEngine.onFinished = { [weak self] v in
             guard let self else { return }
             self.taskBridge.finished(v)
+            Task { @MainActor in await self.opportunities.taskFinished(v) }          // event-driven post-task reflection (bounded; no polling)
             if let report = self.taskEngine.report(for: v.id) {
                 self.conversation.appendJarvis(report.userSummary, tone: v.task.state == .completed ? .normal : .notice, route: .worker)
                 Announcer.announce(report.userSummary, high: v.task.state != .completed)
@@ -144,6 +157,8 @@ final class AppContext {
         }
         taskEngine.refreshHistory()
         taskBridge.sync()
+        if !stubIntelligence { Task { @MainActor [opportunities] in await opportunities.reconcileOnLaunch() } }
+        opportunities.refresh()
     }
 
     /// Normal termination / SIGTERM: stop scheduling, persist the interrupted state + checkpoints, release leases (processes are killed by `ProcessRegistry`).

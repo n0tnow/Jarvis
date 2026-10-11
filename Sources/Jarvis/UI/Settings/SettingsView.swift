@@ -70,6 +70,18 @@ struct SettingsView: View {
                 Text("JARVIS uses your own signed-in Codex / Claude Code subscriptions. It never asks for API keys, passwords or tokens, and sign-in always happens through the vendor's own flow. Providers run with tools disabled (conversation only).")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Autonomy") {
+                Picker("Initiative", selection: $prefs.autonomyMode) {
+                    ForEach(AutonomyMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.radioGroup)
+                .accessibilityIdentifier("settings.autonomyMode")
+                Text(prefs.autonomyMode.explanation).font(.caption).foregroundStyle(.secondary)
+                Toggle("Notice things after a task (proactive reasoning)", isOn: $prefs.proactiveReasoningEnabled)
+                Toggle("Show proposals in the Tasks screen", isOn: $prefs.showProposals)
+                Text("Always, in every mode: critical actions (purchases, Git push, credentials, deployment, deleting) and design/product decisions need your explicit approval — and an approval authorises exactly one proposal. A model's text can never approve anything. Approved or automatic work runs as a normal task with the same safety checks. JARVIS only reasons about a finished task once, using what it recorded; nothing runs while it is idle.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             RoutingSettingsSection()
             OpenCodeSettingsSection()
             LocalModelSettingsSection()
@@ -90,6 +102,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480, height: 860)
+        .frame(width: 480, height: 940)
     }
 }

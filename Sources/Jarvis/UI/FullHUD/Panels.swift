@@ -66,6 +66,17 @@ struct TasksPanel: View {
     var body: some View {
         HUDCard("Tasks", trailing: { Tag(text: "\(app.store.allTasks.count)") }) {
             VStack(spacing: Theme.Spacing.s) {
+                if app.preferences.showProposals, app.opportunities.summary != (0, 0) {
+                    let sm = app.opportunities.summary
+                    HStack {
+                        Image(systemName: "lightbulb").foregroundStyle(Theme.Palette.violet).accessibilityHidden(true)
+                        Text("\(sm.proposals) pending proposal\(sm.proposals == 1 ? "" : "s") · \(sm.findings) recorded finding\(sm.findings == 1 ? "" : "s")")
+                            .font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary)
+                        Spacer()
+                        Button("OPEN") { app.hud.section = .tasks }.buttonStyle(.hudSecondary).fixedSize()
+                    }
+                    .accessibilityElement(children: .combine)
+                }
                 ForEach(app.store.allTasks) { task in
                     TaskRow(task: task)
                 }

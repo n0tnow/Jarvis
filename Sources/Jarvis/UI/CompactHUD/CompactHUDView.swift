@@ -45,6 +45,10 @@ struct CompactHUDView: View {
                 .accessibilityHidden(true)
             Text("JARVIS").font(Theme.Typography.wordmark).tracking(4).foregroundStyle(Color.jarvisPrimary).lineLimit(1).fixedSize()
             Tag(text: AppInfo.milestone)
+            if app.preferences.showProposals, app.opportunities.pending.count > 0 {
+                let n = app.opportunities.pending.count
+                Tag(text: "\(n) SUGGESTION\(n == 1 ? "" : "S")").accessibilityLabel("\(n) pending suggestion\(n == 1 ? "" : "s") in the Tasks screen")
+            }
             Spacer()
             Menu {
                 Button("Settings…") { app.windows.showSettings() }
