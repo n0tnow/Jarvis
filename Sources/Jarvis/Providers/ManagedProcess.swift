@@ -83,7 +83,9 @@ final class ManagedProcess: @unchecked Sendable {
     private var started = false
     private(set) var wasCancelled = false
 
-    init(executable: String, arguments: [String], environment: [String: String], workingDirectory: String) {
+    /// `mergeStderr`: build/test tools print their diagnostics (compiler errors, unittest summaries) on stderr; merging keeps one
+    /// interleaved line stream so nothing is lost and everything passes through the same sanitization boundary. Providers keep a separate stderr.
+    init(executable: String, arguments: [String], environment: [String: String], workingDirectory: String, mergeStderr: Bool = false) {
         signal(SIGPIPE, SIG_IGN)   // writing a prompt to a process that already exited must not kill JARVIS
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
@@ -91,7 +93,7 @@ final class ManagedProcess: @unchecked Sendable {
         process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory, isDirectory: true)
         process.standardInput = inPipe
         process.standardOutput = outPipe
-        process.standardError = errPipe
+        process.standardError = mergeStderr ? outPipe : errPipe
     }
 
     var processIdentifier: pid_t { process.processIdentifier }

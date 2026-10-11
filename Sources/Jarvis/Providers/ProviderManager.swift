@@ -213,7 +213,7 @@ extension ProviderProbe {
                 return .unavailable("signed in with an API key / console login, not a Claude subscription")
             }
             return .ready
-        case .openCode, .local:
+        case .openCode, .local, .tool:
             return .ready          // not subscription logins; their eligibility is decided by the model registry (DEC-022)
         }
     }

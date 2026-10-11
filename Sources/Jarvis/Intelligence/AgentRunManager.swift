@@ -20,6 +20,14 @@ struct AgentDescriptor: Sendable {
     var title: String?
     /// Measurable structured steps (title, weight). The ONLY source of progress: none given ⇒ indeterminate.
     var steps: [(String, Double)] = []
+    /// V0.4: who owns the run in the Observatory (a task step is owned by the task engine, so Stop cancels the task).
+    var owner: RunOwner = .agent
+    /// V0.4 task-level escalation: candidates that must NOT be used (they already failed this step).
+    var exclude: Set<RoutingCandidate> = []
+    /// V0.4 task-level repair: use exactly this candidate (it must still be an eligible routing result) — no substitution.
+    var pin: RoutingCandidate?
+    /// Per-descriptor override of the repair/escalation budget (the task engine owns the bigger loop).
+    var policy: EscalationPolicy?
 }
 
 /// Retry/escalation are bounded and configurable (DEC-026): never an open loop.
@@ -81,6 +89,7 @@ final class AgentRunManager {
     @ObservationIgnored private var engineSlots: [ProviderID: Int] = [:]
     @ObservationIgnored private var heavySlots = 0
     @ObservationIgnored private var reservedByParent: [UUID: Int] = [:]
+    @ObservationIgnored private var capacityWaiters: [(id: UUID, cont: CheckedContinuation<Void, Never>)] = []
 
     var limits: ConcurrencyLimits { resources.limits }
 
@@ -124,6 +133,7 @@ final class AgentRunManager {
             if let c = slot.candidate { release(c, d.profile) }
             totalSlots -= 1; publishActivity()
             if let p = d.parentRunID { reservedByParent[p, default: 1] -= 1 }
+            wakeCapacityWaiters()
         }
 
         // --- route ---
@@ -131,10 +141,16 @@ final class AgentRunManager {
         guard let selected = decision.selected else {
             return .rejected(.noEligibleProvider(decision.refusalMessage() ?? "no provider"))
         }
+        // Task-level escalation/repair: drop the candidates that already failed this step / keep only the pinned one. In an explicit
+        // (non-Auto) mode there is nothing to escalate to: the exclusion simply leaves no candidate.
+        var ordered = [selected] + decision.fallbacks
+        if let pin = d.pin { ordered = ordered.filter { $0 == pin } }
+        if !d.exclude.isEmpty { ordered = ordered.filter { !d.exclude.contains($0) } }
+        guard !ordered.isEmpty else { return .rejected(.noEligibleProvider("no further provider is eligible for this step")) }
         // Capacity-aware, policy-ordered: the first candidate that has a free slot is CLAIMED immediately.
         var candidates: [RoutingCandidate] = []
         var firstRejection: AgentRejection?
-        for c in [selected] + decision.fallbacks {
+        for c in ordered {
             if let why = block(for: c, profile: d.profile) {
                 firstRejection = firstRejection ?? why
             } else if slot.candidate == nil {
@@ -147,7 +163,8 @@ final class AgentRunManager {
         let tracking = UUID()
         let task = Task { @MainActor in await self.execute(d, decision: decision, candidates: candidates, slot: slot, trackingID: tracking) }
         tasks[tracking] = task
-        let result = await task.value
+        // The execution Task is unstructured: forward the caller's cancellation (task STOP) so the provider process really dies.
+        let result = await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
         tasks[tracking] = nil
         cancelRequested.remove(tracking)
         return result
@@ -156,6 +173,7 @@ final class AgentRunManager {
     // MARK: Execution (bounded attempts)
 
     private func execute(_ d: AgentDescriptor, decision: RoutingDecision, candidates: [RoutingCandidate], slot: SlotBox, trackingID: UUID) async -> AgentRunResult {
+        let policy = d.policy ?? self.policy
         var index = 0
         var attempts = 0
         var escalations = 0
@@ -178,7 +196,7 @@ final class AgentRunManager {
             }
             guard let resolved = coordinator.makeResolved(candidate, decision: decision, profile: d.profile, prompt: d.prompt, depth: escalations,
                                                           agentType: d.type, taskID: d.taskID, parent: d.parentRunID, escalatedFrom: previousEngine,
-                                                          label: d.title, owner: .agent),
+                                                          label: d.title, owner: d.owner),
                   let runID = resolved.runID else { index += 1; continue }
             lastRunID = runID
             active.append(ActiveAgent(id: runID, type: d.type, engine: candidate.engine, model: candidate.model, startedAt: Date(), parent: d.parentRunID,
@@ -264,6 +282,27 @@ final class AgentRunManager {
         case .failed: onEvent?("\(resolved.name) failed validation or errored")
         case .cancelled: onEvent?("\(audit.record(runID)?.agentType ?? "Agent") cancelled")
         }
+    }
+
+    // MARK: Capacity (event-driven; the task engine waits here instead of polling when every slot is taken)
+
+    /// Resolves when a slot has been released by any agent (or the caller is cancelled). Never a timer.
+    func waitForCapacityChange() async {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                if Task.isCancelled { cont.resume() } else { capacityWaiters.append((id, cont)) }
+            }
+        } onCancel: {
+            Task { @MainActor in
+                if let i = self.capacityWaiters.firstIndex(where: { $0.id == id }) { self.capacityWaiters.remove(at: i).cont.resume() }
+            }
+        }
+    }
+
+    private func wakeCapacityWaiters() {
+        let all = capacityWaiters; capacityWaiters = []
+        for w in all { w.cont.resume() }
     }
 
     // MARK: Cancellation

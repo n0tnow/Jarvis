@@ -323,7 +323,8 @@ final class ExecutionHub {
 extension ExecutionHub {
     /// Stop is NEVER a second kill mechanism: it is routed to the cancellation that already owns the run —
     /// conversation STOP (→ provider cancel → SIGINT/SIGTERM/SIGKILL tree), `AgentRunManager.cancel`, or the cancellable user task.
-    func installStopRouting(conversation: ConversationService, agents: AgentRunManager, userTask: @escaping (UUID) -> Task<Void, Never>?, demo: @escaping () -> ObservatoryDemo?) {
+    func installStopRouting(conversation: ConversationService, agents: AgentRunManager, userTask: @escaping (UUID) -> Task<Void, Never>?, demo: @escaping () -> ObservatoryDemo?,
+                            taskStop: @escaping (UUID) -> Bool = { _ in false }) {
         stopHandler = { [weak self, weak conversation, weak agents] runID in
             guard let self, let v = self.run(runID) else { return false }
             switch v.owner {
@@ -336,6 +337,8 @@ extension ExecutionHub {
                 agents.cancel(runID); return true
             case .simulated:
                 return demo()?.stop(runID) ?? false
+            case .task:
+                return taskStop(runID)                  // stopping a task's agent stops the task (existing cancellation, propagated downward)
             }
         }
     }

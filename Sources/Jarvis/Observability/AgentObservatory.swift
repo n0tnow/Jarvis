@@ -170,6 +170,7 @@ final class AgentObservatory {
                 if let v = openCode.version { facts.append("Version \(v)") }
             case .claudeCode, .codex:
                 if let v = supervisor.providers.status(engine).version { facts.append("Version \(v)") }
+            case .tool: break
             }
             if !active.isEmpty { facts.append("\(active.count) active run\(active.count == 1 ? "" : "s")") }
             let lastView = hub.recentFinished.first { $0.engine == engine } ?? last[engine].map(Self.view(from:))
@@ -186,7 +187,7 @@ final class AgentObservatory {
     static func view(from r: AgentRunRecord) -> AgentRunView {
         var v = AgentRunView(id: r.id, label: r.label ?? r.agentType, agentType: r.agentType, engine: r.engine, model: r.model, parent: r.parentAgentRunID,
                              phase: RunPhase(r.status), startedAt: r.startedAt, finishedAt: r.finishedAt, activity: r.activity ?? r.status.rawValue.capitalized)
-        v.retryCount = r.retryCount; v.escalatedFrom = r.escalatedFrom; v.escalatedTo = r.escalatedTo
+        v.retryCount = r.retryCount; v.escalatedFrom = r.escalatedFrom; v.escalatedTo = r.escalatedTo; v.taskID = r.taskID
         v.inputTokens = r.inputTokens; v.outputTokens = r.outputTokens; v.errorCategory = r.errorCategory
         // Progress is read back from what was PERSISTED (source + fraction) — never recomputed from anything softer.
         if let f = r.progressFraction, r.progressSource != .unknown, let total = r.stepsTotal {

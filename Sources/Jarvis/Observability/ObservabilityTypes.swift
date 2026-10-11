@@ -106,7 +106,7 @@ enum RunPhase: String, Codable, Sendable {
     }
 }
 
-enum RunOwner: String, Sendable { case conversation, agent, benchmark, simulated }
+enum RunOwner: String, Sendable { case conversation, agent, benchmark, simulated, task }
 
 struct AgentRunView: Identifiable, Equatable, Sendable {
     var id: UUID
@@ -129,6 +129,8 @@ struct AgentRunView: Identifiable, Equatable, Sendable {
     var errorCategory: String?
     var owner: RunOwner = .conversation
     var isSimulated = false
+    /// V0.4: the task (and step) this run executes for — the Observatory groups runs under their task.
+    var taskID: UUID?
 
     func elapsed(at now: Date = Date()) -> TimeInterval { (finishedAt ?? now).timeIntervalSince(startedAt) }
 

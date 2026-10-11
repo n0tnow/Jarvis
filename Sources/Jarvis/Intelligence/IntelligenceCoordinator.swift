@@ -100,6 +100,8 @@ final class IntelligenceCoordinator: IntelligenceProviderResolving {
         case .local:
             guard let runtime = supervisor.local, LocalModelPolicy.evaluate(profile).eligible else { return nil }
             provider = LocalQwenProvider(runtime: runtime, profile: profile)
+        case .tool:
+            return nil                                    // deterministic JARVIS tools are never routed to a model
         }
         var d = decision
         if depth > 0, let from = escalatedFrom { d.reasons["escalatedFrom"] = from.rawValue; d.reasons["selected"] = c.model ?? c.engine.rawValue }

@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1, v2]
+    static let all: [Migration] = [v1, v2, v3]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -184,5 +184,72 @@ struct Migration: Sendable {
             weight REAL NOT NULL DEFAULT 1, state TEXT NOT NULL, PRIMARY KEY (run_id, idx)
         )
         """,
+    ])
+
+    /// V3 — autonomous task engine (V0.4): durable task/plan/step state, attempts (repair/escalation), approvals, write leases and
+    /// per-step file-change evidence. Columns are appended to the V1 storage tables; nothing is renamed. All text stored here is
+    /// bounded and passed through the sanitizer/redactor by the repository.
+    static let v3 = Migration(version: 3, name: "autonomous task engine", statements: [
+        "ALTER TABLE tasks ADD COLUMN goal TEXT",
+        "ALTER TABLE tasks ADD COLUMN kind TEXT",
+        "ALTER TABLE tasks ADD COLUMN risk TEXT",
+        "ALTER TABLE tasks ADD COLUMN workspace_root TEXT",
+        "ALTER TABLE tasks ADD COLUMN started_at REAL",
+        "ALTER TABLE tasks ADD COLUMN current_step TEXT",
+        "ALTER TABLE tasks ADD COLUMN activity TEXT",
+        "ALTER TABLE tasks ADD COLUMN progress_fraction REAL",
+        "ALTER TABLE tasks ADD COLUMN progress_source TEXT",
+        "ALTER TABLE tasks ADD COLUMN constraints TEXT",
+        "ALTER TABLE tasks ADD COLUMN failure_category TEXT",
+        "ALTER TABLE tasks ADD COLUMN failure_reason TEXT",
+        "ALTER TABLE tasks ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE tasks ADD COLUMN recovery TEXT",
+        "ALTER TABLE tasks ADD COLUMN plan_version INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE tasks ADD COLUMN capabilities TEXT",
+        "ALTER TABLE tasks ADD COLUMN git_baseline TEXT",
+        "ALTER TABLE tasks ADD COLUMN report_artifact_id TEXT",
+        "ALTER TABLE tasks ADD COLUMN checkpoint_artifact_id TEXT",
+        "ALTER TABLE tasks ADD COLUMN accumulated_seconds REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE tasks ADD COLUMN preference TEXT",
+        "ALTER TABLE tasks ADD COLUMN destructive_requested INTEGER NOT NULL DEFAULT 0",
+        "CREATE INDEX idx_tasks_status ON tasks(status)",
+        "ALTER TABLE task_steps ADD COLUMN step_key TEXT",
+        "ALTER TABLE task_steps ADD COLUMN type TEXT",
+        "ALTER TABLE task_steps ADD COLUMN description TEXT",
+        "ALTER TABLE task_steps ADD COLUMN depends_on TEXT",
+        "ALTER TABLE task_steps ADD COLUMN expected TEXT",
+        "ALTER TABLE task_steps ADD COLUMN validation TEXT",
+        "ALTER TABLE task_steps ADD COLUMN risk TEXT",
+        "ALTER TABLE task_steps ADD COLUMN weight REAL NOT NULL DEFAULT 1",
+        "ALTER TABLE task_steps ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE task_steps ADD COLUMN agent_run_id TEXT",
+        "ALTER TABLE task_steps ADD COLUMN result_summary TEXT",
+        "ALTER TABLE task_steps ADD COLUMN failure_category TEXT",
+        "ALTER TABLE task_steps ADD COLUMN failure_reason TEXT",
+        "ALTER TABLE task_steps ADD COLUMN validation_evidence TEXT",
+        "CREATE INDEX idx_task_steps_task ON task_steps(task_id, idx)",
+        """
+        CREATE TABLE step_attempts (
+            id TEXT PRIMARY KEY, step_id TEXT NOT NULL REFERENCES task_steps(id) ON DELETE CASCADE, task_id TEXT NOT NULL,
+            number INTEGER NOT NULL, kind TEXT NOT NULL, engine TEXT, model TEXT, agent_run_id TEXT,
+            outcome TEXT NOT NULL, evidence TEXT, started_at REAL NOT NULL, finished_at REAL
+        )
+        """,
+        "CREATE INDEX idx_step_attempts_task ON step_attempts(task_id)",
+        """
+        CREATE TABLE file_leases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL, task_id TEXT NOT NULL, step_id TEXT, owner TEXT NOT NULL,
+            acquired_at REAL NOT NULL, state TEXT NOT NULL, released_at REAL
+        )
+        """,
+        "CREATE INDEX idx_file_leases_state ON file_leases(state)",
+        "ALTER TABLE approvals ADD COLUMN step_id TEXT",
+        "ALTER TABLE approvals ADD COLUMN action TEXT",
+        "ALTER TABLE approvals ADD COLUMN reason TEXT",
+        "ALTER TABLE approvals ADD COLUMN risk TEXT",
+        "ALTER TABLE file_changes ADD COLUMN step_key TEXT",
+        "ALTER TABLE file_changes ADD COLUMN before_hash TEXT",
+        "ALTER TABLE file_changes ADD COLUMN after_hash TEXT",
+        "ALTER TABLE file_changes ADD COLUMN preexisting INTEGER NOT NULL DEFAULT 0",
     ])
 }

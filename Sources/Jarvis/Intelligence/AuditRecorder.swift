@@ -30,7 +30,7 @@ final class AuditRecorder {
         runs[run.id] = run
         save { try $0.insert(run) }
         hub?.begin(AgentRunView(id: run.id, label: run.label ?? agentType, agentType: agentType, engine: engine, model: model, parent: parent, phase: .starting,
-                                startedAt: now, activity: "Starting", owner: owner))
+                                startedAt: now, activity: "Starting", owner: owner, taskID: taskID))
         return run.id
     }
 

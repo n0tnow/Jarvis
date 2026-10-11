@@ -41,7 +41,8 @@ forbid "no credential / token / cookie access" "auth\\.json|\\.credentials|SecIt
 forbid "API-key / token variable names appear ONLY in the scrub list" "ANTHROPIC_API_KEY|OPENAI_API_KEY|CODEX_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_BASE_URL|OPENAI_BASE_URL|OPENAI_ORG|AWS_BEARER_TOKEN|ANTHROPIC_BEDROCK|ANTHROPIC_VERTEX|CLAUDE_CODE_USE_(BEDROCK|VERTEX)|OPENCODE_API_KEY|OPENCODE_SERVER_PASSWORD|OPENROUTER_API_KEY|GROQ_API_KEY|MISTRAL_API_KEY|GEMINI_API_KEY|XAI_API_KEY|DEEPSEEK_API_KEY|HF_TOKEN|HUGGING_FACE_HUB_TOKEN" "^Sources/Jarvis/Providers/ProviderEnvironment\\.swift"
 forbid "no dangerous provider flags or API-key-only modes" "\"--bare\"|dangerously|danger-full-access|bypassPermissions|--full-auto|--approve-for-me|\"--enable\"|workspace-write|--yolo|--allowedTools|--allow-dangerously|--add-dir|--mcp-config|\"--api-key|--with-api-key|\"--auto\"|\"--attach\"|\"--share\"|\"--password\"|\"--mdns\"|\"serve\"|\"web\""
 forbid "Process is created ONLY by ManagedProcess (one audited launch point)" "(^|[^[:alnum:]_.])Process\\(\\)|NSTask|posix_spawn|Foundation\\.Process" "^Sources/Jarvis/Providers/ManagedProcess\\.swift"
-forbid "no generic launchers / downloaders / UI scripting" "/usr/bin/env|\"env\"|curl|wget|osascript|NSWorkspace\\.shared\\.(launchApplication|open\\(.*URL\\(string)" "^Sources/Jarvis/App/(SmokeTest|DevCapture)\\.swift"
+# (TaskPlan.swift holds the plan validator's DENY-list of prohibited phrases — words it rejects, not code that uses them.)
+forbid "no generic launchers / downloaders / UI scripting" "/usr/bin/env|\"env\"|curl|wget|osascript|NSWorkspace\\.shared\\.(launchApplication|open\\(.*URL\\(string)" "^Sources/Jarvis/App/(SmokeTest|DevCapture)\\.swift|^Sources/Jarvis/Tasks/TaskPlan\\.swift"
 forbid "no shell is ever used to run a provider" "/bin/(ba|z)?sh|launchPath|\"sh\", *\"-c\"|popen\\(|[^.[:alnum:]_]system\\("
 forbid "OpenCode credential/integration API operations are never invoked (only the fixed model.list)" "credential\\.(list|get|remove|create|update)|integration\\.(list|get|connect)|connect/(key|external|oauth|command)"
 forbid "no URL literals in product code (JARVIS contacts no host itself; providers do their own networking)" "\"https?://|URL\\(string:"
@@ -60,14 +61,31 @@ swift_db=$(grep -rln "sqlite3_open" Sources | grep -v Persistence/SQLiteDatabase
 [ -z "$swift_db" ] && pass "raw SQLite access is confined to Persistence/SQLiteDatabase.swift" || fail "raw sqlite3 use outside the persistence engine: $swift_db"
 
 # --- V0.3.2 Agent Observatory: raw provider output may only enter observable/durable state through the sanitization boundary ---
-forbid "no pseudo-terminal / embedded shell (Agent Console is read-only JARVIS-managed output)" "forkpty|openpty|posix_openpt|/dev/ptmx|NSTask|\\bsudo\\b"
-forbid "console text enters the hub only via SafeProvider (or the labelled developer simulation)" "\\.appendOutput\\(" "^Sources/Jarvis/Observability/(SafeProvider|ObservatoryDemo|ExecutionHub)\\.swift"
+forbid "no pseudo-terminal / embedded shell (Agent Console is read-only JARVIS-managed output)" "forkpty|openpty|posix_openpt|/dev/ptmx|NSTask|\\bsudo\\b" "^Sources/Jarvis/Tasks/TaskPlan\\.swift"
+forbid "console text enters the hub only via SafeProvider / SafeToolOutput (or the labelled developer simulation)" "\\.appendOutput\\(" "^Sources/Jarvis/Observability/(SafeProvider|SafeToolOutput|ObservatoryDemo|ExecutionHub)\\.swift"
 forbid "console events are persisted only by the hub / audit recorder (events are sanitized by construction)" "\\.appendEvents\\(" "^Sources/Jarvis/(Observability/ExecutionHub|Intelligence/AuditRecorder|Persistence/JarvisRepository)\\.swift"
 forbid "console output artifacts are written only by the hub" "folder: *\\.providerOutput" "^Sources/Jarvis/Observability/ExecutionHub\\.swift"
 forbid "no raw INSERT into agent_events outside the repository" "INSERT[^;]*agent_events" "^Sources/Jarvis/Persistence/(JarvisRepository|Migrations)\\.swift"
 grep -q "SafeProvider(base:" Sources/Jarvis/Intelligence/IntelligenceCoordinator.swift && pass "every engine built by the coordinator is wrapped in SafeProvider" || fail "coordinator does not wrap providers in SafeProvider"
 tracked_logs=$(git ls-files 2>/dev/null | grep -E '\.(log|ndjson)$|(^|/)console[^/]*\.(txt|json)$' || true)
 [ -z "$tracked_logs" ] && pass "no console/log dumps are tracked by git" || fail "tracked log/console dumps: $tracked_logs"
+
+
+# --- V0.4 Autonomous task engine: bounded, user-initiated, no unrestricted write/shell/Git power ---
+forbid "no destructive/remote Git operations anywhere in the product (reset --hard, clean, force push, push, checkout -f, rebase, filter-branch)" "reset +--hard|git +clean|clean +-f|push +--force|push +-f|checkout +-f|filter-branch|\"push\"|\"rebase\"|git +push|git +commit" "^Sources/Jarvis/Tasks/TaskPlan\\.swift"
+git_mut=$(grep -nE '"(commit|push|reset|clean|checkout|add|rm|stash|merge|rebase|pull|fetch|clone|config|tag|branch)"' Sources/Jarvis/Tasks/GitTool.swift | grep -v '^\s*//' || true)
+[ -z "$git_mut" ] && pass "GitTool is read-only (status/branch/HEAD only)" || { fail "GitTool contains a mutating Git subcommand"; echo "$git_mut" | head -3; }
+shells=$(grep -nE 'static let names: Set<String> = .*"(sh|bash|zsh|dash|ksh|env|curl|wget|git|rm|osascript|perl|ruby|ssh|sudo)"' Sources/Jarvis/Tasks/CommandProfiles.swift || true)
+[ -z "$shells" ] && pass "build/test executables are an explicit allowlist with no shell, env, downloader or Git" || fail "unapproved executable on the build/test allowlist"
+task_writes=$(grep -rnE '\.write\(to:|\.write\(contentsOf|createFile\(|removeItem\(|moveItem\(|copyItem\(|setAttributes\(|\.replaceItem' Sources/Jarvis/Tasks | grep -v 'Sources/Jarvis/Tasks/ProjectTools.swift' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$task_writes" ] && pass "task engine writes project files only through ProjectTools (capability + workspace + lease checked)" || { fail "file write outside ProjectTools in Tasks/"; echo "$task_writes" | head -3; }
+bad_caps=$(grep -rnE 'granted:.*\.(gitPush|gitCommit|purchase|useNetwork|useBrowser)|TaskCapability\.allCases\)' Sources | grep -v 'Sources/Jarvis/Tasks/TaskModel.swift' || true)
+[ -z "$bad_caps" ] && pass "no code path grants gitPush / gitCommit / purchase / network / browser capabilities" || { fail "forbidden capability granted"; echo "$bad_caps" | head -3; }
+[ "$(grep -c 'neverGranted' Sources/Jarvis/Tasks/TaskModel.swift)" -ge 2 ] && pass "CapabilitySet strips never-grantable capabilities" || fail "CapabilitySet no longer strips never-grantable capabilities"
+ui_db=$(grep -rnE 'app\.repository|\.repository\??\.(update|insert|setTaskStatus|insertSteps|insertLease|releaseLeases)' Sources/Jarvis/UI | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$ui_db" ] && pass "the UI never writes the task database (task/step/approval state changes only through TaskEngine)" || { fail "UI touches the repository"; echo "$ui_db" | head -3; }
+tracked_fix=$(git ls-files 2>/dev/null | grep -E 'jarvis-task-(demo|fixture)|(^|/)\.jarvis/|task-(checkpoint|report)' || true)
+[ -z "$tracked_fix" ] && pass "no task fixture, checkpoint or report output is tracked by git" || fail "tracked task output: $tracked_fix"
 
 print "== Smoke test (real window manager, store, status item)"
 log=$(mktemp)
