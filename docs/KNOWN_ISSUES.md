@@ -172,3 +172,23 @@ Resolved. `SettingsWindow`; `announcementRequested` notification on the approval
 
 ### JARVIS-009 — Repository had no commits
 Resolved 2026-10-10. Baseline commit `feat(v0.1): establish native macOS Jarvis foundation` on `main`, pushed to origin (see `git log`). Workflow: DEC-011 / AGENTS.md. No `v0.1` tag until the user approves V0.1.
+
+### JARVIS-V032-1 — Agents UI is verified by captures and the smoke test, not by a human
+Status: Open · MANUAL TEST REQUIRED
+Description: VoiceOver reading order, real selection/⌘C in the console, STOP click, layout feel with long consoles and Retina rendering were not checked by a person. (README 40–66.)
+
+### JARVIS-V032-2 — Sanitizer cost at extreme rates
+Status: Open · NON-BLOCKING
+Description: Pattern sanitization costs ≈0.35 ms per line. A synthetic 400 lines/s stream (≈25× a real CLI) costs ≈13 % of one core with HUDs closed and ≈20–29 % with the console hidden/visible in the Full HUD. Memory stays flat (RSS +1–2 MB over 90 s). Real streams are far slower (a few lines/s). A faster sanitizer (pre-filter on candidate characters) is possible if needed.
+
+### JARVIS-V032-3 — Real CLI runs have no measurable progress
+Status: Open · by design (DEC-030)
+Description: Claude Code / Codex / OpenCode / local runs show an indeterminate bar with elapsed time; a percentage appears only for runs with declared steps (benchmarks/agents with a step list). Codex/OpenCode stream at message level, so their console fills at the end.
+
+### JARVIS-V032-4 — Console is read-only and there is no Pause
+Status: Open · by design (DEC-031)
+Description: None of the integrations supports same-session input or pausing; the capability matrix is in `docs/AGENT_OBSERVABILITY.md`.
+
+### JARVIS-V032-5 — Console cosmetics
+Status: Open · NON-BLOCKING
+Description: In the run detail, "Copy all" and STOP stretch across the full width of their rows.

@@ -1,6 +1,6 @@
 # Roadmap
 
-V0.1–V0.3.1 have been built (V0.3 and V0.3.1 await manual test). Everything else is PLANNED — do not start a milestone without explicit user approval.
+V0.1–V0.3.2 have been built (V0.3, V0.3.1 and V0.3.2 await manual test). Everything else is PLANNED — do not start a milestone without explicit user approval.
 
 | Version | Scope | Status |
 |---|---|---|
@@ -9,6 +9,7 @@ V0.1–V0.3.1 have been built (V0.3 and V0.3.1 await manual test). Everything el
 | V0.2 | Text conversation + intelligence/command router (deterministic EN/TR commands, conversation store/UI, IntelligenceRouter, provider boundary) | user-tested (V0.2.1 clipboard fix applied) |
 | V0.3 | Real intelligence via the user's own Codex / Claude Code subscriptions: conversation-only, streaming, stop generation, continuity, provider selection (no API keys). **Autonomous worker execution is NOT part of V0.3 → V0.4** | READY FOR MANUAL TEST |
 | V0.3.1 | Intelligence infrastructure: SQLite persistence + audit trail, OpenCode verified-free pool, local Qwen, ProviderSupervisor, policy-driven model router, bounded background-agent foundation (no autonomous task engine) | READY FOR MANUAL TEST |
+| V0.3.2 | Agent Observatory & live consoles: provider/agent overview, sanitized live console, truthful progress/states, history, timeline, Stop, restart reconciliation, central sanitization boundary (no task engine, no shell) | READY FOR MANUAL TEST |
 | V0.4 | Persistent task engine + long-running background jobs (builds on V0.3.1 persistence/agents/routing) | PLANNED |
 | V0.5 | Local STT + microphone | PLANNED |
 | V0.6 | Local/approved TTS + streaming voice | PLANNED |

@@ -4,20 +4,20 @@
 
 ## Current Version
 
-V0.3.1 — intelligence infrastructure (persistence + audit, OpenCode verified-free pool, local Qwen, ProviderSupervisor, model router, background-agent foundation) on top of V0.3 (Claude Code / Codex) and V0.2.1. App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3 and V0.3.1 are not**.
+V0.3.2 — agent observatory & live consoles (on top of V0.3.1 intelligence infrastructure, V0.3 Claude Code / Codex and V0.2.1). App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3, V0.3.1 and V0.3.2 are not**.
 
 ## Current Milestone
 
-V0.3.1: intelligence infrastructure (NOT the V0.4 task engine)
+V0.3.2: Agent Observatory & Live Consoles (NOT the V0.4 task engine)
 
 ## Status
 
-**V0.3.1 — READY FOR MANUAL TEST**
-(Automated + REAL verification passed on this Mac: OpenCode 1.19.0 / Claude Code / Codex / local Qwen. Not user-verified. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.4.)
+**V0.3.2 — READY FOR MANUAL TEST**
+(Automated + REAL verification passed on this Mac: OpenCode 1.19.0 / local Qwen observed live. Not user-verified. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.4.)
 
 ## Current Objective
 
-User manual test of `build/Jarvis.app` (README items 33–39 for V0.3.1, 26–32 for V0.3). Optional local-model setup: `scripts/setup_local_ai.sh`.
+User manual test of `build/Jarvis.app` (README items 40–66 for V0.3.2, 33–39 for V0.3.1, 26–32 for V0.3). Optional local-model setup: `scripts/setup_local_ai.sh`.
 
 ## Completed (IMPLEMENTED)
 
@@ -35,6 +35,12 @@ User manual test of `build/Jarvis.app` (README items 33–39 for V0.3.1, 26–32
 - Settings: Reduce Motion, Show Developer Controls, Launch at Login (disabled placeholder, NOT implemented).
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
+
+## V0.3.2 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED · UI MANUAL TEST REQUIRED)
+
+- **Security boundary (DEC-029):** every provider/worker output is sanitized ONCE (`Observability/OutputSanitizer.swift`, fail closed, split-secret safe) before SwiftUI state, console buffers, activity events, SQLite, artifacts; `SafeProvider` wraps every engine; `Redactor` delegates; no credential/integration API use; verify.sh confines the write paths.
+- **Observatory (DEC-030…032, `docs/AGENT_OBSERVABILITY.md`):** `ExecutionHub` (bounded consoles, coalesced revisions, batched SQLite `agent_events`, sanitized output artifact), `AgentObservatory` read model, truthful `ProviderStateResolver` (READY ≠ RUNNING; downloaded ≠ loaded; STARTING while Qwen loads), `ProgressCalculator` (percentage only from declared steps; otherwise indeterminate; `progressSource` persisted), `RunPhase`, INTERRUPTED reconciliation at launch, Stop through the existing cancellation only, no Pause, console read-only (no integration supports same-session input), developer simulation `--demo-agents`/`--demo-stress` (never persisted, labelled).
+- **UI:** Full HUD → AGENTS (provider cards, active runs + STOP, recent, Live/History/Timeline, run detail with `NSTextView` console, native ⌘C); Compact: 44 pt summary strip only while something runs (392×448 unchanged); router aliases (`show agents`, `ajanları aç`).
 
 ## V0.3.1 additions (IMPLEMENTED · REAL TESTED · MOCK TESTED · UI/physical MANUAL TEST REQUIRED)
 
@@ -75,7 +81,7 @@ User manual test of `build/Jarvis.app` (README items 33–39 for V0.3.1, 26–32
 
 ## In Progress
 
-Nothing. Waiting for user manual verification of V0.3.
+Nothing. Waiting for user manual verification of V0.3 / V0.3.1 / V0.3.2.
 
 ## Pending (outside V0.1)
 
@@ -86,6 +92,14 @@ Everything in `docs/ROADMAP.md` from V0.2 onward — PLANNED, not started.
 See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MANUAL VERIFICATION REQUIRED; Retina rendering not verified (dev machine screen was 1×).
 
 ## Tested
+
+**V0.3.2 (2026-10-11) — `scripts/verify.sh` → VERIFY PASSED:** 377 unit tests (56 suites; sanitizer incl. split/failing engine, progress, provider state, phases, console ordering/bounds/no second process/malformed events/cancellation, history through the real repository, stale-run recovery, UI helpers) · smoke 89 PASS / 0 FAIL / 2 SKIP (AX audit, unchanged; now also Agents section/Compact strip) · new policy guards (no pty/shell; console enters the hub only via SafeProvider; events/artifacts written only by hub/repository; no raw `agent_events` INSERT; coordinator wraps SafeProvider; no tracked logs) · idle 0.01 s CPU/8 s, RSS 70 MB.
+**REAL TESTED — `Jarvis --intelligence-live-test` (35 PASS / 0 FAIL, OpenCode 1.19.0, local Qwen):** Qwen card UNLOADED → STARTING → RUNNING → LOADED·IDLE; real run phases starting→running→completed; the console shows the same execution's sanitized output and completed event; timeline/history list the run; unknown progress shows no percentage; OpenCode card RUNNING with the real free model; **Stop** via the hub killed the OpenCode tree in 0.13 s with CANCELLED in hub/SQLite/console and no cooldown; a synthetic fake key echoed by the real Qwen model was masked everywhere (UI state, console, activity, SQLite, artifacts); real-file reconciliation produced INTERRUPTED with a persisted reason. Not run with real Claude/Codex (observed via the same SafeProvider path in mock tests; V0.3 live test unchanged).
+**Performance (release, M5, % of one core, same-host A/B against a V0.3.1 build):** closed idle 0.1 % / 73 MB · Compact idle 0.3 % / 112 MB (V0.3.1: 0.3 / 111) · Compact + 2 simulated runs 1.0 % · Full Dashboard idle 7.4 % / 137 MB (V0.3.1 on the same host: 7.5 % / 136 MB — the 3.4 % quoted for V0.3.1 was a quieter host) · Full System 1.8 % · Full Agents (no runs) 1.4 % / 127 MB · Full Agents + 2 simulated runs, console visible 10.0 % / 142 MB · Full Dashboard + 2 runs (console not mounted) 7.8 %. Synthetic stress 400 lines/s (≈25× a real stream): closed 13.9 %, Compact 11.2 %, Full console hidden 20.3 %, Full console visible 28.6 %; RSS flat over a 90 s stream (75→76 MB closed, 137→139 MB Full) → buffers are bounded. These are JARVIS-process numbers; provider child processes are unchanged by V0.3.2 (V0.3.1: OpenCode ≈0.5–1.0 % / 500–650 MB, Qwen worker 1.2–2.2 GB resident, ≈1 % CPU generating) and are not run by the stress/simulation modes.
+**VISUALLY VERIFIED** (captures): Agents section live/detail/console, Compact summary strip (392×448 in all Compact captures).
+**MANUAL TEST REQUIRED:** README 40–66 (VoiceOver, real clicks/STOP/selection/⌘C, long sessions, Retina, quit-while-running).
+
+(Earlier milestones)
 
 **V0.3.1 (2026-10-11) — `scripts/verify.sh` → VERIFY PASSED:** 327 unit tests (47 suites; serial; fake CLIs/worker with real child processes; temp SQLite) · smoke 85 PASS / 0 FAIL / 2 SKIP (AX audit, unchanged) · extended policy rules (no network clients/URL literals, no credential/integration API names, no `--auto`/`--attach`/service flags, Process only in ManagedProcess, no tracked DB/model/large file, no secrets, worker offline) · idle CPU 0.02 s/8 s.
 **REAL TESTED — `Jarvis --intelligence-live-test --benchmark-models` (28/28 PASS, OpenCode 1.19.0; earlier runs 27/27 on 1.18.34 and 1.19.0):** SQLite written by the app, closed, reopened (12 runs with reasons, 28 activity events, 42 registry rows, schema v1) · discovery (Claude/Codex/OpenCode/Local READY; **11 verified-free models**, 31 rejected: 30 `price > 0`, `opencode-go` zero-price ones "credentialed plan") · **local Qwen**: answer `JARVIS_LOCAL_OK` through ConversationService→Coordinator→provider→worker, on-demand start, ping/pong, STOP in 0.03 s with the worker still usable, idle unload after 3 s with the process gone, explicit Local refuses a coding question · **OpenCode FREE** `longcat-2.5-preview-free` (zero-retention) answered `JARVIS_OPENCODE_OK` in 4.7 s through the stack, audited (engine, model, freeVerified, reason) · v2 tool canaries (shell/write/outside read/fetch/Code Mode/sub-agent): nothing executed · STOP kills both OpenCode processes in <0.2 s, run `cancelled`, no cooldown · **Auto routing**: summary → Local; coding question → **OpenCode · space-bunny-free** (benchmarked 13/13, zero-retention, verified free) with reason `{tier: development-free-first, codingBenchmarkPassed: true, freeVerified: true, localModelIneligible: true, …}`; architecture → Claude Code (`heavy-premium-only`); deterministic commands/worker requests: no engine, no run · app-termination path kills the local worker · no managed process left.
@@ -120,7 +134,7 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Important Decisions
 
-See `docs/DECISIONS.md` (DEC-001…DEC-021). Key ones:
+See `docs/DECISIONS.md` (DEC-001…DEC-032). Key ones:
 - Native Swift/SwiftUI/AppKit only (no Electron/React/Tauri/web UI).
 - UI/window state (`HUDState`) separated from application/task state (`JarvisStore`); closing HUDs never touches tasks.
 - All window control goes through `JarvisWindowControlling`.
@@ -145,12 +159,12 @@ None.
 
 ## Next Action
 
-**Wait for the user's manual V0.3 + V0.3.1 test** (`README.md` items 26–32 and 33–39). Do not start V0.4 (persistent task engine / workers) without approval.
+**Wait for the user's manual V0.3 + V0.3.1 + V0.3.2 test** (`README.md` items 26–32, 33–39 and 40–66). Do not start V0.4 (persistent task engine / workers) without approval.
 
 ## Git
 
-`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; V0.3 commits start at `58c6948`; V0.3.1 at `f2665a5`; **no tag**; no AI co-author trailers (user rule). Policy: `AGENTS.md` → Git Workflow, DEC-011.
+`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; V0.3 commits start at `58c6948`; V0.3.1 at `f2665a5`; V0.3.2 at `e445f3f`; **no tag**; no AI co-author trailers (user rule). Policy: `AGENTS.md` → Git Workflow, DEC-011.
 
 ## Last Updated
 
-2026-10-11 — V0.3.1 implemented, REAL TESTED (SQLite, local Qwen, OpenCode free models, routing, lifecycle), verified. READY FOR MANUAL TEST.
+2026-10-11 — V0.3.2 implemented, REAL TESTED (observed Qwen/OpenCode runs, Stop, secret masking, reconciliation), verified. READY FOR MANUAL TEST.

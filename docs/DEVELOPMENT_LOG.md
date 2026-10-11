@@ -164,3 +164,24 @@ DEC-022 … DEC-028 (+ DEC-025 addendum).
 
 ### Remaining Work
 User manual test (README 33–39). V0.4 only with approval. No tag.
+
+## 2026-10-11 — V0.3.2: agent observatory & live consoles
+
+### Goal
+Make agents/providers observable live (provider cards, run cards, sanitized console, history, timeline, Stop, restart reconciliation) with a security boundary strong enough that provider output can never leak a secret into state, storage or UI. Not V0.4.
+
+### Changes
+`Observability/` (OutputSanitizer + StreamSanitizer, ObservabilityTypes, ExecutionHub, SafeProvider, AgentObservatory, ObservatoryDemo) · schema v2 (`agent_events`, `agent_run_steps`, run label/progress/activity; `interrupted` status) · `AuditRecorder.reconcileStaleRuns` · coordinator wraps every engine in SafeProvider · Agents section (provider cards, runs, console on `NSTextView`, history, timeline), Compact summary strip, router aliases, `--demo-agents`/`--demo-stress` · tests (SanitizerTests, ObservatoryTests, ObservatoryConsoleTests, ObservatoryUITests; 377 total) · live test extended · `verify.sh` guards · DEC-029…032, `docs/AGENT_OBSERVABILITY.md`.
+
+### Real findings (found by tests, fixed)
+- JSON-field redaction regex back-referenced the wrong group → plain `"password": "…"` leaked (caught by a sanitizer unit test).
+- A structured-sanitize second pass destroyed JSON keys; a dangling-keyword hold split `password:` from its value; fixed with a whole-word rule.
+- Compact summary strip reserved space when idle and pushed the dev strip out of view → zero height when idle.
+- Live test: a local run read RUNNING while the model was still loading (now STARTING); the hub phase never left `starting` for CLIs that answer at the end (now RUNNING once the process is launched); the "Reply with exactly: sk-test-…" prompt was routed as a worker request because of the word "test" (use a neutral fake key).
+- Performance on this machine: Full Dashboard idle is 7.4 % with BOTH V0.3.2 and V0.3.1 (the 3.4 % in the V0.3.1 notes was a quieter host) → no regression.
+
+### Decisions
+DEC-029 … DEC-032.
+
+### Remaining Work
+User manual test (README 40–66). V0.4 only with approval. No tag.

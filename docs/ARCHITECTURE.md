@@ -88,6 +88,9 @@ ConversationService ─► IntelligenceProviderResolving ◄── ProviderManag
 - **Persistence.** `Persistence/` (SQLite engine, migrations, repository, artifacts, redaction) — see `PERSISTENCE.md`. A missing/corrupt database never stops JARVIS (auditing becomes a no-op / the file is moved aside).
 - **Automated runs are inert.** `AppContext(stubIntelligence:)` (smoke/capture/`--no-providers`) uses a temp data directory and never contacts any provider; `--intelligence-live-test` uses its own `JARVIS/live-test` data directory.
 
+## Agent observability (V0.3.2 — DEC-029…032; details `AGENT_OBSERVABILITY.md`)
+Provider/worker output → `SafeProvider` (wraps every engine; `StreamSanitizer`, fail closed) → sanitized events → agent runtime **and** `ExecutionHub` (bounded `ConsoleBuffer`, coalesced revision, batched persistence into `agent_events`, sanitized output artifact) → `AgentObservatory` read model (`ProviderStateResolver`, `RunPhase`, `ProgressCalculator`) → Full HUD **Agents** section (provider cards, runs, console, history, timeline) and a 44 pt Compact summary strip. Stop is routed to the existing cancellation paths (`installStopRouting`). Launch reconciles stale runs to INTERRUPTED. Developer simulation (`ObservatoryDemo`) is isolated and never persisted. Schema v2 adds `agent_events`, `agent_run_steps` and run label/progress/activity columns.
+
 ## Windows
 
 - **Invariant (DEC-015):** Compact XOR Full visible, enforced only in `WindowManager`.

@@ -1,8 +1,8 @@
 # JARVIS
 
-A native macOS menu-bar AI operating layer (long-term). V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. Autonomous project work is not enabled yet (V0.4).
+A native macOS menu-bar AI operating layer (long-term). V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.3.2 agent observatory** (live sanitized consoles, truthful progress, history, Stop) · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. Autonomous project work is not enabled yet (V0.4).
 
-- **Version:** V0.3.1 — **READY FOR MANUAL TEST** (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3 and V0.3.1 are not yet). Details: `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
+- **Version:** V0.3.2 — **READY FOR MANUAL TEST** (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3, V0.3.1 and V0.3.2 are not yet). Details: `docs/AGENT_OBSERVABILITY.md`, `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
 - Handoff for agents: `PROJECT_STATE.md`, `AGENTS.md` (includes the Git workflow: `main` only, linear history)
 
 ## Requirements
@@ -21,7 +21,7 @@ scripts/setup_local_ai.sh     # optional, once: isolated MLX runtime (605 MB, 57
 ```
 
 **Opt-in REAL tests** (spend only free/local engines plus two tiny Claude Code requests; never part of `verify.sh`):
-`build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1 stack, own data directory) and `--provider-live-test` (V0.3 Claude Code / Codex).
+`build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1/V0.3.2 stack, own data directory) and `--provider-live-test` (V0.3 Claude Code / Codex).
 
 **Global shortcuts** (work while any app is focused; no permission): hold **Option** and press **Command** → toggle Compact HUD (fires ~0.3 s later unless it turns out to be a double press). Hold **Option** and press **Command twice quickly** (within 0.3 s) → toggle Full HUD. Either Command key. Ignored if you add another key, a click, Shift or Control (so ⌥⌘D, ⌥⌘-click etc. are untouched). Turn off in Settings → Enable global shortcuts.
 
@@ -97,7 +97,7 @@ See `docs/KNOWN_ISSUES.md`. Notably: conversation history is in-memory (the audi
 
 ## Next milestone
 
-V0.4 — persistent task engine. **Do not start until the user approves V0.3.1.**
+V0.4 — persistent task engine. **Do not start until the user approves V0.3.2.**
 
 ## Manual test checklist (V0.1)
 
@@ -143,6 +143,36 @@ Optional set-up for the local model: `scripts/setup_local_ai.sh` (needs `uv`; th
 37. **STOP GENERATION** while an OpenCode or local answer is running: it stops within a second; no `opencode` / worker process remains.
 38. Quit JARVIS while the local model is loaded → no `jarvis_local_worker.py` process remains. After a force-quit (`kill -9`) the worker also exits by itself.
 39. Data check: `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select agent_type, engine, model, status from agent_runs order by started_at desc limit 5"` shows your requests (engine/model/status/reason; no prompt text, no secrets).
+
+### V0.3.2 additions (agent observatory) — MANUAL TEST REQUIRED
+Developer-only helpers: `build/Jarvis.app/Contents/MacOS/Jarvis --open-full --section agents --demo-agents` (labelled SIMULATED, never saved). The console is **read-only sanitized output** — it is not a terminal.
+40. Full HUD → top bar **AGENTS** (or type `show agents` / `ajanları aç`): four provider cards (Claude Code, Codex, OpenCode, Local Qwen), each with a truthful state (READY, NOT INSTALLED, SIGN-IN REQUIRED, UNLOADED …) and, if it ran before, its last run.
+41. Ask a question (Full HUD, Local or Auto): while it answers, the provider card shows **RUNNING** (Local Qwen: first STARTING while it loads, then RUNNING, afterwards LOADED · IDLE — never RUNNING when idle). An active-run card appears with its elapsed time and STOP.
+42. Select the run → **Overview / Console / Timeline**. The console shows the same answer being produced (Claude token by token; Codex/OpenCode when the message arrives), plus start/finish events. Nothing is typed there; there is no input field by design.
+43. Select console text with the mouse and press **⌘C**, paste it in another app; click **Copy all** likewise. Confirm no secret/key text ever appears (try asking the model to repeat `sk-proj-FAKE0123456789abcdefghijklmnopqrstuvwx` — it must show a redaction marker).
+44. Progress: real runs show an indeterminate bar + elapsed time and "no measurable steps" — **never a percentage**. (`--demo-agents` shows a 0/5-step planner as an example of a real step bar.)
+45. Press **STOP** on a run (card or detail) while a long answer streams: it ends within about a second, the run reads CANCELLED, `pgrep -fl "claude|codex|opencode|jarvis_local_worker"` shows nothing started by JARVIS.
+46. **History** tab: previous runs, newest first, with status/engine/model/duration; filter by engine/status/text; "Load more" paginates. **Timeline** tab: provider start/finish, cancels, escalations, cooldowns — only meaningful events.
+47. Quit JARVIS (⌘Q or `kill`) while a run is active, relaunch → that run appears as **INTERRUPTED** with the reason "JARVIS was closed while this run was active"; not RUNNING, not lost.
+48. Compact HUD stays exactly **392×448**. While something runs it shows one extra line "AGENTS · n ACTIVE · provider · agent · activity"; with nothing running the line is absent. Clicking Open Jarvis still switches to the Full HUD (never both visible).
+49. Native clipboard still works: ⌘V/⌘C/⌘A in both command fields (V0.2.1 items 23–25).
+50. Accessibility: with VoiceOver, cards/runs/STOP/tabs announce their names and states in words (state is never colour-only); with **Reduce Motion** no animation runs in the Agents section.
+51. Activity Monitor: JARVIS closed ≈0–0.5 % CPU; Compact ≈0.3–1 %; Full HUD on Agents without runs ≈1–2 %; the console never grows memory without bound during a long answer.
+52. Settings → Show Developer Controls: **SIMULATE** menu in Agents offers demo runs/stress, every item labelled SIMULATED; simulated runs never appear in History after restart.
+53. Local Qwen: after the idle time the card returns to **UNLOADED** and the worker process disappears.
+54. OpenCode: a run shows the real model name (e.g. `opencode/…-free`); the card's state returns to READY afterwards.
+55. A failed/rate-limited provider shows FAILED/RATE LIMITED with a reason and the History row keeps the failure reason (no raw provider text).
+56. Open the Agents section with 20+ historical runs and scroll: no jank, no clipped text at the minimum window size (980×620).
+57. Check `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select kind, substr(summary,1,60) from agent_events order by id desc limit 5"` — sanitized summaries only.
+58. Check `grep -rl "sk-proj-FAKE" ~/Library/Application\ Support/JARVIS` after step 43 → no match in the database or artifacts (the prompt itself is stored only as hash/length/redacted excerpt).
+59. Ask a coding question in Auto: the run card shows the engine/model the router chose and the History row carries its reason.
+60. Deterministic commands (`show tasks`, `raporu aç`) create no run and no provider process.
+61. A worker request (`Fix my Unity multiplayer system`) still says autonomous work is not enabled — nothing starts.
+62. Switch Compact ⇄ Full repeatedly while a run streams: no duplicate windows, console keeps its text.
+63. Keep the Agents section open for several minutes during a long answer: UI stays responsive, console tail follows, scroll position does not jump when you scroll up to read.
+64. Offline: everything local (Qwen) still observable; JARVIS contacts no host itself.
+65. Tell me whether the Agents layout is too dense/too sparse and whether Overview/Console/Timeline is the right split.
+66. Report anything odd; I'll add it to `docs/KNOWN_ISSUES.md`.
 
 ### V0.2.1 additions (native text editing)
 23. In another app copy some text (try multiline code or a log with Turkish characters) → open JARVIS → ⌘V pastes it in **both** the Compact and Full command inputs. ⌘A/⌘C/⌘X/⌘Z/⇧⌘Z and right-click → Paste/Copy also work. Test after opening JARVIS with the **⌥⌘ / ⌥⌘⌘ shortcut while another app is frontmost** — you must be able to type/paste immediately without clicking first.
