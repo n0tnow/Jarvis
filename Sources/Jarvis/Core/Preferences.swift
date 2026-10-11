@@ -9,6 +9,9 @@ final class Preferences {
         static let reduceMotion = "prefs.reduceMotion"
         static let showDeveloperControls = "prefs.showDeveloperControls"
         static let globalShortcuts = "prefs.globalShortcutsEnabled"
+        static let providerPreference = "prefs.providerPreference"
+        static let claudePath = "prefs.claudePathOverride"
+        static let codexPath = "prefs.codexPathOverride"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -28,6 +31,14 @@ final class Preferences {
         didSet { defaults.set(globalShortcutsEnabled, forKey: Key.globalShortcuts) }
     }
 
+    /// Which intelligence provider answers reasoning requests (Auto = first READY of Claude Code, Codex).
+    var providerPreference: ProviderPreference {
+        didSet { defaults.set(providerPreference.rawValue, forKey: Key.providerPreference) }
+    }
+    /// Optional user-chosen executable locations (the GUI app's PATH is not the Terminal's).
+    var claudePathOverride: String { didSet { defaults.set(claudePathOverride, forKey: Key.claudePath) } }
+    var codexPathOverride: String { didSet { defaults.set(codexPathOverride, forKey: Key.codexPath) } }
+
     /// Mirrors System Settings ▸ Accessibility ▸ Display ▸ Reduce motion.
     private(set) var systemReduceMotion: Bool
 
@@ -41,6 +52,9 @@ final class Preferences {
         reduceMotion = defaults.bool(forKey: Key.reduceMotion)
         showDeveloperControls = defaults.object(forKey: Key.showDeveloperControls) as? Bool ?? true
         globalShortcutsEnabled = defaults.object(forKey: Key.globalShortcuts) as? Bool ?? true
+        providerPreference = ProviderPreference(rawValue: defaults.string(forKey: Key.providerPreference) ?? "") ?? .auto
+        claudePathOverride = defaults.string(forKey: Key.claudePath) ?? ""
+        codexPathOverride = defaults.string(forKey: Key.codexPath) ?? ""
         systemReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         motionObserver = NSWorkspace.shared.notificationCenter.addObserver(

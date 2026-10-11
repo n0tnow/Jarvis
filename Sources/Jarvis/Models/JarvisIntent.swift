@@ -13,6 +13,8 @@ enum JarvisIntent: Equatable, Sendable {
     case openFullHUD
     case closeHUD
     case clearConversation
+    /// Stop an in-flight provider answer (also available as the STOP GENERATION button).
+    case cancelGeneration
 
     /// Human-readable name (never show the enum case to users).
     var displayName: String {
@@ -27,6 +29,7 @@ enum JarvisIntent: Equatable, Sendable {
         case .openFullHUD: "Open Full HUD"
         case .closeHUD: "Close HUD"
         case .clearConversation: "Clear conversation"
+        case .cancelGeneration: "Stop generation"
         }
     }
 }

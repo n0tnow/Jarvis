@@ -26,10 +26,22 @@ print "== Permission audit"
 ! grep -rEl "AVCaptureDevice|CGRequestScreenCapture|CGPreflightScreenCapture|AXIsProcessTrusted|NSAppleScript|SFSpeechRecognizer|addGlobalMonitorForEvents|CGEventTapCreate|RegisterEventHotKey|IOHIDManager|CNContactStore|CLLocationManager|UNUserNotificationCenter" Sources \
   && pass "no permission-gated API usage in sources" || fail "permission-gated API usage found in sources"
 
-! grep -rEl "URLSession|URLRequest|NWConnection|NWPathMonitor|CFNetwork|WKWebView|WebKit|Network\\.framework" Sources \
-  && pass "no network/web code in sources (V0.2 is fully offline)" || fail "network/web code found in sources"
-! grep -rIEi "(api[_-]?key|bearer |openai\\.com|api\\.anthropic)" Sources | grep -v "^\\S*://" | grep -viE "^[^:]+:[0-9]+:\\s*(//|///)" \
-  && pass "no API keys / provider endpoints in sources" || fail "API key or provider endpoint reference in sources"
+# --- V0.3 provider policy (replaces the V0.2 blanket "no provider code" rule; docs/DECISIONS.md DEC-020) ---
+# ALLOWED: driving the user's own, unmodified Codex / Claude Code CLIs as child processes.
+# STILL FORBIDDEN: any JARVIS network client, paid-API endpoints, API keys, credential/cookie/token access, scraping,
+# shells, dangerous CLI flags, silent billing fallback, clipboard monitoring.
+forbid() { # name, pattern, [exclude-file-regex]
+  local name="$1" pattern="$2" excl="${3:-^$}"
+  local hits; hits=$(grep -rIEn "$pattern" Sources | grep -vE "$excl" | grep -vE "^[^:]+:[0-9]+:[[:space:]]*(//|///)" )
+  if [ -z "$hits" ]; then pass "$name"; else fail "$name"; echo "$hits" | head -5; fi
+}
+forbid "no unapproved network clients (providers are subprocesses only)" "URLSession|URLRequest|NWConnection|NWPathMonitor|CFNetwork|CFStream|NSURLConnection|WKWebView|WebKit|WebSocket"
+forbid "no paid-API endpoints or web-subscription scraping" "api\\.openai\\.com|api\\.anthropic\\.com|chatgpt\\.com|claude\\.ai/(api|chat)|console\\.anthropic|platform\\.openai|backend-api|openai\\.com/v1|anthropic\\.com/v1"
+forbid "no credential / token / cookie access" "auth\\.json|\\.credentials|SecItemCopyMatching|SecKeychain|binarycookies|HTTPCookieStorage|--with-api-key|--with-access-token|apiKeyHelper"
+forbid "API-key variable names appear ONLY in the scrub list" "ANTHROPIC_API_KEY|OPENAI_API_KEY|CODEX_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN" "Providers/ProviderEnvironment\\.swift"
+forbid "no dangerous provider flags or API-key-only modes" "\"--bare\"|dangerously|danger-full-access|bypassPermissions|--full-auto|--approve-for-me|\"--enable\""
+forbid "no shell is ever used to run a provider" "/bin/(ba|z)?sh|launchPath|\"sh\", *\"-c\"|popen\\(|[^.[:alnum:]_]system\\("
+forbid "the product never reads the pasteboard (only native paste; the dev smoke test is excluded)" "NSPasteboard|generalPasteboard" "App/SmokeTest\\.swift"
 
 print "== Smoke test (real window manager, store, status item)"
 log=$(mktemp)
@@ -44,7 +56,7 @@ print "== Idle resource check (HUDs closed, state idle, 8s window)"
 pkill -x Jarvis 2>/dev/null; sleep 1
 open -n $APP --args --state idle
 sleep 4
-pid=$(pgrep -x Jarvis)
+pid=$(pgrep -nx Jarvis)
 cpu() { ps -o cputime= -p $pid | awk -F'[:.]' '{print $1*60+$2+$3/100}'; }
 a=$(cpu); sleep 8; b=$(cpu)
 used=$(echo "$b - $a" | bc)

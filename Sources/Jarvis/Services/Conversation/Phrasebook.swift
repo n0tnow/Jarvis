@@ -40,9 +40,11 @@ enum Phrasebook {
              "Bu istek bir zekâ sağlayıcısı gerektiriyor ve henüz bağlı değil. Yine de gezinebilir, durum bildirebilir ve görevleri yönetebilirim — “raporu aç” ya da “ne yapıyorsun?” deneyin.")
     }
     static func workerUnavailable(_ l: ReplyLanguage) -> String {
-        pick(l, "That is work for a coding/automation worker, and no worker is connected yet. Nothing was started.",
-             "Bu iş bir kodlama/otomasyon işçisi gerektiriyor ve henüz bağlı bir işçi yok. Hiçbir şey başlatılmadı.")
+        pick(l, "That is autonomous work (editing, running and iterating on a project), which isn't enabled yet — it belongs to the upcoming task engine. I can still explain, compare and answer questions about it. Nothing was started.",
+             "Bu özerk bir iş (projeyi düzenleme, çalıştırma, tekrar deneme) ve henüz etkin değil — yaklaşan görev motoruna ait. Yine de bu konuda açıklama yapabilir, karşılaştırabilir, soruları yanıtlayabilirim. Hiçbir şey başlatılmadı.")
     }
+    static func generationStopped(_ l: ReplyLanguage) -> String { pick(l, "Stopped.", "Durduruldu.") }
+    static func nothingGenerating(_ l: ReplyLanguage) -> String { pick(l, "Nothing is being generated right now.", "Şu anda üretilen bir yanıt yok.") }
     static func unsupported(_ l: ReplyLanguage) -> String { pick(l, "I didn't catch a request in that.", "Bunda bir istek anlayamadım.") }
 
     // Status

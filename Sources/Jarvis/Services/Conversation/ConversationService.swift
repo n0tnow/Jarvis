@@ -2,32 +2,72 @@ import Foundation
 
 enum InputOrigin: Sendable { case fullHUD, compactHUD, other }
 
+/// Coalesces streamed text into ~25 store updates per second so a fast token stream doesn't re-render the HUD per token.
+/// Text is appended in order, never dropped or duplicated; whole `String`s only, so Unicode is never split.
+@MainActor
+final class StreamCoalescer {
+    static let interval: Duration = .milliseconds(40)
+    private let conversation: ConversationStore
+    private let id: UUID
+    private var buffer = ""
+    private var flushTask: Task<Void, Never>?
+    private(set) var flushCount = 0
+
+    init(conversation: ConversationStore, id: UUID) { self.conversation = conversation; self.id = id }
+
+    func append(_ text: String) {
+        buffer += text
+        guard flushTask == nil else { return }
+        flushTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.interval)
+            self?.flushNow()
+        }
+    }
+
+    func flushNow() {
+        flushTask?.cancel(); flushTask = nil
+        guard !buffer.isEmpty else { return }
+        conversation.appendDelta(id, buffer)
+        flushCount += 1
+        buffer = ""
+    }
+}
+
 /// Orchestrates one user submission: store the message → route → execute/answer → store the reply.
-/// Text input is not privileged: future voice/LLM-tool callers use `submit` (or the router/executor) the same way.
+/// Provider-backed answers stream into the store; deterministic commands NEVER touch a provider.
+/// Text input is not privileged: voice/LLM-tool callers use `submit` (or the router/executor) the same way.
 @MainActor
 final class ConversationService {
     private let store: JarvisStore
     let conversation: ConversationStore
     private let windows: any JarvisWindowControlling
     private let router: IntelligenceRouter
-    private var providers: IntelligenceProviderRegistry
-    private let executor: CommandExecutor
+    private let resolver: any IntelligenceProviderResolving
+    private var executor: CommandExecutor!
 
-    /// The in-flight provider response, if any (future: reasoning/worker). Cancel = barge-in foundation.
+    /// The in-flight provider response (cancel = STOP GENERATION / barge-in foundation).
     private var responseTask: Task<Void, Never>?
     private var responseMessageID: UUID?
     private(set) var isResponding = false
-    /// True once a provider is registered (never in V0.2).
-    var hasProviders: Bool { !providers.providers.isEmpty }
+    private(set) var respondingProvider: ProviderID?
+    private(set) var respondingProviderName: String?
+    var hasProviders: Bool { resolver.hasProviders }
 
     init(store: JarvisStore, conversation: ConversationStore, windows: any JarvisWindowControlling,
-         router: IntelligenceRouter = IntelligenceRouter(), providers: IntelligenceProviderRegistry = IntelligenceProviderRegistry()) {
+         router: IntelligenceRouter = IntelligenceRouter(), resolver: (any IntelligenceProviderResolving)? = nil) {
         self.store = store
         self.conversation = conversation
         self.windows = windows
         self.router = router
-        self.providers = providers
-        self.executor = CommandExecutor(store: store, windows: windows, clearConversation: { [weak conversation] in conversation?.clear() })
+        self.resolver = resolver ?? StaticProviderResolver()
+        self.executor = CommandExecutor(
+            store: store, windows: windows,
+            clearConversation: { [weak self] in
+                self?.cancelCurrentResponse()
+                self?.conversation.clear()
+                self?.resolver.resetSessions()
+            },
+            cancelGeneration: { [weak self] in self?.cancelCurrentResponse() ?? false })
     }
 
     /// Returns the routing decision taken (nil for blank input, which does nothing).
@@ -60,70 +100,140 @@ final class ConversationService {
         return decision
     }
 
-    /// VoiceOver users otherwise hear nothing when a reply lands in a text field / panel.
-    private func announceLatestReply() {
-        guard let last = conversation.last, last.role == .jarvis, last.status == .complete else { return }
-        Announcer.announce(last.content, high: last.tone == .notice)
-    }
-
-    /// Interrupts an in-flight provider response (what a future barge-in will call). No-op when idle.
-    func cancelCurrentResponse() {
+    /// STOP GENERATION: cancels the in-flight provider request; the provider layer kills the real process.
+    /// Returns true if something was being generated.
+    @discardableResult
+    func cancelCurrentResponse() -> Bool {
+        guard isResponding else { return false }
         responseTask?.cancel()
+        return true
     }
 
-    /// Wiring point for V0.3. V0.2 never registers one.
-    func register(_ provider: any IntelligenceProvider) { providers.register(provider) }
+    /// Waits until no provider response is in flight (tests, smoke, shutdown).
+    func waitUntilIdle() async {
+        while let task = responseTask { await task.value; if responseTask == nil { break } }
+    }
 
-    // MARK: Provider path (dormant in V0.2: the registry is empty)
+    // MARK: Provider path
 
     private func handleProviderRequest(_ kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, origin: InputOrigin) {
-        let route: RouteKind = kind == .reasoning ? .reasoning : .worker
-        guard let provider = providers.provider(for: kind) else {
-            // Truthful: no fake intelligence. From the Compact HUD the full message needs room → continue in Full HUD.
-            let text = kind == .reasoning ? Phrasebook.reasoningUnavailable(language) : Phrasebook.workerUnavailable(language)
-            conversation.appendJarvis(text, tone: .notice, route: route)
-            if origin == .compactHUD { windows.showFullHUD(section: .dashboard) }
+        // Anything needing more room than the Compact HUD continues in the Full HUD (WindowManager keeps Compact XOR Full).
+        if origin == .compactHUD { windows.showFullHUD(section: .dashboard) }
+
+        // V0.3 is conversational: autonomous/worker requests are NEVER sent to a provider (task engine = V0.4).
+        guard kind == .reasoning else {
+            conversation.appendJarvis(Phrasebook.workerUnavailable(language), tone: .notice, route: .worker)
+            return
+        }
+        guard !isResponding else {
+            conversation.appendJarvis(ProviderError.busy.userMessage(language), tone: .notice, route: .reasoning)
             return
         }
 
-        if origin == .compactHUD { windows.showFullHUD(section: .dashboard) }
-        responseTask?.cancel()
-        let history = conversation.messages
-        let request = IntelligenceRequest(id: UUID(), kind: kind, prompt: prompt, history: history, language: language)
-        let messageID = conversation.beginJarvisResponse(route: route)
+        let messageID = conversation.beginJarvisResponse(route: .reasoning)
         responseMessageID = messageID
         isResponding = true
         if store.state == .idle || store.state == .completed { store.setState(.thinking) }
 
-        responseTask = Task { [weak self] in
-            do {
-                for try await event in provider.respond(to: request) {
-                    guard let self else { return }
-                    try Task.checkCancellation()
-                    if case .textDelta(let delta) = event { self.conversation.appendDelta(messageID, delta) }
-                }
-                try Task.checkCancellation()   // a cancelled stream may end the loop silently instead of throwing
-                self?.finishResponse(messageID, outcome: .finished)
-            } catch is CancellationError {
-                self?.finishResponse(messageID, outcome: .cancelled)
-            } catch {
-                self?.finishResponse(messageID, outcome: .failed)
-            }
-        }
+        responseTask = Task { [weak self] in await self?.runProviderRequest(kind, prompt: prompt, language: language, messageID: messageID) }
     }
 
-    private enum Outcome { case finished, cancelled, failed }
-
-    private func finishResponse(_ id: UUID, outcome: Outcome) {
-        guard responseMessageID == id else { return }
-        switch outcome {
-        case .finished: conversation.finish(id)
-        case .cancelled: conversation.markCancelled(id)
-        case .failed: conversation.fail(id, reason: "The intelligence provider failed.")
+    private func runProviderRequest(_ kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID) async {
+        let resolution = await resolver.resolve(kind)
+        guard case .ready(let resolved) = resolution else {
+            if case .unavailable(let error) = resolution { conversation.setNotice(messageID, Self.message(for: error, language)) }
+            endResponse(messageID)
+            announceLatestReply()
+            return
         }
+
+        respondingProvider = resolved.id
+        respondingProviderName = resolved.name
+        conversation.setProvider(messageID, resolved.name)
+        resolver.providerStarted(resolved.id)
+        store.log("\(resolved.name) response started", kind: .info)
+
+        let request = IntelligenceRequest(id: UUID(), kind: kind, prompt: prompt, history: conversation.messages, language: language,
+                                          sessionID: resolver.sessionID(for: resolved.id))
+        let coalescer = StreamCoalescer(conversation: conversation, id: messageID)
+        var outcome = ProviderOutcome.completed
+
+        do {
+            for try await event in resolved.provider.respond(to: request) {
+                try Task.checkCancellation()
+                switch event {
+                case .session(let s): resolver.recordSession(s, for: resolved.id)
+                case .textDelta(let d): coalescer.append(d)
+                case .finished: break
+                }
+            }
+            try Task.checkCancellation()    // a cancelled stream may end silently instead of throwing
+        } catch is CancellationError {
+            outcome = .cancelled
+        } catch let error as ProviderError {
+            outcome = error == .cancelled ? .cancelled : .failed(error)
+        } catch {
+            outcome = .failed(.generic)
+        }
+        coalescer.flushNow()
+
+        let hasContent = !(conversation.messages.last(where: { $0.id == messageID })?.content.isEmpty ?? true)
+        switch outcome {
+        case .completed where hasContent:
+            conversation.finish(messageID)
+            store.log("\(resolved.name) response completed", kind: .success)
+        case .completed:
+            outcome = .failed(.malformedOutput(resolved.id ?? .claudeCode))
+            conversation.setNotice(messageID, Self.message(for: .malformedOutput(resolved.id ?? .claudeCode), language))
+            store.log("\(resolved.name) returned no answer", kind: .warning)
+        case .cancelled:
+            conversation.markCancelled(messageID)
+            store.log("\(resolved.name) response cancelled", kind: .warning)
+        case .failed(let error):
+            let text = Self.message(for: error, language)
+            if hasContent {
+                conversation.finish(messageID)                                  // keep what streamed
+                conversation.appendJarvis(text, tone: .notice, route: .reasoning)
+            } else {
+                conversation.fail(messageID, reason: text)
+            }
+            store.log("\(resolved.name) failed: \(Self.activityReason(error))", kind: .error)
+        }
+
+        resolver.providerFinished(resolved.id, outcome: outcome)
+        endResponse(messageID)
+        announceLatestReply()
+    }
+
+    private func endResponse(_ id: UUID) {
+        guard responseMessageID == id else { return }
         isResponding = false
         responseTask = nil
         responseMessageID = nil
-        if store.state == .thinking { store.setState(.idle) }
+        respondingProvider = nil
+        respondingProviderName = nil
+        if store.state == .thinking { store.setState(.idle) }   // back to calm; provider errors never leave JARVIS stuck
+    }
+
+    static func message(for error: ProviderError, _ language: ReplyLanguage) -> String {
+        if case .noProviderReady(let summary) = error, summary.isEmpty { return Phrasebook.reasoningUnavailable(language) }
+        return error.userMessage(language)
+    }
+
+    private static func activityReason(_ e: ProviderError) -> String {
+        switch e {
+        case .authenticationRequired: "authentication required"
+        case .rateLimited: "usage limit reached"
+        case .networkUnavailable: "network unavailable"
+        case .timedOut: "timed out"
+        case .notInstalled: "not installed"
+        default: "provider error"
+        }
+    }
+
+    /// VoiceOver users otherwise hear nothing when a reply lands in a text field / panel.
+    private func announceLatestReply() {
+        guard let last = conversation.last, last.role == .jarvis, last.status == .complete || last.status == .failed else { return }
+        Announcer.announce(last.content, high: last.tone == .notice)
     }
 }

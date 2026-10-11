@@ -21,4 +21,6 @@ struct ConversationMessage: Identifiable, Codable, Hashable, Sendable {
     var status: MessageStatus = .complete
     var tone: MessageTone = .normal
     var route: RouteKind?
+    /// Display name of the provider that produced a reasoning reply ("Claude Code", "Codex"); nil for local replies.
+    var provider: String?
 }

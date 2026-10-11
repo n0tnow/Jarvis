@@ -17,15 +17,21 @@ struct IntelligenceRequest: Sendable {
     /// Conversation so far (value snapshot; providers never touch the store).
     let history: [ConversationMessage]
     let language: ReplyLanguage
+    /// Provider-side conversation to continue (Claude `--resume`, Codex `exec resume`); nil = start a new one.
+    var sessionID: String? = nil
 }
 
 /// Streaming-shaped on purpose so replies need not be atomic; cancellation is cooperative via the surrounding Task.
 enum IntelligenceEvent: Sendable {
+    /// The provider-side session/thread id to continue from on the next turn.
+    case session(String)
     case textDelta(String)
     case finished
 }
 
 protocol IntelligenceProvider: Sendable {
+    /// Set by the subscription-backed CLI providers; nil for test doubles.
+    var providerID: ProviderID? { get }
     var id: String { get }
     var displayName: String { get }
     func supports(_ kind: IntelligenceRequestKind) -> Bool
@@ -45,4 +51,8 @@ struct IntelligenceProviderRegistry: Sendable {
     func provider(for kind: IntelligenceRequestKind) -> (any IntelligenceProvider)? {
         providers.first { $0.supports(kind) }
     }
+}
+
+extension IntelligenceProvider {
+    var providerID: ProviderID? { nil }
 }

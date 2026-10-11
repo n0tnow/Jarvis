@@ -54,6 +54,7 @@ struct ComposerTextViewTests {
 @MainActor
 struct MainMenuTests {
     @Test func editMenuProvidesStandardResponderChainActions() {
+        _ = NSApplication.shared          // NSApp is nil in a bare test process until the shared application exists
         let menu = NSMenu()
         let saved = NSApp.mainMenu
         AppMenu.install()

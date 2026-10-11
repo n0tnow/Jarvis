@@ -7,6 +7,7 @@ import Foundation
 ///   --open-full             open the Full HUD after launch
 ///   --section <name>        Full HUD section (dashboard|tasks|report|system|memory)
 ///   --state <name>          force a JarvisState (idle|listening|thinking|working|waitingForApproval|completed|error)
+///   --provider-live-test    REAL requests through ConversationService→ProviderManager→provider (uses your subscriptions; opt-in), print results, exit
 ///   --smoke-test            run the automated window/state smoke test, print results, exit
 ///   --close-after <sec>     hide all HUD windows after <sec> seconds (to observe the closed/idle resource profile)
 ///   --capture <dir>         render JARVIS's own windows to PNGs in <dir>, exit (dev tool)
@@ -18,6 +19,7 @@ struct LaunchOptions {
     var smokeTest = false
     var captureDirectory: String?
     var closeAfter: TimeInterval?
+    var providerLiveTest = false
 
     init(arguments: [String] = CommandLine.arguments) {
         var it = arguments.dropFirst().makeIterator()
@@ -26,6 +28,7 @@ struct LaunchOptions {
             case "--open-compact": openCompact = true
             case "--open-full": openFull = true
             case "--smoke-test": smokeTest = true
+            case "--provider-live-test": providerLiveTest = true
             case "--capture": captureDirectory = it.next()
             case "--close-after": closeAfter = it.next().flatMap { TimeInterval($0) }
             case "--section": section = it.next().flatMap { HUDSection(rawValue: $0) }

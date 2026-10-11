@@ -47,7 +47,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let context = context!
             Task { await DevCapture.run(directory: directory, context: context) }
         }
+        // Find out which providers are actually usable (event-driven, once; no polling).
+        let providers = context.providers
+        // Automated runs must NEVER spend subscription quota: providers are stubbed to "not installed" unless the run is
+        // the explicit, opt-in live test (or a normal interactive launch).
+        if options.smokeTest || options.captureDirectory != nil {
+            providers.probeOverride = { id, _ in ProviderStatus(id: id, state: .notInstalled) }
+        }
+        Task { await providers.refresh() }
         Log.app.info("JARVIS launched")
+    }
+
+    /// No provider process may outlive JARVIS.
+    func applicationWillTerminate(_ notification: Notification) {
+        ProcessRegistry.shared.killAll()
     }
 
     @objc func showSettings(_ sender: Any?) { context.windows.showSettings() }

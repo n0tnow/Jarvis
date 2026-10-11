@@ -15,11 +15,15 @@ final class CommandExecutor {
     private let store: JarvisStore
     private let windows: any JarvisWindowControlling
     private let clearConversation: () -> Void
+    /// Returns true if a provider answer was actually being generated (and is now being stopped).
+    private let cancelGeneration: () -> Bool
 
-    init(store: JarvisStore, windows: any JarvisWindowControlling, clearConversation: @escaping () -> Void) {
+    init(store: JarvisStore, windows: any JarvisWindowControlling, clearConversation: @escaping () -> Void,
+         cancelGeneration: @escaping () -> Bool = { false }) {
         self.store = store
         self.windows = windows
         self.clearConversation = clearConversation
+        self.cancelGeneration = cancelGeneration
     }
 
     func execute(_ intent: JarvisIntent, language l: ReplyLanguage) -> ExecutionResult {
@@ -49,6 +53,10 @@ final class CommandExecutor {
         case .clearConversation:
             clearConversation()
             return ExecutionResult(message: Phrasebook.cleared(l))
+
+        case .cancelGeneration:
+            return cancelGeneration() ? ExecutionResult(message: Phrasebook.generationStopped(l))
+                                      : ExecutionResult(message: Phrasebook.nothingGenerating(l), tone: .notice)
 
         case .showStatus:
             return ExecutionResult(message: statusMessage(l))

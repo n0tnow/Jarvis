@@ -57,9 +57,9 @@ struct Harness {
     let conversation = ConversationStore()
     let windows = FakeWindows()
     let service: ConversationService
-    init(providers: IntelligenceProviderRegistry = IntelligenceProviderRegistry()) {
+    init(providers: IntelligenceProviderRegistry = IntelligenceProviderRegistry(), resolver: (any IntelligenceProviderResolving)? = nil) {
         DemoScenario.seed(store)
-        service = ConversationService(store: store, conversation: conversation, windows: windows, providers: providers)
+        service = ConversationService(store: store, conversation: conversation, windows: windows, resolver: resolver ?? StaticProviderResolver(registry: providers))
     }
     var replies: [ConversationMessage] { conversation.messages.filter { $0.role == .jarvis } }
 }
@@ -371,9 +371,10 @@ struct ConversationFlowTests {
         #expect(h.conversation.messages.first?.content == "Conversation cleared.")
     }
 
-    @Test func reasoningRequestIsTruthfulAndMakesNoProviderCall() {
+    @Test func reasoningRequestIsTruthfulAndMakesNoProviderCall() async {
         let h = Harness()
         let decision = h.service.submit("Explain quantum mechanics.")
+        await h.service.waitUntilIdle()
         #expect(decision?.kind == .reasoning)
         let reply = h.replies.last
         #expect(reply?.content.contains("none is connected yet") == true)
@@ -381,6 +382,7 @@ struct ConversationFlowTests {
         #expect(h.store.state == .idle)                                    // no fake "thinking"
         #expect(h.windows.calls.isEmpty)                                   // from the Full HUD: stays put
         h.service.submit("Fix my Unity multiplayer system.")
+        await h.service.waitUntilIdle()
         #expect(h.replies.last?.route == .worker)
         #expect(h.replies.last?.content.contains("Nothing was started") == true)
     }

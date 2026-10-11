@@ -361,8 +361,9 @@ enum SmokeTest {
         // 5. Reasoning-required, no fake intelligence
         let windowsBefore = (w.isCompactHUDOpen, w.isFullHUDOpen), stateBefore5 = store.state
         let decision = svc.submit("Explain quantum mechanics.")
-        check("V0.2 #5 'Explain quantum mechanics.' → reasoning-required, truthful not-connected reply, no state/window change",
-              decision?.kind == .reasoning && lastReply().contains("none is connected yet") && convo.messages.last?.tone == .notice
+        await svc.waitUntilIdle()
+        check("V0.2 #5 'Explain quantum mechanics.' → reasoning-required, truthful no-provider-ready reply (providers stubbed), no state/window change",
+              decision?.kind == .reasoning && lastReply().contains("No intelligence provider is ready") && convo.messages.last?.tone == .notice
               && store.state == stateBefore5 && windowsBefore == (w.isCompactHUDOpen, w.isFullHUDOpen))
 
         // 6. From Compact: "Show tasks." — Compact disappears, Full on Tasks, Compact geometry unaffected
@@ -393,6 +394,7 @@ enum SmokeTest {
             if cmd == "open dashboard" || cmd == "ayarları aç" { await settle(60) }
         }
         NSApp.windows.first { $0 is SettingsWindow }?.orderOut(nil)
+        await svc.waitUntilIdle()
         await settle(200)
         let roles = convo.messages.map(\.role)
         check("V0.2 #7 40 repeated commands: order intact, no duplicate windows, never both HUDs visible",

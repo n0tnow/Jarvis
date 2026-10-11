@@ -12,6 +12,7 @@ final class AppContext {
     let preferences: Preferences
 
     let conversation: ConversationStore
+    let providers: ProviderManager
     @ObservationIgnored private(set) var conversationService: ConversationService!
     @ObservationIgnored private(set) var windowManager: WindowManager!
 
@@ -23,8 +24,9 @@ final class AppContext {
         hud = HUDState()
         preferences = Preferences()
         conversation = ConversationStore()
+        providers = ProviderManager(preferences: preferences)
         if seedDemoData { DemoScenario.seed(store) }
         windowManager = WindowManager(context: self)
-        conversationService = ConversationService(store: store, conversation: conversation, windows: windowManager)
+        conversationService = ConversationService(store: store, conversation: conversation, windows: windowManager, resolver: providers)
     }
 }

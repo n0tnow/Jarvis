@@ -36,8 +36,16 @@ final class ConversationStore {
     // MARK: Streaming-ready API (used by intelligence providers; no fake streaming in V0.2)
 
     /// Starts an empty JARVIS message in `.pending`; returns its id for later updates.
-    func beginJarvisResponse(route: RouteKind) -> UUID {
-        append(ConversationMessage(role: .jarvis, content: "", status: .pending, route: route)).id
+    func beginJarvisResponse(route: RouteKind, provider: String? = nil) -> UUID {
+        append(ConversationMessage(role: .jarvis, content: "", status: .pending, route: route, provider: provider)).id
+    }
+
+    func setProvider(_ id: UUID, _ name: String) { update(id) { $0.provider = name } }
+
+    /// Turns a pending response into a final notice (provider unavailable, busy…): no answer was produced.
+    func setNotice(_ id: UUID, _ text: String) {
+        update(id) { $0.content = text; $0.status = .complete; $0.tone = .notice }
+        setFeedback(text)
     }
 
     func appendDelta(_ id: UUID, _ text: String) {
