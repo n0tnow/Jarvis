@@ -67,8 +67,13 @@ final class JarvisStore {
 
     // MARK: Activity
 
+    /// Persistence hook (V0.3.1): every meaningful activity event is also written to the operational database.
+    @ObservationIgnored var onLog: ((ActivityEvent) -> Void)?
+
     func log(_ message: String, kind: ActivityKind = .info) {
-        activity.append(ActivityEvent(timestamp: .now, message: message, kind: kind))
+        let event = ActivityEvent(timestamp: .now, message: message, kind: kind)
+        onLog?(event)
+        activity.append(event)
         if activity.count > Self.activityCapacity {
             activity.removeFirst(activity.count - Self.activityCapacity)
         }

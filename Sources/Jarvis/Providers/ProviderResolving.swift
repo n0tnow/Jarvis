@@ -3,7 +3,26 @@ import Foundation
 struct ResolvedProvider: Sendable {
     let provider: any IntelligenceProvider
     let id: ProviderID?
-    var name: String { id?.displayName ?? provider.displayName }
+    /// V0.3.1: which model (OpenCode), why (routing decision) and the audit row of this run.
+    var model: String? = nil
+    var runID: UUID? = nil
+    var decision: RoutingDecision? = nil
+    var profile: TaskProfile? = nil
+    var escalationDepth = 0
+
+    var name: String {
+        let base = id?.displayName ?? provider.displayName
+        guard let model else { return base }
+        return "\(base) · \(model.split(separator: "/").last.map(String.init) ?? model)"
+    }
+}
+
+/// What a finished run reports back for auditing / health (never raw prompts; text is only counted and excerpted).
+struct RunReport: Sendable {
+    var resultText = ""
+    var inputTokens: Int?
+    var outputTokens: Int?
+    var toolAttempts: [String] = []
 }
 
 enum ProviderResolution {
@@ -22,11 +41,23 @@ enum ProviderOutcome: Equatable, Sendable {
 protocol IntelligenceProviderResolving: AnyObject {
     var hasProviders: Bool { get }
     func resolve(_ kind: IntelligenceRequestKind) async -> ProviderResolution
+    /// V0.3.1: routing needs the text (task classification). Default ignores it (V0.3 resolvers).
+    func resolve(_ kind: IntelligenceRequestKind, prompt: String) async -> ProviderResolution
+    /// Auto mode only: after a provider failure with no output, the next eligible provider (bounded by the coordinator).
+    func escalate(from failed: ResolvedProvider, error: ProviderError, prompt: String) async -> ResolvedProvider?
+    /// Audit + health bookkeeping for a finished run.
+    func runFinished(_ resolved: ResolvedProvider, outcome: ProviderOutcome, report: RunReport)
     func sessionID(for id: ProviderID?) -> String?
     func recordSession(_ session: String, for id: ProviderID?)
     func providerStarted(_ id: ProviderID?)
     func providerFinished(_ id: ProviderID?, outcome: ProviderOutcome)
     func resetSessions()
+}
+
+extension IntelligenceProviderResolving {
+    func resolve(_ kind: IntelligenceRequestKind, prompt: String) async -> ProviderResolution { await resolve(kind) }
+    func escalate(from failed: ResolvedProvider, error: ProviderError, prompt: String) async -> ResolvedProvider? { nil }
+    func runFinished(_ resolved: ResolvedProvider, outcome: ProviderOutcome, report: RunReport) {}
 }
 
 /// Fixed set of providers (tests, or "no provider" = the V0.2 behaviour).

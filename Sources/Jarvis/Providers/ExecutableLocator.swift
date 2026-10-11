@@ -36,6 +36,7 @@ struct ExecutableLocator: Sendable {
         // nvm-installed global npm packages
         let nvm = "\(home)/.nvm/versions/node"
         for v in directoryContents(nvm).sorted(by: >) { raw.append("\(nvm)/\(v)/bin/\(name)") }
+        if id == .openCode { raw.append("\(home)/.opencode/bin/opencode") }       // the official installer's location
         if id == .codex {
             // The official Codex CLI ships inside the ChatGPT desktop app and is NOT on PATH.
             for app in ["/Applications/ChatGPT.app", "\(home)/Applications/ChatGPT.app", "/Applications/Codex.app", "\(home)/Applications/Codex.app"] {

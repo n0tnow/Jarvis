@@ -142,20 +142,65 @@ final class ConversationService {
         responseTask = Task { [weak self] in await self?.runProviderRequest(kind, prompt: prompt, language: language, messageID: messageID) }
     }
 
+    private struct Attempt {
+        var outcome: ProviderOutcome
+        var report: RunReport
+        var hasContent: Bool
+    }
+
     private func runProviderRequest(_ kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID) async {
-        let resolution = await resolver.resolve(kind)
+        let resolution = await resolver.resolve(kind, prompt: prompt)
         if Task.isCancelled {                                   // STOP pressed while the provider was still being resolved
             conversation.markCancelled(messageID)
             endResponse(messageID); announceLatestReply()
             return
         }
-        guard case .ready(let resolved) = resolution else {
+        guard case .ready(var resolved) = resolution else {
             if case .unavailable(let error) = resolution { conversation.setNotice(messageID, Self.message(for: error, language)) }
             endResponse(messageID)
             announceLatestReply()
             return
         }
 
+        // Attempt loop. Bounded: the resolver allows at most `maxEscalations` hand-offs, and only in Auto, only after a
+        // provider FAILURE that produced no output (never after a user cancel, never once text has streamed).
+        var attempt: Attempt
+        while true {
+            attempt = await runAttempt(resolved, kind: kind, prompt: prompt, language: language, messageID: messageID)
+            resolver.runFinished(resolved, outcome: attempt.outcome, report: attempt.report)
+            if case .failed(let error) = attempt.outcome, !attempt.hasContent, !Task.isCancelled,
+               let next = await resolver.escalate(from: resolved, error: error, prompt: prompt) {
+                store.log("\(resolved.name) failed — escalating to \(next.name)", kind: .warning)
+                resolved = next
+                continue
+            }
+            break
+        }
+
+        let outcome = attempt.outcome
+        switch outcome {
+        case .completed:
+            conversation.finish(messageID)
+            store.log("\(resolved.name) response completed", kind: .success)
+        case .cancelled:
+            conversation.markCancelled(messageID)
+            store.log("\(resolved.name) response cancelled", kind: .warning)
+        case .failed(let error):
+            let text = Self.message(for: error, language)
+            if attempt.hasContent {
+                conversation.finish(messageID)                                  // keep what streamed
+                conversation.appendJarvis(text, tone: .notice, route: .reasoning)
+            } else {
+                conversation.fail(messageID, reason: text)
+            }
+            store.log("\(resolved.name) failed: \(Self.activityReason(error))", kind: .error)
+        }
+        endResponse(messageID)
+        announceLatestReply()
+    }
+
+    /// One provider attempt: start → stream (coalesced) → wait until the provider is really gone → report.
+    private func runAttempt(_ resolved: ResolvedProvider, kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID) async -> Attempt {
         respondingProvider = resolved.id
         respondingProviderName = resolved.name
         conversation.setProvider(messageID, resolved.name)
@@ -167,14 +212,16 @@ final class ConversationService {
         let coalescer = StreamCoalescer(conversation: conversation, id: messageID)
         var outcome = ProviderOutcome.completed
         var sawFinished = false
+        var report = RunReport()
 
         do {
             for try await event in resolved.provider.respond(to: request) {
                 try Task.checkCancellation()
                 switch event {
                 case .session(let s): resolver.recordSession(s, for: resolved.id)
-                case .textDelta(let d): coalescer.append(d)
-                case .usage, .toolAttempt: break          // audit-only (handled by the coordinator in the next step)
+                case .textDelta(let d): coalescer.append(d); report.resultText += d
+                case .usage(let i, let o): report.inputTokens = i; report.outputTokens = o
+                case .toolAttempt(let t): report.toolAttempts.append(t)
                 case .finished: sawFinished = true
                 }
             }
@@ -192,31 +239,13 @@ final class ConversationService {
         await resolved.provider.waitUntilStopped(request.id)
 
         let hasContent = !(conversation.messages.last(where: { $0.id == messageID })?.content.isEmpty ?? true)
-        switch outcome {
-        case .completed where hasContent:
-            conversation.finish(messageID)
-            store.log("\(resolved.name) response completed", kind: .success)
-        case .completed:
-            outcome = .failed(.malformedOutput(resolved.id ?? .claudeCode))
-            conversation.setNotice(messageID, Self.message(for: .malformedOutput(resolved.id ?? .claudeCode), language))
+        if outcome == .completed && !hasContent {
+            let who = resolved.id ?? .claudeCode
+            outcome = .failed(.malformedOutput(who))
             store.log("\(resolved.name) returned no answer", kind: .warning)
-        case .cancelled:
-            conversation.markCancelled(messageID)
-            store.log("\(resolved.name) response cancelled", kind: .warning)
-        case .failed(let error):
-            let text = Self.message(for: error, language)
-            if hasContent {
-                conversation.finish(messageID)                                  // keep what streamed
-                conversation.appendJarvis(text, tone: .notice, route: .reasoning)
-            } else {
-                conversation.fail(messageID, reason: text)
-            }
-            store.log("\(resolved.name) failed: \(Self.activityReason(error))", kind: .error)
         }
-
         resolver.providerFinished(resolved.id, outcome: outcome)
-        endResponse(messageID)
-        announceLatestReply()
+        return Attempt(outcome: outcome, report: report, hasContent: hasContent)
     }
 
     private func endResponse(_ id: UUID) {

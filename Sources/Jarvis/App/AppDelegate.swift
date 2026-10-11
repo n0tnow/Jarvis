@@ -10,7 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
-        context = AppContext()
+        // Automated runs must NEVER touch real providers or the real database.
+        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && (options.smokeTest || options.captureDirectory != nil))
+        context = AppContext(stubIntelligence: stubbed)
         statusItem = StatusItemController(context: context)
         context.windowManager.anchorProvider = { [weak self] in self?.statusItem.buttonFrameOnScreen }
 
@@ -39,6 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        if options.intelligenceLiveTest {
+            let context = context!, dir = options.liveDirectory ?? "captures"
+            Task { await IntelligenceLiveTest.run(context: context, captureDirectory: dir, benchmark: options.benchmarkModels) }
+        }
         if options.providerLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures"
             Task { await ProviderLiveTest.run(context: context, captureDirectory: dir) }
@@ -53,14 +59,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let context = context!
             Task { await DevCapture.run(directory: directory, context: context) }
         }
-        // Find out which providers are actually usable (event-driven, once; no polling).
-        let providers = context.providers
-        // Automated runs must NEVER spend subscription quota: providers are stubbed to "not installed" unless the run is
-        // the explicit, opt-in live test (or a normal interactive launch).
-        if options.noProviders || (!options.providerLiveTest && (options.smokeTest || options.captureDirectory != nil)) {
-            providers.probeOverride = { id, _ in ProviderStatus(id: id, state: .notInstalled) }
+        // Find out which engines are actually usable (event-driven, once; no polling). Stubbed runs never touch real providers.
+        if !options.intelligenceLiveTest {
+            let context = context!
+            Task { await context.refreshIntelligence() }
         }
-        Task { await providers.refresh() }
         Log.app.info("JARVIS launched")
     }
 
@@ -79,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// No provider process may outlive JARVIS.
     func applicationWillTerminate(_ notification: Notification) {
+        context?.supervisor.shutdown()          // unload the local model worker (it also exits by itself when stdin closes)
         ProcessRegistry.shared.killAll()
     }
 

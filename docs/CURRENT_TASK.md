@@ -1,29 +1,26 @@
 # Current Task
 
 Version:
-V0.3 (real intelligence providers) — READY FOR MANUAL TEST
+V0.3.1 — Intelligence infrastructure (IN PROGRESS). Base: V0.3 READY FOR MANUAL TEST (not yet user-verified), V0.2.1.
 
 Task:
-Hand V0.3 to the user. Nothing else is in progress. V0.4 (persistent task engine / autonomous workers) is NOT started and needs explicit approval.
+Durable persistence + audit trail + OpenCode free-model pool + local Qwen + provider supervisor + automatic model routing + background sub-agent foundation. NOT V0.4 (no autonomous task engine). No tag.
 
-State:
-V0.3 A research ✅ · B discovery ✅ · C ProviderManager ✅ · D Claude Code ✅ · E Codex ✅ · F streaming ✅ · G cancellation ✅ · H Settings/UI ✅ · I REAL test through the JARVIS stack ✅ (both providers) · J verification + docs ✅
+State (milestones):
+A recovery ✅ · B research (docs/OPENCODE_RESEARCH.md, Qwen runtime) ✅ · C SQLite persistence ✅ (commit f2665a5) · D router + local policy + free registry ✅ (23f6c72) · E local Qwen runtime ✅ · F supervisor/resources/OpenCode service/benchmarks/agents/audit/coordinator ✅ (unit + integration tested, 302 tests) · G Settings/System UI ⏳ · H live REAL tests (`--intelligence-live-test`) ⏳ · I verify.sh + perf + docs ⏳
 
 Last Successful Step:
-`scripts/verify.sh` PASSED (183 unit tests, 85 smoke PASS/0 FAIL/2 SKIP, focused provider policy, idle CPU ≈0.2 %); `--provider-live-test` PASSED for Claude Code and Codex.
+302 unit tests green (fake CLIs, fake local worker, temp SQLite). REAL manual probes done: OpenCode free model answers through `opencode run`, restrictive config canary-tested, local Qwen answers `JARVIS_LOCAL_OK` via mlx-vlm in an isolated venv.
 
 Current Step:
-Commit/push done (see git log). Waiting for manual test.
+Commit E/F, then UI (Settings provider modes + OpenCode free models + local runtime + active agents), then the real live test through the app stack.
 
 Next Step:
-User manual test (README items 26–32). Then, only with approval: tag decision and V0.4.
-
-Files Being Worked On:
-None.
+`--intelligence-live-test` (SQLite reopen, local Qwen, OpenCode free model, routing local/free/premium, lifecycle, cleanup), `--benchmark-models`, verify.sh policy updates, performance table, docs (README/PROJECT_STATE/ARCHITECTURE/KNOWN_ISSUES/ROADMAP/DEV_LOG), push. STOP at V0.3.1 status. Do NOT start V0.4.
 
 Blocked By:
 Nothing.
 
 Notes:
-- Subscription-first (DEC-017/020): no API keys, no paid endpoints, no scraping, no credential access; the user's own signed-in `claude`/`codex` are driven as child processes.
-- Do NOT mark V0.3 COMPLETE or tag until the user approves. Git: main only, no tags, no AI trailers.
+- Coding WORK ("write/fix/refactor …") is `workerRequired` in conversation (V0.3 rule, preserved): it never reaches a provider. Coding QUESTIONS and background agents (AgentRunManager) are what exercise the free-model pool in V0.3.1.
+- Git: main only, no tags, no AI trailers.

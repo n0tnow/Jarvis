@@ -99,6 +99,8 @@ enum ProviderError: Error, Equatable, Sendable {
     case cancelled
     case noProviderReady(summary: String)
     case busy
+    /// The router refused the request (explicit mode can't be honoured, privacy gate, …). Carries the user-facing text.
+    case refused(String)
     /// An error that is not one of the above (never shows raw details).
     case generic
 
@@ -129,6 +131,8 @@ enum ProviderError: Error, Equatable, Sendable {
             return p("Cancelled.", "İptal edildi.")
         case .noProviderReady(let summary):
             return p("No intelligence provider is ready. \(summary)", "Hazır bir zekâ sağlayıcısı yok. \(summary)")
+        case .refused(let text):
+            return text
         case .busy:
             return p("I'm still answering. Press Stop generation first.", "Hâlâ yanıt veriyorum. Önce yanıtı durdurun.")
         case .generic:

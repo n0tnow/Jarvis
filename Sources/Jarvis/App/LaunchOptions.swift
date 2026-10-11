@@ -9,6 +9,8 @@ import Foundation
 ///   --state <name>          force a JarvisState (idle|listening|thinking|working|waitingForApproval|completed|error)
 ///   --live-dir <dir>        where the live test saves its own screenshots (never combine with --capture)
 ///   --provider-live-test    REAL requests through ConversationService→ProviderManager→provider (uses your subscriptions; opt-in), print results, exit
+///   --intelligence-live-test  REAL tests of the V0.3.1 stack (SQLite, local Qwen, OpenCode free model, routing, lifecycle); opt-in
+///   --benchmark-models      (with the above) also run the benchmark suite on verified-free OpenCode models and record results
 ///   --no-providers          never contact Claude Code / Codex (providers report "not installed"); used by verify.sh
 ///   --smoke-test            run the automated window/state smoke test, print results, exit
 ///   --close-after <sec>     hide all HUD windows after <sec> seconds (to observe the closed/idle resource profile)
@@ -23,6 +25,8 @@ struct LaunchOptions {
     var closeAfter: TimeInterval?
     var providerLiveTest = false
     var noProviders = false
+    var intelligenceLiveTest = false
+    var benchmarkModels = false
     var liveDirectory: String?
 
     init(arguments: [String] = CommandLine.arguments) {
@@ -34,6 +38,8 @@ struct LaunchOptions {
             case "--smoke-test": smokeTest = true
             case "--provider-live-test": providerLiveTest = true
             case "--no-providers": noProviders = true
+            case "--intelligence-live-test": intelligenceLiveTest = true
+            case "--benchmark-models": benchmarkModels = true
             case "--live-dir": liveDirectory = it.next()
             case "--capture": captureDirectory = it.next()
             case "--close-after": closeAfter = it.next().flatMap { TimeInterval($0) }

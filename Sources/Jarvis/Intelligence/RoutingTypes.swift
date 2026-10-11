@@ -151,7 +151,7 @@ struct RoutingDecision: Equatable, Sendable {
         all["mode"] = mode.rawValue
         all["outcome"] = selected == nil ? "refused" : "selected"
         for (k, v) in rejected.sorted(by: { $0.key < $1.key }) { all["rejected.\(k)"] = v }
-        if let data = try? JSONSerialization.data(withJSONObject: all, options: [.sortedKeys]) { return String(decoding: data, as: UTF8.self) }
+        if let data = try? JSONSerialization.data(withJSONObject: all, options: [.sortedKeys, .withoutEscapingSlashes]) { return String(decoding: data, as: UTF8.self) }
         return "{}"
     }
 
