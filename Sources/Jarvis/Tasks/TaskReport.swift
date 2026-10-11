@@ -84,6 +84,7 @@ struct TaskReport: Codable, Equatable, Sendable {
         case .securityBlocked, .capabilityDenied, .workspaceViolation: "This request is outside what V0.4 may do (see docs/AUTONOMOUS_TASK_ENGINE.md)."
         case .resourceUnavailable: "Wait for other agents to finish and run the task again."
         case .toolFailed: "Check the project's build/test configuration (.jarvis/project.json) and run the task again."
+        case .scopeExceeded: "The work needed more than you approved. Review the proposal and approve a larger scope if you want it."
         case .cancelled, .interrupted: "Resume or run the task again."
         }
     }

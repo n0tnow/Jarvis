@@ -228,11 +228,11 @@ enum PlanValidator {
 // MARK: - Planner prompt
 
 enum PlannerPrompt {
-    static func build(goal: String, kind: TaskKind, projectTree: String, buildCommand: String?, testCommand: String?, constraints: [String], allowDelete: Bool = false) -> String {
+    static func build(goal: String, kind: TaskKind, projectTree: String, buildCommand: String?, testCommand: String?, constraints: [String], allowDelete: Bool = false, scopeNotes: String? = nil) -> String {
         var allowedTypes = ["analysis", "build", "test", "review"]
         if kind == .development { allowedTypes.insert("codeChange", at: 1) }
         if kind == .development && allowDelete { allowedTypes.append("delete") }
-        let cons = constraints.isEmpty ? "" : "\nUser constraints:\n" + constraints.map { "- \($0)" }.joined(separator: "\n")
+        let cons = (constraints.isEmpty ? "" : "\nUser constraints:\n" + constraints.map { "- \($0)" }.joined(separator: "\n")) + (scopeNotes.map { "\n" + $0 } ?? "")
         return """
         You are the planning component of JARVIS, a task engine. Produce an execution plan for ONE user goal. Reply with a single JSON object and nothing else.
 

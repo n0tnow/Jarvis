@@ -94,9 +94,9 @@ extension TaskEngine {
     func planPhase(_ ctx: TaskContext) async -> Bool {
         let tree = (try? ctx.tools.projectTree(maxEntries: 160)) ?? ""
         let prompt = PlannerPrompt.build(goal: ctx.record.goal, kind: ctx.record.kind, projectTree: tree, buildCommand: ctx.profiles.build?.display,
-                                         testCommand: ctx.profiles.test?.display, constraints: ctx.record.constraints, allowDelete: ctx.record.destructiveRequested)
+                                         testCommand: ctx.profiles.test?.display, constraints: ctx.record.constraints, allowDelete: ctx.record.destructiveRequested, scopeNotes: ctx.record.scope?.promptNotes)
         var excluded: Set<RoutingCandidate> = []
-        let kind = ctx.record.kind, caps = ctx.record.capabilities, allowDestructive = ctx.record.destructiveRequested
+        let kind = ctx.record.kind, caps = ctx.record.capabilities, allowDestructive = ctx.record.destructiveRequested, scope = ctx.record.scope
         for attempt in 0..<2 {
             if ctx.cancelRequested || Task.isCancelled { return false }
             let box = ValidationBox<TaskPlan>()
@@ -104,6 +104,10 @@ extension TaskEngine {
                                taskID: ctx.record.id,
                                validator: { text in
                                    let r = PlanValidator.check(text, kind: kind, capabilities: caps, allowDestructive: allowDestructive)
+                                   if let plan = r.plan, let scope {                      // V0.5: a proactive task's plan may not exceed what was approved
+                                       let over = scope.planViolations(plan)
+                                       if !over.isEmpty { box.set(nil, notes: over + ["scope"]); return BenchmarkSuite.Verdict(passed: false, detail: over.joined(separator: "; ")) }
+                                   }
                                    box.set(r.plan, notes: r.issues.map(\.description) + (r.issues.contains { $0.isPolicyBlock } ? ["policy"] : []))
                                    return BenchmarkSuite.Verdict(passed: r.plan != nil, detail: r.issues.map(\.description).joined(separator: "; "))
                                }, timeout: limits.providerTimeout, exclude: excluded)
@@ -118,6 +122,10 @@ extension TaskEngine {
                 return false
             case .failed(_, _, let validationFailed, let cand):
                 if let c = cand { excluded.insert(c) }
+                if validationFailed, box.detail.contains("scope") {
+                    ctx.hardFailure = (.scopeExceeded, "The plan exceeded the approved scope: " + box.detail.filter { $0 != "scope" }.prefix(3).joined(separator: "; "))
+                    return false
+                }
                 if validationFailed, box.detail.contains("policy") {
                     ctx.hardFailure = (.securityBlocked, "The plan was rejected by the security policy: " + box.detail.filter { $0 != "policy" }.joined(separator: "; "))
                     return false

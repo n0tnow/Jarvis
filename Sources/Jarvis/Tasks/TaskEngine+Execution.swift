@@ -122,7 +122,7 @@ extension TaskEngine {
             if let f = r.failure {
                 endAttempt(attempt, outcome: "failed:\(f.0.rawValue)", evidence: f.1, runID: r.runID, candidate: r.candidate)
                 lastWhy = f
-                if f.0 == .approvalDenied || f.0 == .capabilityDenied || f.0 == .workspaceViolation || f.0 == .securityBlocked { return .failed(f.0, f.1) }
+                if f.0 == .approvalDenied || f.0 == .capabilityDenied || f.0 == .workspaceViolation || f.0 == .securityBlocked || f.0 == .scopeExceeded { return .failed(f.0, f.1) }
                 if kind == .primary, canEscalate(ctx) { noteEscalationNeeded(ctx, step, f.1) }
                 continue
             }
@@ -149,13 +149,22 @@ extension TaskEngine {
         let snaps = await ProjectContext.snapshots(tools: tools, paths: Array(paths.prefix(7)), perFileBytes: 14_000, totalChars: 50_000)
         let prompt = TaskPrompts.codeChange(goal: ctx.record.goal, step: step, analysis: analysis, files: snaps, failure: failure.map { String($0.suffix(5000)) },
                                             previousChange: ctx.finals.isEmpty ? nil : String(diffText(ctx).prefix(4000)), attempt: kind)
+        let scope = ctx.record.scope
+        let alreadyChanged = Set(ctx.changes.map(\.path)).count
         let verdictBox = ValidationBox<Bool>()                     // remembers WHY the last answer was rejected (policy blocks must not be "repaired")
         let job = AgentJob(type: "CodingAgent", title: kind == .primary ? step.title : "\(kind == .repair ? "Repair" : "Escalated fix") · \(step.title)", prompt: prompt,
                            profile: jobProfile(ctx, .codeChange, promptChars: prompt.count), taskID: ctx.record.id,
                            validator: { text in
                                let parsed = EditParser.parse(text)
                                if !parsed.problems.isEmpty { verdictBox.set(false, notes: [parsed.problems.joined(separator: "; ")]); return BenchmarkSuite.Verdict(passed: false, detail: parsed.problems.joined(separator: "; ")) }
-                               do { _ = try tools.prepare(parsed.blocks); verdictBox.set(true); return BenchmarkSuite.Verdict(passed: true, detail: "") }
+                               do {
+                                   let prepared = try tools.prepare(parsed.blocks)
+                                   if let scope, !scope.editViolations(prepared.map(\.path), alreadyChanged: alreadyChanged).isEmpty {
+                                       let why = scope.editViolations(prepared.map(\.path), alreadyChanged: alreadyChanged).joined(separator: "; ")
+                                       verdictBox.set(false, notes: ["scopeExceeded|\(why)"]); return BenchmarkSuite.Verdict(passed: false, detail: why)
+                                   }
+                                   verdictBox.set(true); return BenchmarkSuite.Verdict(passed: true, detail: "")
+                               }
                                catch let e as ToolError {
                                    verdictBox.set(false, notes: ["\(e.failureCategory.rawValue)|\(e.description)"])
                                    return BenchmarkSuite.Verdict(passed: false, detail: e.description)
@@ -173,7 +182,7 @@ extension TaskEngine {
             out.failure = self.failure(from: result)
             // A rejected edit that violated the workspace/capability policy is a policy failure, not something to re-ask about.
             if validationFailed, let note = verdictBox.detail.last, let bar = note.firstIndex(of: "|"),
-               let cat = FailureCategory(rawValue: String(note[..<bar])), cat == .workspaceViolation || cat == .capabilityDenied {
+               let cat = FailureCategory(rawValue: String(note[..<bar])), cat == .workspaceViolation || cat == .capabilityDenied || cat == .scopeExceeded {
                 out.failure = (cat, String(note[note.index(after: bar)...]))
             }
             return out
@@ -188,6 +197,12 @@ extension TaskEngine {
         let blocks = EditParser.parse(text).blocks
         var prepared: [ProjectTools.PreparedFile]
         do { prepared = try tools.prepare(blocks) } catch let e as ToolError { out.failure = (e.failureCategory, e.description); return out } catch { out.failure = (.toolFailed, "\(error)"); return out }
+
+        // V0.5: a proactive task may only change what its approval/authorisation covers (paths, test-only, number of files).
+        if let scope = ctx.record.scope {
+            let over = scope.editViolations(prepared.map(\.path), alreadyChanged: Set(ctx.changes.map(\.path)).count)
+            if !over.isEmpty { out.failure = (.scopeExceeded, over.joined(separator: "; ")); return out }
+        }
 
         // User's own uncommitted work is never overwritten silently: touching such a file needs an explicit approval.
         let dirty = Set((ctx.record.gitBaseline?.dirtyPaths ?? []) + (ctx.record.gitBaseline?.untrackedPaths ?? []))
@@ -346,7 +361,7 @@ extension TaskEngine {
             if r.cancelled { endAttempt(attempt, outcome: "cancelled", evidence: nil, runID: r.runID, candidate: r.candidate); return nil }
             if let f = r.failure {
                 endAttempt(attempt, outcome: "failed:\(f.0.rawValue)", evidence: f.1, runID: r.runID, candidate: r.candidate)
-                if f.0 == .approvalDenied { return nil }
+                if f.0 == .approvalDenied || f.0 == .scopeExceeded { return nil }
                 continue
             }
             endAttempt(attempt, outcome: "applied", evidence: r.evidence, runID: r.runID, candidate: r.candidate)
@@ -395,6 +410,8 @@ extension TaskEngine {
                 verifying(ctx, key)
                 ctx.candidates[key, default: []].append(cand)
                 updateStep(ctx, key) { $0.agentRunID = runID }
+                let suggestions = ReviewSuggestion.parse(text)
+                if !suggestions.isEmpty { onReviewSuggestions?(ctx.record, step.id, runID, suggestions) }
                 let line = "Review: \(review.passed ? "pass" : "fail") — \(review.summary.isEmpty ? (review.issues.first ?? "no summary") : review.summary)"
                 ctx.evidence.append(line)
                 if review.passed {

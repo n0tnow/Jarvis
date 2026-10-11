@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1, v2, v3]
+    static let all: [Migration] = [v1, v2, v3, v4]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -251,5 +251,49 @@ struct Migration: Sendable {
         "ALTER TABLE file_changes ADD COLUMN before_hash TEXT",
         "ALTER TABLE file_changes ADD COLUMN after_hash TEXT",
         "ALTER TABLE file_changes ADD COLUMN preexisting INTEGER NOT NULL DEFAULT 0",
+    ])
+
+    /// V4 — proactive reasoning (V0.5): durable opportunities (with their structured assessment and deterministic policy decision),
+    /// proposals (the user-facing card, bound to an exact scope by `action_hash`), proposal approvals, and task origin/scope/depth.
+    /// Evidence and text are bounded + sanitized by the repository; there is no table for model reasoning.
+    static let v4 = Migration(version: 4, name: "proactive reasoning", statements: [
+        "ALTER TABLE tasks ADD COLUMN origin TEXT NOT NULL DEFAULT 'userTask'",
+        "ALTER TABLE tasks ADD COLUMN origin_task_id TEXT",
+        "ALTER TABLE tasks ADD COLUMN origin_opportunity_id TEXT",
+        "ALTER TABLE tasks ADD COLUMN autonomy_depth INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE tasks ADD COLUMN scope TEXT",
+        """
+        CREATE TABLE opportunities (
+            id TEXT PRIMARY KEY, project_root TEXT NOT NULL, origin TEXT NOT NULL, origin_task_id TEXT, origin_step_id TEXT, origin_run_id TEXT,
+            title TEXT NOT NULL, summary TEXT, category TEXT NOT NULL, evidence TEXT, affected_scope TEXT, assessment TEXT,
+            risk TEXT, design_impact TEXT, reversibility TEXT, destructiveness TEXT, external_effects TEXT, required_capabilities TEXT,
+            confidence REAL, relation TEXT, evidence_strength TEXT, policy_decision TEXT, policy_reasons TEXT, status TEXT NOT NULL,
+            created_at REAL NOT NULL, updated_at REAL NOT NULL, expires_at REAL, dedup_key TEXT NOT NULL, related_opportunity_id TEXT,
+            occurrences INTEGER NOT NULL DEFAULT 1, cooldown_until REAL, autonomy_depth INTEGER NOT NULL DEFAULT 0, proposed_action TEXT,
+            action_hash TEXT, task_id TEXT, source_event TEXT
+        )
+        """,
+        "CREATE INDEX idx_opportunities_project ON opportunities(project_root, status)",
+        "CREATE INDEX idx_opportunities_dedup ON opportunities(dedup_key)",
+        "CREATE INDEX idx_opportunities_origin ON opportunities(origin_task_id)",
+        "CREATE UNIQUE INDEX idx_opportunities_event ON opportunities(source_event) WHERE source_event IS NOT NULL",
+        "ALTER TABLE proposals ADD COLUMN opportunity_id TEXT",
+        "ALTER TABLE proposals ADD COLUMN project_root TEXT",
+        "ALTER TABLE proposals ADD COLUMN reason TEXT",
+        "ALTER TABLE proposals ADD COLUMN evidence TEXT",
+        "ALTER TABLE proposals ADD COLUMN proposed_action TEXT",
+        "ALTER TABLE proposals ADD COLUMN affected_scope TEXT",
+        "ALTER TABLE proposals ADD COLUMN risk TEXT",
+        "ALTER TABLE proposals ADD COLUMN design_impact TEXT",
+        "ALTER TABLE proposals ADD COLUMN reversibility TEXT",
+        "ALTER TABLE proposals ADD COLUMN expected_benefit TEXT",
+        "ALTER TABLE proposals ADD COLUMN validation_plan TEXT",
+        "ALTER TABLE proposals ADD COLUMN action_hash TEXT",
+        "ALTER TABLE proposals ADD COLUMN resulting_task_id TEXT",
+        "ALTER TABLE proposals ADD COLUMN expires_at REAL",
+        "ALTER TABLE proposals ADD COLUMN critical INTEGER NOT NULL DEFAULT 0",
+        "CREATE INDEX idx_proposals_opportunity ON proposals(opportunity_id)",
+        "ALTER TABLE approvals ADD COLUMN proposal_id TEXT",
+        "ALTER TABLE approvals ADD COLUMN scope_hash TEXT",
     ])
 }

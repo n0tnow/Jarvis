@@ -62,6 +62,8 @@ final class TaskEngine {
     @ObservationIgnored var onFinished: ((TaskView) -> Void)?
     /// Approval requested / resolved (HUD state: awaiting approval).
     @ObservationIgnored var onApprovalChanged: (() -> Void)?
+    /// V0.5: review suggestions (model claims) offered to the proactive layer — an event, never an action.
+    @ObservationIgnored var onReviewSuggestions: ((TaskRecord, UUID?, UUID?, [ReviewSuggestion]) -> Void)?
 
     var hub: ExecutionHub? { audit.hub }
 
@@ -127,16 +129,20 @@ final class TaskEngine {
     /// Creates the durable task FIRST, then starts working on it. Returns as soon as the task is persisted.
     @discardableResult
     func submit(goal rawGoal: String, kind: TaskKind, workspacePath: String, constraints: [String] = [], preference: ProviderPreference? = nil,
-                title: String? = nil, destructiveRequested: Bool = false) async -> Result<UUID, TaskSubmitError> {
+                title: String? = nil, destructiveRequested: Bool = false, id: UUID? = nil, origin: TaskOrigin = .userTask,
+                originTaskID: UUID? = nil, originOpportunityID: UUID? = nil, autonomyDepth: Int = 0, scope: TaskScope? = nil) async -> Result<UUID, TaskSubmitError> {
         let goal = rawGoal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !goal.isEmpty else { return .failure(.empty) }
         guard let repository else { return .failure(.persistenceUnavailable) }
+        // Idempotent creation (V0.5: a proposal/auto-action may be delivered twice, e.g. around a crash): the same id never makes a second task.
+        if let id, (try? repository.engineTask(id)) != nil { return .success(id) }
         if activeCount >= limits.maxActiveTasks { return .failure(.tooManyActiveTasks(activeCount)) }
         let ws: WorkspaceGuard
         do { ws = try WorkspaceGuard(rootPath: workspacePath) } catch { return .failure(.workspace(String(describing: error))) }
 
         let profile = TaskClassifier.profile(for: goal)
-        var record = TaskRecord(id: UUID(), title: Self.makeTitle(title ?? goal), goal: String(goal.prefix(1500)), kind: kind)
+        var record = TaskRecord(id: id ?? UUID(), title: Self.makeTitle(title ?? goal), goal: String(goal.prefix(1500)), kind: kind)
+        record.origin = origin; record.originTaskID = originTaskID; record.originOpportunityID = originOpportunityID; record.autonomyDepth = autonomyDepth; record.scope = scope
         record.category = kind == .development ? .repositoryModification : .research
         record.risk = destructiveRequested ? .high : (kind == .development ? .medium : .low)
         record.destructiveRequested = destructiveRequested && kind == .development

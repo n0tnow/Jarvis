@@ -16,8 +16,9 @@ extension JarvisRepository {
                 INSERT INTO tasks(id, project_id, title, category, status, privacy, created_at, updated_at, finished_at, summary,
                     goal, kind, risk, workspace_root, started_at, current_step, activity, progress_fraction, progress_source, constraints,
                     failure_category, failure_reason, cancel_requested, recovery, plan_version, capabilities, git_baseline,
-                    report_artifact_id, checkpoint_artifact_id, accumulated_seconds, preference, destructive_requested)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    report_artifact_id, checkpoint_artifact_id, accumulated_seconds, preference, destructive_requested,
+                    origin, origin_task_id, origin_opportunity_id, autonomy_depth, scope)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, Self.taskParams(t))
         }
     }
@@ -29,7 +30,8 @@ extension JarvisRepository {
                     summary=?10, goal=?11, kind=?12, risk=?13, workspace_root=?14, started_at=?15, current_step=?16, activity=?17,
                     progress_fraction=?18, progress_source=?19, constraints=?20, failure_category=?21, failure_reason=?22, cancel_requested=?23,
                     recovery=?24, plan_version=?25, capabilities=?26, git_baseline=?27, report_artifact_id=?28, checkpoint_artifact_id=?29,
-                    accumulated_seconds=?30, preference=?31, destructive_requested=?32
+                    accumulated_seconds=?30, preference=?31, destructive_requested=?32,
+                    origin=?33, origin_task_id=?34, origin_opportunity_id=?35, autonomy_depth=?36, scope=?37
                 WHERE id = ?1
                 """, Self.taskParams(t))
         }
@@ -42,7 +44,8 @@ extension JarvisRepository {
          .opt(Self.clean(t.activity, 200)), .opt(t.progressFraction), .text(t.progressSource.rawValue), .text(Self.js(t.constraints.map { OutputSanitizer.sanitize(String($0.prefix(300))) })),
          .opt(t.failureCategory?.rawValue), .opt(Self.clean(t.failureReason, 1000)), .int(t.cancelRequested ? 1 : 0), .opt(Self.clean(t.recovery, 400)),
          .int(Int64(t.planVersion)), .text(Self.js(t.capabilities)), .opt(t.gitBaseline.map { Self.js($0) }), .opt(t.reportArtifactID?.uuidString),
-         .opt(t.checkpointArtifactID?.uuidString), .double(t.accumulatedSeconds), .opt(t.preference?.rawValue), .int(t.destructiveRequested ? 1 : 0)]
+         .opt(t.checkpointArtifactID?.uuidString), .double(t.accumulatedSeconds), .opt(t.preference?.rawValue), .int(t.destructiveRequested ? 1 : 0),
+         .text(t.origin.rawValue), .opt(t.originTaskID?.uuidString), .opt(t.originOpportunityID?.uuidString), .int(Int64(t.autonomyDepth)), .opt(t.scope.map { js($0) })]
     }
 
     private static func task(_ r: SQLRow) -> TaskRecord? {
@@ -72,6 +75,10 @@ extension JarvisRepository {
         t.accumulatedSeconds = r.double("accumulated_seconds") ?? 0
         t.preference = r.string("preference").flatMap(ProviderPreference.init(rawValue:))
         t.destructiveRequested = r.bool("destructive_requested")
+        t.origin = r.string("origin").flatMap(TaskOrigin.init(rawValue:)) ?? .userTask
+        t.originTaskID = uid(r.string("origin_task_id")); t.originOpportunityID = uid(r.string("origin_opportunity_id"))
+        t.autonomyDepth = r.int("autonomy_depth") ?? 0
+        t.scope = unjs(r.string("scope"), as: TaskScope.self)
         return t
     }
 
@@ -182,8 +189,8 @@ extension JarvisRepository {
     func insert(_ a: ApprovalRecord) throws {
         try database.write { ctx in
             try ctx.execute("""
-                INSERT INTO approvals(id, task_id, agent_run_id, kind, summary, status, requested_at, decided_at, decided_by, step_id, action, reason, risk)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO approvals(id, task_id, agent_run_id, kind, summary, status, requested_at, decided_at, decided_by, step_id, action, reason, risk, proposal_id, scope_hash)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, Self.approvalParams(a))
         }
     }
@@ -192,14 +199,15 @@ extension JarvisRepository {
         try database.write { ctx in
             try ctx.execute("""
                 UPDATE approvals SET task_id=?2, agent_run_id=?3, kind=?4, summary=?5, status=?6, requested_at=?7, decided_at=?8, decided_by=?9,
-                    step_id=?10, action=?11, reason=?12, risk=?13 WHERE id = ?1
+                    step_id=?10, action=?11, reason=?12, risk=?13, proposal_id=?14, scope_hash=?15 WHERE id = ?1
                 """, Self.approvalParams(a))
         }
     }
 
     private static func approvalParams(_ a: ApprovalRecord) -> [SQLValue] {
         [.text(a.id.uuidString), .text(a.taskID.uuidString), .null, .text(a.kind), .opt(Self.clean(a.action, 300)), .text(a.state.rawValue), .date(a.requestedAt), .opt(a.decidedAt),
-         .opt(a.decidedBy), .opt(a.stepID?.uuidString), .opt(Self.clean(a.action, 300)), .opt(Self.clean(a.reason, 500)), .text(a.risk.rawValue)]
+         .opt(a.decidedBy), .opt(a.stepID?.uuidString), .opt(Self.clean(a.action, 300)), .opt(Self.clean(a.reason, 500)), .text(a.risk.rawValue),
+         .opt(a.proposalID?.uuidString), .opt(a.scopeHash)]
     }
 
     private static func approval(_ r: SQLRow) -> ApprovalRecord? {
@@ -208,6 +216,7 @@ extension JarvisRepository {
         var a = ApprovalRecord(id: id, taskID: tid, stepID: Self.uid(r.string("step_id")), action: r.string("action") ?? r.string("summary") ?? "", reason: r.string("reason") ?? "",
                                risk: r.string("risk").flatMap(RiskClass.init(rawValue:)) ?? .high)
         a.state = st; a.requestedAt = at; a.decidedAt = r.date("decided_at"); a.decidedBy = r.string("decided_by"); a.kind = r.string("kind") ?? "task-action"
+        a.proposalID = uid(r.string("proposal_id")); a.scopeHash = r.string("scope_hash")
         return a
     }
 

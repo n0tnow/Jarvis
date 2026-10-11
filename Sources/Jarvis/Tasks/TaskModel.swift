@@ -121,7 +121,7 @@ enum FailureCategory: String, Codable, Sendable {
     case providerUnavailable, providerRateLimited, providerFailed
     case toolFailed, buildFailed, testFailed, validationFailed
     case workspaceViolation, capabilityDenied, approvalDenied, resourceUnavailable
-    case cancelled, interrupted, malformedPlan, securityBlocked, workspaceChanged
+    case cancelled, interrupted, malformedPlan, securityBlocked, workspaceChanged, scopeExceeded
 
     var label: String {
         switch self {
@@ -129,7 +129,7 @@ enum FailureCategory: String, Codable, Sendable {
         case .toolFailed: "tool failed"; case .buildFailed: "build failed"; case .testFailed: "tests failed"; case .validationFailed: "validation failed"
         case .workspaceViolation: "workspace violation"; case .capabilityDenied: "capability denied"; case .approvalDenied: "approval denied"
         case .resourceUnavailable: "resources unavailable"; case .cancelled: "cancelled"; case .interrupted: "interrupted"
-        case .malformedPlan: "malformed plan"; case .securityBlocked: "blocked by security policy"; case .workspaceChanged: "workspace changed unexpectedly"
+        case .malformedPlan: "malformed plan"; case .securityBlocked: "blocked by security policy"; case .workspaceChanged: "workspace changed unexpectedly"; case .scopeExceeded: "outside the approved scope"
         }
     }
 }
@@ -268,6 +268,12 @@ struct TaskRecord: Equatable, Sendable, Identifiable {
     var preference: ProviderPreference?
     /// The USER's goal explicitly asks to remove things: only then may a plan contain `delete` steps (each still needs its own approval).
     var destructiveRequested = false
+    /// V0.5: who started this task and under which scope (nil scope = a user task: the user's goal is the scope).
+    var origin: TaskOrigin = .userTask
+    var originTaskID: UUID?
+    var originOpportunityID: UUID?
+    var autonomyDepth = 0
+    var scope: TaskScope?
 
     var isTerminal: Bool { state.isTerminal }
 }
@@ -327,6 +333,9 @@ struct ApprovalRecord: Equatable, Sendable, Identifiable {
     var decidedAt: Date?
     var decidedBy: String?
     var kind: String = "task-action"
+    /// V0.5: a proposal approval (kind "proposal") is bound to exactly one proposal and the hash of its action+scope.
+    var proposalID: UUID?
+    var scopeHash: String?
 }
 
 struct FileLeaseRecord: Equatable, Sendable {

@@ -185,7 +185,9 @@ enum TaskPrompts {
         \(diff.isEmpty ? "(no files were changed)" : diff)
 
         Reply with ONE JSON object and nothing else:
-        {"verdict": "pass" or "fail", "summary": "one or two sentences", "issues": ["only real defects relative to the goal; empty if verdict is pass"]}
+        {"verdict": "pass" or "fail", "summary": "one or two sentences", "issues": ["only real defects relative to the goal; empty if verdict is pass"],
+         "suggestions": [{"title": "optional follow-up that is NOT part of this goal", "summary": "why", "files": ["project-relative paths shown above"], "category": "testCoverage|bug|maintenance|documentation|refactor|performance|design", "designImpact": false}]}
+        "suggestions" is optional and at most 2 entries; leave it out unless you noticed something concrete.
         Use "fail" only for a concrete defect that means the goal is not achieved or something is broken. Do not fail for style.
         """
     }
