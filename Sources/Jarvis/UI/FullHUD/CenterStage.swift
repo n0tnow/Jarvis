@@ -9,7 +9,7 @@ struct CenterStage: View {
         let task = store.activeTask
 
         ViewThatFits(in: .vertical) {
-            stack(store, task, core: coreView(store, task).frame(maxWidth: 560, minHeight: 170, idealHeight: 240, maxHeight: .infinity))
+            stack(store, task, core: coreView(store, task).frame(maxWidth: 560, minHeight: 150, idealHeight: 220, maxHeight: .infinity))
             ScrollView(.vertical, showsIndicators: false) {
                 stack(store, task, core: coreView(store, task).frame(maxWidth: 360).frame(height: store.pendingApproval == nil ? 180 : 130))
             }
@@ -37,7 +37,7 @@ extension CenterStage {
                 ApprovalCard(request: request)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
-            ConversationPanel().frame(minHeight: 88, idealHeight: 150, maxHeight: store.pendingApproval == nil ? 176 : 112)
+            ConversationPanel().frame(minHeight: 96, idealHeight: 180, maxHeight: store.pendingApproval == nil ? 330 : 120)
             TaskFocusStrip(task: task)
         }
     }

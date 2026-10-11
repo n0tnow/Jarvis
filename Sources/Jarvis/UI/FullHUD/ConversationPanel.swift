@@ -8,7 +8,7 @@ struct ConversationPanel: View {
 
     var body: some View {
         let messages = Array(app.conversation.messages.suffix(Self.visibleLimit))
-        HUDCard("Conversation", trailing: { Tag(text: "LOCAL · NO AI") }) {
+        HUDCard("Conversation", trailing: { ProviderBadge() }) {
             if messages.isEmpty {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text("Type below. Try “open the report”, “what are you doing?” or “pause the task”.")

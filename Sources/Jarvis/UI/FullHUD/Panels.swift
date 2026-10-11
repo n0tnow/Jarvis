@@ -10,11 +10,18 @@ struct SystemPanel: View {
             VStack(spacing: Theme.Spacing.s) {
                 KeyValueRow(key: "State", value: app.store.state.label, valueTint: app.store.state.tint)
                 KeyValueRow(key: "Version", value: AppInfo.version)
-                KeyValueRow(key: "Mode", value: "DEMO · NO AI")
+                KeyValueRow(key: "Provider", value: providerSummary, valueTint: app.providers.selectedProvider == nil ? Theme.Palette.amber : Theme.Palette.mint)
                 KeyValueRow(key: "Permissions", value: "NONE REQUESTED")
                 KeyValueRow(key: "Motion", value: app.preferences.effectiveReduceMotion ? "REDUCED" : "FULL")
             }
         }
+    }
+}
+
+extension SystemPanel {
+    fileprivate var providerSummary: String {
+        if let p = app.providers.selectedProvider { return p.shortName }
+        return "NONE READY"
     }
 }
 

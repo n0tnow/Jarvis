@@ -78,11 +78,13 @@ enum DemoData {
         AgentSlot(name: "QA", role: "Verification", status: .standby),
     ]
 
+    /// Tool slots for FUTURE capabilities only. (Conversation providers — Claude Code / Codex — are real in V0.3 and are
+    /// shown by the Provider row / Conversation badge, not here.)
     static let tools: [ToolSlot] = [
         ToolSlot(name: "Unity MCP", availability: .notConnected, plannedFor: "V0.9"),
         ToolSlot(name: "Browser", availability: .notConnected, plannedFor: "V0.10"),
-        ToolSlot(name: "Terminal", availability: .notConnected, plannedFor: "V0.3"),
-        ToolSlot(name: "Codex / Claude", availability: .notConnected, plannedFor: "V0.3"),
+        ToolSlot(name: "Terminal", availability: .notConnected, plannedFor: "V0.4"),
+        ToolSlot(name: "Workers (Codex / Claude)", availability: .notConnected, plannedFor: "V0.4"),
     ]
 
     static let approval = ApprovalRequest(

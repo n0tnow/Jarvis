@@ -4,6 +4,38 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppContext.self) private var app
 
+    @ViewBuilder
+    private func providerRow(_ id: ProviderID, prefs: Preferences) -> some View {
+        @Bindable var prefs = prefs
+        let status = app.providers.status(id)
+        VStack(alignment: .leading, spacing: 4) {
+            LabeledContent(id.displayName) {
+                HStack(spacing: 6) {
+                    Text(status.state.label).font(.system(.caption, design: .monospaced)).foregroundStyle(status.state.isUsable ? .green : .orange)
+                    if let v = status.version { Text(v).font(.caption).foregroundStyle(.secondary) }
+                }
+            }
+            switch status.state {
+            case .authenticationRequired:
+                Text("Sign in with the official flow: run  \(id.loginCommand)  in Terminal, then Refresh.")
+                    .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            case .notInstalled:
+                Text(id == .codex ? "Codex ships inside the ChatGPT app (or install the Codex CLI)." : "Install Claude Code from Anthropic, then Refresh.")
+                    .font(.caption).foregroundStyle(.secondary)
+            case .unavailable(let why), .failed(let why):
+                Text("Couldn't check: \(why).").font(.caption).foregroundStyle(.secondary)
+            case .rateLimited:
+                Text("Usage limit reached for now.").font(.caption).foregroundStyle(.secondary)
+            default: EmptyView()
+            }
+            if prefs.showDeveloperControls, let path = status.executablePath {
+                Text(path).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }
+            TextField("Custom executable path (optional)", text: id == .claudeCode ? $prefs.claudePathOverride : $prefs.codexPathOverride)
+                .textFieldStyle(.roundedBorder).font(.caption)
+        }
+    }
+
     var body: some View {
         @Bindable var prefs = app.preferences
 
@@ -24,6 +56,20 @@ struct SettingsView: View {
                 Text("Shows the state simulator in the Compact and Full HUD.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Intelligence provider") {
+                Picker("Preferred provider", selection: $prefs.providerPreference) {
+                    ForEach(ProviderPreference.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                }
+                Text("Auto uses the first READY provider: Claude Code, then Codex. A specific choice never silently falls back to another provider.")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(ProviderID.allCases, id: \.self) { id in providerRow(id, prefs: prefs) }
+                HStack {
+                    Button("Refresh status") { Task { await app.providers.refresh() } }.disabled(app.providers.isRefreshing)
+                    if app.providers.isRefreshing { ProgressView().controlSize(.small) }
+                }
+                Text("JARVIS uses your own signed-in Codex / Claude Code subscriptions. It never asks for API keys, passwords or tokens, and sign-in always happens through the vendor's own flow. Providers run with tools disabled (conversation only).")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Global shortcuts") {
                 Toggle("Enable global shortcuts", isOn: $prefs.globalShortcutsEnabled)
                 LabeledContent("Compact HUD") { Text("⌥⌘").font(.system(size: 16, weight: .medium, design: .rounded)) }
@@ -40,6 +86,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 650)
+        .frame(width: 480, height: 860)
     }
 }

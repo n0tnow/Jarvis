@@ -189,7 +189,7 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
         hideCompactHUD()
         if settingsWindow == nil {
             let window = SettingsWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 460, height: 650),
+                contentRect: NSRect(x: 0, y: 0, width: 480, height: 860),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false

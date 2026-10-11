@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let options = LaunchOptions()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         context = AppContext()
         statusItem = StatusItemController(context: context)
@@ -38,6 +39,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        if options.providerLiveTest {
+            let context = context!, dir = options.liveDirectory ?? "captures"
+            Task { await ProviderLiveTest.run(context: context, captureDirectory: dir) }
+        }
+
         if options.smokeTest {
             let context = context!
             let statusItem = statusItem!
@@ -51,11 +57,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let providers = context.providers
         // Automated runs must NEVER spend subscription quota: providers are stubbed to "not installed" unless the run is
         // the explicit, opt-in live test (or a normal interactive launch).
-        if options.smokeTest || options.captureDirectory != nil {
+        if options.noProviders || (!options.providerLiveTest && (options.smokeTest || options.captureDirectory != nil)) {
             providers.probeOverride = { id, _ in ProviderStatus(id: id, state: .notInstalled) }
         }
         Task { await providers.refresh() }
         Log.app.info("JARVIS launched")
+    }
+
+    /// SIGTERM / SIGINT / SIGHUP (kill, logout, terminal close) skip applicationWillTerminate: clean up provider processes anyway.
+    /// (A crash or SIGKILL cannot be intercepted — documented in KNOWN_ISSUES.)
+    private static var signalSources: [DispatchSourceSignal] = []
+    private static func installTerminationHandlers() {
+        for sig in [SIGTERM, SIGINT, SIGHUP] {
+            signal(sig, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+            source.setEventHandler { ProcessRegistry.shared.killAll(); exit(128 + sig) }
+            source.resume()
+            signalSources.append(source)
+        }
     }
 
     /// No provider process may outlive JARVIS.

@@ -108,7 +108,7 @@ enum DevCapture {
         exit(0)
     }
 
-    private static func snapshot(of window: NSWindow?, name: String, in directory: String) {
+    static func snapshot(of window: NSWindow?, name: String, in directory: String) {
         guard let window,
               let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else {   // RTLD_DEFAULT
             print("skip \(name): no window / API unavailable"); return
