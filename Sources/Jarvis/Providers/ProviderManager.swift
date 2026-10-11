@@ -10,7 +10,7 @@ final class ProviderManager: IntelligenceProviderResolving {
     /// Deterministic Auto rule (documented): first READY of this order. Claude Code first because it streams token by token.
     static let autoOrder: [ProviderID] = [.claudeCode, .codex]
 
-    private(set) var statuses: [ProviderID: ProviderStatus] = Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { ($0, ProviderStatus(id: $0)) })
+    private(set) var statuses: [ProviderID: ProviderStatus] = Dictionary(uniqueKeysWithValues: ProviderID.subscription.map { ($0, ProviderStatus(id: $0)) })
     private(set) var isRefreshing = false
     private(set) var activeProvider: ProviderID?
     private(set) var lastRefresh: Date?
@@ -48,9 +48,16 @@ final class ProviderManager: IntelligenceProviderResolving {
 
     func status(_ id: ProviderID) -> ProviderStatus { statuses[id] ?? ProviderStatus(id: id) }
 
+    /// Order this manager tries: the explicit subscription choice, else the Auto order. (Local / OpenCode choices are
+    /// served by `IntelligenceCoordinator`; this manager only ever runs the two subscription CLIs.)
+    private var subscriptionOrder: [ProviderID] {
+        if let id = preference.providerID, ProviderID.subscription.contains(id) { return [id] }
+        return Self.autoOrder
+    }
+
     /// The provider that WOULD serve a reasoning request right now (for UI), or nil.
     var selectedProvider: ProviderID? {
-        let order = preference.providerID.map { [$0] } ?? Self.autoOrder
+        let order = subscriptionOrder
         return order.first { status($0).state.isUsable || status($0).state == .running }
     }
 
@@ -67,10 +74,10 @@ final class ProviderManager: IntelligenceProviderResolving {
         defer { isRefreshing = false; lastRefresh = Date() }
         let locator = self.locator, env = ProviderEnvironment.make(base: environmentBase, extraPath: locator.extraPathDirectories())
         let timeout = probeTimeout
-        let overrides = Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { ($0, override(for: $0)) })
+        let overrides = Dictionary(uniqueKeysWithValues: ProviderID.subscription.map { ($0, override(for: $0)) })
         let probe = probeOverride
         let results = await withTaskGroup(of: ProviderStatus.self) { group -> [ProviderStatus] in
-            for id in ProviderID.allCases {
+            for id in ProviderID.subscription {
                 let ov = overrides[id] ?? nil
                 group.addTask {
                     if let probe { return await probe(id, ov) }
@@ -96,13 +103,13 @@ final class ProviderManager: IntelligenceProviderResolving {
     func resolve(_ kind: IntelligenceRequestKind) async -> ProviderResolution {
         guard kind == .reasoning else { return .unavailable(.noProviderReady(summary: "Autonomous work isn't enabled yet.")) }
         if lastRefresh == nil { await refresh() }                       // first use: find out what is actually ready
-        let order = preference.providerID.map { [$0] } ?? Self.autoOrder
+        let order = subscriptionOrder
         for id in order {
             let st = status(id)
             if case .rateLimited(let until) = st.state, let until, until <= Date() { statuses[id]?.state = .ready }
             if status(id).state.isUsable, let path = st.executablePath { return .ready(ResolvedProvider(provider: makeProvider(id, path: path), id: id)) }
         }
-        if let explicit = preference.providerID { return .unavailable(error(for: status(explicit))) }
+        if let explicit = preference.providerID, ProviderID.subscription.contains(explicit) { return .unavailable(error(for: status(explicit))) }
         return .unavailable(.noProviderReady(summary: summary()))
     }
 
@@ -125,7 +132,7 @@ final class ProviderManager: IntelligenceProviderResolving {
     }
 
     private func summary() -> String {
-        ProviderID.allCases.map { "\($0.displayName): \(status($0).state.label.lowercased())." }.joined(separator: " ")
+        ProviderID.subscription.map { "\($0.displayName): \(status($0).state.label.lowercased())." }.joined(separator: " ")
     }
 
     func sessionID(for id: ProviderID?) -> String? { id.flatMap { sessions[$0] } }
@@ -206,6 +213,8 @@ extension ProviderProbe {
                 return .unavailable("signed in with an API key / console login, not a Claude subscription")
             }
             return .ready
+        case .openCode, .local:
+            return .ready          // not subscription logins; their eligibility is decided by the model registry (DEC-022)
         }
     }
 }

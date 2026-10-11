@@ -1,24 +1,53 @@
 import Foundation
 
-/// The subscription-backed providers JARVIS can drive (see docs/PROVIDER_RESEARCH.md). No API-key providers exist.
+/// What using a provider costs the user (DEC-022). `paidAPI` exists ONLY so it can be refused — nothing may route to it.
+enum CostClass: String, Codable, Sendable { case local, freeCloud, subscription, paidAPI }
+
+/// Every engine JARVIS can run a request on. `claudeCode`/`codex` are the user's own subscription CLIs (V0.3);
+/// `openCode` runs ONLY verified-free models (V0.3.1); `local` is the on-device lightweight model (V0.3.1).
+/// No API-key provider exists (DEC-017/020).
 enum ProviderID: String, CaseIterable, Codable, Sendable {
-    case claudeCode, codex
+    case claudeCode, codex, openCode, local
 
-    var displayName: String { self == .claudeCode ? "Claude Code" : "Codex" }
-    var shortName: String { self == .claudeCode ? "CLAUDE CODE" : "CODEX" }
-    var executableName: String { self == .claudeCode ? "claude" : "codex" }
-    /// What the user should run themselves to sign in through the vendor's own flow (JARVIS never handles credentials).
-    var loginCommand: String { self == .claudeCode ? "claude auth login" : "codex login" }
-}
-
-enum ProviderPreference: String, CaseIterable, Codable, Sendable {
-    case auto, codex, claudeCode
+    /// The two subscription CLIs managed by `ProviderManager` (V0.3 behaviour, unchanged).
+    static let subscription: [ProviderID] = [.claudeCode, .codex]
 
     var displayName: String {
-        switch self { case .auto: "Auto"; case .codex: "Codex"; case .claudeCode: "Claude Code" }
+        switch self { case .claudeCode: "Claude Code"; case .codex: "Codex"; case .openCode: "OpenCode"; case .local: "Local Qwen" }
+    }
+    var shortName: String {
+        switch self { case .claudeCode: "CLAUDE CODE"; case .codex: "CODEX"; case .openCode: "OPENCODE"; case .local: "LOCAL" }
+    }
+    var executableName: String {
+        switch self { case .claudeCode: "claude"; case .codex: "codex"; case .openCode: "opencode"; case .local: "python3" }
+    }
+    var costClass: CostClass {
+        switch self { case .claudeCode, .codex: .subscription; case .openCode: .freeCloud; case .local: .local }
+    }
+    /// What the user should run themselves to sign in through the vendor's own flow (JARVIS never handles credentials).
+    var loginCommand: String {
+        switch self {
+        case .claudeCode: "claude auth login"
+        case .codex: "codex login"
+        case .openCode: "opencode providers login"
+        case .local: "scripts/setup_local_ai.sh"
+        }
+    }
+}
+
+/// The user's explicit choice (Settings). Anything but `.auto` NEVER silently falls back to another engine.
+enum ProviderPreference: String, CaseIterable, Codable, Sendable {
+    case auto, local, openCodeFree, claudeCode, codex
+
+    var displayName: String {
+        switch self {
+        case .auto: "Auto"; case .local: "Local"; case .openCodeFree: "OpenCode Free"; case .claudeCode: "Claude Code"; case .codex: "Codex"
+        }
     }
     var providerID: ProviderID? {
-        switch self { case .auto: nil; case .codex: .codex; case .claudeCode: .claudeCode }
+        switch self {
+        case .auto: nil; case .local: .local; case .openCodeFree: .openCode; case .claudeCode: .claudeCode; case .codex: .codex
+        }
     }
 }
 
