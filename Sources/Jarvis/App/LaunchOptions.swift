@@ -11,6 +11,8 @@ import Foundation
 ///   --provider-live-test    REAL requests through ConversationService→ProviderManager→provider (uses your subscriptions; opt-in), print results, exit
 ///   --intelligence-live-test  REAL tests of the V0.3.1 stack (SQLite, local Qwen, OpenCode free model, routing, lifecycle); opt-in
 ///   --benchmark-models      (with the above) also run the benchmark suite on verified-free OpenCode models and record results
+///   --demo-agents           developer-only: simulate a few agent runs (never persisted, labelled SIMULATED)
+///   --demo-stress           developer-only: simulate a high-rate console stream (performance measurement)
 ///   --no-providers          never contact Claude Code / Codex (providers report "not installed"); used by verify.sh
 ///   --smoke-test            run the automated window/state smoke test, print results, exit
 ///   --close-after <sec>     hide all HUD windows after <sec> seconds (to observe the closed/idle resource profile)
@@ -25,6 +27,8 @@ struct LaunchOptions {
     var closeAfter: TimeInterval?
     var providerLiveTest = false
     var noProviders = false
+    var demoAgents = false
+    var demoStress = false
     var intelligenceLiveTest = false
     var benchmarkModels = false
     var liveDirectory: String?
@@ -38,6 +42,8 @@ struct LaunchOptions {
             case "--smoke-test": smokeTest = true
             case "--provider-live-test": providerLiveTest = true
             case "--no-providers": noProviders = true
+            case "--demo-agents": demoAgents = true
+            case "--demo-stress": demoStress = true
             case "--intelligence-live-test": intelligenceLiveTest = true
             case "--benchmark-models": benchmarkModels = true
             case "--live-dir": liveDirectory = it.next()

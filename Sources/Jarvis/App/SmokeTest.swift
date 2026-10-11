@@ -405,6 +405,27 @@ enum SmokeTest {
         check("Automated runs have no engine ready (every provider is stubbed: no quota, no network, no real database)", !svc.hasProviders && !svc.isResponding,
               context.supervisor.availability().map { "\($0.key.rawValue)=\($0.value.state.label)" }.sorted().joined(separator: " "))
 
+        // --- V0.3.2 Agent Observatory on the real window manager (simulated runs only: nothing real, nothing persisted)
+        do {
+            let demo = context.observatory.demo!
+            let runsBefore = (try? context.repository?.count("agent_runs")) ?? 0
+            demo.startShowcase(); await settle(600)
+            w.showCompactHUD(); await settle(500)
+            let panel = NSApp.windows.first { $0 is HUDPanel }
+            check("V0.3.2 Compact HUD stays exactly 392×448 while agents are active (summary strip shown)", panel?.frame.size == CompactHUDLayout.size && context.hub.activeRuns.count == 2, "\(String(describing: panel?.frame.size)) active=\(context.hub.activeRuns.count)")
+            svc.submit("show agents", origin: .compactHUD); await settle(700)
+            check("V0.3.2 'show agents' opens the Full HUD on the Agents section, Compact closed (mutual exclusivity)",
+                  context.hud.section == .agents && w.isFullHUDOpen && !w.isCompactHUDOpen && NSApp.windows.filter { $0 is HUDPanel && $0.isVisible }.isEmpty)
+            let planner = context.hub.activeRuns.first { $0.agentType == "PlannerAgent" }
+            context.observatory.selectedRunID = planner?.id; await settle(500)
+            check("V0.3.2 Agents view renders with a selected simulated run and a live console", planner != nil && !context.hub.consoleSnapshot(planner!.id).events.isEmpty)
+            check("V0.3.2 simulated activity never reaches SQLite", ((try? context.repository?.count("agent_runs")) ?? 0) == runsBefore)
+            if let p = planner { _ = context.hub.requestStop(p.id) }
+            demo.stopAll(); context.observatory.selectedRunID = nil
+            w.hideFullHUD(); w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
         print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")

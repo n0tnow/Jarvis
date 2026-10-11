@@ -125,9 +125,35 @@ enum IntelligenceLiveTest {
             convo.clear()
             check("Local worker is NOT running before first use (nothing to start by hand)", runtime.workerPID == nil && runtime.state == .idle)
             let rssBefore = idleRSS0
+            let qwenCardBefore = context.observatory.providerCards().first { $0.id == .local }?.state.label ?? "?"
+            var runPhases: [String] = [], qwenStates: [String] = []
+            let sampler = Task { @MainActor in
+                while !Task.isCancelled {
+                    if let r0 = context.hub.activeRuns.first, case let r = context.observatory.decorate(r0), runPhases.last != r.phase.rawValue { runPhases.append(r.phase.rawValue) }
+                    let st = context.observatory.providerCards().first { $0.id == .local }?.state.label ?? "?"
+                    if qwenStates.last != st { qwenStates.append(st) }
+                    try? await Task.sleep(for: .milliseconds(15))
+                }
+            }
             let t0 = Date()
             let reply = await ask("Reply with exactly: JARVIS_LOCAL_OK")
+            await sleep(0.1)                                                           // let the sampler see the settled (post-run) state
+            sampler.cancel()
             let total = Date().timeIntervalSince(t0)
+            // --- Observatory (V0.3.2): the SAME real execution must be visible everywhere ---
+            let obsRun = context.hub.recentFinished.first
+            let obsText = obsRun.map { context.hub.visibleText($0.id) } ?? ""
+            context.hub.flushPersistNow()
+            info("observatory: Qwen card before=\(qwenCardBefore) · card states seen=\(qwenStates) · run phases seen=\(runPhases)")
+            check("Observatory: Qwen reads UNLOADED before use, then STARTING → RUNNING, then LOADED · IDLE (never RUNNING when idle)",
+                  qwenCardBefore == "UNLOADED" && qwenStates.contains("STARTING") && qwenStates.contains("RUNNING") && qwenStates.last == "LOADED · IDLE", "\(qwenStates)")
+            check("Observatory: the real run went STARTING (model loading) → RUNNING → COMPLETED with the real engine",
+                  runPhases.first == "starting" && runPhases.contains("running") && obsRun?.phase == .completed && obsRun?.engine == .local, "\(runPhases)")
+            check("Observatory: live console shows the SAME execution's sanitized output and a completed event",
+                  obsText.contains("JARVIS_LOCAL_OK") && (obsRun.map { context.hub.consoleSnapshot($0.id).events.last?.kind == .completed } ?? false))
+            check("Observatory: timeline and history list the finished run (provider preserved)",
+                  obsRun.map { r in context.observatory.timeline().contains { $0.runID == r.id && $0.kind == .completed } && context.observatory.history(filter: .init(engine: .local)).contains { $0.id == r.id } } ?? false)
+            check("Observatory: unknown progress shows NO percentage (no structured steps)", obsRun?.progress.fraction == nil && obsRun?.progress.source == .unknown)
             check("Local Qwen: real answer through ConversationService→Coordinator→LocalQwenProvider→worker",
                   reply?.content.trimmingCharacters(in: .whitespacesAndNewlines) == "JARVIS_LOCAL_OK" && reply?.status == .complete && reply?.provider == "Local Qwen",
                   "reply=\"\(reply?.content ?? "nil")\" total \(fmt(total)) s (includes on-demand start)")
@@ -160,6 +186,18 @@ enum IntelligenceLiveTest {
             convo.clear()
             let again = await ask("Reply with exactly: JARVIS_LOCAL_OK")
             check("Local works again after a cancel", again?.content.trimmingCharacters(in: .whitespacesAndNewlines) == "JARVIS_LOCAL_OK")
+            // Synthetic secret (obviously fake) through the REAL local model: it must be redacted before UI state, console, SQLite and artifacts.
+            let fake = "sk-proj-FAKE0123456789abcdefghijklmnopqrstuvwx"
+            convo.clear()
+            let echoed = await ask("Reply with exactly: \(fake)")
+            context.hub.flushPersistNow()
+            // The user's own typed prompt is not provider output; everything JARVIS/provider-produced is scanned.
+            var everything = convo.messages.filter { $0.role != .user }.map(\.content).joined(separator: "\n") + context.store.activity.map(\.message).joined(separator: "\n")
+            for rid in context.hub.runs.keys { everything += context.hub.visibleText(rid) }
+            for table in ["agent_runs", "agent_events", "activity_events", "artifacts"] { for row in (try? context.database?.read("SELECT * FROM \(table)")) ?? [] { everything += "\(row)" } }
+            for u in (FileManager.default.enumerator(at: context.paths.artifacts, includingPropertiesForKeys: nil)?.allObjects as? [URL]) ?? [] { everything += FileManager.default.contents(atPath: u.path).flatMap { String(decoding: $0, as: UTF8.self) } ?? "" }
+            check("Observatory security: synthetic secret echoed by the real model is absent from UI state, console, activity, SQLite and artifacts",
+                  !everything.contains(fake) && !everything.contains("FAKE0123456789"), "model replied: \"\(Redactor.excerpt(echoed?.content ?? "", max: 60))\" (redacted=\((echoed?.content ?? "").contains(OutputSanitizer.mask)))")
 
             // Idle unload.
             let pid = runtime.workerPID
@@ -218,10 +256,18 @@ enum IntelligenceLiveTest {
             let kids = descendants()
             check("OpenCode process is running before STOP", !kids.isEmpty, "pids=\(kids)")
             let t0 = Date()
-            svc.cancelCurrentResponse()
+            let stopRun = svc.respondingRunID
+            let card = context.observatory.providerCards().first { $0.id == .openCode }
+            check("Observatory: OpenCode shows RUNNING with the actual selected free model while the real process lives",
+                  card?.state == .running && card?.currentModel == first.id && card?.activeRuns.count == 1, "state=\(card?.state.label ?? "?") model=\(card?.currentModel ?? "?")")
+            let stopped = stopRun.map { context.hub.requestStop($0) } ?? false           // the SAME action the Stop button calls
             await svc.waitUntilIdle()
             let gone = await waitDead(kids)
-            check("OpenCode STOP kills the process tree, run recorded as cancelled, no cooldown", gone && descendants().isEmpty && lastRun()?.status == .cancelled && sup.consecutiveFailures(.openCode, first.id) == 0,
+            context.hub.flushPersistNow()
+            let events = stopRun.flatMap { try? repo.events(runID: $0) } ?? []
+            check("OpenCode STOP (via Observatory action) kills the process tree, run CANCELLED in hub + SQLite + console, no cooldown, no orphan",
+                  stopped && gone && descendants().isEmpty && lastRun()?.status == .cancelled && stopRun.flatMap { context.hub.run($0)?.phase } == .cancelled
+                  && events.contains { $0.kind == .cancelled } && sup.consecutiveFailures(.openCode, first.id) == 0,
                   "stopped in \(fmt(Date().timeIntervalSince(t0), "%.2f")) s")
         } else if openCode.state != .notInstalled {
             // OpenCode present but nothing may be used (unsupported CLI generation / no verified-free model): explicit mode must refuse, send nothing.
@@ -282,14 +328,27 @@ enum IntelligenceLiveTest {
         let final = await measure(4)
         info("CPU idle at the end (4 s): JARVIS \(pct(final.jarvisCPU, final.wall)) · RSS \(mb(ProcessTree.residentBytes(of: me)))")
 
+        // ---------------------------------------------------------------- F2. Restart reconciliation on the real SQLite file
+        let staleID = context.audit.begin(agentType: "StaleProbe", engine: .openCode, model: "opencode/none", decision: nil, prompt: "stale probe", privacy: .normal, label: "Stale run probe")
+        if let probeDB = try? JarvisDatabase(url: context.database!.url) {                // a "next launch" connection to the same file
+            let probeRepo = JarvisRepository(database: probeDB)
+            let reconciled = AuditRecorder(repository: probeRepo).reconcileStaleRuns()
+            let rec = try? probeRepo.agentRun(staleID)
+            let ev = (try? probeRepo.events(runID: staleID)) ?? []
+            check("Restart reconciliation (real SQLite file): a run left RUNNING becomes INTERRUPTED with a persisted reason, not RUNNING forever",
+                  reconciled >= 1 && rec?.status == .interrupted && ev.contains { $0.kind == .interrupted }, "reconciled \(reconciled) run(s)")
+            probeDB.close()
+        }
+        context.hub.finish(staleID, phase: .interrupted)
+
         // ---------------------------------------------------------------- G. SQLite: reopen after "restart"
-        let runsBefore = (try? repo.count("agent_runs")) ?? 0
+        let runsBefore = (try? context.database?.readOne("SELECT count(*) AS n FROM agent_runs WHERE agent_type != 'StaleProbe'")?.int("n")).flatMap { $0 } ?? 0
         let url = context.database!.url
         context.database!.close()
         if let reopened = try? JarvisDatabase(url: url) {
             let r2 = JarvisRepository(database: reopened)
-            let runs = (try? r2.count("agent_runs")) ?? -1
-            let reasons = ((try? r2.recentAgentRuns(limit: 50)) ?? []).filter { ($0.selectionReason ?? "").contains("\"mode\"") }.count
+            let runs = (try? reopened.readOne("SELECT count(*) AS n FROM agent_runs WHERE agent_type != 'StaleProbe'")?.int("n")).flatMap { $0 } ?? -1
+            let reasons = ((try? r2.recentAgentRuns(limit: 80)) ?? []).filter { $0.agentType != "StaleProbe" && ($0.selectionReason ?? "").contains("\"mode\"") }.count
             let acts = (try? r2.count("activity_events")) ?? 0
             let models = (try? r2.models(engine: .openCode).count) ?? 0
             check("SQLite: records survive close/reopen (restart)", runs == runsBefore && runs > 0 && reasons == runs && acts > 0 && models == openCode.models.count,

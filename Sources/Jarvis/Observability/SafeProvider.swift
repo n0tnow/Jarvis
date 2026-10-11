@@ -24,6 +24,9 @@ struct SafeProvider: IntelligenceProvider {
             let task = Task { @MainActor in
                 let sanitizer = StreamSanitizer()
                 var started = false
+                // The provider's process/job is launched when its stream starts: the run is RUNNING from here on (a CLI that only
+                // answers at the end — OpenCode, Codex — is still running). Output later refines the activity.
+                if let runID { hub?.setPhase(runID, .running, activity: "Waiting for output") }
                 @MainActor func emitText(_ safe: String) {
                     guard !safe.isEmpty else { return }
                     continuation.yield(.textDelta(safe))
@@ -33,7 +36,7 @@ struct SafeProvider: IntelligenceProvider {
                     for try await event in base.respond(to: request) {
                         if !started, let runID {
                             started = true
-                            hub?.setPhase(runID, .running, activity: "Generating")
+                            hub?.setActivity(runID, "Generating")
                             hub?.emit(runID, .providerStarted, summary: "\(base.displayName) is producing output")
                         }
                         switch event {

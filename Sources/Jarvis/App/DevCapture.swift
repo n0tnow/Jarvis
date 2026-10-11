@@ -37,10 +37,28 @@ enum DevCapture {
 
         // Other sections
         DemoScenario.apply(.working, to: store)
-        for section in [HUDSection.tasks, .report, .system, .memory] {
+        for section in [HUDSection.tasks, .agents, .report, .system, .memory] {
             context.hud.section = section
             await settle(500)
             snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "full_section_\(section.rawValue)", in: directory)
+        }
+        // Agent Observatory (developer simulation: never persisted, labelled SIMULATED)
+        if let demo = context.observatory.demo {
+            demo.startShowcase(); await settle(2500)
+            context.hud.section = .agents; context.windows.showFullHUD(section: .agents); await settle(600)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "agents_live", in: directory)
+            if let planner = context.hub.activeRuns.first(where: { $0.agentType == "PlannerAgent" }) {
+                context.observatory.selectedRunID = planner.id; await settle(700)
+                snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "agents_detail_planner", in: directory)
+            }
+            if let coder = context.hub.activeRuns.first(where: { $0.agentType == "CodingAgent" }) {
+                context.observatory.selectedRunID = coder.id; await settle(700)
+                snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "agents_detail_coder_indeterminate", in: directory)
+            }
+            w.showCompactHUD(); await settle(700)
+            snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_agents_summary", in: directory)
+            demo.stopAll(); context.observatory.selectedRunID = nil
+            context.hud.section = .dashboard
         }
         // Conversation scenarios
         let svc = context.conversationService!

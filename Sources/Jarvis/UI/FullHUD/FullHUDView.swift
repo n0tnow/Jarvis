@@ -126,6 +126,7 @@ private struct FullHUDBody: View {
         switch app.hud.section {
         case .dashboard: DashboardView()
         case .tasks: TasksSectionView()
+        case .agents: AgentsSectionView()
         case .report: PlaceholderSectionView(
             section: .report, plannedFor: "V0.8",
             blurb: "Reports and visual explanations will appear here. Nothing is generated yet — this view only reserves the place."

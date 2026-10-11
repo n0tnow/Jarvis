@@ -11,6 +11,7 @@ enum Phrasebook {
         switch section {
         case .dashboard: pick(l, "Opening the dashboard.", "Ana ekranı açıyorum.")
         case .tasks: pick(l, "Opening your tasks.", "Görevleri açıyorum.")
+        case .agents: pick(l, "Opening the agents.", "Ajanları açıyorum.")
         case .report: pick(l, "Opening the report.", "Raporu açıyorum.")
         case .system: pick(l, "Opening system.", "Sistemi açıyorum.")
         case .memory: pick(l, "Opening memory.", "Belleği açıyorum.")

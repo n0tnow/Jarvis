@@ -155,8 +155,12 @@ struct AgentsPanel: View {
     var body: some View {
         let live = app.agents.active
         HUDCard("Agents", trailing: {
-            if live.isEmpty { Tag(text: "DEMO · NOT CONNECTED", tint: Theme.Palette.amber) }
-            else { Tag(text: "ACTIVE · \(live.count)", tint: Theme.Palette.mint) }
+            HStack(spacing: Theme.Spacing.s) {
+                if live.isEmpty { Tag(text: "DEMO · NOT CONNECTED", tint: Theme.Palette.amber) }
+                else { Tag(text: "ACTIVE · \(live.count)", tint: Theme.Palette.mint) }
+                Button("OPEN") { app.hud.section = .agents }.buttonStyle(.plain).font(Theme.Typography.label).foregroundStyle(Theme.Palette.accent)
+                    .accessibilityLabel("Open the Agents view")
+            }
         }) {
             VStack(spacing: Theme.Spacing.s) {
                 if !live.isEmpty {

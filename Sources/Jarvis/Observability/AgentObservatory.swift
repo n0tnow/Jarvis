@@ -46,7 +46,9 @@ enum ProviderUIState: String, Equatable, Sendable {
 
 enum ProviderStateResolver {
     static func resolve(engine: ProviderID, availability: EngineAvailability?, localState: LocalRuntimeState?, activeRuns: Int, now: Date = Date()) -> ProviderUIState {
-        // 1. An execution in flight beats everything: this is the ONLY way a provider reads RUNNING.
+        // The local model being loaded into memory is STARTING even though a run is already waiting on it.
+        if engine == .local, localState == .starting { return .starting }
+        // An execution in flight beats everything else: this is the ONLY way a provider reads RUNNING.
         if activeRuns > 0 { return .running }
         if engine == .local, let l = localState {
             switch l {
@@ -138,12 +140,21 @@ final class AgentObservatory {
 
     // MARK: Providers
 
+    /// Per-engine last run, cached: the cards redraw on live changes and must not hit SQLite every time.
+    @ObservationIgnored private var lastCache: [ProviderID: AgentRunRecord] = [:]
+    @ObservationIgnored private var lastCacheKey = -1
+    private func lastRuns() -> [ProviderID: AgentRunRecord] {
+        let key = historyRevision &* 31 &+ hub.runs.values.filter { $0.phase.isTerminal }.count
+        if key != lastCacheKey { lastCache = (try? repository?.lastRunPerEngine()) ?? [:]; lastCacheKey = key }
+        return lastCache
+    }
+
     func providerCards(now: Date = Date()) -> [ProviderCardModel] {
         let availability = supervisor.availability()
-        let last = (try? repository?.lastRunPerEngine()) ?? [:]
+        let last = lastRuns()
         let health = supervisor.health
         return ProviderID.allCases.map { engine in
-            let active = hub.activeRuns.filter { $0.engine == engine }
+            let active = hub.activeRuns.filter { $0.engine == engine }.map(decorate)
             let a = availability[engine]
             let state = ProviderStateResolver.resolve(engine: engine, availability: a, localState: engine == .local ? local.state : nil, activeRuns: active.count, now: now)
             var facts: [String] = []
@@ -184,9 +195,15 @@ final class AgentObservatory {
         return v
     }
 
+    /// A local run that is still waiting for the model to load is STARTING ("Loading model"), not RUNNING.
+    func decorate(_ v: AgentRunView) -> AgentRunView {
+        guard v.engine == .local, v.phase.isActive, local.state == .starting else { return v }
+        var d = v; d.phase = .starting; d.activity = "Loading model into memory"; return d
+    }
+
     /// Live run if the hub knows it (fresher), else reconstructed from SQLite.
     func runView(_ id: UUID) -> AgentRunView? {
-        if let live = hub.run(id) { return live }
+        if let live = hub.run(id) { return decorate(live) }
         return (try? repository?.agentRun(id)).flatMap { $0 }.map(Self.view(from:))
     }
 

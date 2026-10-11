@@ -110,6 +110,7 @@ struct ProviderAgentStateTests {
         #expect(resolve(.local, .notInstalled, local: .runtimeMissing) == .notInstalled && resolve(.local, .unavailable("m"), local: .modelMissing) == .notInstalled)
         #expect(resolve(.local, .failed("x"), local: .failed("x")) == .failed)
         #expect(resolve(.local, .ready, active: 1, local: .ready) == .running)
+        #expect(resolve(.local, .ready, active: 1, local: .starting) == .starting)                       // a run waiting for the model to LOAD is STARTING
     }
 
     @Test func cooldownIsVisibleAndExpires() {

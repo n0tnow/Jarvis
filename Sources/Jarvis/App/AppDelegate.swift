@@ -30,6 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             onChange: { prefs.globalShortcutsEnabled ? service.start() : service.stop() })
         if prefs.globalShortcutsEnabled { service.start() }
 
+        if options.demoAgents { context.observatory.demo?.startShowcase(); context.observatory.selectedRunID = context.hub.activeRuns.first { $0.agentType == "PlannerAgent" }?.id }
+        if options.demoStress { context.observatory.selectedRunID = context.observatory.demo?.startStress(linesPerSecond: 400) }
         if let state = options.state { DemoScenario.apply(state, to: context.store) }
         if options.openCompact { context.windows.showCompactHUD() }
         if options.openFull { context.windows.showFullHUD(section: options.section) }

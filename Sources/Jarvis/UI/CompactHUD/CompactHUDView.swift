@@ -12,11 +12,12 @@ struct CompactHUDView: View {
             header
             stateRow(store)
             taskCard(store)
+            AgentsSummaryStrip()
             actions(store)
             CommandField(text: $command, placeholder: "Command", origin: .compactHUD,
                          feedback: app.conversation.feedbackLine, focusTrigger: app.hud.isCompactVisible,
                          onCancel: { app.windows.hideCompactHUD() })
-            if app.preferences.showDeveloperControls {
+            if app.preferences.showDeveloperControls && AgentsSummaryStrip.shown(app.hub) == nil {      // the dev strip yields while agent activity is shown
                 DevStateStrip(compact: true)
             }
             Spacer(minLength: 0)   // absorbs slack: the frame below is fixed, content never resizes the window
