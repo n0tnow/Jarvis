@@ -131,3 +131,8 @@ history/statistics. The synthetic secret fixture used by tests/demos is obviousl
 | Windows, Compact 392×448 across states, agents summary | smoke 89/0/2, captures | AUTOMATED / visual |
 | Policy guards | `scripts/verify.sh` | AUTOMATED |
 | VoiceOver reading order, real clicks/typing, long sessions, Retina | README 40–66 | **MANUAL TEST REQUIRED** |
+
+## V0.4 additions
+* Task runs are ordinary runs: `agent_runs.task_id`, `AgentRunView.taskID`, owner `.task` (Stop on such a run stops the task through the existing cancellation path). The Agents list shows `TASK · <title>` above each run.
+* Deterministic build/test/file runs are `ProviderID.tool` runs (`BuildTool`/`TestTool`/`FileTool`, provider label "JARVIS Tools"): they have a console (merged stdout/stderr through `SafeToolOutput` — the second sanitization entry point next to `SafeProvider`), audit rows, tool records and exit codes, but never a provider card.
+* Task progress is derived from validated steps only and persisted with `progressSource`; the Tasks screen and the Compact card show a percentage only when it exists.

@@ -192,3 +192,31 @@ Description: None of the integrations supports same-session input or pausing; th
 ### JARVIS-V032-5 — Console cosmetics
 Status: Open · NON-BLOCKING
 Description: In the run detail, "Copy all" and STOP stretch across the full width of their rows.
+
+### JARVIS-V04-1 — Task UI and real project use are verified by captures/smoke/live tests, not by a person
+Status: Open · MANUAL TEST REQUIRED
+Description: Folder picker (NSOpenPanel from a non-activating Full HUD), VoiceOver reading order of the Tasks screen, approve/deny/stop/resume clicks, Reduce Motion and Retina were not checked by a human. Choosing a folder under Desktop/Documents/Downloads can trigger macOS's own "Files and Folders" prompt (a system dialog, not a JARVIS permission request). README items 67–91.
+
+### JARVIS-V04-2 — Real autonomy was demonstrated on a tiny fixture only
+Status: Open · NON-BLOCKING
+Description: The REAL end-to-end test (OpenCode FREE `space-bunny-free`, Python calculator, ≈16–18 s) passed; larger/multi-file projects, Unity/C# build profiles and weaker free models are unverified. Planner/coding quality is the routed model's; failures are reported honestly (planner/format failures, test failures after the bounded repair/escalation).
+
+### JARVIS-V04-3 — Concurrency and repair limits are deliberately small
+Status: Open · by design
+Description: At most 2 active tasks; only read-only analysis steps run side by side; a repair re-runs the failing command only (an earlier passed build step is not re-run); ≤3 attempts per code step; plans ≤12 steps; one workspace per task; context is targeted (≤7 files / ≈50 k chars), so very large projects need specific goals.
+
+### JARVIS-V04-4 — Resume after a restart is explicit and conservative
+Status: Open · by design
+Description: Interrupted tasks are never resumed automatically. If a code step's files no longer match what JARVIS wrote or the original content, the task fails with `workspaceChanged` instead of guessing. Waiting approvals for edits to user-dirty files are re-asked after a restart (the edits they described are gone). The cumulative diff after a restart comes from the last checkpoint.
+
+### JARVIS-V04-5 — Build/test steps execute project code
+Status: Open · by design
+Description: "Run the tests" runs the project's own test code (workspace-only, scrubbed environment, timeout, allowlisted executable/arguments, no network client of JARVIS). There is no OS-level sandbox; do not point tasks at untrusted projects.
+
+### JARVIS-V04-6 — No native notifications, no daemon
+Status: Open · FUTURE MILESTONE
+Description: Completion is reported in the conversation/activity/VoiceOver announcement; a macOS notification would need a permission. Tasks run only while the JARVIS process lives; quitting interrupts them (checkpointed).
+
+### JARVIS-V04-7 — Claude Code / Codex task escalation not exercised for real
+Status: Open · MOCK TESTED
+Description: Bounded repair and escalation (including `exclude`/`pin`, explicit-mode refusal) are covered with scripted agents; the real live test finished on OpenCode FREE without escalation and Claude/Codex were not asked to code on a fixture (subscription quota).

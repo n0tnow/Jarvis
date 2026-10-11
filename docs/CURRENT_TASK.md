@@ -1,24 +1,24 @@
 # Current Task
 
 Version:
-V0.3.2 — Agent Observatory & Live Consoles. Base: V0.3.1, V0.3, V0.2.1.
+V0.4 — Autonomous Task Engine. Base: V0.3.2 (commits e445f3f / d68513d / fc8a998), V0.3.1, V0.3, V0.2.1.
 
 Task:
-Make JARVIS observable (provider cards, runs, sanitized live console, truthful progress, history, timeline, Stop, restart reconciliation) behind one central sanitization boundary. NOT V0.4. No tag.
+User-initiated autonomy: Goal → durable Task → validated structured Plan → scheduled agents/tools → deterministic validation → bounded repair/escalation → report; workspace + capabilities + leases; restart recovery. NOT V0.5 (no proactive work). No tag.
 
 State:
-**V0.3.2 — READY FOR MANUAL TEST.** A recovery ✅ · B security boundary ✅ · C data plane ✅ · D data-plane tests ✅ · E UI ✅ (Agents section, console, history, timeline, Compact strip) · F real tests ✅ (`--intelligence-live-test` 35/35) / perf ✅ / `verify.sh` ✅ (377 tests, smoke 89/0/2) / docs ✅. Nothing is MANUALLY VERIFIED.
+**V0.4 — READY FOR MANUAL TEST.** Implemented, automated tested (482 unit tests, smoke 94/0/2, `verify.sh` PASSED incl. V0.4 guards) and REAL TESTED (`--task-live-test` 29/29: OpenCode FREE fixed a failing fixture test end to end; cancel; interrupt/resume; approval). Nothing is MANUALLY VERIFIED.
 
 Last Successful Step:
-`scripts/verify.sh` → VERIFY PASSED; live test 35 passed, 0 failed; captures show Compact still 392×448.
+`scripts/verify.sh` → VERIFY PASSED; `--task-live-test` → 29 passed, 0 failed; captures show Compact still 392×448; performance equals V0.3.2 on the same host (see PROJECT_STATE).
 
 Next Step:
-User manual test: README items 40–66. Do NOT start V0.4 and do NOT tag until the user approves.
+User manual test: README items 67–91 (use a throw-away project). Do NOT start V0.5 and do NOT tag until the user approves.
 
 Blocked By:
 Nothing.
 
 Notes:
-- Reference: `docs/AGENT_OBSERVABILITY.md`, DEC-029…032.
-- Security incident carry-over: a V0.3.1 `credential.list` probe printed an OpenCode Go key into a tool output (user told to rotate). JARVIS only ever calls `opencode api model.list`; verify.sh forbids credential/integration operation names; never add an API console.
-- Git: main only, no tags, no AI trailers.
+- Reference: `docs/AUTONOMOUS_TASK_ENGINE.md`, DEC-033…040, `docs/KNOWN_ISSUES.md` (JARVIS-V04-1…7).
+- Security carry-over: JARVIS never invokes credential.*/integration.*; only `model.list`. verify.sh guards are extended, never weakened.
+- Git: main only, no tags, no AI trailers (user rule).

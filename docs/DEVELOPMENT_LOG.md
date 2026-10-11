@@ -185,3 +185,29 @@ DEC-029 … DEC-032.
 
 ### Remaining Work
 User manual test (README 40–66). V0.4 only with approval. No tag.
+
+## 2026-10-11 — V0.4: autonomous task engine
+
+### Goal
+User-initiated goal → durable task → structured plan → scheduled agents/tools → deterministic validation → bounded repair/escalation → report, restart-safe, observable through V0.3.2. Not V0.5.
+
+### Changes
+`Tasks/` (TaskModel + state machines, TaskPlan parser/validator/planner prompt, WorkspaceGuard, ProjectTools + EditParser + UnifiedDiff, CommandProfiles/ApprovedExecutables/CommandRunner, GitTool (read-only), FileLeaseManager, TaskPrompts/ProjectContext, StepAgentRunner seam, TaskEngine (+Planning/Execution/Lifecycle), TaskReport, GoalIntake/TaskIntake, TaskBridge) · schema v3 + `TaskRepository` · `ProviderID.tool`, `SafeToolOutput`, `ManagedProcess(mergeStderr:)`, AgentRunManager `exclude/pin/policy/owner` + cancellation forwarding + capacity wake-ups · Tasks screen, Compact card, project picker, run grouping · `--task-live-test`, `--demo-tasks`, scripted `DemoAgentRunner`, captures + smoke checks · verify.sh V0.4 guards · DEC-033…040, `docs/AUTONOMOUS_TASK_ENGINE.md`.
+
+### Real findings (tests/live tests found them; all fixed)
+- unittest/compilers print their summaries on **stderr**: build/test output must merge stdout+stderr (`mergeStderr`), otherwise counts/failure text were lost.
+- A real free-model planner labelled a `delete` step with validation `structuredResult` → the whole plan was rejected. Validation is deterministic by step type, so a known-but-misplaced label is now coerced (unknown labels still rejected).
+- "Delete the file …" was not routed as work (`delete` was not a worker verb) → added delete/erase/wipe/purge.
+- A repair's re-run of the failing test was recorded as another *repair* attempt → new `recheck` attempt kind; report counts are exact.
+- Review/skip: a step with nothing to do must be able to go `running → skipped`.
+- Test harness: objects the engine holds weakly (HUD bridge) must outlive the test body (a dropped bridge made Stop a no-op and hung a test).
+- Policy rejections inside an edit validator were reported as plain validation failures; they now keep their category (`workspaceViolation`/`capabilityDenied`) and are never "repaired".
+- verify.sh: the plan validator's DENY-list of prohibited words ("curl", "sudo") tripped the launcher/pty guards — excluded that one file explicitly rather than weakening the guards.
+- Perf: nothing regressed vs V0.3.2 on the same host; the 2 % with parked tasks is the pre-existing menu-bar icon animation of the Working state (1.5 % with the demo task alone) plus the demo runner's 20 Hz wait loop.
+
+### Decisions
+DEC-033 … DEC-040.
+
+### Remaining Work
+User manual test (README 67–91). V0.5 only with approval. No tag.
+

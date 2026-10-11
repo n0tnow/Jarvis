@@ -1,6 +1,6 @@
 # Roadmap
 
-V0.1–V0.3.2 have been built (V0.3, V0.3.1 and V0.3.2 await manual test). Everything else is PLANNED — do not start a milestone without explicit user approval.
+V0.1–V0.4 have been built (V0.3, V0.3.1, V0.3.2 and V0.4 await manual test). Everything else is PLANNED — do not start a milestone without explicit user approval.
 
 | Version | Scope | Status |
 |---|---|---|
@@ -10,14 +10,15 @@ V0.1–V0.3.2 have been built (V0.3, V0.3.1 and V0.3.2 await manual test). Every
 | V0.3 | Real intelligence via the user's own Codex / Claude Code subscriptions: conversation-only, streaming, stop generation, continuity, provider selection (no API keys). **Autonomous worker execution is NOT part of V0.3 → V0.4** | READY FOR MANUAL TEST |
 | V0.3.1 | Intelligence infrastructure: SQLite persistence + audit trail, OpenCode verified-free pool, local Qwen, ProviderSupervisor, policy-driven model router, bounded background-agent foundation (no autonomous task engine) | READY FOR MANUAL TEST |
 | V0.3.2 | Agent Observatory & live consoles: provider/agent overview, sanitized live console, truthful progress/states, history, timeline, Stop, restart reconciliation, central sanitization boundary (no task engine, no shell) | READY FOR MANUAL TEST |
-| V0.4 | Persistent task engine + long-running background jobs (builds on V0.3.1 persistence/agents/routing) | PLANNED |
-| V0.5 | Local STT + microphone | PLANNED |
-| V0.6 | Local/approved TTS + streaming voice | PLANNED |
-| V0.7 | Wake word + interruption/barge-in | PLANNED |
-| V0.8 | Project memory + reports + self-controlled UI | PLANNED |
-| V0.9 | Unity MCP development workflow | PLANNED |
-| V0.10 | Browser automation + macOS computer use | PLANNED |
-| V0.11 | Multi-agent orchestration + model routing | PLANNED |
+| V0.4 | Autonomous task engine: user-initiated goal → durable task → validated plan → scheduled agents/tools → deterministic validation → bounded repair/escalation → report; workspace + capabilities + leases; restart recovery (no proactive work) | READY FOR MANUAL TEST |
+| V0.5 | Proactive reasoning + approval/autonomy policy (opportunity detection, proposals, low/medium/critical action classes) — NOT started | PLANNED |
+| V0.6 | Local STT + microphone | PLANNED |
+| V0.7 | Local/approved TTS + streaming voice | PLANNED |
+| V0.8 | Wake word + interruption/barge-in | PLANNED |
+| V0.9 | Project memory + reports + self-controlled UI | PLANNED |
+| V0.10 | Unity MCP development workflow | PLANNED |
+| V0.11 | Browser automation + macOS computer use | PLANNED |
+| V0.12 | Multi-agent orchestration + model routing | PLANNED |
 | V1.0 | Stable general-purpose JARVIS | PLANNED |
 
 V0.1 placeholders already in the UI that point at later milestones: Report/Memory sections (V0.8), Tools panel entries (V0.3/V0.9/V0.10), Launch at Login (disabled; later).

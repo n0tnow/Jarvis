@@ -1,8 +1,8 @@
 # JARVIS
 
-A native macOS menu-bar AI operating layer (long-term). V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.3.2 agent observatory** (live sanitized consoles, truthful progress, history, Stop) · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. Autonomous project work is not enabled yet (V0.4).
+A native macOS menu-bar AI operating layer (long-term). V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.4 autonomous task engine** (you give a bounded goal; JARVIS plans, executes with agents/tools, validates with real builds/tests, repairs within bounds, reports — user-initiated only) · **V0.3.2 agent observatory** (live sanitized consoles, truthful progress, history, Stop) · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. Autonomous project work is not enabled yet (V0.4).
 
-- **Version:** V0.3.2 — **READY FOR MANUAL TEST** (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3, V0.3.1 and V0.3.2 are not yet). Details: `docs/AGENT_OBSERVABILITY.md`, `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
+- **Version:** V0.4 — **READY FOR MANUAL TEST** (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3, V0.3.1, V0.3.2 and V0.4 are not yet). Details: `docs/AUTONOMOUS_TASK_ENGINE.md`, `docs/AGENT_OBSERVABILITY.md`, `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
 - Handoff for agents: `PROJECT_STATE.md`, `AGENTS.md` (includes the Git workflow: `main` only, linear history)
 
 ## Requirements
@@ -21,7 +21,7 @@ scripts/setup_local_ai.sh     # optional, once: isolated MLX runtime (605 MB, 57
 ```
 
 **Opt-in REAL tests** (spend only free/local engines plus two tiny Claude Code requests; never part of `verify.sh`):
-`build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1/V0.3.2 stack, own data directory) and `--provider-live-test` (V0.3 Claude Code / Codex).
+`build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1/V0.3.2 stack, own data directory), `--task-live-test` (V0.4: the real task engine on isolated temporary fixture projects — OpenCode FREE preferred, own data directory, never the JARVIS repository) and `--provider-live-test` (V0.3 Claude Code / Codex).
 
 **Global shortcuts** (work while any app is focused; no permission): hold **Option** and press **Command** → toggle Compact HUD (fires ~0.3 s later unless it turns out to be a double press). Hold **Option** and press **Command twice quickly** (within 0.3 s) → toggle Full HUD. Either Command key. Ignored if you add another key, a click, Shift or Control (so ⌥⌘D, ⌥⌘-click etc. are untouched). Turn off in Settings → Enable global shortcuts.
 
@@ -57,7 +57,8 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | Background agent foundation (limits for 16 GB, parent/child, no recursion, cancel, bounded repair/escalation, audit) — no UI entry point yet | IMPLEMENTED · AUTOMATED TESTED |
 | Native text editing (⌘V/⌘C/⌘X/⌘A/⌘Z), multiline composer | IMPLEMENTED · AUTOMATED TESTED (real key events) · physical keyboard MANUAL TEST REQUIRED |
 | Global shortcuts ⌥⌘ (Compact) and ⌥⌘⌘ (Full), no permission needed | IMPLEMENTED · AUTOMATED TESTED (logic + scripted integration) · **MANUAL TEST REQUIRED** (physical keys from another app) |
-| Full HUD (Dashboard, Tasks, System; Report/Memory placeholders) | IMPLEMENTED · MANUAL TEST REQUIRED |
+| **V0.4 autonomous task engine:** goal intake → durable task → validated structured plan → event-driven scheduler → analysis/coding/review agents + build/test tools → deterministic validation → bounded repair (1) + escalation (1) → checkpoints, report; workspace sandbox, write leases, Git baseline + user-change protection, approvals for destructive actions, cancellation, restart recovery (explicit resume) | IMPLEMENTED · AUTOMATED TESTED (≈105 task tests on isolated Git fixtures) · **REAL TESTED** (`--task-live-test`: OpenCode FREE fixed a failing test end to end; cancel, interrupt/resume) · MANUAL TEST REQUIRED |
+| Full HUD (Dashboard, Tasks, Agents, System; Report/Memory placeholders) | IMPLEMENTED · MANUAL TEST REQUIRED |
 | JARVIS Core visualization for all 7 states | IMPLEMENTED · VISUALLY VERIFIED (screenshots) |
 | Window-management layer for future UI self-control | IMPLEMENTED · AUTOMATED TESTED |
 | Demo task, activity feed, agents/tools panels (DEMO) | IMPLEMENTED |
@@ -65,7 +66,7 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | Settings (Reduce Motion, Developer Controls) | IMPLEMENTED |
 | Launch at Login | PLANNED (disabled placeholder) |
 | Report view, Memory view | PLANNED (V0.8) |
-| Text conversation, LLM, workers, task engine, voice, Unity MCP, browser/computer control | PLANNED (V0.2+) — see `docs/ROADMAP.md` |
+| Proactive reasoning + approval policy (V0.5), voice, Unity MCP, browser/computer control | PLANNED — see `docs/ROADMAP.md` |
 
 ## Architecture overview
 
@@ -84,7 +85,9 @@ Sources/Jarvis/
   UI/         Theme, MenuBar, CompactHUD, FullHUD, Components, VisualEffects, Settings
   Providers/  V0.3 CLI providers (ManagedProcess, parsers, ProviderManager) + OpenCode spec/parser
   Intelligence/ V0.3.1: router, classifier, local runtime, OpenCode service, supervisor, resources, agents, benchmark, coordinator
-  Persistence/ V0.3.1: SQLite engine, migrations, repository, artifacts, redaction
+  Persistence/ V0.3.1: SQLite engine, migrations, repository, artifacts, redaction (+ V0.4 TaskRepository)
+  Observability/ V0.3.2: sanitizer, execution hub, SafeProvider/SafeToolOutput, Agent Observatory
+  Tasks/      V0.4: task model/state machines, plans, workspace guard, project tools, command profiles, leases, engine, reports, intake
 Tests/JarvisTests/            unit tests (Swift Testing)
 scripts/                      build_app.sh, test.sh, verify.sh, setup_local_ai.sh, local-ai/ (worker + pinned requirements)
 docs/                         architecture, decisions, roadmap, issues, log, current task
@@ -97,7 +100,7 @@ See `docs/KNOWN_ISSUES.md`. Notably: conversation history is in-memory (the audi
 
 ## Next milestone
 
-V0.4 — persistent task engine. **Do not start until the user approves V0.3.2.**
+V0.5 — proactive reasoning + approval policy. **Do not start until the user approves V0.4.**
 
 ## Manual test checklist (V0.1)
 
@@ -143,6 +146,34 @@ Optional set-up for the local model: `scripts/setup_local_ai.sh` (needs `uv`; th
 37. **STOP GENERATION** while an OpenCode or local answer is running: it stops within a second; no `opencode` / worker process remains.
 38. Quit JARVIS while the local model is loaded → no `jarvis_local_worker.py` process remains. After a force-quit (`kill -9`) the worker also exits by itself.
 39. Data check: `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select agent_type, engine, model, status from agent_runs order by started_at desc limit 5"` shows your requests (engine/model/status/reason; no prompt text, no secrets).
+
+### V0.4 additions (autonomous task engine) — MANUAL TEST REQUIRED
+**Prepare:** `docs/AUTONOMOUS_TASK_ENGINE.md` explains the rules. Use a **throw-away project** (a copy of a small repo, or a folder with a failing test) — never your only copy. JARVIS edits files in the chosen folder (never commits/pushes), runs the project's own build/test commands, and waits for your approval before deleting anything or touching files that already have your uncommitted changes. Provider usage: Auto prefers a verified-free OpenCode model, then Claude Code/Codex.
+67. Full HUD → **TASKS**. The **Project** card: click **CHOOSE FOLDER…**, pick your throw-away project. It shows the discovered build/test commands (or "none found"). *(macOS may show its own "Files and Folders" prompt for Desktop/Documents/Downloads — that is the system, not JARVIS.)*
+68. In the command field type a bounded goal, e.g. `Fix the failing test in calc.py` (or Turkish: `calc.py içindeki başarısız testi düzelt`). JARVIS replies "On it. I created the task …" **within a second** — the task is created before work starts. Try also `Analyze the multiplayer issue` (read-only task) and `Explain NetworkPlayer` (a normal answer, **no** task).
+69. **TASKS** shows the task under ACTIVE with the activity ("Planning…"), then its **plan**: click the card to expand — numbered steps with type, "validates: …", dependencies, state. Steps turn PASSED one by one; analysis/coding/review steps show evidence lines; test steps show real commands, exit codes and counts.
+70. **AGENTS**: the task's runs appear grouped as `TASK · <title>` — PlannerAgent, AnalysisAgent, CodingAgent, TestTool, ReviewAgent — with provider/model, state, elapsed, console and timeline. Click a run → live console (sanitized, read-only); TestTool consoles show the real test output.
+71. **Progress:** the bar/percentage equals *validated steps / steps* (e.g. `2 of 5 steps validated · 40 %`). Before the plan exists there is no percentage. Nothing a model writes ("90 % done") ever changes it.
+72. Close the Full HUD (ESC) while the task runs → the task **keeps running** (menu bar icon keeps its working state). Reopen it (⌥⌘ or menu bar) → the same task, same state. The Compact card shows title, `STEP n/m`, `k of m validated · NN %`, `· 1 agent`; **PAUSE is disabled** (autonomous tasks can't be paused), STOP works.
+73. When it finishes: the Conversation panel gets a concise summary with only facts (`5/5 steps validated`, files changed, `Tests: … exit 0 · N tests, N passed`, which provider did what). Check the file on disk and run the project's tests yourself.
+74. **STOP:** start another task, press **STOP** on its card (or Compact STOP, or type `stop`). It ends as STOPPED within seconds. In Terminal: `pgrep -fl "opencode|claude|codex|python3"` shows nothing started by JARVIS; the Tasks card says what was stopped; no file lease remains.
+75. **Restart recovery:** start a task, quit JARVIS (⌘Q or `kill`) while it runs, relaunch → the task appears under NEEDS YOUR ATTENTION as **INTERRUPTED** (not RUNNING, not lost). Completed steps keep PASSED. Press **RESUME** → it continues from the saved state; finished steps are not redone.
+76. **Approval:** with a file `old/legacy.py` in the project type `Delete the file old/legacy.py from the project`. The task stops at **AWAITING APPROVAL** with the exact action; the Full HUD shows the approval card and the Tasks card has APPROVE/DENY. Nothing is deleted until you approve. Quit & relaunch while waiting → it is still waiting.
+77. **Denied approval:** repeat and press **DENY** → the task ends FAILED ("approval denied"), the file is intact.
+78. **Dirty workspace:** in a Git project edit `calc.py` (leave it uncommitted), then ask JARVIS to fix something in `calc.py`. It must **ask before touching that file**; if you deny, your edit is unchanged; if you approve, your change survives next to the fix. `git status`/`git log` afterwards: JARVIS made **no commit** and no reset/clean.
+79. **Failure honesty:** ask for something impossible (e.g. fix a test that cannot be fixed by editing `calc.py`). The task fails with the real failure output, after at most one repair and one escalation; the report says what failed and suggests the next step. Nothing claims success.
+80. **History/report:** the finished card shows the summary; expand for the plan, per-step evidence, workspace, Git baseline. The report/checkpoint files are under `~/Library/Application Support/JARVIS/artifacts/{reports,checkpoints}`.
+81. **Compact stays 392×448** with a task running/waiting/interrupted (no jump, no clipping).
+82. **Exclusivity:** with a task running, `show tasks` from Compact opens the Full HUD on Tasks and closes Compact; ⌥⌘ toggles back; never both visible.
+83. **Clipboard** (V0.2.1) still works in both command fields (⌘V/⌘C/⌘A/⌘Z).
+84. **VoiceOver:** task cards read "title, state, N of M steps validated"; steps read "Step n: title, state"; APPROVE/DENY/STOP/RESUME announce their target; state is never colour-only.
+85. **Reduce Motion:** no animation in the Tasks screen; progress still updates.
+86. **Resources:** Activity Monitor — JARVIS ≈0–0.5 % closed; ≈2 % with a parked task (menu-bar icon animation, as in V0.1.1); the provider child processes (opencode/claude) are separate and disappear when the task ends.
+87. **Sleep/wake:** start a long task, close the lid / sleep for a minute, wake → elapsed time did not count the sleep; the task state is re-evaluated (it may fail with a provider timeout rather than pretend).
+88. **Security spot-check:** `grep -r "sk-" ~/Library/Application\ Support/JARVIS/artifacts` after asking a task to touch a file containing a fake key → nothing; a file named `.env` is never read or edited by a task.
+89. **Limits:** try a goal with no project chosen → "need a project folder"; try two goals at once (a third is refused while two are active).
+90. **Switch provider mode** (Settings → Intelligence provider → Claude Code) and run a task: only that provider is used; if it fails there is no fallback and no escalation.
+91. Tell me whether the Tasks screen/plan view is too dense, whether 3 repair attempts per code step feels right, and report anything odd (I add it to `docs/KNOWN_ISSUES.md`).
 
 ### V0.3.2 additions (agent observatory) — MANUAL TEST REQUIRED
 Developer-only helpers: `build/Jarvis.app/Contents/MacOS/Jarvis --open-full --section agents --demo-agents` (labelled SIMULATED, never saved). The console is **read-only sanitized output** — it is not a terminal.

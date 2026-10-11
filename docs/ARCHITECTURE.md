@@ -91,6 +91,19 @@ ConversationService ─► IntelligenceProviderResolving ◄── ProviderManag
 ## Agent observability (V0.3.2 — DEC-029…032; details `AGENT_OBSERVABILITY.md`)
 Provider/worker output → `SafeProvider` (wraps every engine; `StreamSanitizer`, fail closed) → sanitized events → agent runtime **and** `ExecutionHub` (bounded `ConsoleBuffer`, coalesced revision, batched persistence into `agent_events`, sanitized output artifact) → `AgentObservatory` read model (`ProviderStateResolver`, `RunPhase`, `ProgressCalculator`) → Full HUD **Agents** section (provider cards, runs, console, history, timeline) and a 44 pt Compact summary strip. Stop is routed to the existing cancellation paths (`installStopRouting`). Launch reconciles stale runs to INTERRUPTED. Developer simulation (`ObservatoryDemo`) is isolated and never persisted. Schema v2 adds `agent_events`, `agent_run_steps` and run label/progress/activity columns.
 
+## Autonomous task engine (V0.4 — DEC-033…040; details `AUTONOMOUS_TASK_ENGINE.md`)
+```
+GoalIntake ─► TaskEngine.submit ─► tasks/task_steps (SQLite) ─► PlannerAgent ─► PlanParser/PlanValidator ─► steps
+   scheduler (withTaskGroup, event-driven) ─► executeStep
+        analysis/codeChange/review ─► StepAgentRunner (ManagerAgentRunner → AgentRunManager.spawn → ModelRouter/Supervisor/Resources → SafeProvider)
+        codeChange output ─► EditParser ─► ProjectTools.prepare ─► approvals (dirty files) ─► FileLeaseManager ─► apply ─► hash check
+        build/test ─► CommandRunner (ApprovedExecutables, ManagedProcess, SafeToolOutput) ─► repairLoop (≤1 repair + ≤1 escalation)
+        delete ─► approval ─► ProjectTools.delete
+   ─► checkpoint/report artifacts ─► TaskBridge ─► JarvisStore.engineTasks ─► Compact card · Dashboard · Tasks screen · Approval card
+```
+`Sources/Jarvis/Tasks/`: `TaskModel` (kinds, capabilities, state machines, records) · `TaskPlan` (plan, parser, validator, planner prompt) · `Workspace` (`WorkspaceGuard`) · `ProjectTools` (+ `EditParser`, `UnifiedDiff`) · `CommandProfiles` (approved executables, discovery, runner, test counts) · `GitTool` (read-only) · `FileLeaseManager` · `TaskPrompts` (agent answers, targeted context) · `StepAgentRunner` (seam over `AgentRunManager`) · `TaskEngine` (+`+Planning`, `+Execution`, `+Lifecycle`) · `TaskReport` · `GoalIntake` · `TaskBridge`. Persistence: `Persistence/TaskRepository.swift` (schema v3). Dev-only scripted agents: `Services/Demo/TaskDemo.swift`.
+Seams: `StepAgentRunner` (tests substitute a scripted runner; production = `ManagerAgentRunner`), `TaskSubmitting` (`ConversationService` → intake), `EngineTaskControlling` (HUD buttons → engine). The UI never touches the repository (`verify.sh`).
+
 ## Windows
 
 - **Invariant (DEC-015):** Compact XOR Full visible, enforced only in `WindowManager`.
@@ -117,6 +130,6 @@ Provider/worker output → `SafeProvider` (wraps every engine; `StreamSanitizer`
 ## Extension points for later milestones (not implemented)
 
 - V0.2: replace `LocalCommandHandler` with a command router (needs a response channel; today it only writes to the activity log).
-- V0.4: task engine writes `JarvisStore`; needs task-id-addressable mutations (today `mutateActiveTask` targets the first active task) and Codable display slots/approval for persistence; add an "interrupted" status for crash recovery.
+- V0.4 is implemented (see above). Later: V0.5 proactive reasoning + approval policy builds on `TaskEngine.submit`, the approval gate and the report/checkpoint data.
 - Voice (V0.5–0.7): something must arbitrate `setState` between STT/LLM/task engine.
 - Self-controlled UI (V0.8): protocol may need `currentSection`, `hideSettings`, and a "don't steal focus" open variant.
