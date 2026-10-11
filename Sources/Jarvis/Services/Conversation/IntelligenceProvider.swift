@@ -26,6 +26,10 @@ enum IntelligenceEvent: Sendable {
     /// The provider-side session/thread id to continue from on the next turn.
     case session(String)
     case textDelta(String)
+    /// Token counts the provider itself reported (never estimated).
+    case usage(input: Int?, output: Int?)
+    /// The model asked for a tool in a conversation-only run (it was refused). Audit only.
+    case toolAttempt(String)
     case finished
 }
 

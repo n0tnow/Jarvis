@@ -174,6 +174,7 @@ final class ConversationService {
                 switch event {
                 case .session(let s): resolver.recordSession(s, for: resolved.id)
                 case .textDelta(let d): coalescer.append(d)
+                case .usage, .toolAttempt: break          // audit-only (handled by the coordinator in the next step)
                 case .finished: sawFinished = true
                 }
             }

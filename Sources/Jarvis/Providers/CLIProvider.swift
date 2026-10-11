@@ -109,6 +109,8 @@ struct CLIProvider: IntelligenceProvider {
                     case .text(let t): emitted = true; out.yield(.textDelta(t))
                     case .rateLimited(let reset): failure = failure ?? .rateLimited(spec.id, resetsAt: reset)
                     case .failure(let e): failure = e
+                    case .usage(let i, let o): out.yield(.usage(input: i, output: o))
+                    case .toolAttempt(let t): out.yield(.toolAttempt(t))
                     case .finished: finished = true
                     }
                 }

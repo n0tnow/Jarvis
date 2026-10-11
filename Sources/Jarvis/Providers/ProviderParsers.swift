@@ -6,6 +6,8 @@ enum ProviderStreamEvent: Equatable, Sendable {
     case text(String)
     case rateLimited(resetsAt: Date?)
     case failure(ProviderError)
+    case usage(input: Int?, output: Int?)
+    case toolAttempt(String)
     case finished
 }
 
