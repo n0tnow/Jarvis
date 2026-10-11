@@ -38,7 +38,7 @@ final class AppContext {
     /// Views and (later) the intent layer talk to windows only through this protocol.
     var windows: any JarvisWindowControlling { windowManager }
 
-    init(seedDemoData: Bool = true, stubIntelligence: Bool = false) {
+    init(seedDemoData: Bool = true, stubIntelligence: Bool = false, dataDirectory: URL? = nil) {
         store = JarvisStore()
         hud = HUDState()
         preferences = Preferences()
@@ -47,7 +47,10 @@ final class AppContext {
         intelligenceIsStubbed = stubIntelligence
 
         // --- persistence ---
-        let p = stubIntelligence ? JarvisPaths.temporary("jarvis-stub") : JarvisPaths.standard()
+        // Data (SQLite/artifacts) may live in a separate directory (the live test never pollutes the user's real history);
+        // the local-model RUNTIME always comes from the standard location.
+        let runtimePaths = stubIntelligence ? JarvisPaths(root: URL(fileURLWithPath: "/nonexistent/jarvis-stub")) : JarvisPaths.standard()
+        let p = stubIntelligence ? JarvisPaths.temporary("jarvis-stub") : (dataDirectory.map { JarvisPaths(root: $0) } ?? JarvisPaths.standard())
         paths = p
         var db: JarvisDatabase?
         var dbError: String?
@@ -64,13 +67,21 @@ final class AppContext {
         resources = ResourceManager()
         openCode = OpenCodeService(repository: repo, preferences: preferences, providerWorkspace: providers.workingDirectory)
         let modelPath = stubIntelligence ? "/nonexistent/jarvis-stub-model" : preferences.localModelPath
-        var localConfig = LocalRuntimeConfig.standard(paths: stubIntelligence ? JarvisPaths(root: URL(fileURLWithPath: "/nonexistent/jarvis-stub")) : p, modelPath: modelPath)
+        var localConfig = LocalRuntimeConfig.standard(paths: runtimePaths, modelPath: modelPath)
         localConfig.idleUnloadSeconds = preferences.localIdleUnloadSeconds
         localRuntime = LocalRuntime(config: localConfig)
+        let prefsRef = preferences
+        localRuntime.idleUnloadProvider = { [weak prefsRef] in prefsRef?.localIdleUnloadSeconds ?? 300 }
         supervisor = ProviderSupervisor(providers: providers, openCode: openCode, local: localRuntime, resources: resources, repository: repo)
         coordinator = IntelligenceCoordinator(providers: providers, supervisor: supervisor, audit: audit, preferences: preferences)
         agents = AgentRunManager(coordinator: coordinator, resources: resources)
         benchmarks = BenchmarkRunner(repository: repo, artifacts: artifacts)
+
+        if stubIntelligence {
+            // Stub at construction (not on first refresh): nothing may reach a real provider, its service, or the network.
+            providers.probeOverride = { id, _ in ProviderStatus(id: id, state: .notInstalled) }
+            openCode.isStubbed = true
+        }
 
         if seedDemoData { DemoScenario.seed(store) }
         windowManager = WindowManager(context: self)
@@ -85,14 +96,60 @@ final class AppContext {
         store.onLog = { event in audit.activity(event.kind.rawValue, event.message) }
     }
 
+    // MARK: User-triggered actions (Settings)
+
+    /// modelID → progress text while a benchmark runs ("3/13"), absent otherwise. Bumps `benchmarkRevision` so views refresh.
+    private(set) var benchmarkProgress: [String: String] = [:]
+    private(set) var benchmarkRevision = 0
+    private(set) var localTestResult: String?
+    private(set) var isTestingLocal = false
+
+    /// Runs the benchmark suite on ONE verified-free model (explicit user action: sends the fixed, non-sensitive fixtures to that model).
+    func benchmark(modelID: String) async {
+        guard benchmarkProgress[modelID] == nil, !intelligenceIsStubbed else { return }
+        benchmarkProgress[modelID] = "0/\(BenchmarkSuite.all.count)"
+        defer { benchmarkProgress[modelID] = nil; benchmarkRevision += 1; supervisor.invalidateBenchmarks(); openCode.reloadFromStore() }
+        await openCode.refresh(remote: true)                                    // never benchmark on stale price data
+        var done = 0
+        let total = BenchmarkSuite.all.count
+        let openCode = self.openCode
+        _ = await benchmarks.run(modelID: modelID, groups: BenchmarkGroup.allCases, makeProvider: {
+            guard let m = openCode.model(modelID) else { return nil }
+            return openCode.provider(for: m)
+        }, progress: { [weak self] _ in
+            done += 1
+            self?.benchmarkProgress[modelID] = "\(done)/\(total)"
+        }, onModelRemoved: { openCode.markModelGone(modelID) })
+        store.log("Benchmark finished for \(modelID)", kind: .info)
+    }
+
+    func benchmarkAllFreeModels() async {
+        for m in openCode.freePool where m.enabled { await benchmark(modelID: m.id) }
+    }
+
+    /// "Test local model": one bounded request through the local provider (starts the worker on demand).
+    func testLocalModel() async {
+        guard !isTestingLocal, !intelligenceIsStubbed else { return }
+        isTestingLocal = true; localTestResult = nil
+        defer { isTestingLocal = false }
+        let profile = TaskProfile(category: .conversation, complexity: .trivial)
+        let r = await OneShotRunner.run(provider: LocalQwenProvider(runtime: localRuntime, profile: profile, maxTokens: 24),
+                                        prompt: "Reply with exactly: JARVIS_LOCAL_OK", timeout: 120)
+        if r.succeeded {
+            localTestResult = "“\(r.text.trimmingCharacters(in: .whitespacesAndNewlines))” in \(String(format: "%.1f", r.durationMS / 1000)) s"
+        } else {
+            localTestResult = "failed: \(r.error.map { AuditRecorder.category($0) } ?? (r.timedOut ? "timeout" : "cancelled"))"
+        }
+    }
+
     /// Discovery for every engine (event-driven, once at launch and on demand). Stubbed runs skip real providers entirely.
-    func refreshIntelligence(remoteCatalog: Bool = true) async {
+    func refreshIntelligence(remoteCatalog: Bool = true, includeOpenCode: Bool = true) async {
         if intelligenceIsStubbed {
             providers.probeOverride = { id, _ in ProviderStatus(id: id, state: .notInstalled) }
             await providers.refresh()
             return
         }
         resources.start()
-        await supervisor.refreshAll(remoteCatalog: remoteCatalog)
+        await supervisor.refreshAll(remoteCatalog: remoteCatalog, includeOpenCode: includeOpenCode)
     }
 }

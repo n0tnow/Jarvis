@@ -402,7 +402,8 @@ enum SmokeTest {
               "messages=\(convo.messages.count)/\(expectedMessages) \(violations.prefix(2))")
         w.hideCompactHUD(); w.hideFullHUD()
         await resetWorld()
-        check("V0.2 has no intelligence provider registered (offline: no API keys, no network)", !svc.hasProviders && !svc.isResponding)
+        check("Automated runs have no engine ready (every provider is stubbed: no quota, no network, no real database)", !svc.hasProviders && !svc.isResponding,
+              context.supervisor.availability().map { "\($0.key.rawValue)=\($0.value.state.label)" }.sorted().joined(separator: " "))
 
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.

@@ -10,7 +10,11 @@ struct SystemPanel: View {
             VStack(spacing: Theme.Spacing.s) {
                 KeyValueRow(key: "State", value: app.store.state.label, valueTint: app.store.state.tint)
                 KeyValueRow(key: "Version", value: AppInfo.version)
-                KeyValueRow(key: "Provider", value: providerSummary, valueTint: app.providers.selectedProvider == nil ? Theme.Palette.amber : Theme.Palette.mint)
+                KeyValueRow(key: "Provider", value: providerSummary, valueTint: app.coordinator.statusBadge.usable ? Theme.Palette.mint : Theme.Palette.amber)
+                KeyValueRow(key: "Local", value: app.localRuntime.state.label, valueTint: app.localRuntime.state.isUsableForRouting || app.localRuntime.state == .running ? Theme.Palette.mint : Color.jarvisSecondary)
+                KeyValueRow(key: "OpenCode", value: openCodeSummary, valueTint: app.openCode.state == .ready ? Theme.Palette.mint : Color.jarvisSecondary)
+                KeyValueRow(key: "Memory", value: app.resources.pressure.memory.rawValue.uppercased(),
+                            valueTint: app.resources.pressure.memory == .normal ? Color.jarvisSecondary : Theme.Palette.amber)
                 KeyValueRow(key: "Permissions", value: "NONE REQUESTED")
                 KeyValueRow(key: "Motion", value: app.preferences.effectiveReduceMotion ? "REDUCED" : "FULL")
             }
@@ -20,8 +24,15 @@ struct SystemPanel: View {
 
 extension SystemPanel {
     fileprivate var providerSummary: String {
-        if let p = app.providers.selectedProvider { return p.shortName }
-        return "NONE READY"
+        let mode = app.preferences.providerPreference
+        if let d = app.coordinator.lastDecision, let c = d.selected { return "\(mode == .auto ? "AUTO → " : "")\(c.engine.shortName)" }
+        return app.coordinator.statusBadge.usable ? mode.displayName.uppercased() : "NONE READY"
+    }
+    fileprivate var openCodeSummary: String {
+        switch app.openCode.state {
+        case .ready: "\(app.openCode.freePool.count) FREE"
+        default: app.openCode.state.label
+        }
     }
 }
 
@@ -142,24 +153,49 @@ struct AgentsPanel: View {
     @Environment(AppContext.self) private var app
 
     var body: some View {
-        HUDCard("Agents", trailing: { Tag(text: "DEMO · NOT CONNECTED", tint: Theme.Palette.amber) }) {
+        let live = app.agents.active
+        HUDCard("Agents", trailing: {
+            if live.isEmpty { Tag(text: "DEMO · NOT CONNECTED", tint: Theme.Palette.amber) }
+            else { Tag(text: "ACTIVE · \(live.count)", tint: Theme.Palette.mint) }
+        }) {
             VStack(spacing: Theme.Spacing.s) {
-                ForEach(app.store.agents) { agent in
-                    HStack(spacing: Theme.Spacing.s) {
-                        Image(systemName: agent.status == .active ? "circle.inset.filled" : "circle")
-                            .font(.system(size: 8))
-                            .foregroundStyle(agent.status == .active ? Theme.Palette.accent : Color.jarvisTertiary)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(agent.name).font(Theme.Typography.body).foregroundStyle(Color.jarvisPrimary)
-                            Text(agent.role).font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
+                if !live.isEmpty {
+                    // Real background agent runs (V0.3.1 foundation): agent · engine/model · elapsed · cancel.
+                    ForEach(live) { run in
+                        HStack(spacing: Theme.Spacing.s) {
+                            Image(systemName: "circle.inset.filled").font(.system(size: 8)).foregroundStyle(Theme.Palette.accent).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(run.type).font(Theme.Typography.body).foregroundStyle(Color.jarvisPrimary)
+                                Text("\(run.engine.displayName)\(run.model.map { " · " + ($0.split(separator: "/").last.map(String.init) ?? $0) } ?? "")")
+                                    .font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary).lineLimit(1)
+                            }
+                            Spacer()
+                            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                                Text(ElapsedText.format(ctx.date.timeIntervalSince(run.startedAt))).font(Theme.Typography.mono).foregroundStyle(Color.jarvisSecondary).monospacedDigit()
+                            }
+                            Button { app.agents.cancel(run.id) } label: { Image(systemName: "stop.fill").font(.system(size: 9)) }
+                                .buttonStyle(.plain).foregroundStyle(Theme.Palette.coral).accessibilityLabel("Cancel \(run.type)")
                         }
-                        Spacer()
-                        Text(agent.status.label)
-                            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(agent.status == .active ? Theme.Palette.accent : Color.jarvisSecondary)
+                        .accessibilityElement(children: .combine)
                     }
-                    .accessibilityElement(children: .combine)
+                } else {
+                    ForEach(app.store.agents) { agent in
+                        HStack(spacing: Theme.Spacing.s) {
+                            Image(systemName: agent.status == .active ? "circle.inset.filled" : "circle")
+                                .font(.system(size: 8))
+                                .foregroundStyle(agent.status == .active ? Theme.Palette.accent : Color.jarvisTertiary)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(agent.name).font(Theme.Typography.body).foregroundStyle(Color.jarvisPrimary)
+                                Text(agent.role).font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
+                            }
+                            Spacer()
+                            Text(agent.status.label)
+                                .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(agent.status == .active ? Theme.Palette.accent : Color.jarvisSecondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
                 }
             }
         }

@@ -6,7 +6,6 @@ struct ProviderBadge: View {
 
     var body: some View {
         let service = app.conversationService!
-        let providers = app.providers
         HStack(spacing: Theme.Spacing.s) {
             if service.isResponding {
                 Tag(text: "THINKING · \(service.respondingProviderName?.uppercased() ?? "PROVIDER")", tint: Theme.Palette.violet)
@@ -25,10 +24,9 @@ struct ProviderBadge: View {
                 .accessibilityLabel("Stop generation")
                 .accessibilityHint("Stops the current answer and ends the provider process")
                 .accessibilityIdentifier("conversation.stop")
-            } else if let selected = providers.selectedProvider {
-                Tag(text: "\(selected.shortName) · \(providers.status(selected).state.label)", tint: Theme.Palette.mint)
             } else {
-                Tag(text: providers.lastRefresh == nil ? "CHECKING PROVIDERS" : "NO PROVIDER READY", tint: Theme.Palette.amber)
+                let badge = app.coordinator.statusBadge
+                Tag(text: badge.text, tint: badge.usable ? Theme.Palette.mint : Theme.Palette.amber)
             }
         }
         .accessibilityElement(children: .contain)

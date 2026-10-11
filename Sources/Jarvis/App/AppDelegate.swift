@@ -12,7 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
         let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && (options.smokeTest || options.captureDirectory != nil))
-        context = AppContext(stubIntelligence: stubbed)
+        let liveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true) : nil
+        context = AppContext(stubIntelligence: stubbed, dataDirectory: liveData)
         statusItem = StatusItemController(context: context)
         context.windowManager.anchorProvider = { [weak self] in self?.statusItem.buttonFrameOnScreen }
 
@@ -62,7 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Find out which engines are actually usable (event-driven, once; no polling). Stubbed runs never touch real providers.
         if !options.intelligenceLiveTest {
             let context = context!
-            Task { await context.refreshIntelligence() }
+            Task { await context.refreshIntelligence(includeOpenCode: false) }     // OpenCode is read lazily (may start its background service)
         }
         Log.app.info("JARVIS launched")
     }
