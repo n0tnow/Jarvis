@@ -1,8 +1,8 @@
 # JARVIS
 
-A native macOS menu-bar AI operating layer (long-term). V0.1 was the native foundation + HUD; V0.2 added text conversation and a deterministic command router; **V0.3 connects real intelligence**: anything that isn't a built-in command is answered by **your own signed-in Claude Code or Codex** (subscription-backed, conversation-only, tools disabled). JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; autonomous project work is not enabled yet (V0.4).
+A native macOS menu-bar AI operating layer (long-term). V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. Autonomous project work is not enabled yet (V0.4).
 
-- **Version:** V0.3 — real intelligence via your own Codex / Claude Code subscriptions — **READY FOR MANUAL TEST** (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user). Details: `docs/PROVIDER_RESEARCH.md`.
+- **Version:** V0.3.1 — **READY FOR MANUAL TEST** (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3 and V0.3.1 are not yet). Details: `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
 - Handoff for agents: `PROJECT_STATE.md`, `AGENTS.md` (includes the Git workflow: `main` only, linear history)
 
 ## Requirements
@@ -17,7 +17,11 @@ scripts/build_app.sh          # builds build/Jarvis.app (release, ad-hoc signed)
 open build/Jarvis.app         # menu bar icon appears (no Dock icon)
 scripts/verify.sh             # full automated verification
 scripts/test.sh               # unit tests only
+scripts/setup_local_ai.sh     # optional, once: isolated MLX runtime (605 MB, 57 pinned packages) for the on-device model — downloads NO model
 ```
+
+**Opt-in REAL tests** (spend only free/local engines plus two tiny Claude Code requests; never part of `verify.sh`):
+`build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1 stack, own data directory) and `--provider-live-test` (V0.3 Claude Code / Codex).
 
 **Global shortcuts** (work while any app is focused; no permission): hold **Option** and press **Command** → toggle Compact HUD (fires ~0.3 s later unless it turns out to be a double press). Hold **Option** and press **Command twice quickly** (within 0.3 s) → toggle Full HUD. Either Command key. Ignored if you add another key, a click, Shift or Control (so ⌥⌘D, ⌥⌘-click etc. are untouched). Turn off in Settings → Enable global shortcuts.
 
@@ -45,7 +49,12 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | Compact HUD (fixed 392×448 in every state; task, step, elapsed, progress, Open/Pause/Stop, command) | IMPLEMENTED · AUTOMATED TESTED (frame measured across states) · MANUAL TEST REQUIRED |
 | Ambient neural-network background (Full HUD, state-reactive, pauses when hidden / Reduce Motion) | IMPLEMENTED · AUTOMATED TESTED (lifecycle) · VISUALLY VERIFIED · MANUAL TEST REQUIRED |
 | **Text commands** (EN + TR) → router → executor → real UI/task actions; Conversation panel; honest "provider not connected" replies | IMPLEMENTED · AUTOMATED TESTED (unit + 7 acceptance scenarios on the real WindowManager) · MANUAL TEST REQUIRED |
-| **Real intelligence:** Claude Code (token streaming) and Codex (message-level) via their official CLIs; Auto / Codex / Claude Code selection; follow-up context; STOP GENERATION that really kills the process; provider status in Settings | IMPLEMENTED · **REAL TESTED** through the JARVIS stack (`--provider-live-test`) · MOCK TESTED (fake CLIs, 183 unit tests) · MANUAL TEST REQUIRED |
+| **Real intelligence:** Claude Code (token streaming) and Codex (message-level) via their official CLIs; Auto / Codex / Claude Code selection; follow-up context; STOP GENERATION that really kills the process; provider status in Settings | IMPLEMENTED · **REAL TESTED** through the JARVIS stack (`--provider-live-test`) · MOCK TESTED (fake CLIs, 327 unit tests) · MANUAL TEST REQUIRED |
+| **V0.3.1 persistence:** SQLite (WAL, migrations, corrupt-file recovery) in `~/Library/Application Support/JARVIS`, file-backed artifacts, redacted **audit trail** (who/what/why/when/tools/validation/escalation per run) | IMPLEMENTED · AUTOMATED TESTED · **REAL TESTED** (written by the app, closed, reopened) |
+| **OpenCode free pool:** models are "free" only when OpenCode's current price data is all-zero on the keyless tier (never by name), re-verified daily; per-model data-handling labels; benchmark suite; tools rejected | IMPLEMENTED · **REAL TESTED** (real free models, tool canaries) · MOCK TESTED |
+| **Local Qwen3.5-4B (MLX)** for lightweight tasks only (never coding/tests/repo/review/debug/architecture/Unity/security): starts on demand, unloads when idle or under memory pressure | IMPLEMENTED · **REAL TESTED** · MOCK TESTED (fake worker, real processes) |
+| **Model router + supervisor:** Auto = Local → OpenCode free → Claude/Codex by policy; explicit modes never fall back; persisted reasons; cooldown/backoff; bounded restart; bounded escalation | IMPLEMENTED · AUTOMATED TESTED (≈90 routing/policy/supervisor tests) · **REAL TESTED** |
+| Background agent foundation (limits for 16 GB, parent/child, no recursion, cancel, bounded repair/escalation, audit) — no UI entry point yet | IMPLEMENTED · AUTOMATED TESTED |
 | Native text editing (⌘V/⌘C/⌘X/⌘A/⌘Z), multiline composer | IMPLEMENTED · AUTOMATED TESTED (real key events) · physical keyboard MANUAL TEST REQUIRED |
 | Global shortcuts ⌥⌘ (Compact) and ⌥⌘⌘ (Full), no permission needed | IMPLEMENTED · AUTOMATED TESTED (logic + scripted integration) · **MANUAL TEST REQUIRED** (physical keys from another app) |
 | Full HUD (Dashboard, Tasks, System; Report/Memory placeholders) | IMPLEMENTED · MANUAL TEST REQUIRED |
@@ -73,19 +82,22 @@ Sources/Jarvis/
   Models/     JarvisTask, ActivityEvent, display slots
   Services/   window management, local command handler, Demo/ (demo data only)
   UI/         Theme, MenuBar, CompactHUD, FullHUD, Components, VisualEffects, Settings
+  Providers/  V0.3 CLI providers (ManagedProcess, parsers, ProviderManager) + OpenCode spec/parser
+  Intelligence/ V0.3.1: router, classifier, local runtime, OpenCode service, supervisor, resources, agents, benchmark, coordinator
+  Persistence/ V0.3.1: SQLite engine, migrations, repository, artifacts, redaction
 Tests/JarvisTests/            unit tests (Swift Testing)
-scripts/                      build_app.sh, test.sh, verify.sh
+scripts/                      build_app.sh, test.sh, verify.sh, setup_local_ai.sh, local-ai/ (worker + pinned requirements)
 docs/                         architecture, decisions, roadmap, issues, log, current task
 captures/                     dev screenshots (git-ignored)
 ```
 
 ## Known limitations
 
-See `docs/KNOWN_ISSUES.md`. Notably: no persistence (in-memory only), demo data only, custom-button VoiceOver labels need a manual check, Retina rendering unverified, dev tooling is compiled into the release binary.
+See `docs/KNOWN_ISSUES.md`. Notably: conversation history is in-memory (the audit trail is persistent), demo data in the HUD panels, custom-button VoiceOver labels need a manual check, Retina rendering unverified, dev tooling is compiled into the release binary.
 
 ## Next milestone
 
-V0.2 — text conversation + command router. **Do not start until the user approves V0.1.**
+V0.4 — persistent task engine. **Do not start until the user approves V0.3.1.**
 
 ## Manual test checklist (V0.1)
 
@@ -121,6 +133,16 @@ V0.2 — text conversation + command router. **Do not start until the user appro
 31. From the Compact HUD ask a normal question → Compact closes, Full HUD opens, answer streams there. Compact stays 392×448.
 32. Quit JARVIS while an answer is streaming → no `claude`/`codex` child process is left behind.
 Note: each request uses a little of your subscription (Codex ≈14k input tokens per trivial request, Claude ≈5k); Claude Code's and Codex's usage limits are shared with your other use of them.
+
+### V0.3.1 additions (infrastructure) — MANUAL TEST REQUIRED
+Optional set-up for the local model: `scripts/setup_local_ai.sh` (needs `uv`; the model folder `~/AI/models/Qwen3.5-4B-MLX-4bit` must already exist — JARVIS never downloads models).
+33. Settings → **Intelligence provider**: the picker now has Auto / Local / OpenCode Free / Claude Code / Codex. **Routing** shows the last decision and why. **OpenCode (verified-free models)** lists models that are free *by current price data*, with data-handling labels (ZERO-RETENTION / MAY TRAIN) and a Benchmark button; "Not eligible" shows every other model with the reason. **Local model** shows READY · UNLOADED, a Test button, measured speed/memory.
+34. Click **Test local model** → `“JARVIS_LOCAL_OK” in ~2 s` (first use starts the worker by itself; nothing to start by hand). After the idle time (default 5 min) the status returns to READY · UNLOADED and the process disappears (`pgrep -fl jarvis_local_worker`).
+35. Choose **Local** and type `Summarize in one sentence: …` → answered locally. Type `Explain this Swift function: …` → JARVIS explains that the local model is for lightweight tasks and sends nothing (no fallback).
+36. Click **Benchmark** on one or two free models (13 small fixture prompts each, ~1 min) → results appear as `gen 3/3 · res 3/3 · cod 3/4 · tst 3/3`. In **Auto**, a coding/knowledge question now goes to a benchmarked free model (provider badge `OpenCode · <model>`), architecture/security questions go to Claude Code/Codex, small summaries go Local. The activity feed shows only meaningful events (escalation, cooldown, model loaded/unloaded).
+37. **STOP GENERATION** while an OpenCode or local answer is running: it stops within a second; no `opencode` / worker process remains.
+38. Quit JARVIS while the local model is loaded → no `jarvis_local_worker.py` process remains. After a force-quit (`kill -9`) the worker also exits by itself.
+39. Data check: `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select agent_type, engine, model, status from agent_runs order by started_at desc limit 5"` shows your requests (engine/model/status/reason; no prompt text, no secrets).
 
 ### V0.2.1 additions (native text editing)
 23. In another app copy some text (try multiline code or a log with Turkish characters) → open JARVIS → ⌘V pastes it in **both** the Compact and Full command inputs. ⌘A/⌘C/⌘X/⌘Z/⇧⌘Z and right-click → Paste/Copy also work. Test after opening JARVIS with the **⌥⌘ / ⌥⌘⌘ shortcut while another app is frontmost** — you must be able to type/paste immediately without clicking first.

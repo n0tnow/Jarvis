@@ -1,26 +1,26 @@
 # Current Task
 
 Version:
-V0.3.1 — Intelligence infrastructure (IN PROGRESS). Base: V0.3 READY FOR MANUAL TEST (not yet user-verified), V0.2.1.
+V0.3.1 (intelligence infrastructure) — READY FOR MANUAL TEST. Base: V0.3 (also awaiting manual test), V0.2.1.
 
 Task:
-Durable persistence + audit trail + OpenCode free-model pool + local Qwen + provider supervisor + automatic model routing + background sub-agent foundation. NOT V0.4 (no autonomous task engine). No tag.
+Hand V0.3.1 to the user. Nothing else is in progress. V0.4 (persistent task engine / autonomous workers) is NOT started and needs explicit approval. No tag.
 
 State (milestones):
-A recovery ✅ · B research (docs/OPENCODE_RESEARCH.md, Qwen runtime) ✅ · C SQLite persistence ✅ (commit f2665a5) · D router + local policy + free registry ✅ (23f6c72) · E local Qwen runtime ✅ · F supervisor/resources/OpenCode service/benchmarks/agents/audit/coordinator ✅ (unit + integration tested, 302 tests) · G Settings/System UI ⏳ · H live REAL tests (`--intelligence-live-test`) ⏳ · I verify.sh + perf + docs ⏳
+A recovery ✅ · B research (OPENCODE_RESEARCH, Qwen runtime) ✅ · C SQLite persistence ✅ · D router + local policy + free registry ✅ · E local Qwen runtime ✅ · F supervisor/resources/OpenCode service/benchmarks/agents/audit/coordinator ✅ · G UI ✅ · H REAL live tests ✅ (28/28 on OpenCode 1.19.0) · I verify.sh + perf + docs ✅
 
 Last Successful Step:
-302 unit tests green (fake CLIs, fake local worker, temp SQLite). REAL manual probes done: OpenCode free model answers through `opencode run`, restrictive config canary-tested, local Qwen answers `JARVIS_LOCAL_OK` via mlx-vlm in an isolated venv.
+`scripts/verify.sh` PASSED (327 unit tests, smoke 85/0/2); `--intelligence-live-test --benchmark-models` PASSED 28/28.
 
 Current Step:
-Commit E/F, then UI (Settings provider modes + OpenCode free models + local runtime + active agents), then the real live test through the app stack.
+Commit/push done (see git log). Waiting for manual test.
 
 Next Step:
-`--intelligence-live-test` (SQLite reopen, local Qwen, OpenCode free model, routing local/free/premium, lifecycle, cleanup), `--benchmark-models`, verify.sh policy updates, performance table, docs (README/PROJECT_STATE/ARCHITECTURE/KNOWN_ISSUES/ROADMAP/DEV_LOG), push. STOP at V0.3.1 status. Do NOT start V0.4.
+User manual test (README 33–39). Then, only with approval: tag decision and V0.4.
 
 Blocked By:
-Nothing.
+Nothing. Notes: OpenCode moved to a redesigned CLI (1.19.0) — supported (both generations probed from `--help`). Re-run `--intelligence-live-test` after OpenCode upgrades. The user was told to rotate their OpenCode Go key (accidentally printed by an exploratory `credential.list` call; JARVIS never calls it).
 
 Notes:
-- Coding WORK ("write/fix/refactor …") is `workerRequired` in conversation (V0.3 rule, preserved): it never reaches a provider. Coding QUESTIONS and background agents (AgentRunManager) are what exercise the free-model pool in V0.3.1.
+- Cost/privacy rules DEC-022…028 bind: no paid API, free only by verified price, local = lightweight only, no silent fallback, sensitive never to free cloud.
 - Git: main only, no tags, no AI trailers.

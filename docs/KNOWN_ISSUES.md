@@ -77,6 +77,38 @@ Description: Normal quit, SIGTERM/SIGINT/SIGHUP all kill any running provider tr
 Status: Open · NON-BLOCKING
 Description: With the Full HUD open (neural animation) a streaming answer costs JARVIS ≈20 % of one core plus the provider's own ≈7–16 %. Subscription usage limits are shared with the user's other Claude/Codex use.
 
+### JARVIS-021 — OpenCode integration depends on observed behaviour that changed between generations
+Status: Open · MANUAL VERIFICATION after OpenCode upgrades
+Description: OpenCode's CLI was redesigned between 1.18.x and 1.19.x (docs/OPENCODE_RESEARCH.md). JARVIS supports both and detects the generation from `--help` at every refresh; an unknown generation disables the free pool (price unknown ⇒ never routed). Tool restriction relies on: non-interactive `ask` = rejected (observed on both; explicit message on v2), explicit denies of `execute`/`edit`/web (v2) — and on NOT denying `shell`/`read`/`bash` (the free tier answers 403 otherwise). A v2 gap (Code Mode `execute` could make a network request) was found by the canaries and closed. Re-run `--intelligence-live-test` after every OpenCode upgrade. The v2 JSON stream sometimes lacks the final `step_finish` (clean exit + text is accepted; token counts then unavailable). Price lookup on v2 goes through OpenCode's shared background service (started by OpenCode, not by JARVIS; JARVIS's own requests run `--standalone`).
+
+### JARVIS-022 — OpenCode requests are heavy and message-level
+Status: Open · NON-BLOCKING
+Description: ≈4.5–5k input tokens and ≈4–10 s even for a trivial prompt (OpenCode's own system prompt); output arrives as one message (no token streaming). Free-tier limits are undocumented; any 403/429/5xx puts the model into cooldown.
+
+### JARVIS-023 — "Free" is a moving target; some free models train on prompts
+Status: Open · POLICY
+Description: Free status comes from OpenCode's current price data and expires after 24 h; Zen documents the free period as "limited time". Several free models may use prompts for training (stored per model as `DataPolicy`; unknown = treated as may-train). JARVIS never sends sensitive text to free cloud and sends project code only to zero-retention models, but ordinary questions to a "may train" model are allowed in Auto — disable "Use verified-free OpenCode models in Auto" if that is not acceptable. The user's `opencode-go` credential is never used (those models are priced).
+
+### JARVIS-024 — Local model limits
+Status: Open · NON-BLOCKING
+Description: Qwen3.5 4B 4-bit is deliberately limited to lightweight tasks (quality of longer answers is modest; it sometimes prefixes replies with "JARVIS:"). First use starts the worker (≈2 s load; the Python runtime is a 605 MB isolated venv created by `scripts/setup_local_ai.sh`, 57 pinned PyPI packages). ≈1.9–2.2 GB resident, ≈3.4 GB peak unified memory while loaded; generation is GPU-bound, so JARVIS/worker CPU numbers do not show the load. A SIGKILL of JARVIS cannot run cleanup, but the worker exits by itself when its stdin closes.
+
+### JARVIS-025 — Task classification is heuristic
+Status: Open · NON-BLOCKING
+Description: `TaskClassifier` is a deterministic EN/TR keyword/shape classifier. It is biased toward "technical ⇒ not lightweight" (a miss can only make routing more conservative, never hand development work to the local model — enforced again inside `LocalQwenProvider`), but unusual phrasings may be routed to a more expensive engine than necessary.
+
+### JARVIS-026 — Coding WORK is still workerRequired; no UI spawns agents yet
+Status: Open · FUTURE (V0.4)
+Description: "Write/fix/refactor …" requests stay `workerRequired` in conversation (V0.3 rule) and never reach any engine. The free-model pool is exercised by coding/knowledge *questions* and by `AgentRunManager` (foundation; no UI entry point, no tools, no file writes). The audit schema for file changes/approvals/proposals exists but nothing writes real file changes yet.
+
+### JARVIS-027 — Benchmarks are small evidence, not guarantees
+Status: Open · NON-BLOCKING
+Description: Suite v1 = 13 fixture cases (3 general, 3 research, 4 coding, 3 testing). Passing it makes a model *eligible* for Auto, not good at your project; results expire after 14 days. Swift answers are type-checked only (never executed). Claude/Codex are not benchmarked (subscription engines are always eligible when ready).
+
+### JARVIS-028 — Persistence limits
+Status: Open · NON-BLOCKING
+Description: SQLite is not encrypted (mode 0600 in the user's account); no automatic pruning of artifacts/runs; runs left `running` by a crash are listed by `interruptedRuns()` but not resumed (V0.4). Claude/Codex do not report token counts through the current parsers (recorded as "–"); OpenCode and the local model do.
+
 ### JARVIS-013 — Deterministic router limits (V0.2)
 Status: Open · NON-BLOCKING
 Description: Matching is alias/phrase based, not NLP: unusual phrasings fall through to "needs a provider" (truthful, never a wrong action). A bare "stop"/"close"/"clear"/"open" is treated as a command. Turkish coverage is a small explicit alias set; replies are English except for Turkish input. Worker-vs-reasoning is a keyword heuristic (verb + technical noun).
@@ -86,6 +118,12 @@ Status: Open · FUTURE MILESTONE (V0.4/V0.8)
 Description: Messages are Codable and bounded (500) but not persisted; cleared on quit. Provider-side sessions are kept by the CLIs.
 
 ## Resolved
+
+### JARVIS-R16 — Local STOP could leave the runtime "busy" (V0.3.1, found by the real live test)
+Resolved. `LocalQwenProvider.waitUntilStopped` returned before the worker acknowledged the cancel, so the next request saw the runtime still running and was refused. The provider task now waits for the job to end and never reports a cancelled stream as finished; regression tests added.
+
+### JARVIS-R17 — Agent concurrency limits were checked against a list filled too late (V0.3.1)
+Resolved. Slots are now claimed synchronously at decision time (found while designing the concurrent-spawn tests).
 
 ### JARVIS-R13 — Orphaned grandchildren after cancel (V0.3, found by the real-process tests)
 Resolved. `proc_listchildpids` returns a PID *count* with a buffer (not bytes), so descendant discovery silently returned nothing and `cancel()` could leave helpers running. Fixed + `cancelLeavesNoOrphanedGrandchildren` / `processIgnoringSigintAndSigtermIsKilled` tests; REAL TESTED with Claude Code and Codex (no survivors).

@@ -38,12 +38,26 @@ forbid() { # name, pattern, [exclude-file-regex]
 forbid "no unapproved network clients (providers are subprocesses only)" "URLSession|URLRequest|NWConnection|NWPathMonitor|CFNetwork|CFStream|NSURLConnection|WKWebView|WebKit|WebSocket|import Network|Data\\(contentsOf|String\\(contentsOf|contentsOf: *URL\\(string"
 forbid "no paid-API endpoints or web-subscription scraping" "api\\.openai\\.com|api\\.anthropic\\.com|chatgpt\\.com|claude\\.ai/(api|chat)|console\\.anthropic|platform\\.openai|backend-api|openai\\.com/v1|anthropic\\.com/v1"
 forbid "no credential / token / cookie access" "auth\\.json|\\.credentials|SecItemCopyMatching|SecKeychain|binarycookies|HTTPCookieStorage|--with-api-key|--with-access-token|apiKeyHelper"
-forbid "API-key / token variable names appear ONLY in the scrub list" "ANTHROPIC_API_KEY|OPENAI_API_KEY|CODEX_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_BASE_URL|OPENAI_BASE_URL|OPENAI_ORG|AWS_BEARER_TOKEN|ANTHROPIC_BEDROCK|ANTHROPIC_VERTEX|CLAUDE_CODE_USE_(BEDROCK|VERTEX)" "^Sources/Jarvis/Providers/ProviderEnvironment\\.swift"
-forbid "no dangerous provider flags or API-key-only modes" "\"--bare\"|dangerously|danger-full-access|bypassPermissions|--full-auto|--approve-for-me|\"--enable\"|workspace-write|--yolo|--allowedTools|--allow-dangerously|--add-dir|--mcp-config|\"--api-key|--with-api-key"
+forbid "API-key / token variable names appear ONLY in the scrub list" "ANTHROPIC_API_KEY|OPENAI_API_KEY|CODEX_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_BASE_URL|OPENAI_BASE_URL|OPENAI_ORG|AWS_BEARER_TOKEN|ANTHROPIC_BEDROCK|ANTHROPIC_VERTEX|CLAUDE_CODE_USE_(BEDROCK|VERTEX)|OPENCODE_API_KEY|OPENCODE_SERVER_PASSWORD|OPENROUTER_API_KEY|GROQ_API_KEY|MISTRAL_API_KEY|GEMINI_API_KEY|XAI_API_KEY|DEEPSEEK_API_KEY|HF_TOKEN|HUGGING_FACE_HUB_TOKEN" "^Sources/Jarvis/Providers/ProviderEnvironment\\.swift"
+forbid "no dangerous provider flags or API-key-only modes" "\"--bare\"|dangerously|danger-full-access|bypassPermissions|--full-auto|--approve-for-me|\"--enable\"|workspace-write|--yolo|--allowedTools|--allow-dangerously|--add-dir|--mcp-config|\"--api-key|--with-api-key|\"--auto\"|\"--attach\"|\"--share\"|\"--password\"|\"--mdns\"|\"serve\"|\"web\""
 forbid "Process is created ONLY by ManagedProcess (one audited launch point)" "(^|[^[:alnum:]_.])Process\\(\\)|NSTask|posix_spawn|Foundation\\.Process" "^Sources/Jarvis/Providers/ManagedProcess\\.swift"
 forbid "no generic launchers / downloaders / UI scripting" "/usr/bin/env|\"env\"|curl|wget|osascript|NSWorkspace\\.shared\\.(launchApplication|open\\(.*URL\\(string)" "^Sources/Jarvis/App/(SmokeTest|DevCapture)\\.swift"
 forbid "no shell is ever used to run a provider" "/bin/(ba|z)?sh|launchPath|\"sh\", *\"-c\"|popen\\(|[^.[:alnum:]_]system\\("
+forbid "OpenCode credential/integration API operations are never invoked (only the fixed model.list)" "credential\\.(list|get|remove|create|update)|integration\\.(list|get|connect)|connect/(key|external|oauth|command)"
+forbid "no URL literals in product code (JARVIS contacts no host itself; providers do their own networking)" "\"https?://|URL\\(string:"
 forbid "the product never reads the pasteboard (only native paste; the dev smoke test is excluded)" "NSPasteboard|generalPasteboard" "App/SmokeTest\\.swift"
+
+# --- V0.3.1: persistence, models and secrets must never be committed; the local worker must stay offline ---
+tracked_bad=$(git ls-files 2>/dev/null | grep -E '\.(sqlite|sqlite3|sqlite-wal|sqlite-shm|db|safetensors|gguf|mlx|npz|pt|pth|onnx)$' || true)
+[ -z "$tracked_bad" ] && pass "no runtime database or model file is tracked by git" || { fail "runtime database / model file tracked: $tracked_bad"; }
+big=$(git ls-files 2>/dev/null | while read -r f; do [ -f "$f" ] && [ "$(stat -f%z "$f")" -gt 5242880 ] && echo "$f"; done)
+[ -z "$big" ] && pass "no tracked file larger than 5 MB" || fail "large tracked files: $big"
+secrets=$(git ls-files 2>/dev/null | grep -vE '^Tests/' | xargs grep -IEn "sk-[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----" 2>/dev/null | head -3)
+[ -z "$secrets" ] && pass "no secrets in tracked files (excluding test fixtures)" || { fail "possible secret in tracked files"; echo "$secrets" | cut -c1-120; }
+if grep -nE "^[[:space:]]*(import|from)[[:space:]]+(requests|urllib|socket|http|httpx|aiohttp|huggingface_hub|websocket)" scripts/local-ai/*.py >/dev/null 2>&1; then fail "local worker imports a network library"; else pass "local worker imports no network library"; fi
+grep -q 'HF_HUB_OFFLINE' scripts/local-ai/jarvis_local_worker.py && pass "local worker forces offline mode" || fail "local worker does not force offline mode"
+swift_db=$(grep -rln "sqlite3_open" Sources | grep -v Persistence/SQLiteDatabase.swift || true)
+[ -z "$swift_db" ] && pass "raw SQLite access is confined to Persistence/SQLiteDatabase.swift" || fail "raw sqlite3 use outside the persistence engine: $swift_db"
 
 print "== Smoke test (real window manager, store, status item)"
 log=$(mktemp)

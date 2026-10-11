@@ -143,3 +143,24 @@ DEC-020, DEC-021.
 
 ### Remaining Work
 User manual test of V0.3. No tag. V0.4 only with approval.
+
+## 2026-10-11 — V0.3.1: intelligence infrastructure
+
+### Goal
+Durable persistence + audit trail, OpenCode verified-free pool, on-device Qwen, ProviderSupervisor, policy-driven model router, bounded background-agent foundation. Not V0.4.
+
+### Changes
+`Persistence/` (SQLite engine, migrations, repository, artifacts, redaction) · `Intelligence/` (TaskClassifier, LocalModelPolicy, ModelRouter, benchmark suite + runner, OpenCodeCatalog/Service, LocalRuntime + worker, ProviderSupervisor, ResourceManager, AuditRecorder, IntelligenceCoordinator, AgentRunManager, ContextRetrieval) · OpenCode spec/parser/workspace per CLI generation · ConversationService now resolves by prompt, audits, escalates once · Settings (modes, OpenCode free pool + benchmarks, local model), System/Agents panels, provider badge · `--intelligence-live-test` · `verify.sh` policy additions · DEC-022…028, OPENCODE_RESEARCH, MODEL_ROUTING, PERSISTENCE docs. Commits: see `git log` (persistence, routing, local-ai, agents, opencode-v2, ui/docs).
+
+### Real findings (found by REAL tests, all fixed)
+- Local STOP left the runtime "busy" (provider reported stopped before the worker acknowledged) — JARVIS-R16.
+- Agent concurrency slots were checked against a list filled too late — JARVIS-R17.
+- `exo-free` listed active/free but the API returned 410 deprecated → typed removal, 24 h sticky block, benchmark early abort.
+- OpenCode updated itself 1.18.34 → 1.19.0 (the user then chose to stay on it): `models --verbose` and `run --pure` disappeared. Researched the v2 docs, found the documented `api model.list` price source, `run --standalone`, the v2 permission model; **a canary found that v2 Code Mode (`execute`) could make a network request** → denied in the v2 config; v2 JSON streams may lack `step_finish`; v2 error events have another shape. JARVIS supports both generations by probing `--help`.
+- Process note: while probing the v2 API I invoked `credential.list` and it printed the user's OpenCode Go key into the session output (never stored by JARVIS; user told to rotate). verify.sh now forbids credential/integration operation names.
+
+### Decisions
+DEC-022 … DEC-028 (+ DEC-025 addendum).
+
+### Remaining Work
+User manual test (README 33–39). V0.4 only with approval. No tag.

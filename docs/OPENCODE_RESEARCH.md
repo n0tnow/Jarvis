@@ -1,6 +1,6 @@
 # OpenCode Research (V0.3.1)
 
-Researched 2026-10-11 against the **installed binary** `opencode 1.18.34` (`~/.opencode/bin/opencode`) and the official docs (opencode.ai/docs: cli, permissions, zen). Nothing here is assumed from memory: every row says how it was established. No credentials were read or modified (`opencode providers list` only shows that one credential — an "OpenCode Go" API credential — exists; JARVIS never touches `auth.json`).
+Researched 2026-10-11 against the **installed binary** `opencode 1.18.34` (`~/.opencode/bin/opencode`) and the official docs (opencode.ai/docs: cli, permissions, zen). **The user then updated to 1.19.0 ("v2" CLI): the capability matrix and v2 findings are in the section "OpenCode 1.19.0" near the end; everything in the first sections is the 1.18.x generation unless noted.** Nothing here is assumed from memory: every row says how it was established. No credentials were read or modified (`opencode providers list` only shows that one credential — an "OpenCode Go" API credential — exists; JARVIS never touches `auth.json`).
 
 Legend: **SUPPORTED** (documented + verified) · **SUPPORTED WITH LIMITATIONS** · **UNVERIFIED** · **UNSUPPORTED**.
 
@@ -43,3 +43,25 @@ Experiments (all REAL, free model `opencode/big-pickle`, empty temp dir, via a p
 - Integration: **CLI per task** (`opencode run --pure --format json -m <verified-free-model> [-s <session>]`, prompt on stdin, private workspace with the restrictive `opencode.json`).
 - FREE pool = provider `opencode` models whose current metadata says price 0 and status active, verified ≤ 24 h ago. `opencode-go/*` (even zero-priced ones such as `space-bunny-free`) are **excluded**: they go through a credentialed plan, not the keyless free tier.
 - No server, no SDK, no `--attach`, no credentials, no OpenCode-owned orchestration.
+
+## OpenCode 1.19.0 ("v2") — the version installed now (the user updated deliberately)
+
+OpenCode moved from the classic CLI (1.18.x) to the "v2" CLI (docs: opencode.ai/v2/docs; the binary reports internal version 2.0.x). The user chose the newer version, so JARVIS supports **both generations** and decides at every refresh from the CLI's own `--help` (`OpenCodeCapabilities`).
+
+| | 1.18.x classic | 1.19.0 v2 | JARVIS status on v2 |
+|---|---|---|---|
+| prices / status | `models --verbose [--refresh]` → JSON incl. `cost` | `models` prints nothing; **documented API operation `model.list`** (`GET /api/model`, `Model.Info`: `cost[]` tiers, `status` alpha/beta/**deprecated**/active, `enabled`, `limit`) via `opencode api model.list` | **SUPPORTED WITH LIMITATIONS** — "the snapshot may precede initial plugin settlement": a fresh server answers `data: []`, so JARVIS retries (≤8 × 2.5 s); the call goes to OpenCode's own shared background service (started by OpenCode itself, not by JARVIS). A model is free only if EVERY cost tier component is 0. Only the fixed operation id `model.list` is ever invoked. |
+| run | `run --pure --format json -m …` | `run --standalone --format json -m …` (`--standalone` = private in-process server; the default would use the shared service) | **SUPPORTED** |
+| JSON events | `step_start`, `text`, `step_finish{reason,tokens}`, `error` | same shapes, **but the stream sometimes ends after `text` with no `step_finish`** (non-deterministic, observed 4/4 runs) | exit code 0 + text + no error = complete; token usage then unavailable |
+| tool restriction | project `opencode.json`: `"*":"ask"` + denies | project **`opencode.jsonc`**: ordered `permissions: [{action,resource,effect}]`; non-interactive `ask` is **explicitly rejected** ("This non-interactive run cannot ask the user for permission, so the request was rejected") | **SUPPORTED WITH LIMITATIONS**, see below |
+| 403 trap | denying `bash` | denying `shell` **or `read`** | neither is denied outright |
+| daemon | none | background service (`opencode serve --service`) | JARVIS's own runs use `--standalone`; the service only serves the price lookup / the user's own OpenCode |
+
+**v2 tool restriction — a real gap found and closed.** With the classic-style config the canaries still passed (shell → rejected; outside read → denied; write → rejected) **but a new tool called `execute` ("Code Mode") completed a real HTTP request to `example.com`** — the legacy webfetch/web denies do not cover it. Fix, verified with canaries on 1.19.0: `opencode.jsonc` = `* ask`, then `execute`, `edit`, `webfetch`, `websearch` = deny. Canaries (shell touch, write file, read `/etc/hosts`, fetch via curl/shell/code execution, sub-agent, glob): **every attempt rejected or denied, no file created, no network request made**. Docs say a trailing `* deny` "would" deny everything but do not confirm it — and in practice `read`/`shell` denials trigger the free-tier 403 — so it is not used.
+
+**Never call `credential.*` / `integration.*`.** While exploring the v2 API I (the agent) invoked `credential.list`, which returns credential *values*; that put the user's OpenCode Go key into this session's tool output (not stored by JARVIS; the user was told to rotate it). JARVIS now ships guards: only the fixed operation `model.list` is ever passed to `opencode api`, and `scripts/verify.sh` fails if any credential/integration operation name appears in sources.
+
+Real evidence: with 1.18.34 the live test passed 27/27 (free model answer, canaries, STOP, routing, SQLite); with 1.19.0 it passes 27/27 again (real free model `longcat-2.5-preview-free`, v2 canaries, STOP killing both processes).
+
+## Free models can be deprecated server-side
+`opencode/exo-free` was listed `status: active`, cost 0 in 1.18.34's catalog while the API answered `410 Model exo-free has been deprecated`. JARVIS maps 404/410 to a typed removal, blocks the model for 24 h (sticky across refreshes) and aborts its benchmark after the first such error; Auto also requires benchmark evidence, which such a model can never produce.

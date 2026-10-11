@@ -22,7 +22,7 @@ Eligible only if none of: any `requires…` flag, forbidden category (coding/tes
 | development / moderate knowledge | OpenCode free → Claude Code → Codex |
 | complex/critical, architecture, security | Claude Code → Codex (free cloud and local are skipped) |
 
-A free model is a candidate only if: free-pool member (DEC-022) with fresh verification · engine ready, no cooldown (engine or model) · privacy gate (sensitive never; project code ⇒ zero-retention only) · fits context · **benchmark passed for the task's group** (Auto only) · ranked by pass rate, then median latency, then id.
+A free model is a candidate only if: free-pool member (DEC-022) with fresh verification · engine ready, no cooldown (engine or model) · privacy gate (sensitive never; project code ⇒ zero-retention only) · fits context · **benchmark passed for the task's group** (Auto only) · ranked by pass rate, then **zero-retention before others**, then median latency, then id.
 
 ## Explicit modes
 `Local`, `OpenCode Free`, `Claude Code`, `Codex`: single engine, **no fallback**. Local refuses ineligible tasks; OpenCode Free refuses when no verified-free model qualifies or the task is sensitive; Claude/Codex refuse when not ready. Refusals are explained to the user.
@@ -35,3 +35,6 @@ A free model is a candidate only if: free-pool member (DEC-022) with fresh verif
 
 ## Cooldown
 `CooldownPolicy`: from the 2nd consecutive failure, 60 s · 2^(n−2), capped at 30 min; persisted in `provider_health`; a success resets it. A broken model is therefore not retried every few seconds.
+
+## Provider-removed models
+OpenCode can list a model as `active` while its API answers `410 … has been deprecated`. JARVIS maps 404/410 to a typed "model removed" error, blocks the model (`blockedReason = provider reports the model as removed`, sticky for 24 h even if the catalog still says free), escalates the request, and stops a running benchmark for that model after the first such error. Benchmark evidence (Auto requires it) is the second line of defence: a model that cannot answer never qualifies.

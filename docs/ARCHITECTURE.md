@@ -1,6 +1,6 @@
 # Architecture (V0.1)
 
-Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.3. Decisions behind it: `DECISIONS.md`.
+Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.3.1 (intelligence infrastructure on top of V0.3). Decisions behind it: `DECISIONS.md`.
 
 ## Shape
 
@@ -65,6 +65,28 @@ ConversationService ─► IntelligenceProviderResolving ◄── ProviderManag
 - **Providers never see deterministic commands or `workerRequired` requests** (router decides first; `CLIProvider.supports(.worker) == false`).
 - **Continuity:** Claude `--session-id`/`--resume`; Codex `thread_id` → `exec resume`; fresh sessions (first turn, provider switch, failed resume) get a bounded context of previous provider-answered exchanges only.
 - **State:** JARVIS goes Thinking only for a real provider generation and returns to Idle on completion/cancel/failure (never stuck in Error).
+
+## Intelligence infrastructure (V0.3.1 — DEC-022…028)
+
+```
+                                   ConversationService  (text; deterministic commands & workerRequired never get here)
+                                          │ resolve(kind, prompt) / escalate / runFinished
+                                  IntelligenceCoordinator ── AuditRecorder ──► SQLite (agent_runs, activity, …) + ArtifactStore (files)
+                  TaskClassifier ─► TaskProfile ─► ModelRouter (pure) ─► RoutingDecision{selected, fallbacks[], reasons{}}
+                                          │ snapshot
+                                  ProviderSupervisor ── health/cooldown (persistent) · ResourceManager (pressure, limits)
+          ┌───────────────┬───────────────┼────────────────────────┐
+     LocalRuntime     OpenCodeService   ProviderManager (V0.3)     AgentRunManager (background, bounded) ── OneShotRunner
+   (python worker,    (catalog+prices,   Claude Code / Codex        └─ BenchmarkRunner (suite v1, real validators)
+    JSON lines)        free registry)    CLIProvider · ManagedProcess
+```
+- **Pure vs effectful.** `TaskClassifier`, `LocalModelPolicy`, `ModelRouter`, `BenchmarkSummary/Policy`, `CooldownPolicy`, `OpenCodeCatalog` are pure and unit-tested; effects live in the runtime classes. All child processes still go through `ManagedProcess` (one audited launch point).
+- **Cost classes.** `ProviderID.costClass`: local · freeCloud (OpenCode verified-free only) · subscription (Claude/Codex) · paidAPI (does not exist). Nothing can route to a paid API.
+- **Local model.** `LocalRuntime` (state: notConfigured/modelMissing/runtimeMissing/idle/starting/ready/running/stopping/unavailable/failed) launches `jarvis_local_worker.py` from an isolated venv on demand, one job at a time, offline, exits on stdin EOF; idle/pressure/shutdown unload. `LocalQwenProvider` re-checks `LocalModelPolicy` itself (defence in depth).
+- **OpenCode.** `OpenCodeService` reads `opencode models --verbose [--refresh]`, builds `ModelRecord`s (price-only free verification, 24 h freshness), `OpenCodeSpec.make` can only build a launch for a current free-pool model; runs in `provider-workspace/opencode` with a restrictive `opencode.json`.
+- **Escalation.** The router returns an ordered fallback chain; `ConversationService` escalates at most once, only in Auto, only after a failure that produced no text; `AgentRunManager` additionally allows one same-engine repair after failed validation (hard cap 3 invocations).
+- **Persistence.** `Persistence/` (SQLite engine, migrations, repository, artifacts, redaction) — see `PERSISTENCE.md`. A missing/corrupt database never stops JARVIS (auditing becomes a no-op / the file is moved aside).
+- **Automated runs are inert.** `AppContext(stubIntelligence:)` (smoke/capture/`--no-providers`) uses a temp data directory and never contacts any provider; `--intelligence-live-test` uses its own `JARVIS/live-test` data directory.
 
 ## Windows
 

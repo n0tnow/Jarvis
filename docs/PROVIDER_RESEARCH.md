@@ -51,3 +51,18 @@ Nothing is marked plain SUPPORTED: both have real policy/semantic limits below. 
 
 ## V0.4 handoff
 Claude: `--permission-mode`/`--allowedTools`/`--permission-prompts host` with a permission host (Agent SDK-style) and `--session-id` per task. Codex: `exec` with `-s workspace-write` + approvals, or revisit `app-server` once OpenAI supports it for production. Both need explicit user approval boundaries (none exist in V0.3).
+
+## V0.3.1 additions (2026-10-11)
+
+### OpenCode
+Full research, evidence per claim and the tool-restriction experiments: **`OPENCODE_RESEARCH.md`**. Summary: CLI-per-task (`opencode run --pure --format json -m <verified-free model>`, prompt on stdin), message-level output, price data via `opencode models --verbose`, free tier = keyless `opencode` provider only, tools restricted through a project `opencode.json` (`"*":"ask"` auto-rejected headless + explicit denies; `bash` cannot be denied outright without a 403). Status: **SUPPORTED WITH LIMITATIONS**. Free models can be deprecated server-side (`410`) while still listed as active — handled (JARVIS-R / DEC-022).
+
+### Local Qwen (on-device)
+- **Model (already on disk, not downloaded by JARVIS):** `~/AI/models/Qwen3.5-4B-MLX-4bit` — Qwen3.5-4B, 4-bit MLX (5.35 bits/weight, group 64), 2.9 GB, Apache-2.0, a vision-language conversion made with `mlx-vlm` (`Qwen3_5ForConditionalGeneration`).
+- **Runtime choice:** the model card names `mlx-vlm` as the framework; `mlx-vlm 0.7.6` + `mlx 0.32.3` run it. Installed into an isolated `uv`-managed CPython 3.12 venv under `~/Library/Application Support/JARVIS/runtime/mlx-venv` — **57 pinned PyPI packages, 605 MB, no torch, no model download**; system Python (3.9.6) untouched. `scripts/setup_local_ai.sh` is idempotent; delete `runtime/` to remove everything.
+- **Integration:** a ≈100-line worker (`scripts/local-ai/jarvis_local_worker.py`) keeps ONE model loaded and speaks JSON lines on stdin/stdout (no HTTP server, no network client in JARVIS): `generate` / `cancel` / `ping` / `shutdown`; forced offline (`HF_HUB_OFFLINE`); exits when stdin closes.
+- **Measured (REAL):** load 1.4–2.4 s, first token 0.37–0.51 s warm (2.2 s on the very first call), ≈58–60 tokens/s, 3.2–3.4 GB peak unified memory, ≈1.9–2.2 GB resident, `JARVIS_LOCAL_OK` returned exactly; cancel acknowledged mid-stream; process gone after unload.
+- **Status:** SUPPORTED WITH LIMITATIONS (4B model: lightweight tasks only — enforced by `LocalModelPolicy`).
+
+### Costs (the user's hard rule)
+LOCAL = no money · FREE CLOUD = OpenCode models whose current price data is all-zero on the keyless tier · SUBSCRIPTION = Claude Code / Codex (V0.3) · PAID API = nonexistent. DEC-022.

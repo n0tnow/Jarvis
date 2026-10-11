@@ -4,20 +4,20 @@
 
 ## Current Version
 
-V0.3 — real intelligence through the user's own Claude Code / Codex subscriptions (on top of V0.2.1; app version string still `0.1.1`). V0.1–V0.2.1 were manually tested by the user.
+V0.3.1 — intelligence infrastructure (persistence + audit, OpenCode verified-free pool, local Qwen, ProviderSupervisor, model router, background-agent foundation) on top of V0.3 (Claude Code / Codex) and V0.2.1. App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3 and V0.3.1 are not**.
 
 ## Current Milestone
 
-V0.3: real intelligence providers (conversation only; autonomous workers are V0.4)
+V0.3.1: intelligence infrastructure (NOT the V0.4 task engine)
 
 ## Status
 
-**V0.3 — READY FOR MANUAL TEST**
-(Automated + REAL verification passed. Not manually verified by the user. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.4.)
+**V0.3.1 — READY FOR MANUAL TEST**
+(Automated + REAL verification passed on this Mac: OpenCode 1.19.0 / Claude Code / Codex / local Qwen. Not user-verified. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.4.)
 
 ## Current Objective
 
-Hand V0.3 to the user: manual test of `build/Jarvis.app` with their own signed-in Claude Code / Codex (README checklist items 26–32).
+User manual test of `build/Jarvis.app` (README items 33–39 for V0.3.1, 26–32 for V0.3). Optional local-model setup: `scripts/setup_local_ai.sh`.
 
 ## Completed (IMPLEMENTED)
 
@@ -35,6 +35,15 @@ Hand V0.3 to the user: manual test of `build/Jarvis.app` with their own signed-i
 - Settings: Reduce Motion, Show Developer Controls, Launch at Login (disabled placeholder, NOT implemented).
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
+
+## V0.3.1 additions (IMPLEMENTED · REAL TESTED · MOCK TESTED · UI/physical MANUAL TEST REQUIRED)
+
+- **Persistence (DEC-023, `docs/PERSISTENCE.md`):** system SQLite (WAL, serialised writer, migrations, corrupt-file move-aside) in `~/Library/Application Support/JARVIS/jarvis.sqlite`; 12 operational tables + `provider_health`; file-backed artifacts (hash-verified); `Redactor`; audit trail per run (engine, model, **machine-readable selection reason**, tools incl. refused attempts, validation, retries, escalation, prompt hash/length, redacted excerpt — none for sensitive tasks). Never in the repo (git-ignored; verify.sh checks).
+- **Local Qwen3.5-4B (DEC-024):** isolated venv (605 MB, 57 pinned packages, no model download), JSON-lines worker, on-demand start, ping/pong health, cancel, idle/pressure/shutdown unload; `LocalModelPolicy` forbids coding/testing/repo/review/debug/architecture/Unity/security/project code/long context — in Auto, in explicit Local (refused, no fallback) and inside the provider itself.
+- **OpenCode free pool (DEC-022/025, `docs/OPENCODE_RESEARCH.md`):** free = every cost tier 0 + active + enabled + keyless provider `opencode` (never by name; 24 h freshness; sticky block when the API reports a model removed). Both CLI generations supported (classic `models --verbose`/`run --pure`; v2 `api model.list`/`run --standalone`), chosen from `--help`. Tools rejected (v2: Code Mode escape found and closed). Benchmark suite v1 (13 cases, real validators, Swift only type-checked) gates Auto. Catalog is read lazily (reading may start OpenCode's ≈290 MB background service).
+- **Routing (DEC-026, `docs/MODEL_ROUTING.md`):** pure `ModelRouter`; Auto = Local → OpenCode free → Claude/Codex (lightweight) · OpenCode free → Claude/Codex (development/knowledge) · Claude/Codex (heavy/sensitive paths); explicit modes never fall back; zero-retention preferred; sensitive never to free cloud, project code only to zero-retention; bounded escalation (1) with persisted reasons.
+- **Supervisor/resources/agents (DEC-027/028):** persistent cooldown/backoff, bounded local restart, memory-pressure unload; limits for 16 GB (1 local job, 2 free-cloud, 1 heavy, 3 total, depth 1); `AgentRunManager` (race-free slots, parent/child, cancel, bounded repair + escalation, `ContextRetrieval`) — no UI entry point, no tools, no file writes.
+- **UI:** Settings (5 modes, Routing, OpenCode free list with data-handling labels + Benchmark buttons, Local model status/metrics/Test/Unload), System panel (Local/OpenCode/Memory rows), Agents panel shows real active runs, provider badge (AUTO · n READY / engine). Compact stays 392×448; Compact XOR Full unchanged.
 
 ## V0.3 additions (IMPLEMENTED · REAL TESTED · MOCK TESTED · UI MANUAL TEST REQUIRED)
 
@@ -77,6 +86,12 @@ Everything in `docs/ROADMAP.md` from V0.2 onward — PLANNED, not started.
 See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MANUAL VERIFICATION REQUIRED; Retina rendering not verified (dev machine screen was 1×).
 
 ## Tested
+
+**V0.3.1 (2026-10-11) — `scripts/verify.sh` → VERIFY PASSED:** 327 unit tests (47 suites; serial; fake CLIs/worker with real child processes; temp SQLite) · smoke 85 PASS / 0 FAIL / 2 SKIP (AX audit, unchanged) · extended policy rules (no network clients/URL literals, no credential/integration API names, no `--auto`/`--attach`/service flags, Process only in ManagedProcess, no tracked DB/model/large file, no secrets, worker offline) · idle CPU 0.02 s/8 s.
+**REAL TESTED — `Jarvis --intelligence-live-test --benchmark-models` (28/28 PASS, OpenCode 1.19.0; earlier runs 27/27 on 1.18.34 and 1.19.0):** SQLite written by the app, closed, reopened (12 runs with reasons, 28 activity events, 42 registry rows, schema v1) · discovery (Claude/Codex/OpenCode/Local READY; **11 verified-free models**, 31 rejected: 30 `price > 0`, `opencode-go` zero-price ones "credentialed plan") · **local Qwen**: answer `JARVIS_LOCAL_OK` through ConversationService→Coordinator→provider→worker, on-demand start, ping/pong, STOP in 0.03 s with the worker still usable, idle unload after 3 s with the process gone, explicit Local refuses a coding question · **OpenCode FREE** `longcat-2.5-preview-free` (zero-retention) answered `JARVIS_OPENCODE_OK` in 4.7 s through the stack, audited (engine, model, freeVerified, reason) · v2 tool canaries (shell/write/outside read/fetch/Code Mode/sub-agent): nothing executed · STOP kills both OpenCode processes in <0.2 s, run `cancelled`, no cooldown · **Auto routing**: summary → Local; coding question → **OpenCode · space-bunny-free** (benchmarked 13/13, zero-retention, verified free) with reason `{tier: development-free-first, codingBenchmarkPassed: true, freeVerified: true, localModelIneligible: true, …}`; architecture → Claude Code (`heavy-premium-only`); deterministic commands/worker requests: no engine, no run · app-termination path kills the local worker · no managed process left.
+**Benchmarks (real, suite v1, passed/13):** big-pickle 13 · ling-3.1-flash 13 · longcat-2.5-preview 13 · nemotron-3-ultra 13 · space-bunny 13 · mimo-v2.6-flash 12 · muse-spark-1.3-contributor 12 · step-5-preview 12 · nemotron-3.5-lightning 10 (partial) · exo-free 0 (API 410 deprecated while listed active → blocked, benchmark aborted after 1 request) · ling-3.0-flash-fin 0 (upstream "Model is unavailable", aborted after 3 failures).
+**Performance (release, M5, % of one core; baseline = V0.3 in brackets):** closed idle 0.1 % (0.2) · Compact working 1.0 % (1.2) · Full idle 3.4 % (4.5) · Full thinking 16.1 % (17) · RSS 67 MB idle / 150 MB Full HUD (65/150) · idle 8 s window 0.02 s CPU. SQLite/supervisor/resource-manager idle cost is within noise (no polling anywhere; memory pressure is an event source). Local model: load 1.6–2.4 s, first token 0.37–0.51 s, 58–60 tok/s, peak 3.4 GB unified, worker resident 1.2–2.2 GB, loaded-idle 0 % CPU, generation worker CPU ≈1 % (GPU-bound), unloaded: JARVIS RSS 59–65 MB. OpenCode run: JARVIS 0 %, opencode client+private server 0.5–1.0 % CPU, 500–650 MB RSS during the run, 4–5 s for a trivial prompt; its shared background service (not started by JARVIS runs) ≈290 MB resident. Real streaming/V0.3 numbers unchanged.
+**MANUAL TEST REQUIRED:** Settings UI feel (Benchmark buttons, Test local model), real typing/STOP in the HUD, quitting while the local model is loaded, behaviour with OpenCode upgrades, multi-minute use, Retina/VoiceOver (unchanged).
 
 **V0.3 (2026-10-11) — `scripts/verify.sh` → VERIFY PASSED:** 183 unit tests (serial, real child processes) · smoke 85 PASS / 0 FAIL / 2 SKIP · focused provider policy rules · idle CPU ≈0.2 %.
 - **REAL TESTED** (`Jarvis --provider-live-test`, real requests through ConversationService → ProviderManager → provider → parser → store): Claude Code 2.1.277 and Codex 0.153.4 — exact-reply, complete 30-number answer, incremental streaming (Claude: real deltas; Codex: one message, as documented), follow-up context (PINEAPPLE), STOP kills the process tree with no orphans (Claude 0.6 s, Codex 1.6 s), UI recovers, deterministic command launches no provider, worker request launches no provider.
@@ -130,12 +145,12 @@ None.
 
 ## Next Action
 
-**Wait for the user's manual V0.3 test** (`README.md` → V0.3 additions, items 26–32). Do not start V0.4 (persistent task engine / workers) without approval.
+**Wait for the user's manual V0.3 + V0.3.1 test** (`README.md` items 26–32 and 33–39). Do not start V0.4 (persistent task engine / workers) without approval.
 
 ## Git
 
-`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; V0.3 commits start at `58c6948`; **no tag**; no AI co-author trailers (user rule). Policy: `AGENTS.md` → Git Workflow, DEC-011.
+`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; V0.3 commits start at `58c6948`; V0.3.1 at `f2665a5`; **no tag**; no AI co-author trailers (user rule). Policy: `AGENTS.md` → Git Workflow, DEC-011.
 
 ## Last Updated
 
-2026-10-11 — V0.3 implemented, REAL TESTED with both providers, verified. READY FOR MANUAL TEST.
+2026-10-11 — V0.3.1 implemented, REAL TESTED (SQLite, local Qwen, OpenCode free models, routing, lifecycle), verified. READY FOR MANUAL TEST.
