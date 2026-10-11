@@ -1,6 +1,6 @@
 # Roadmap
 
-V0.1–V0.4 have been built (V0.3, V0.3.1, V0.3.2 and V0.4 await manual test). Everything else is PLANNED — do not start a milestone without explicit user approval.
+V0.1–V0.5 have been built (V0.3 … V0.5 await manual test). Everything else is PLANNED — do not start a milestone without explicit user approval.
 
 | Version | Scope | Status |
 |---|---|---|
@@ -11,7 +11,7 @@ V0.1–V0.4 have been built (V0.3, V0.3.1, V0.3.2 and V0.4 await manual test). E
 | V0.3.1 | Intelligence infrastructure: SQLite persistence + audit trail, OpenCode verified-free pool, local Qwen, ProviderSupervisor, policy-driven model router, bounded background-agent foundation (no autonomous task engine) | READY FOR MANUAL TEST |
 | V0.3.2 | Agent Observatory & live consoles: provider/agent overview, sanitized live console, truthful progress/states, history, timeline, Stop, restart reconciliation, central sanitization boundary (no task engine, no shell) | READY FOR MANUAL TEST |
 | V0.4 | Autonomous task engine: user-initiated goal → durable task → validated plan → scheduled agents/tools → deterministic validation → bounded repair/escalation → report; workspace + capabilities + leases; restart recovery (no proactive work) | READY FOR MANUAL TEST |
-| V0.5 | Proactive reasoning + approval/autonomy policy (opportunity detection, proposals, low/medium/critical action classes) — NOT started | PLANNED |
+| V0.5 | Proactive reasoning + approval/autonomy policy: event-driven opportunities, deterministic policy, scope-bound proposals, conservative low-risk auto actions through the V0.4 engine | READY FOR MANUAL TEST |
 | V0.6 | Local STT + microphone | PLANNED |
 | V0.7 | Local/approved TTS + streaming voice | PLANNED |
 | V0.8 | Wake word + interruption/barge-in | PLANNED |

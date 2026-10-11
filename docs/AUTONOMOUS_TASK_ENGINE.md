@@ -176,3 +176,6 @@ User-initiated goals only: no proactive improvement proposals, no autonomy polic
 JARVIS builds (no tool use inside the provider), so very large projects need targeted goals. The planner/coders are as good as the routed model
 (free models are benchmarked, not guaranteed). One workspace per task; at most 2 active tasks. No notifications (a notification permission
 would be required). No Git commit/push. Resume after a restart is explicit. Build/test steps run project code.
+
+## V0.5 additions: task origin, scope and autonomy depth
+`TaskRecord` gains `origin` (`userTask` / `proactiveAutoAction` / `approvedProposal`), `originTaskID`, `originOpportunityID`, `autonomyDepth` (user 0, automatic/approved 1) and an optional `TaskScope`. `TaskEngine.submit` accepts a deterministic `id` (idempotent creation: the same id never makes a second task). A task with a scope is enforced twice: the plan (`TaskScope.planViolations`: allowed step types, ≤ maxSteps, no deletes — the planner is told the scope; a violating plan is re-asked once, then the task fails `scopeExceeded`) and every edit (`editViolations`: path allowlist / test-files-only / max changed files — never repaired). `FailureCategory.scopeExceeded` is a policy failure. User tasks have no scope. See `PROACTIVE_REASONING.md`.

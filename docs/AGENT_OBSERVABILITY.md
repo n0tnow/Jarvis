@@ -136,3 +136,6 @@ history/statistics. The synthetic secret fixture used by tests/demos is obviousl
 * Task runs are ordinary runs: `agent_runs.task_id`, `AgentRunView.taskID`, owner `.task` (Stop on such a run stops the task through the existing cancellation path). The Agents list shows `TASK · <title>` above each run.
 * Deterministic build/test/file runs are `ProviderID.tool` runs (`BuildTool`/`TestTool`/`FileTool`, provider label "JARVIS Tools"): they have a console (merged stdout/stderr through `SafeToolOutput` — the second sanitization entry point next to `SafeProvider`), audit rows, tool records and exit codes, but never a provider card.
 * Task progress is derived from validated steps only and persisted with `progressSource`; the Tasks screen and the Compact card show a percentage only when it exists.
+
+## V0.5 additions
+Opportunity/proposal events appear in the activity feed (and the Agents timeline via task ids): "Opportunity detected / recorded / deduplicated / suppressed", "Proposal created", "Approval required", "Proposal approved / denied / dismissed", "Auto task created", "Autonomy budget exhausted", "Proactive assessment used <provider · model> because …". Proactive tasks are ordinary runs, grouped under their task, tagged `JARVIS AUTO TASK` / `APPROVED PROPOSAL` in Tasks.

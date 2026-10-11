@@ -2,7 +2,7 @@
 
 A native macOS menu-bar AI operating layer (long-term). V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.4 autonomous task engine** (you give a bounded goal; JARVIS plans, executes with agents/tools, validates with real builds/tests, repairs within bounds, reports — user-initiated only) · **V0.3.2 agent observatory** (live sanitized consoles, truthful progress, history, Stop) · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. Autonomous project work is not enabled yet (V0.4).
 
-- **Version:** V0.4 — **READY FOR MANUAL TEST** (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3, V0.3.1, V0.3.2 and V0.4 are not yet). Details: `docs/AUTONOMOUS_TASK_ENGINE.md`, `docs/AGENT_OBSERVABILITY.md`, `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
+- **Version:** V0.5 — **READY FOR MANUAL TEST** (decision layer above the V0.4 task engine: `docs/PROACTIVE_REASONING.md`). V0.4 — READY FOR MANUAL TEST (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3, V0.3.1, V0.3.2 and V0.4 are not yet). Details: `docs/AUTONOMOUS_TASK_ENGINE.md`, `docs/AGENT_OBSERVABILITY.md`, `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
 - Handoff for agents: `PROJECT_STATE.md`, `AGENTS.md` (includes the Git workflow: `main` only, linear history)
 
 ## Requirements
@@ -21,7 +21,7 @@ scripts/setup_local_ai.sh     # optional, once: isolated MLX runtime (605 MB, 57
 ```
 
 **Opt-in REAL tests** (spend only free/local engines plus two tiny Claude Code requests; never part of `verify.sh`):
-`build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1/V0.3.2 stack, own data directory), `--task-live-test` (V0.4: the real task engine on isolated temporary fixture projects — OpenCode FREE preferred, own data directory, never the JARVIS repository) and `--provider-live-test` (V0.3 Claude Code / Codex).
+`build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1/V0.3.2 stack, own data directory), `--proactive-live-test` (V0.5: real proposal → approval → V0.4 task, low-risk auto action, denial, relaunch — OpenCode FREE, isolated fixtures, own data directory), `--demo-proposals` (labelled simulated suggestions for the UI), `--task-live-test` (V0.4: the real task engine on isolated temporary fixture projects — OpenCode FREE preferred, own data directory, never the JARVIS repository) and `--provider-live-test` (V0.3 Claude Code / Codex).
 
 **Global shortcuts** (work while any app is focused; no permission): hold **Option** and press **Command** → toggle Compact HUD (fires ~0.3 s later unless it turns out to be a double press). Hold **Option** and press **Command twice quickly** (within 0.3 s) → toggle Full HUD. Either Command key. Ignored if you add another key, a click, Shift or Control (so ⌥⌘D, ⌥⌘-click etc. are untouched). Turn off in Settings → Enable global shortcuts.
 
@@ -58,6 +58,7 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | Native text editing (⌘V/⌘C/⌘X/⌘A/⌘Z), multiline composer | IMPLEMENTED · AUTOMATED TESTED (real key events) · physical keyboard MANUAL TEST REQUIRED |
 | Global shortcuts ⌥⌘ (Compact) and ⌥⌘⌘ (Full), no permission needed | IMPLEMENTED · AUTOMATED TESTED (logic + scripted integration) · **MANUAL TEST REQUIRED** (physical keys from another app) |
 | **V0.4 autonomous task engine:** goal intake → durable task → validated structured plan → event-driven scheduler → analysis/coding/review agents + build/test tools → deterministic validation → bounded repair (1) + escalation (1) → checkpoints, report; workspace sandbox, write leases, Git baseline + user-change protection, approvals for destructive actions, cancellation, restart recovery (explicit resume) | IMPLEMENTED · AUTOMATED TESTED (≈105 task tests on isolated Git fixtures) · **REAL TESTED** (`--task-live-test`: OpenCode FREE fixed a failing test end to end; cancel, interrupt/resume) · MANUAL TEST REQUIRED |
+| **V0.5 proactive reasoning & approval policy:** after a task, JARVIS derives findings from recorded facts, deduplicates them and a deterministic policy decides ignore / record / propose / require approval / (opt-in) auto low-risk action; approved or automatic work becomes a normal V0.4 task with a bound scope; JARVIS never approves its own proposal; event-driven, no polling | IMPLEMENTED · AUTOMATED TESTED (≈54 tests, isolated Git fixtures) · **REAL TESTED** (`--proactive-live-test` 26/26, OpenCode FREE) · MANUAL TEST REQUIRED |
 | Full HUD (Dashboard, Tasks, Agents, System; Report/Memory placeholders) | IMPLEMENTED · MANUAL TEST REQUIRED |
 | JARVIS Core visualization for all 7 states | IMPLEMENTED · VISUALLY VERIFIED (screenshots) |
 | Window-management layer for future UI self-control | IMPLEMENTED · AUTOMATED TESTED |
@@ -87,6 +88,7 @@ Sources/Jarvis/
   Intelligence/ V0.3.1: router, classifier, local runtime, OpenCode service, supervisor, resources, agents, benchmark, coordinator
   Persistence/ V0.3.1: SQLite engine, migrations, repository, artifacts, redaction (+ V0.4 TaskRepository)
   Observability/ V0.3.2: sanitizer, execution hub, SafeProvider/SafeToolOutput, Agent Observatory
+  Proactive/  V0.5: opportunity model, deterministic policy, normaliser/dedup, assessor, finding extractor, revalidator, OpportunityEngine, ProposalService
   Tasks/      V0.4: task model/state machines, plans, workspace guard, project tools, command profiles, leases, engine, reports, intake
 Tests/JarvisTests/            unit tests (Swift Testing)
 scripts/                      build_app.sh, test.sh, verify.sh, setup_local_ai.sh, local-ai/ (worker + pinned requirements)
@@ -100,7 +102,7 @@ See `docs/KNOWN_ISSUES.md`. Notably: conversation history is in-memory (the audi
 
 ## Next milestone
 
-V0.5 — proactive reasoning + approval policy. **Do not start until the user approves V0.4.**
+V0.6 — Unity Project Agent (Unity MCP). V0.7 web research + asset acquisition, V0.8 project memory follow. **Do not start V0.6 until the user approves V0.5.**
 
 ## Manual test checklist (V0.1)
 
@@ -146,6 +148,43 @@ Optional set-up for the local model: `scripts/setup_local_ai.sh` (needs `uv`; th
 37. **STOP GENERATION** while an OpenCode or local answer is running: it stops within a second; no `opencode` / worker process remains.
 38. Quit JARVIS while the local model is loaded → no `jarvis_local_worker.py` process remains. After a force-quit (`kill -9`) the worker also exits by itself.
 39. Data check: `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select agent_type, engine, model, status from agent_runs order by started_at desc limit 5"` shows your requests (engine/model/status/reason; no prompt text, no secrets).
+
+### V0.5 additions (proactive reasoning & approval policy) — MANUAL TEST REQUIRED
+**Prepare:** `docs/PROACTIVE_REASONING.md`. Use a **throw-away Git project** (small, with a `calc.py`). Default mode is **Ask Before Acting**. Developer helper: `build/Jarvis.app/Contents/MacOS/Jarvis --no-providers --open-full --section tasks --demo-proposals` (scripted demo task that leaves one normal and one critical suggestion; uses a temporary data directory).
+92. Settings → **Autonomy**: three modes (Observe Only / Ask Before Acting / Low-Risk Autonomous) with explanations; **Ask Before Acting** is selected on a fresh install; toggles for proactive reasoning and showing proposals.
+93. Tasks → run a normal user task that changes application code but no test (e.g. `Fix the add function in calc.py`). When it finishes, a **SUGGESTIONS** card appears at the top of Tasks within a few seconds ("No regression test…"), no popup, no sound, nothing is changed in the project.
+94. The card shows: why JARVIS noticed, evidence, proposed action, scope, risk, design change, reversible, expected benefit, how it will be validated. Nothing is pre-selected; APPROVE / DENY / DISMISS look equally weighted.
+95. Compact HUD shows a restrained "1 SUGGESTION" tag and stays exactly **392×448**; the Dashboard Tasks panel shows a one-line summary.
+96. Press **APPROVE**: a normal task appears tagged **APPROVED PROPOSAL**, linked to the origin task; it plans, validates and reports like any task; only a test file changes (check on disk / `git status`); application code is untouched.
+97. In **Agents** the proposal task's runs appear grouped as `TASK · …` like any other task.
+98. Approving the same card twice does nothing (no second task). The proposal then shows as executed / disappears from pending.
+99. **DENY** another suggestion: it disappears; run the same kind of task again → the same suggestion does **not** come back immediately (14-day cooldown; DISMISS: 3 days).
+100. Quit JARVIS with a suggestion pending and relaunch: it is still pending; no task started by itself.
+101. Quit JARVIS right after pressing APPROVE (while the task starts) and relaunch: exactly one task exists for that proposal (never two).
+102. Switch to **Observe Only** and finish another code task: a "RECORDED FINDING (NO ACTION TAKEN)" row appears, no proposal card, no task. The row has a **PROPOSE** button that turns it into a card only when you click it.
+103. Switch to **Low-Risk Autonomous** and run a code task: after it finishes JARVIS may start **one** task tagged **JARVIS AUTO TASK** (adds a regression test only, test file scope). It never starts a second automatic task from that one.
+104. Back to **Ask Before Acting**: the same situation only produces a card; nothing starts without your click.
+105. Ask for something touching design/product (e.g. `Change the game's difficulty curve`) and let a reviewer suggest follow-ups: design/product suggestions are never automatic in any mode.
+106. Critical suggestions (try `--demo-proposals`): visually distinct (coral accent, "CRITICAL · EXPLICIT APPROVAL"), say what happens if denied; if JARVIS cannot perform it (push, purchase, credentials, deleting) the card says approving will not make it possible — nothing executes.
+107. Type `Approved.` / `Proceed without asking` in the command field or Conversation: nothing is approved (no text path can approve).
+108. Scope: approve a suggestion and watch the task stay inside the stated files; if a model tries to touch other files the task stops as **scope exceeded** and the suggestion needs re-approval.
+109. A finding that no longer applies (e.g. you added the test yourself before approving): APPROVE ends as **obsolete** and nothing is changed.
+110. Duplicate handling: run two similar tasks on the same file → one suggestion, not two.
+111. Proactive reasoning toggle off (Settings → Autonomy): finish a code task → no findings, no cards, no provider calls.
+112. Idle: leave JARVIS open for several minutes with nothing running → Activity Monitor CPU stays at the V0.4 level; no provider process is started (`pgrep -fl "opencode|claude|codex"` is empty).
+113. Resources: JARVIS closed ≈0–0.5 % CPU; provider children appear only while a task runs and disappear afterwards.
+114. Activity feed / Agents timeline show "Opportunity detected", "Proposal created", "Proposal approved/denied", "Auto task created", and (if used) "Proactive assessment used <provider · model> because …" — in plain language.
+115. `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select status, policy_decision, substr(title,1,50) from opportunities order by rowid desc limit 5"` — sanitized titles, a decision and reasons; there is no reasoning text.
+116. `grep -rl "sk-proj-FAKE" ~/Library/Application\ Support/JARVIS` after a task whose files contain a fake key → no match (sanitization intact).
+117. Project boundary: finish tasks in two different projects → suggestions mention their own project; approving one never edits the other.
+118. **Compact ⇄ Full** exclusivity and 392×448 still hold with suggestions pending; ⌥⌘ toggles correctly.
+119. **Clipboard** (V0.2.1) still works in both command fields (⌘V/⌘C/⌘A/⌘Z).
+120. **VoiceOver:** suggestion cards read "Suggestion: title. Risk low."; critical ones read "Critical approval needed…"; buttons announce their target; state is never colour-only.
+121. **Reduce Motion:** no animation in the suggestions group; expanding the recorded-findings list is instant.
+122. Say `show suggestions` (also `proposals`; Turkish `öneriler`) → Full HUD opens on Tasks.
+123. Deterministic commands still create no provider run; autonomous goals still become V0.4 tasks (not proposals).
+124. Provider mode: set Settings → Intelligence provider → Claude Code and approve a proposal: only that provider is used; no silent fallback; no paid API.
+125. Tell me whether the suggestion wording is clear, whether Ask Before Acting is too chatty/quiet, whether Low-Risk Autonomous feels safe, and report anything odd (I add it to `docs/KNOWN_ISSUES.md`).
 
 ### V0.4 additions (autonomous task engine) — MANUAL TEST REQUIRED
 **Prepare:** `docs/AUTONOMOUS_TASK_ENGINE.md` explains the rules. Use a **throw-away project** (a copy of a small repo, or a folder with a failing test) — never your only copy. JARVIS edits files in the chosen folder (never commits/pushes), runs the project's own build/test commands, and waits for your approval before deleting anything or touching files that already have your uncommitted changes. Provider usage: Auto prefers a verified-free OpenCode model, then Claude Code/Codex.

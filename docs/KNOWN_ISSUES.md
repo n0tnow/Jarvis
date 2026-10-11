@@ -220,3 +220,23 @@ Description: Completion is reported in the conversation/activity/VoiceOver annou
 ### JARVIS-V04-7 — Claude Code / Codex task escalation not exercised for real
 Status: Open · MOCK TESTED
 Description: Bounded repair and escalation (including `exclude`/`pin`, explicit-mode refusal) are covered with scripted agents; the real live test finished on OpenCode FREE without escalation and Claude/Codex were not asked to code on a fixture (subscription quota).
+
+### JARVIS-V05-1 — Proposals/Settings UI verified by captures, smoke and live tests, not by a person
+Status: Open · MANUAL TEST REQUIRED
+Description: The Proposals cards (including the critical variant), Settings → Autonomy radio group, the Compact "N SUGGESTIONS" tag, VoiceOver reading order, Reduce Motion and the visual weight of Approve/Deny/Dismiss were not checked by a human. README items 92–125.
+
+### JARVIS-V05-2 — Few finding sources by design
+Status: Open · by design
+Description: V0.5 derives findings only from what V0.4 records (missing regression test after a code change, missing test command, failures after repair) plus optional reviewer suggestions. There is no project-wide scanning, no build-warning parser and no Unity-specific reasoning (V0.6). Real reviewers sometimes add suggestions that become proposals; they are claims (medium/weak evidence) and never automatic.
+
+### JARVIS-V05-3 — Autonomy is deliberately narrow
+Status: Open · by design
+Description: Automatic actions are limited to small test/maintenance/bug changes with strong deterministic evidence (≤2 files, one per user task, never chained); approved critical actions (purchases, push, credentials, deployment, deleting) are `unsupported` — approval does not create those capabilities. The default mode is Ask Before Acting; Low-Risk Autonomous should be enabled only after the user has verified the behaviour.
+
+### JARVIS-V05-4 — Cooldown semantics are heuristic
+Status: Open · NON-BLOCKING
+Description: Reworded asks about the same file are suppressed during a cooldown (deny 14 d, dismiss 3 d, expiry 7 d) unless materially new deterministic evidence appears; token similarity is deterministic but not semantic, so unusual wording may produce a second card. Scope-expansion stops require a manual "re-propose".
+
+### JARVIS-V05-5 — No notifications
+Status: Open · FUTURE MILESTONE
+Description: Proposals are passive cards (a Compact tag and a Dashboard line). A macOS notification would need a permission and was deliberately not added.

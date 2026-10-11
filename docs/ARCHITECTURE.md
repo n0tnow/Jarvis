@@ -104,6 +104,16 @@ GoalIntake ─► TaskEngine.submit ─► tasks/task_steps (SQLite) ─► Plan
 `Sources/Jarvis/Tasks/`: `TaskModel` (kinds, capabilities, state machines, records) · `TaskPlan` (plan, parser, validator, planner prompt) · `Workspace` (`WorkspaceGuard`) · `ProjectTools` (+ `EditParser`, `UnifiedDiff`) · `CommandProfiles` (approved executables, discovery, runner, test counts) · `GitTool` (read-only) · `FileLeaseManager` · `TaskPrompts` (agent answers, targeted context) · `StepAgentRunner` (seam over `AgentRunManager`) · `TaskEngine` (+`+Planning`, `+Execution`, `+Lifecycle`) · `TaskReport` · `GoalIntake` · `TaskBridge`. Persistence: `Persistence/TaskRepository.swift` (schema v3). Dev-only scripted agents: `Services/Demo/TaskDemo.swift`.
 Seams: `StepAgentRunner` (tests substitute a scripted runner; production = `ManagerAgentRunner`), `TaskSubmitting` (`ConversationService` → intake), `EngineTaskControlling` (HUD buttons → engine). The UI never touches the repository (`verify.sh`).
 
+## Proactive reasoning (V0.5 — DEC-041…046; details `PROACTIVE_REASONING.md`)
+```
+TaskEngine.onFinished / onReviewSuggestions ─► OpportunityEngine ─► FindingExtractor (recorded facts) ─► ingest
+   dedupe · cooldown · coalesce ─► OpportunityAssessor (deterministic; ≤1 budgeted call that may only add caution) ─► OpportunityPolicy (pure)
+   record │ propose │ requireApproval ─► ProposalRecord ─► UI buttons ─► ProposalService (only decision writer) ─► approved
+   autoAction ───────────────────────────────────────────────────────────────────────────────────────────────────┘
+   ─► OpportunityEngine.startTask ─► TaskEngine.submit(origin, scope, depth, deterministic id)   ← the ONLY execution path (V0.4)
+```
+`Sources/Jarvis/Proactive/`: `OpportunityModel` · `OpportunityPolicy` · `OpportunityNormalizer` · `OpportunityAssessor` · `FindingExtractor` · `EvidenceRevalidator` · `OpportunityEngine` · `ProposalService`; `Tasks/TaskScope.swift` (origin + scope enforcement); `Persistence/OpportunityRepository.swift` (schema v4); UI: `ProposalsView` (Tasks screen), Settings → Autonomy, Dashboard summary, Compact "N SUGGESTIONS" tag.
+
 ## Windows
 
 - **Invariant (DEC-015):** Compact XOR Full visible, enforced only in `WindowManager`.
@@ -130,6 +140,6 @@ Seams: `StepAgentRunner` (tests substitute a scripted runner; production = `Mana
 ## Extension points for later milestones (not implemented)
 
 - V0.2: replace `LocalCommandHandler` with a command router (needs a response channel; today it only writes to the activity log).
-- V0.4 is implemented (see above). Later: V0.5 proactive reasoning + approval policy builds on `TaskEngine.submit`, the approval gate and the report/checkpoint data.
+- V0.4 and V0.5 are implemented (see above). Later: V0.6 Unity Project Agent, V0.7 web research + asset acquisition, V0.8 project memory — all through `TaskEngine.submit` and the V0.5 policy.
 - Voice (V0.5–0.7): something must arbitrate `setState` between STT/LLM/task engine.
 - Self-controlled UI (V0.8): protocol may need `currentSection`, `hideSettings`, and a "don't steal focus" open variant.

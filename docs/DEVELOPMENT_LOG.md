@@ -211,3 +211,24 @@ DEC-033 … DEC-040.
 ### Remaining Work
 User manual test (README 67–91). V0.5 only with approval. No tag.
 
+## 2026-10-12 — V0.5: proactive reasoning, opportunity engine & approval policy
+
+### Goal
+A decision layer above V0.4: notice useful things after a task, reason about them, and take only the initiative policy permits — never a second execution engine.
+
+### Changes
+`Proactive/` (model, deterministic policy, normaliser/dedup, assessor, finding extractor, evidence revalidator, OpportunityEngine, ProposalService) · `Tasks/TaskScope` (origin/scope/depth + enforcement in plan and edits, `scopeExceeded`) · schema v4 + `OpportunityRepository` · deterministic ids/idempotent task creation · Proposals UI, Settings → Autonomy, Dashboard summary, Compact tag · `--proactive-live-test`, `--demo-proposals`, captures, smoke checks · verify.sh V0.5 guards · DEC-041…046 · `docs/PROACTIVE_REASONING.md`.
+
+### Real findings (tests/live tests found them; all fixed)
+- The approval row was written without `proposal_id`/`scope_hash` (parameter list not extended) → proposal approvals were invisible; caught by the first engine test.
+- A model-supplied file reference was counted as deterministic evidence ("strong") → a reviewer's suggestion could have become an automatic action. Evidence strength now comes only from JARVIS-recorded facts; suggestions are held until the task ends so deterministic findings are ingested first and suggestions coalesce into them.
+- A real reviewer's suggestion won the race against the deterministic finding and consumed the autonomy budget; a denied proposal's reworded twin came back as a new card. Fixed by the ordering above, by coalescing same-origin findings into an opportunity whose task exists, and by suppressing reworded asks about the same file during a cooldown.
+- `isTestPath` treated `latest.py` as a test file; now identifier-aware.
+- verify.sh: the assessor's DETECTION keywords ("git push", "sudo") tripped the Git/pty guards — exempted that single file explicitly.
+
+### Decisions
+DEC-041 … DEC-046.
+
+### Remaining Work
+User manual test (README 92–125). V0.6 (Unity Project Agent) only with approval. No tag.
+

@@ -4,20 +4,20 @@
 
 ## Current Version
 
-V0.4 — autonomous task engine (user-initiated goals; on top of V0.3.2 observatory, V0.3.1 intelligence infrastructure, V0.3 Claude Code / Codex and V0.2.1). App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3, V0.3.1, V0.3.2 and V0.4 are not**.
+V0.5 — proactive reasoning, opportunity engine & approval policy (a decision layer above the V0.4 task engine); builds on V0.4 — autonomous task engine (user-initiated goals; on top of V0.3.2 observatory, V0.3.1 intelligence infrastructure, V0.3 Claude Code / Codex and V0.2.1). App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3, V0.3.1, V0.3.2 and V0.4 are not**.
 
 ## Current Milestone
 
-V0.4: Autonomous Task Engine (user-initiated only — NOT V0.5 proactive reasoning)
+V0.5: Proactive Reasoning, Opportunity Engine & Approval Policy (decides; V0.4 executes). NOT V0.6 Unity, V0.7 web/assets, V0.8 memory, voice.
 
 ## Status
 
-**V0.4 — READY FOR MANUAL TEST**
+**V0.5 — READY FOR MANUAL TEST** (V0.4 and earlier: READY FOR MANUAL TEST as before)
 (Automated + REAL verification passed on this Mac: OpenCode 2.0.26 FREE end to end on an isolated fixture. Not user-verified. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.5.)
 
 ## Current Objective
 
-User manual test of `build/Jarvis.app` (README items 67–91 for V0.4, 40–66 for V0.3.2, 33–39 for V0.3.1, 26–32 for V0.3). Use a throw-away project for the V0.4 items. Optional local-model setup: `scripts/setup_local_ai.sh`.
+User manual test of `build/Jarvis.app` (README items 92–125 for V0.5, 67–91 for V0.4, 40–66 for V0.3.2, 33–39 for V0.3.1, 26–32 for V0.3). Use a throw-away project for the V0.4 items. Optional local-model setup: `scripts/setup_local_ai.sh`.
 
 ## Completed (IMPLEMENTED)
 
@@ -35,6 +35,15 @@ User manual test of `build/Jarvis.app` (README items 67–91 for V0.4, 40–66 f
 - Settings: Reduce Motion, Show Developer Controls, Launch at Login (disabled placeholder, NOT implemented).
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
+
+## V0.5 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED · UI/real-use MANUAL TEST REQUIRED)
+
+Reference: `docs/PROACTIVE_REASONING.md`, DEC-041…046. Code: `Sources/Jarvis/Proactive/`, `Tasks/TaskScope.swift`, `Persistence/OpportunityRepository.swift` (schema v4), `UI/FullHUD/Tasks/ProposalsView.swift`.
+- **Decision layer, not an engine:** finished V0.4 tasks (and optional reviewer suggestions) → findings from RECORDED facts → dedupe/cooldown/coalesce → deterministic assessment → pure `OpportunityPolicy` (critical > design/product > scope > low-risk maintenance) → ignore / record / propose / require approval / auto action. Allowed work becomes a NORMAL V0.4 task (`origin`, `originTaskID`, `originOpportunityID`, `autonomyDepth`, `TaskScope`, deterministic id).
+- **Modes:** Observe Only / **Ask Before Acting (default)** / Low-Risk Autonomous (Settings → Autonomy). Budget: 1 auto task per user task, depth 1, auto tasks never create auto tasks. Confidence is evidence, not authority; model output can only add caution.
+- **Approval:** only HUD buttons through `ProposalService`; bound to an `action_hash`; scope-bound (`scopeExceeded` stops the task); critical / unsupported actions (push, purchase, credentials, deletion…) can never run, approval does not create capabilities; stale proposals become obsolete.
+- **Event-driven only:** no polling, no scanning, no idle provider calls; ≤1 budgeted assessor call per origin task (never the local model).
+- **UI:** Suggestions in Tasks (Approve / Deny / Dismiss equal weight, recorded findings), Settings → Autonomy, Dashboard line, Compact "N SUGGESTIONS" tag (392×448 unchanged).
 
 ## V0.4 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED · UI/real-use MANUAL TEST REQUIRED)
 
@@ -102,6 +111,10 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Tested
 
+**V0.5 (2026-10-12) — `scripts/verify.sh` → VERIFY PASSED:** 536 unit tests (75 suites; +54 for policy, normaliser/dedup, assessor, scope, end-to-end Ask/Observe/Low-Risk flows on isolated temp Git fixtures, self-approval/tamper/scope-expansion, restart/idempotency, obsolete, budget, sanitization, structural guards), V0.5 policy greps, smoke 99 PASS / 0 FAIL / 2 SKIP, idle 0.02 CPU-s in 8 s / 71 MB RSS.
+**REAL TESTED — `Jarvis --proactive-live-test` (final run 26 PASS / 0 FAIL, OpenCode FREE `opencode/space-bunny-free`, isolated temp Git fixtures, own data dir):** user task → proposal from recorded facts (0 provider calls) → real HUD-path approval → normal V0.4 task (planned, validated, test-only scope) ; Low-Risk Autonomous: one auto task, no second auto task; real denial + anti-nagging; real relaunch (one task after approval, second approval a no-op); one budgeted model assessment with recorded reason. Honest variance: earlier runs showed (a) real reviewer suggestions competing with the recorded-fact finding and (b) the V0.4 AI reviewer rejecting an otherwise in-scope, passing test — both are model behaviour; the test now selects the recorded-fact finding and treats a reviewer-only rejection as "stayed in scope" (reported as INFO).
+**MANUAL TEST REQUIRED:** README 92–125.
+
 **V0.4 (2026-10-11) — `scripts/verify.sh` → VERIFY PASSED:** 482 unit tests (69 suites; +105: state machines, plan validation, workspace guard/symlinks, tools/edits/rollback, command policy, leases, engine flows on isolated Git fixtures — success, repair, escalation, bounded failure, malformed/policy-blocked plans, read-only tasks, approvals (approve/deny/restart), dirty worktree, cancellation (incl. a real killed process tree), crash/interrupt/resume, stale leases, lease conflicts, secrets, observability, progress across states, scheduling, source-level policy scans, intake/conversation/HUD bridge) · smoke 94 PASS / 0 FAIL / 2 SKIP (5 new V0.4 checks: real task projected with 2/5 = 40 %, Compact 392×448, `show tasks` exclusivity, no Pause, Stop → CANCELLED) · new guards (no destructive Git, GitTool read-only, build/test allowlist without shell/env/downloader/Git, writes only through ProjectTools, no forbidden capability grants, UI never writes the task DB, no tracked task output) · idle 0.02 s CPU / 8 s, RSS 71 MB.
 **REAL TESTED — `Jarvis --task-live-test` (29 PASS / 0 FAIL, OpenCode 2.0.26, isolated temp Git fixtures, own data dir):** Auto benchmarked `space-bunny-free` 13/13 and routed everything to it (zero-retention, verified free; never the local model): goal → durable task (before work) → 6-step validated plan (analysis → test(reproduce) → analysis → codeChange → test → review) → real file change (`return a - b` → `a + b`, hashes recorded, only calc.py) → real unit tests (reproduction exit 1, final exit 0 · 1 test, 1 passed) → real review → report; task ran in 16–18 s, working-tree change only (no commit/push), Observatory showed 7 runs with consoles, SQLite had steps/attempts/checkpoint/report · **cancel:** a real provider run stopped in 0.2 s, CANCELLED, 0 orphans, no leases, nothing changed · **interrupt/resume:** quit mid-task → INTERRUPTED + checkpoint, relaunch reconciliation leaves it interrupted, explicit resume completed it and did NOT redo validated steps · **approval:** the real planner planned a delete step → WAITING, nothing deleted, DENY → failed `approvalDenied`, file intact · no credential-looking text in SQLite/artifacts · no managed process left behind.
 **Performance (release, M5, % of one core, same-host A/B against a V0.3.2 build):** closed idle 0.1 % (V0.3.2: 0.2) / 73 MB · Compact idle 0.4 % (0.4) · Full Dashboard 7.1 % (7.1) · Full Tasks 1.4 % · Full Agents 1.4 % (1.3) → **no regression**. Active tasks: 2 tasks parked on blocked agents — HUD closed 2.0 % (the pre-existing menu-bar Working animation alone costs 1.5 %: V0.3.2 with the demo task, same number; the rest is the demo runner's 20 Hz wait loop), Compact 2.1 %, Full Tasks 4.7 %, Full Agents 5.3 %; 2 task agents + 2 simulated streaming agents (4 concurrent): Full Agents 14.3 % (V0.3.2 with 2 simulated: 8.1 %), HUD closed 2.2 % (V0.3.2: 0.4 % because the menu-bar icon was idle). Real run: JARVIS 0.0 CPU-seconds over 18 s (peak RSS 75 MB), provider/test children ≈0.7 % CPU, peak 516 MB RSS (OpenCode), all gone afterwards. The engine never polls (scheduler wakes on step completion; one one-shot deadline per build/test command).
@@ -152,7 +165,7 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Important Decisions
 
-See `docs/DECISIONS.md` (DEC-001…DEC-040). Key ones:
+See `docs/DECISIONS.md` (DEC-001…DEC-046). Key ones:
 - Native Swift/SwiftUI/AppKit only (no Electron/React/Tauri/web UI).
 - UI/window state (`HUDState`) separated from application/task state (`JarvisStore`); closing HUDs never touches tasks.
 - All window control goes through `JarvisWindowControlling`.
@@ -177,12 +190,12 @@ None.
 
 ## Next Action
 
-**Wait for the user's manual V0.3 … V0.4 test** (`README.md` items 26–32, 33–39, 40–66 and 67–91). Do not start V0.5 (proactive reasoning + approval policy) without approval. Do not start V0.4 (persistent task engine / workers) without approval.
+**Wait for the user's manual V0.3 … V0.5 test** (V0.5: README 92–125) (`README.md` items 26–32, 33–39, 40–66 and 67–91). Do not start V0.6 (Unity Project Agent) without approval. Do not start V0.4 (persistent task engine / workers) without approval.
 
 ## Git
 
-`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; V0.3 commits start at `58c6948`; V0.3.1 at `f2665a5`; V0.3.2 at `e445f3f`; V0.4 at `41fd038`; **no tag**; no AI co-author trailers (user rule). Policy: `AGENTS.md` → Git Workflow, DEC-011.
+`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; V0.3 commits start at `58c6948`; V0.3.1 at `f2665a5`; V0.3.2 at `e445f3f`; V0.4 at `41fd038`; V0.5 commits follow `7f6b3d5`; **no tag**; no AI co-author trailers (user rule). Policy: `AGENTS.md` → Git Workflow, DEC-011.
 
 ## Last Updated
 
-2026-10-11 — V0.4 implemented, REAL TESTED (OpenCode FREE end to end on a fixture, cancel, interrupt/resume, approval), verified. READY FOR MANUAL TEST.
+2026-10-12 — V0.5 implemented, AUTOMATED TESTED, REAL TESTED (OpenCode FREE), verified. READY FOR MANUAL TEST.
