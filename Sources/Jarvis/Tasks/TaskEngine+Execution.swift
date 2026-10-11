@@ -78,7 +78,7 @@ extension TaskEngine {
             var cand: RoutingCandidate?
             if case .failed(_, _, _, let c) = result { cand = c; if let c { excluded.insert(c) } }
             endAttempt(attempt, outcome: "failed:\(cat.rawValue)", evidence: why, candidate: cand)
-            if round == 0, agents.escalationAllowed, cand != nil { noteEscalationNeeded(ctx, step, why); continue }
+            if round == 0, canEscalate(ctx), cand != nil { noteEscalationNeeded(ctx, step, why); continue }
             return .failed(cat, why)
         }
         return .failed(.providerFailed, "analysis failed")
@@ -110,7 +110,7 @@ extension TaskEngine {
             return .passed
         }
         var kinds: [AttemptKind] = [.primary]
-        if agents.escalationAllowed { kinds.append(.escalation) }
+        if canEscalate(ctx) { kinds.append(.escalation) }
         var lastWhy: (FailureCategory, String) = (.providerFailed, "the coding agent failed")
         for kind in kinds {
             if ctx.cancelRequested || Task.isCancelled { return .cancelled }
@@ -123,7 +123,7 @@ extension TaskEngine {
                 endAttempt(attempt, outcome: "failed:\(f.0.rawValue)", evidence: f.1, runID: r.runID, candidate: r.candidate)
                 lastWhy = f
                 if f.0 == .approvalDenied || f.0 == .capabilityDenied || f.0 == .workspaceViolation || f.0 == .securityBlocked { return .failed(f.0, f.1) }
-                if kind == .primary, agents.escalationAllowed { noteEscalationNeeded(ctx, step, f.1) }
+                if kind == .primary, canEscalate(ctx) { noteEscalationNeeded(ctx, step, f.1) }
                 continue
             }
             verifying(ctx, key)
@@ -330,7 +330,7 @@ extension TaskEngine {
     func repairLoop(_ ctx: TaskContext, failing: TaskStepRecord, profile: CommandProfile, first: CommandResult) async -> CommandResult? {
         guard let code = nearestCodeStep(ctx, before: failing) else { return nil }
         var kinds: [AttemptKind] = [.repair]
-        if agents.escalationAllowed { kinds.append(.escalation) }
+        if canEscalate(ctx) { kinds.append(.escalation) }
         var last = first
         for kind in kinds {
             if ctx.cancelRequested || Task.isCancelled { return nil }
@@ -410,7 +410,7 @@ extension TaskEngine {
             var cand: RoutingCandidate?
             if case .failed(_, _, _, let c) = result { cand = c; if let c { excluded.insert(c) } }
             endAttempt(attempt, outcome: "failed:\(cat.rawValue)", evidence: why, candidate: cand)
-            if round == 0, agents.escalationAllowed, cand != nil { noteEscalationNeeded(ctx, step, why); continue }
+            if round == 0, canEscalate(ctx), cand != nil { noteEscalationNeeded(ctx, step, why); continue }
             return .failed(cat, why)
         }
         return .failed(.providerFailed, "review failed")

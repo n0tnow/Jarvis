@@ -14,6 +14,7 @@ import Foundation
 ///   --benchmark-models      (with the above) also run the benchmark suite on verified-free OpenCode models and record results
 ///   --demo-agents           developer-only: simulate a few agent runs (never persisted, labelled SIMULATED)
 ///   --demo-stress           developer-only: simulate a high-rate console stream (performance measurement)
+///   --demo-tasks <n>        developer-only (needs --no-providers): n scripted autonomous tasks parked on a blocked coding agent (performance measurement)
 ///   --no-providers          never contact Claude Code / Codex (providers report "not installed"); used by verify.sh
 ///   --smoke-test            run the automated window/state smoke test, print results, exit
 ///   --close-after <sec>     hide all HUD windows after <sec> seconds (to observe the closed/idle resource profile)
@@ -30,6 +31,7 @@ struct LaunchOptions {
     var noProviders = false
     var demoAgents = false
     var demoStress = false
+    var demoTasks = 0
     var intelligenceLiveTest = false
     var taskLiveTest = false
     var benchmarkModels = false
@@ -46,6 +48,7 @@ struct LaunchOptions {
             case "--no-providers": noProviders = true
             case "--demo-agents": demoAgents = true
             case "--demo-stress": demoStress = true
+            case "--demo-tasks": demoTasks = it.next().flatMap(Int.init) ?? 1
             case "--intelligence-live-test": intelligenceLiveTest = true
             case "--task-live-test": taskLiveTest = true
             case "--benchmark-models": benchmarkModels = true

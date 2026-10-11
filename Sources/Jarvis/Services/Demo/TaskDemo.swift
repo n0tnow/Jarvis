@@ -70,4 +70,14 @@ enum TaskDemo {
         if withLegacyFile { write("old/legacy.py", "print('legacy')\n") }
         return (realpath(dir, nil).map { String(cString: $0) }) ?? dir
     }
+
+    /// Parks `count` scripted tasks on a blocked coding agent (dev/perf only; stubbed runs use a temporary database).
+    @MainActor static func park(context: AppContext, count: Int) async {
+        let runner = DemoAgentRunner(audit: context.audit)
+        runner.blocking = ["CodingAgent"]
+        context.taskEngine.agents = runner
+        for i in 0..<min(count, context.taskEngine.limits.maxActiveTasks) {
+            _ = await context.taskEngine.submit(goal: "Fix the failing calculation test (demo \(i + 1))", kind: .development, workspacePath: makeProject())
+        }
+    }
 }

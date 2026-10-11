@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if options.demoAgents { context.observatory.demo?.startShowcase(); context.observatory.selectedRunID = context.hub.activeRuns.first { $0.agentType == "PlannerAgent" }?.id }
         if options.demoStress { context.observatory.selectedRunID = context.observatory.demo?.startStress(linesPerSecond: 400) }
+        if options.demoTasks > 0, context.intelligenceIsStubbed { Task { await TaskDemo.park(context: context, count: options.demoTasks) } }
         if let state = options.state { DemoScenario.apply(state, to: context.store) }
         if options.openCompact { context.windows.showCompactHUD() }
         if options.openFull { context.windows.showFullHUD(section: options.section) }

@@ -31,8 +31,13 @@ extension TaskEngine {
         return p
     }
 
+    /// Task-level escalation is legal only in Auto: the mode the user chose at submission (or, if none, the current setting) decides.
+    func canEscalate(_ ctx: TaskContext) -> Bool { (ctx.record.preference == nil || ctx.record.preference == .auto) && agents.escalationAllowed }
+
     /// Runs one job. A capacity rejection WAITS (event-driven) for a slot instead of failing or spinning.
     func runJob(_ ctx: TaskContext, _ job: AgentJob) async -> AgentJobResult {
+        var job = job
+        job.preference = ctx.record.preference
         while true {
             let r = await agents.run(job)
             guard case .rejected(let why) = r else { return r }
@@ -117,7 +122,7 @@ extension TaskEngine {
                     ctx.hardFailure = (.securityBlocked, "The plan was rejected by the security policy: " + box.detail.filter { $0 != "policy" }.joined(separator: "; "))
                     return false
                 }
-                if attempt == 0, agents.escalationAllowed, cand != nil { continue }                     // one more, different provider
+                if attempt == 0, canEscalate(ctx), cand != nil { continue }                     // one more, different provider
                 let (cat, why) = failure(from: result)
                 ctx.hardFailure = (validationFailed ? .malformedPlan : cat, validationFailed ? "The planner's answers were not valid plans: " + box.detail.prefix(3).joined(separator: "; ") : why)
                 return false

@@ -421,6 +421,13 @@ final class TaskEngine {
 
     var pendingApprovals: [ApprovalRecord] { (try? repository?.pendingApprovals()) ?? [] }
 
+    /// Bounded memory: old finished tasks are re-read from SQLite on demand (`refreshHistory`).
+    func trimViews() {
+        guard views.count > 60 else { return }
+        let old = views.values.filter { $0.task.state.isTerminal && contexts[$0.id] == nil }.sorted { $0.task.createdAt < $1.task.createdAt }.prefix(views.count - 50)
+        for v in old { views[v.id] = nil }
+    }
+
     // MARK: History for the UI
 
     func refreshHistory(limit: Int = 30) {

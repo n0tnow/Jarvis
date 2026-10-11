@@ -86,11 +86,14 @@ enum TaskLiveTest {
         info("fixture project: \(project)")
         let started = Date()
         var peakRSS: UInt64 = 0, childPeak: UInt64 = 0
+        var childCPU: [pid_t: Double] = [:]                                 // last seen cumulative CPU seconds per child (they start at ≈0)
         let sampler = Task { @MainActor in
             while !Task.isCancelled {
                 peakRSS = max(peakRSS, ProcessTree.residentBytes(of: me) ?? 0)
-                childPeak = max(childPeak, descendants().compactMap { ProcessTree.residentBytes(of: $0) }.reduce(0, +))
-                try? await Task.sleep(for: .milliseconds(300))
+                let kids = descendants()
+                childPeak = max(childPeak, kids.compactMap { ProcessTree.residentBytes(of: $0) }.reduce(0, +))
+                for k in kids { if let c = ProcessTree.cpuSeconds(of: k) { childCPU[k] = max(childCPU[k] ?? 0, c) } }
+                try? await Task.sleep(for: .milliseconds(250))
             }
         }
         let cpu0 = ProcessTree.cpuSeconds(of: me) ?? 0
@@ -130,7 +133,7 @@ enum TaskLiveTest {
         let obsRuns = context.hub.runs.values.filter { $0.taskID == task.id }
         check("The Observatory (V0.3.2 hub) shows the task's agents and tool runs with their consoles", obsRuns.count >= 4 && obsRuns.allSatisfy { !context.hub.visibleText($0.id).isEmpty || $0.engine != .tool }, "\(obsRuns.count) runs")
         check("Task state, steps, attempts, approvals, leases and checkpoint are in SQLite", (try? repo.count("task_steps")) ?? 0 >= steps.count && (try? repo.activeLeases().isEmpty) == true && task.checkpointArtifactID != nil && task.reportArtifactID != nil)
-        info("performance: wall \(fmt(wall)) s · JARVIS CPU \(fmt(jarvisCPU / max(wall, 0.001) * 100)) % (peak RSS \(peakRSS / 1_048_576) MB) · provider children peak RSS \(childPeak / 1_048_576) MB")
+        info("performance: wall \(fmt(wall)) s · JARVIS CPU \(fmt(jarvisCPU)) s = \(fmt(jarvisCPU / max(wall, 0.001) * 100)) % of one core (peak RSS \(peakRSS / 1_048_576) MB) · provider/test children CPU ≥\(fmt(childCPU.values.reduce(0, +))) s (≈\(fmt(childCPU.values.reduce(0, +) / max(wall, 0.001) * 100)) %), peak RSS \(childPeak / 1_048_576) MB")
         check("No managed process is left behind after the task", await waitUntil(8) { descendants().isEmpty }, "\(descendants().count) left")
 
         // ------------------------------------------------------------ C. real cancellation

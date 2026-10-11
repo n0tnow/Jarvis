@@ -87,7 +87,7 @@ enum TaskStepState: String, Codable, Sendable, CaseIterable {
         switch self {
         case .pending: [.ready, .skipped, .cancelled]
         case .ready: [.running, .waitingForApproval, .skipped, .cancelled, .failed]
-        case .running: [.verifying, .passed, .failed, .waitingForApproval, .cancelled, .interrupted]
+        case .running: [.verifying, .passed, .failed, .waitingForApproval, .cancelled, .interrupted, .skipped]    // skipped: nothing to do (no such command)
         case .verifying: [.passed, .failed, .running, .cancelled, .interrupted]
         case .waitingForApproval: [.running, .ready, .failed, .cancelled, .skipped, .interrupted]
         case .interrupted: [.ready, .pending, .waitingForApproval, .failed, .cancelled, .skipped]

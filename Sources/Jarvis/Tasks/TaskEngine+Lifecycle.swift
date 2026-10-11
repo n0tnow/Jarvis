@@ -45,6 +45,7 @@ extension TaskEngine {
         publish(ctx)
         let v = views[ctx.record.id]
         contexts[ctx.record.id] = nil                                     // the durable record is the source of truth from here on
+        trimViews()
         if let v { onFinished?(v) }
     }
 

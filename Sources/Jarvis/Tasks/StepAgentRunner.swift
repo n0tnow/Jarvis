@@ -14,6 +14,8 @@ struct AgentJob: Sendable {
     var pin: RoutingCandidate?
     /// Format-repair budget of THIS job only (the engine counts repair/escalation attempts of the STEP).
     var policy = EscalationPolicy(maxRepairAttempts: 1, maxEscalations: 0, maxTotalAttempts: 2)
+    /// The routing mode the user chose when the task was submitted (nil = Auto). An explicit mode never falls back or escalates.
+    var preference: ProviderPreference?
 }
 
 enum AgentJobResult: Equatable, Sendable {
@@ -42,7 +44,7 @@ final class ManagerAgentRunner: StepAgentRunner {
     var escalationAllowed: Bool { manager.coordinator.preference == .auto }
 
     func run(_ job: AgentJob) async -> AgentJobResult {
-        var d = AgentDescriptor(type: job.type, prompt: job.prompt, profile: job.profile, taskID: job.taskID, parentRunID: nil, preference: nil,
+        var d = AgentDescriptor(type: job.type, prompt: job.prompt, profile: job.profile, taskID: job.taskID, parentRunID: nil, preference: job.preference,
                                 validator: job.validator, timeout: job.timeout, includeTaskContext: false, title: job.title)
         d.owner = .task; d.exclude = job.exclude; d.pin = job.pin; d.policy = job.policy
         switch await manager.spawn(d) {
