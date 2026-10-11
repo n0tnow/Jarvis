@@ -28,6 +28,8 @@ enum HUDSection: String, CaseIterable, Identifiable, Sendable {
 @Observable
 final class HUDState {
     var section: HUDSection = .dashboard
+    /// The task expanded in the Tasks screen (UI-only; closing the HUD never touches the task).
+    var selectedTaskID: UUID?
 
     /// Set by `WindowManager`. Animations key off these so nothing renders while hidden.
     var isCompactVisible = false

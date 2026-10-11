@@ -64,12 +64,12 @@ struct TasksPanel: View {
     @Environment(AppContext.self) private var app
 
     var body: some View {
-        HUDCard("Tasks", trailing: { Tag(text: "\(app.store.tasks.count)") }) {
+        HUDCard("Tasks", trailing: { Tag(text: "\(app.store.allTasks.count)") }) {
             VStack(spacing: Theme.Spacing.s) {
-                ForEach(app.store.tasks) { task in
+                ForEach(app.store.allTasks) { task in
                     TaskRow(task: task)
                 }
-                if app.store.tasks.isEmpty {
+                if app.store.allTasks.isEmpty {
                     Text("No tasks").font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary)
                 }
             }
@@ -232,41 +232,6 @@ struct ToolsPanel: View {
 }
 
 // MARK: - Sections
-
-struct TasksSectionView: View {
-    @Environment(AppContext.self) private var app
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: Theme.Spacing.m) {
-                ForEach(app.store.tasks) { task in
-                    HUDCard(task.title, trailing: { TaskStatusChip(status: task.status) }) {
-                        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                            Text(task.details).font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary)
-                            ForEach(task.steps) { step in
-                                HStack(spacing: Theme.Spacing.s) {
-                                    Image(systemName: step.status.symbolName)
-                                        .foregroundStyle(step.status.tint)
-                                        .frame(width: 14)
-                                        .accessibilityHidden(true)
-                                    Text(step.title).font(Theme.Typography.body).foregroundStyle(Color.jarvisPrimary)
-                                    Spacer()
-                                    Text(step.status.label.uppercased())
-                                        .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
-                                        .foregroundStyle(Color.jarvisSecondary)
-                                }
-                                .accessibilityElement(children: .combine)
-                            }
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: 760)
-            .padding(Theme.Spacing.xl)
-            .frame(maxWidth: .infinity)
-        }
-    }
-}
 
 struct SystemSectionView: View {
     var body: some View {

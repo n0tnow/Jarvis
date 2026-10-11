@@ -12,7 +12,7 @@ struct IntelligenceRouter: Sendable {
     /// everyday-writing noun ("write an email about the project" is NOT a coding job).
     private static let workerVerbs: Set<String> = [
         "fix", "implement", "refactor", "build", "compile", "debug", "deploy", "install", "run", "create", "write",
-        "update", "migrate", "optimize", "add", "remove", "rewrite", "patch", "test",
+        "update", "migrate", "optimize", "add", "remove", "rewrite", "patch", "test", "delete", "erase", "wipe", "purge",
     ]
     private static let technicalNouns: Set<String> = [
         "code", "unity", "project", "bug", "bugs", "script", "scripts", "test", "tests", "repo", "repository", "multiplayer",

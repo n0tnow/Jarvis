@@ -17,6 +17,7 @@ final class Preferences {
         static let allowLocal = "prefs.routing.allowLocal"
         static let allowFreeCloud = "prefs.routing.allowFreeCloud"
         static let localIdleUnload = "prefs.local.idleUnloadSeconds"
+        static let projectRoot = "prefs.tasks.projectRoot"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -49,6 +50,8 @@ final class Preferences {
     /// Auto-routing switches (an explicit provider choice ignores them).
     var allowLocalInAuto: Bool { didSet { defaults.set(allowLocalInAuto, forKey: Key.allowLocal) } }
     var allowFreeCloudInAuto: Bool { didSet { defaults.set(allowFreeCloudInAuto, forKey: Key.allowFreeCloud) } }
+    /// The project folder autonomous tasks may work in (V0.4). Empty = none chosen: development tasks are not started.
+    var projectRoot: String { didSet { defaults.set(projectRoot, forKey: Key.projectRoot) } }
     /// Seconds of inactivity before the local model is unloaded from memory.
     var localIdleUnloadSeconds: Double { didSet { defaults.set(localIdleUnloadSeconds, forKey: Key.localIdleUnload) } }
 
@@ -73,6 +76,7 @@ final class Preferences {
         allowLocalInAuto = defaults.object(forKey: Key.allowLocal) as? Bool ?? true
         allowFreeCloudInAuto = defaults.object(forKey: Key.allowFreeCloud) as? Bool ?? true
         localIdleUnloadSeconds = defaults.object(forKey: Key.localIdleUnload) as? Double ?? 300
+        projectRoot = defaults.string(forKey: Key.projectRoot) ?? ""
         systemReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         motionObserver = NSWorkspace.shared.notificationCenter.addObserver(

@@ -31,6 +31,12 @@ final class AppContext {
     let coordinator: IntelligenceCoordinator
     let agents: AgentRunManager
     let benchmarks: BenchmarkRunner
+    // V0.4 autonomous task engine
+    let leases: FileLeaseManager
+    let taskEngine: TaskEngine
+    let taskBridge: TaskBridge
+    let taskIntake: TaskIntake
+    @ObservationIgnored private var sleepObservers: [NSObjectProtocol] = []
     private(set) var persistenceError: String?
     /// Automated runs (smoke/capture/--no-providers) use a throw-away data directory and NEVER touch real providers.
     let intelligenceIsStubbed: Bool
@@ -85,6 +91,9 @@ final class AppContext {
         benchmarks = BenchmarkRunner(repository: repo, artifacts: artifacts)
         observatory = AgentObservatory(hub: hub, supervisor: supervisor, openCode: openCode, local: localRuntime, repository: repo, artifacts: artifacts)
         observatory.demo = ObservatoryDemo(hub: hub)
+        leases = FileLeaseManager(repository: repo)
+        taskEngine = TaskEngine(repository: repo, artifacts: artifacts, audit: audit, leases: leases, agents: ManagerAgentRunner(manager: agents))
+        taskIntake = TaskIntake(engine: taskEngine, preferences: preferences)
 
         if stubIntelligence {
             // Stub at construction (not on first refresh): nothing may reach a real provider, its service, or the network.
@@ -93,8 +102,11 @@ final class AppContext {
         }
 
         if seedDemoData { DemoScenario.seed(store) }
+        taskBridge = TaskBridge(engine: taskEngine, store: store, hub: hub)
         windowManager = WindowManager(context: self)
         conversationService = ConversationService(store: store, conversation: conversation, windows: windowManager, resolver: coordinator)
+        // Autonomous work is only enabled for the real app: stubbed automated runs never start tasks (and never reach providers).
+        if !stubIntelligence { conversationService.taskSubmitter = taskIntake }
 
         // Activity: meaningful events only (lifecycle, escalation, cooldown) — never tokens or health checks.
         let sink: (String) -> Void = { [weak store] in store?.log($0, kind: .info) }
@@ -105,8 +117,37 @@ final class AppContext {
         store.onLog = { event in audit.activity(event.kind.rawValue, event.message) }
 
         // Stop is the EXISTING cancellation, addressed by run id (see ExecutionHub.installStopRouting).
-        hub.installStopRouting(conversation: conversationService, agents: agents, userTask: { [weak self] in self?.userTasks[$0] }, demo: { [weak self] in self?.observatory.demo })
+        let engine = taskEngine
+        hub.installStopRouting(conversation: conversationService, agents: agents, userTask: { [weak self] in self?.userTasks[$0] }, demo: { [weak self] in self?.observatory.demo },
+                               taskStop: { [weak engine] runID in engine?.cancelTask(owningRun: runID) ?? false })
+
+        // --- V0.4: task engine glue (events → activity feed; finished tasks → conversation; launch recovery; sleep/wake) ---
+        let store = self.store
+        taskEngine.onEvent = { [weak store] message, kind in store?.log(message, kind: kind, persist: false) }       // the engine already persisted it with its task id
+        taskEngine.onFinished = { [weak self] v in
+            guard let self else { return }
+            self.taskBridge.finished(v)
+            if let report = self.taskEngine.report(for: v.id) {
+                self.conversation.appendJarvis(report.userSummary, tone: v.task.state == .completed ? .normal : .notice, route: .worker)
+                Announcer.announce(report.userSummary, high: v.task.state != .completed)
+            }
+        }
+        if !stubIntelligence {
+            // Restart reconciliation: stale RUNNING tasks → INTERRUPTED (resumed only by the user); leases of the dead process → stale;
+            // tasks that were waiting for an approval wait again.
+            let r = taskEngine.reconcileOnLaunch()
+            if r.leases > 0 { Log.app.info("released \(r.leases) stale file lease(s)") }
+            taskEngine.restoreWaitingTasks()
+            let nc = NSWorkspace.shared.notificationCenter
+            sleepObservers.append(nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak engine] _ in MainActor.assumeIsolated { engine?.willSleep() } })
+            sleepObservers.append(nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak engine] _ in MainActor.assumeIsolated { engine?.didWake() } })
+        }
+        taskEngine.refreshHistory()
+        taskBridge.sync()
     }
+
+    /// Normal termination / SIGTERM: stop scheduling, persist the interrupted state + checkpoints, release leases (processes are killed by `ProcessRegistry`).
+    func prepareForTermination() { taskEngine.prepareForTermination() }
 
     /// User-triggered runs (benchmark, local test) whose Task can be cancelled from the Observatory.
     @ObservationIgnored fileprivate var userTasks: [UUID: Task<Void, Never>] = [:]

@@ -60,6 +60,43 @@ enum DevCapture {
             demo.stopAll(); context.observatory.selectedRunID = nil
             context.hud.section = .dashboard
         }
+        // V0.4 autonomous task engine: scripted agents on a temporary project (stubbed/temporary-database runs only)
+        if context.intelligenceIsStubbed {
+            let engine = context.taskEngine
+            let runner = DemoAgentRunner(audit: context.audit)
+            engine.agents = runner
+            var projects: [String] = []
+            func submit(_ goal: String, withLegacy: Bool = false, destructive: Bool = false) async {
+                let p = TaskDemo.makeProject(withLegacyFile: withLegacy); projects.append(p)
+                _ = await engine.submit(goal: goal, kind: .development, workspacePath: p, destructiveRequested: destructive)
+            }
+            await submit("Fix the failing calculation test"); await engine.waitUntilIdle()
+            await submit("Remove the legacy module old/legacy.py", withLegacy: true, destructive: true)
+            for _ in 0..<60 where engine.pendingApprovals.isEmpty { await settle(100) }
+            runner.blocking = ["CodingAgent"]
+            await submit("Fix the failing test in the second calculator")
+            for _ in 0..<80 where !runner.jobs.contains("CodingAgent") { await settle(100) }
+            await settle(400)
+            context.hud.section = .tasks; w.showFullHUD(section: .tasks); await settle(700)
+            context.hud.selectedTaskID = engine.orderedViews.first { $0.task.state == .running }?.id
+            await settle(600)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "tasks_overview", in: directory)
+            context.hud.selectedTaskID = engine.orderedViews.first { $0.task.state == .completed }?.id
+            await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "tasks_completed_expanded", in: directory)
+            context.hud.selectedTaskID = engine.orderedViews.first { $0.task.state == .waitingForApproval }?.id
+            await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "tasks_waiting_approval", in: directory)
+            context.hud.section = .agents; await settle(600)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "agents_task_runs", in: directory)
+            w.showCompactHUD(); await settle(800)
+            snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_task_active", in: directory)
+            w.hideCompactHUD()
+            engine.cancelAll(); await engine.waitUntilIdle()
+            context.hud.selectedTaskID = nil; context.hud.section = .dashboard
+            for p in projects { try? FileManager.default.removeItem(atPath: p) }
+            DemoScenario.resetDemoTask(store)
+        }
         // Conversation scenarios
         let svc = context.conversationService!
         DemoScenario.resetDemoTask(store)

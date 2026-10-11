@@ -58,6 +58,8 @@ final class ConversationService {
     /// Audit/observatory id of the run currently being answered (so Stop can be addressed by run id).
     private(set) var respondingRunID: UUID?
     var hasProviders: Bool { resolver.hasProviders }
+    /// V0.4: the autonomous task layer. nil (tests, stubbed runs) keeps the V0.3 behaviour: worker requests start nothing.
+    @ObservationIgnored weak var taskSubmitter: (any TaskSubmitting)?
 
     init(store: JarvisStore, conversation: ConversationStore, windows: any JarvisWindowControlling,
          router: IntelligenceRouter = IntelligenceRouter(), resolver: (any IntelligenceProviderResolving)? = nil) {
@@ -95,10 +97,16 @@ final class ConversationService {
             conversation.appendJarvis(reply == .greeting ? Phrasebook.greeting(lang) : Phrasebook.thanks(lang), route: .local)
 
         case .reasoningRequired(let prompt, let lang):
-            handleProviderRequest(.reasoning, prompt: prompt, language: lang, origin: origin)
+            // "Analyze the multiplayer issue" with a project chosen is a bounded read-only TASK; without a project it stays a conversation.
+            if let intent = GoalIntake.analysis(for: prompt), let submitter = taskSubmitter, submitter.hasProject {
+                handleTaskRequest(prompt, intent: intent, language: lang)
+            } else {
+                handleProviderRequest(.reasoning, prompt: prompt, language: lang, origin: origin)
+            }
 
         case .workerRequired(let prompt, let lang):
-            handleProviderRequest(.worker, prompt: prompt, language: lang, origin: origin)
+            if taskSubmitter != nil { handleTaskRequest(prompt, intent: GoalIntake.development(for: prompt), language: lang) }
+            else { handleProviderRequest(.worker, prompt: prompt, language: lang, origin: origin) }
 
         case .unsupported(_, let lang):
             conversation.appendJarvis(Phrasebook.unsupported(lang), tone: .notice, route: .unsupported)
@@ -118,6 +126,22 @@ final class ConversationService {
     /// Waits until no provider response is in flight (tests, smoke, shutdown).
     func waitUntilIdle() async {
         while let task = responseTask { await task.value; if responseTask == nil { break } }
+    }
+
+    // MARK: Task path (V0.4)
+
+    /// A durable task is created BEFORE any work starts; the reply only confirms what really happened.
+    private func handleTaskRequest(_ prompt: String, intent: GoalIntake.Intent, language: ReplyLanguage) {
+        guard let submitter = taskSubmitter else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            switch await submitter.submitTask(goal: prompt, intent: intent) {
+            case .started(let title): self.conversation.appendJarvis(Phrasebook.taskStarted(title, readOnly: intent.kind == .readOnlyAnalysis, language), route: .worker)
+            case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
+            case .rejected(let why): self.conversation.appendJarvis(why, tone: .notice, route: .worker)
+            }
+            self.announceLatestReply()
+        }
     }
 
     // MARK: Provider path

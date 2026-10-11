@@ -426,6 +426,40 @@ enum SmokeTest {
             await resetWorld()
         }
 
+        // --- V0.4 task engine on the real app context: scripted agents + a temporary project + the temporary database (no provider, no quota)
+        do {
+            let engine = context.taskEngine
+            let original = engine.agents
+            let runner = DemoAgentRunner(audit: context.audit)
+            runner.blocking = ["CodingAgent"]
+            engine.agents = runner
+            let project = TaskDemo.makeProject()
+            defer { engine.agents = original; try? FileManager.default.removeItem(atPath: project) }
+            _ = await engine.submit(goal: "Fix the failing calculation test", kind: .development, workspacePath: project)
+            let reached = await waitUntil { runner.jobs.contains("CodingAgent") && store.activeTask?.engine != nil }
+            await settle(300)
+            let t = store.activeTask
+            check("V0.4 a real task is projected into the HUD with REAL progress (2 of 5 steps validated = 40 %), and wins over the demo task",
+                  reached && t?.engine != nil && t?.completedStepCount == 2 && t?.steps.count == 5 && t?.engine?.progressFraction == 0.4 && store.state == .working,
+                  "completed=\(t?.completedStepCount ?? -1) fraction=\(String(describing: t?.engine?.progressFraction)) state=\(store.state)")
+            w.showCompactHUD(); await settle(500)
+            let panel = NSApp.windows.first { $0 is HUDPanel }
+            check("V0.4 Compact HUD stays exactly 392×448 while an autonomous task runs", panel?.frame.size == CompactHUDLayout.size, "\(String(describing: panel?.frame.size))")
+            svc.submit("show tasks", origin: .compactHUD); await settle(700)
+            check("V0.4 'show tasks' opens the Full HUD on Tasks with Compact closed (mutual exclusivity)", context.hud.section == .tasks && w.isFullHUDOpen && !w.isCompactHUDOpen)
+            store.pauseActiveTask()
+            check("V0.4 autonomous tasks cannot be paused (no fake Pause)", store.activeTask?.status == .running)
+            let stopped = Date()
+            store.stopActiveTask()
+            let id = t?.id
+            if let id { await engine.waitUntilFinished(id) }
+            check("V0.4 Stop cancels the task through the engine: CANCELLED, no leases, HUD back to idle",
+                  id.flatMap { (try? context.repository?.engineTask($0)) ?? nil }??.state == .cancelled && context.leases.activeCount == 0 && store.activeTask?.engine == nil && Date().timeIntervalSince(stopped) < 10,
+                  "\(id.flatMap { (try? context.repository?.engineTask($0)) ?? nil }??.state.rawValue ?? "?")")
+            w.hideFullHUD(); w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
         print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")

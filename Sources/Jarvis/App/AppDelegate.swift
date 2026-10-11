@@ -11,9 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
-        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && (options.smokeTest || options.captureDirectory != nil))
-        let liveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true) : nil
+        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && (options.smokeTest || options.captureDirectory != nil))
+        let liveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true)
+            : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true) : nil)
         context = AppContext(stubIntelligence: stubbed, dataDirectory: liveData)
+        let ctx = context!
+        Self.terminationHook = { MainActor.assumeIsolated { ctx.prepareForTermination() } }
         statusItem = StatusItemController(context: context)
         context.windowManager.anchorProvider = { [weak self] in self?.statusItem.buttonFrameOnScreen }
 
@@ -48,6 +51,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let context = context!, dir = options.liveDirectory ?? "captures"
             Task { await IntelligenceLiveTest.run(context: context, captureDirectory: dir, benchmark: options.benchmarkModels) }
         }
+        if options.taskLiveTest {
+            let context = context!, dir = options.liveDirectory ?? "captures"
+            Task { await TaskLiveTest.run(context: context, captureDirectory: dir) }
+        }
         if options.providerLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures"
             Task { await ProviderLiveTest.run(context: context, captureDirectory: dir) }
@@ -63,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await DevCapture.run(directory: directory, context: context) }
         }
         // Find out which engines are actually usable (event-driven, once; no polling). Stubbed runs never touch real providers.
-        if !options.intelligenceLiveTest {
+        if !options.intelligenceLiveTest && !options.taskLiveTest {
             let context = context!
             Task { await context.refreshIntelligence(includeOpenCode: false) }     // OpenCode is read lazily (may start its background service)
         }
@@ -73,11 +80,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// SIGTERM / SIGINT / SIGHUP (kill, logout, terminal close) skip applicationWillTerminate: clean up provider processes anyway.
     /// (A crash or SIGKILL cannot be intercepted — documented in KNOWN_ISSUES.)
     private static var signalSources: [DispatchSourceSignal] = []
+    /// Runs before provider processes are killed on SIGTERM/SIGINT/SIGHUP (persists interrupted tasks + checkpoints).
+    nonisolated(unsafe) private static var terminationHook: (() -> Void)?
     private static func installTerminationHandlers() {
         for sig in [SIGTERM, SIGINT, SIGHUP] {
             signal(sig, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-            source.setEventHandler { ProcessRegistry.shared.killAll(); exit(128 + sig) }
+            source.setEventHandler { Self.terminationHook?(); ProcessRegistry.shared.killAll(); exit(128 + sig) }
             source.resume()
             signalSources.append(source)
         }
@@ -85,6 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// No provider process may outlive JARVIS.
     func applicationWillTerminate(_ notification: Notification) {
+        context?.prepareForTermination()        // tasks: interrupted state + checkpoints, leases released
         context?.supervisor.shutdown()          // unload the local model worker (it also exits by itself when stdin closes)
         ProcessRegistry.shared.killAll()
     }

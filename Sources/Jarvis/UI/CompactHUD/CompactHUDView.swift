@@ -139,9 +139,10 @@ struct CompactHUDView: View {
             SegmentedProgress(steps: task.steps)
 
             HStack {
-                Text("\(task.completedStepCount) of \(task.steps.count) steps complete")
+                Text(progressCaption(task))
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Color.jarvisSecondary)
+                    .lineLimit(1)
                 Spacer()
                 HStack(spacing: Theme.Spacing.xs) {
                     Image(systemName: "timer").font(.system(size: 10)).accessibilityHidden(true)
@@ -153,6 +154,17 @@ struct CompactHUDView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    /// "3 of 6 steps complete" (demo) · "3 of 7 steps validated · 43 % · 2 agents" (autonomous: a percentage only from real validated steps).
+    private func progressCaption(_ task: JarvisTask) -> String {
+        guard let e = task.engine else { return "\(task.completedStepCount) of \(task.steps.count) steps complete" }
+        guard !task.steps.isEmpty else { return e.activity.isEmpty ? "Planning" : e.activity }
+        var s = "\(task.completedStepCount) of \(task.steps.count) validated"
+        if let f = e.progressFraction { s += " · \(Int((f * 100).rounded())) %" }
+        let agents = app.hub.activeRuns.filter { $0.taskID == task.id }.count          // live, not the projection's last snapshot
+        if agents > 0 { s += " · \(agents) agent\(agents == 1 ? "" : "s")" }
+        return s
     }
 
     private var emptyTaskContent: some View {
@@ -174,8 +186,11 @@ struct CompactHUDView: View {
 
     private func actions(_ store: JarvisStore) -> some View {
         let task = store.activeTask
-        let isPaused = task?.status == .paused
-        let canTogglePause = task != nil && (isPaused || task?.status == .running)
+        let isInterrupted = task?.status == .interrupted
+        let isPaused = task?.status == .paused || isInterrupted
+        let isAutonomous = task?.engine != nil
+        // Autonomous tasks cannot be paused (only stopped); an interrupted one can be resumed.
+        let canTogglePause = task != nil && (isInterrupted || (!isAutonomous && (isPaused || task?.status == .running)))
 
         return HStack(spacing: Theme.Spacing.s) {
             Button { app.windows.showFullHUD(section: .dashboard) } label: {

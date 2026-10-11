@@ -63,6 +63,7 @@ final class CommandExecutor {
 
         case .pauseTask:
             guard let task = store.activeTask else { return notice(Phrasebook.noTask("pause", l)) }
+            if task.engine != nil { return notice(Phrasebook.cannotPauseAutonomous(l)) }
             switch task.status {
             case .running: store.pauseActiveTask(); return ExecutionResult(message: Phrasebook.paused(task.title, l))
             case .paused: return notice(Phrasebook.alreadyPaused(l))
@@ -72,7 +73,7 @@ final class CommandExecutor {
         case .resumeTask:
             guard let task = store.activeTask else { return notice(Phrasebook.noTask("resume", l)) }
             switch task.status {
-            case .paused: store.resumeActiveTask(); return ExecutionResult(message: Phrasebook.resumed(task.title, l))
+            case .paused, .interrupted: store.resumeActiveTask(); return ExecutionResult(message: Phrasebook.resumed(task.title, l))
             case .running: return notice(Phrasebook.alreadyRunning(l))
             default: return notice(Phrasebook.needsApproval(task.title, l))
             }
@@ -91,6 +92,8 @@ final class CommandExecutor {
         switch task.status {
         case .paused:
             return Phrasebook.statusPaused(task.title, step: step, of: task.steps.count, l)
+        case .interrupted:
+            return Phrasebook.statusInterrupted(task.title, step: step, of: task.steps.count, l)
         case .waiting:
             return Phrasebook.statusWaiting(task.title, request: store.pendingApproval?.title, l)
         default:

@@ -180,6 +180,8 @@ struct ProviderCardView: View {
 
 struct RunRowView: View {
     let run: AgentRunView
+    /// V0.4: the task this run executes for (runs are grouped under their task).
+    var taskTitle: String? = nil
     var isSelected: Bool
     var onSelect: () -> Void
     var onStop: (() -> Void)?
@@ -194,6 +196,7 @@ struct RunRowView: View {
                         Spacer(minLength: 0)
                         ElapsedLabel(run: run).font(Theme.Typography.mono).foregroundStyle(Color.jarvisSecondary)
                     }
+                    if let taskTitle { Text("TASK · \(taskTitle)").font(.system(size: 10, weight: .semibold, design: .monospaced)).foregroundStyle(Theme.Palette.violet).lineLimit(1) }
                     Text("\(AgentObservatory.providerLabel(run)) · \(run.label)").font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary).lineLimit(1)
                     if run.phase.isActive { Text(run.activity).font(Theme.Typography.caption).foregroundStyle(Theme.Palette.accent).lineLimit(1) }
                     else if let c = run.errorCategory { Text(run.activity.isEmpty ? c : run.activity).font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary).lineLimit(1) }

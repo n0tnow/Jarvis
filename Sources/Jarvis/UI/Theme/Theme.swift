@@ -95,6 +95,7 @@ extension TaskStatus {
         case .completed: Theme.Palette.mint
         case .failed: Theme.Palette.coral
         case .cancelled: Color.white.opacity(Theme.Opacity.textTertiary)
+        case .interrupted: Theme.Palette.amber
         }
     }
 }

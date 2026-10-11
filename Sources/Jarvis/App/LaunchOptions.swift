@@ -10,6 +10,7 @@ import Foundation
 ///   --live-dir <dir>        where the live test saves its own screenshots (never combine with --capture)
 ///   --provider-live-test    REAL requests through ConversationService→ProviderManager→provider (uses your subscriptions; opt-in), print results, exit
 ///   --intelligence-live-test  REAL tests of the V0.3.1 stack (SQLite, local Qwen, OpenCode free model, routing, lifecycle); opt-in
+///   --task-live-test        REAL end-to-end test of the V0.4 task engine on isolated fixture projects (OpenCode free preferred); opt-in
 ///   --benchmark-models      (with the above) also run the benchmark suite on verified-free OpenCode models and record results
 ///   --demo-agents           developer-only: simulate a few agent runs (never persisted, labelled SIMULATED)
 ///   --demo-stress           developer-only: simulate a high-rate console stream (performance measurement)
@@ -30,6 +31,7 @@ struct LaunchOptions {
     var demoAgents = false
     var demoStress = false
     var intelligenceLiveTest = false
+    var taskLiveTest = false
     var benchmarkModels = false
     var liveDirectory: String?
 
@@ -45,6 +47,7 @@ struct LaunchOptions {
             case "--demo-agents": demoAgents = true
             case "--demo-stress": demoStress = true
             case "--intelligence-live-test": intelligenceLiveTest = true
+            case "--task-live-test": taskLiveTest = true
             case "--benchmark-models": benchmarkModels = true
             case "--live-dir": liveDirectory = it.next()
             case "--capture": captureDirectory = it.next()

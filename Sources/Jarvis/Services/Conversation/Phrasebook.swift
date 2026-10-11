@@ -44,6 +44,20 @@ enum Phrasebook {
         pick(l, "That is autonomous work (editing, running and iterating on a project), which isn't enabled yet — it belongs to the upcoming task engine. I can still explain, compare and answer questions about it. Nothing was started.",
              "Bu özerk bir iş (projeyi düzenleme, çalıştırma, tekrar deneme) ve henüz etkin değil — yaklaşan görev motoruna ait. Yine de bu konuda açıklama yapabilir, karşılaştırabilir, soruları yanıtlayabilirim. Hiçbir şey başlatılmadı.")
     }
+    static func taskStarted(_ title: String, readOnly: Bool, _ l: ReplyLanguage) -> String {
+        pick(l, "On it. I created the task “\(title)” and will plan it, \(readOnly ? "inspect the project" : "work through it, validate the result") and report back. Follow it in Tasks or Agents — say “stop” to cancel.",
+             "Başlıyorum. “\(title)” görevini oluşturdum; planlayıp \(readOnly ? "projeyi inceleyeceğim" : "adım adım yürütüp sonucu doğrulayacağım") ve sonucu bildireceğim. Tasks veya Agents ekranından izleyebilirsiniz — iptal için “durdur” deyin.")
+    }
+    static func needsProject(_ l: ReplyLanguage) -> String {
+        pick(l, "That is project work, so I need a project folder first. Open Tasks and choose one (Choose folder…), then ask again. Nothing was started.",
+             "Bu bir proje işi; önce bir proje klasörü gerekiyor. Tasks ekranından klasör seçin, sonra tekrar isteyin. Hiçbir şey başlatılmadı.")
+    }
+    static func cannotPauseAutonomous(_ l: ReplyLanguage) -> String {
+        pick(l, "Autonomous tasks can't be paused — say “stop” to cancel it, or let it finish.", "Özerk görevler duraklatılamaz — iptal için “durdur” deyin ya da bitmesini bekleyin.")
+    }
+    static func statusInterrupted(_ title: String, step: Int, of total: Int, _ l: ReplyLanguage) -> String {
+        pick(l, "“\(title)” was interrupted at step \(step) of \(total). Say “resume” to continue it or “stop” to cancel it.", "“\(title)” \(step)/\(total). adımda kesildi. Devam için “devam et”, iptal için “durdur” deyin.")
+    }
     static func generationStopped(_ l: ReplyLanguage) -> String { pick(l, "Stopped.", "Durduruldu.") }
     static func nothingGenerating(_ l: ReplyLanguage) -> String { pick(l, "Nothing is being generated right now.", "Şu anda üretilen bir yanıt yok.") }
     static func unsupported(_ l: ReplyLanguage) -> String { pick(l, "I didn't catch a request in that.", "Bunda bir istek anlayamadım.") }

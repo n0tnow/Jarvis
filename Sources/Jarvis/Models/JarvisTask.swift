@@ -3,6 +3,8 @@ import Foundation
 /// Lifecycle of a task. `waiting` means "blocked on a human approval".
 enum TaskStatus: String, Codable, CaseIterable, Sendable {
     case queued, running, paused, waiting, completed, failed, cancelled
+    /// V0.4: an autonomous task whose process died (restart/crash); the user decides to resume or stop it.
+    case interrupted
 
     var label: String {
         switch self {
@@ -13,6 +15,7 @@ enum TaskStatus: String, Codable, CaseIterable, Sendable {
         case .completed: "COMPLETED"
         case .failed: "FAILED"
         case .cancelled: "STOPPED"
+        case .interrupted: "INTERRUPTED"
         }
     }
 
@@ -28,11 +31,12 @@ enum TaskStatus: String, Codable, CaseIterable, Sendable {
         case .completed: "checkmark"
         case .failed: "exclamationmark.triangle.fill"
         case .cancelled: "stop.fill"
+        case .interrupted: "bolt.slash.fill"
         }
     }
 
     /// An "active" task is one the user can still pause/resume/stop.
-    var isActive: Bool { self == .running || self == .paused || self == .waiting }
+    var isActive: Bool { self == .running || self == .paused || self == .waiting || self == .interrupted }
 }
 
 enum StepStatus: String, Codable, CaseIterable, Sendable {
@@ -63,6 +67,17 @@ struct TaskStep: Identifiable, Codable, Hashable, Sendable {
     var status: StepStatus
 }
 
+/// V0.4: facts only the autonomous engine knows. Present ⇒ the task is engine-owned (state changes only through `TaskEngine`).
+struct EngineTaskInfo: Codable, Hashable, Sendable {
+    /// Real progress (validated steps / steps) — nil while there is no plan yet. Never provider text.
+    var progressFraction: Double?
+    var activity: String
+    var activeAgents: Int
+    var failureReason: String?
+    var summary: String?
+    var stepCount: Int
+}
+
 /// UI-facing task representation. Plain Codable value type so a SQLite (or any)
 /// persistence layer can be added later without touching views.
 struct JarvisTask: Identifiable, Codable, Hashable, Sendable {
@@ -79,6 +94,8 @@ struct JarvisTask: Identifiable, Codable, Hashable, Sendable {
     /// Active run time is accumulated so pausing actually stops the clock.
     var accumulatedRunTime: TimeInterval = 0
     var runningSince: Date?
+    /// V0.4 autonomous task information (nil for the V0.1 demo task).
+    var engine: EngineTaskInfo?
 
     // MARK: Derived from steps — never invented
 

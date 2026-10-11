@@ -118,7 +118,7 @@ struct AgentsSectionView: View {
     }
 
     private func runRow(_ run: AgentRunView) -> some View {
-        RunRowView(run: run, isSelected: observatory.selectedRunID == run.id, onSelect: { observatory.selectedRunID = run.id },
+        RunRowView(run: run, taskTitle: run.taskID.flatMap { app.taskEngine.view($0)?.task.title }, isSelected: observatory.selectedRunID == run.id, onSelect: { observatory.selectedRunID = run.id },
                    onStop: { _ = app.hub.requestStop(run.id) })
     }
 
