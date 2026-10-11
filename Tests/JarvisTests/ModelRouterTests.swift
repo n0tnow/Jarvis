@@ -126,6 +126,17 @@ struct ModelRouterTests {
         #expect(d2 == d)                                                          // input order does not matter
     }
 
+    @Test func whenEvidenceIsEqualZeroRetentionModelsAreChosenFirst() {
+        let train = F.freeModel("a-train", policy: .mayTrain), zero = F.freeModel("z-zero", policy: .zeroRetention)
+        let s = F.summary(.general, passed: 3, total: 3, latency: 400)
+        let bench: [String: [BenchmarkGroup: BenchmarkSummary]] = [train.id: [.general: s], zero.id: [.general: F.summary(.general, passed: 3, total: 3, latency: 900)]]
+        let d = ModelRouter.route(F.profile("Explain how neural networks work."), snapshot: F.snapshot(models: [train, zero], benchmarks: bench))
+        #expect(d.selected?.model == "opencode/z-zero")                      // slower and later in the alphabet, but zero-retention
+        // Evidence still outranks privacy preference: a clearly better benchmark wins.
+        let better: [String: [BenchmarkGroup: BenchmarkSummary]] = [train.id: [.general: F.summary(.general, passed: 3, total: 3)], zero.id: [.general: F.summary(.general, passed: 2, total: 3)]]
+        #expect(ModelRouter.route(F.profile("Explain how neural networks work."), snapshot: F.snapshot(models: [train, zero], benchmarks: better)).selected?.model == "opencode/a-train")
+    }
+
     // MARK: Heavy work, privacy
 
     @Test func architectureSecurityAndComplexWorkGoStraightToPremium() {
@@ -209,6 +220,22 @@ struct ModelRouterTests {
         #expect(ModelRouter.route(F.profile(codingPrompt), snapshot: F.snapshot()).reasonJSON == d.reasonJSON)      // deterministic
         let refused = ModelRouter.route(F.profile(codingPrompt), snapshot: F.snapshot(.local))
         #expect(refused.reasonJSON.contains("\"outcome\":\"refused\""))
+    }
+}
+
+@Suite("Lazy OpenCode price lookups")
+struct LazyCatalogPolicyTests {
+    @Test func theCatalogIsOnlyWorthReadingWhenAFreeRouteCouldBeChosen() {
+        let s = RoutingSettings()
+        func may(_ prompt: String, _ pref: ProviderPreference = .auto, settings: RoutingSettings = s) -> Bool { ModelRouter.mayUseFreeCloud(F.profile(prompt), preference: pref, settings: settings) }
+        #expect(!may("hi"))                                                                          // lightweight → Local first
+        #expect(!may("Summarize in one sentence: the cat sat."))
+        #expect(may("Explain this Swift function: func f(_ xs: [Int]) -> Int { xs.reduce(0, +) }"))   // development/knowledge
+        #expect(!may("Design the architecture for a scalable multiplayer backend"))                  // heavy → premium only
+        #expect(!may("My password is hunter2. Explain how hash maps work."))                          // sensitive never free cloud
+        #expect(may("hi", .openCodeFree) && !may("hi", .claudeCode) && !may("hi", .local))
+        var off = s; off.allowFreeCloud = false
+        #expect(!may("Explain how neural networks work.", settings: off))
     }
 }
 

@@ -29,6 +29,14 @@ enum ProcessTree {
         return info.pti_resident_size
     }
 
+    /// Total CPU time (user + system) of a process in seconds — read via libproc, no process is spawned. Reporting only.
+    static func cpuSeconds(of pid: pid_t) -> Double? {
+        var info = proc_taskinfo()
+        let size = Int32(MemoryLayout<proc_taskinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &info, size) == size else { return nil }
+        return Double(info.pti_total_user + info.pti_total_system) / 1_000_000_000
+    }
+
     static func isAlive(_ pid: pid_t) -> Bool { kill(pid, 0) == 0 || errno == EPERM }
 
     /// Current parent pid (nil if the process is gone). Used to make sure a snapshotted pid still belongs to the family

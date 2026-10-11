@@ -28,6 +28,8 @@ final class IntelligenceHarness {
     var states: [ProviderID: ProviderState] = [.claudeCode: .ready, .codex: .notInstalled]
     var providerPaths: [ProviderID: String] = [:]
     var catalog = ""
+    /// How many times OpenCode's catalog was read (reading may start OpenCode's background service — must stay lazy).
+    var catalogReads = 0
     var now = RouteFixtures.now.addingTimeInterval(3600)
 
     init(localMode: String = "normal") {
@@ -49,7 +51,7 @@ final class IntelligenceHarness {
         providers.probeOverride = { id, _ in
             await MainActor.run { ProviderStatus(id: id, state: me.states[id] ?? .notInstalled, version: "1.0.0", executablePath: me.providerPaths[id]) }
         }
-        openCode.catalogOverride = { _ in await MainActor.run { ("opencode 1.18.34", me.catalog) } }
+        openCode.catalogOverride = { _ in await MainActor.run { me.catalogReads += 1; return ("opencode 1.18.34", me.catalog) } }
         openCode.testExecutablePath = nil
         installOpenCode(.text("OPENCODE_OK"))
         installClaude(text: "CLAUDE_OK")
@@ -82,7 +84,7 @@ final class IntelligenceHarness {
 
     // MARK: Fake executables
 
-    enum OpenCodeBehavior { case text(String), fail503, toolsOnly, slow(String), badThenGood(bad: String, good: String) }
+    enum OpenCodeBehavior { case text(String), noTerminalEvent(String), fail503, gone410, toolsOnly, slow(String), badThenGood(bad: String, good: String) }
 
     @discardableResult
     func installOpenCode(_ b: OpenCodeBehavior) -> String {
@@ -93,8 +95,13 @@ final class IntelligenceHarness {
         switch b {
         case .text(let t):
             body = "cat >/dev/null\ncat <<'EOF'\n\(textEvent(t))\n\(finish)\nEOF"
+        case .noTerminalEvent(let t):
+            // OpenCode 1.19 behaviour: text part, then the stream just ends (exit 0), no step_finish.
+            body = "cat >/dev/null\ncat <<'EOF'\n{\"type\":\"step_start\",\"sessionID\":\"ses_h1\",\"part\":{}}\n\(textEvent(t))\nEOF"
         case .fail503:
             body = "cat >/dev/null\ncat <<'EOF'\n{\"type\":\"error\",\"sessionID\":\"ses_h1\",\"error\":{\"name\":\"APIError\",\"data\":{\"message\":\"unavailable\",\"statusCode\":503}}}\nEOF\nexit 1"
+        case .gone410:
+            body = "cat >/dev/null\ncat <<'EOF'\n{\"type\":\"error\",\"sessionID\":\"ses_h1\",\"error\":{\"name\":\"APIError\",\"data\":{\"message\":\"Model alpha-free has been deprecated.\",\"statusCode\":410}}}\nEOF\nexit 1"
         case .toolsOnly:
             body = "cat >/dev/null\ncat <<'EOF'\n{\"type\":\"tool_use\",\"sessionID\":\"ses_h1\",\"part\":{\"tool\":\"bash\",\"state\":{\"status\":\"error\",\"error\":\"rejected\"}}}\n{\"type\":\"step_finish\",\"sessionID\":\"ses_h1\",\"part\":{\"reason\":\"tool-calls\"}}\nEOF"
         case .slow(let t):

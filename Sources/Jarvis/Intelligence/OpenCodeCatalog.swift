@@ -14,6 +14,10 @@ struct OpenCodeModelInfo: Equatable, Sendable {
     var contextLimit: Int?
     var supportsTools: Bool?
     var supportsReasoning: Bool?
+    /// v2 only (`Model.Info.enabled`); nil for the classic catalog.
+    var enabled: Bool?
+    /// The classic catalog carries the endpoint URL (host-checked); the v2 `Model.Info` schema has none.
+    var hasEndpointURL = true
 
     var fullID: String { "\(providerID)/\(modelID)" }
 }
@@ -46,6 +50,34 @@ enum OpenCodeCatalog {
             i = j
         }
         return result
+    }
+
+    /// OpenCode 1.19+ (v2): `opencode api model.list` → `{"location":…,"data":[Model.Info…]}` (documented operation).
+    /// `cost` is an ARRAY of tiers; a model is only zero-priced if EVERY tier component is zero, so the maxima are taken.
+    static func parseModelList(_ output: String) -> [OpenCodeModelInfo] {
+        guard let start = output.firstIndex(of: "{"), let end = output.lastIndex(of: "}"),
+              let obj = (try? JSONSerialization.jsonObject(with: Data(output[start...end].utf8))) as? [String: Any],
+              let data = obj["data"] as? [[String: Any]] else { return [] }
+        func num(_ v: Any?) -> Double? { (v as? NSNumber).map(\.doubleValue) }
+        var out: [OpenCodeModelInfo] = []
+        for m in data {
+            guard let id = m["id"] as? String, let provider = m["providerID"] as? String else { continue }
+            let tiers = (m["cost"] as? [[String: Any]]) ?? []
+            func maxOf(_ pick: ([String: Any]) -> Double?) -> Double? {
+                let vals = tiers.compactMap(pick)
+                return vals.count == tiers.count && !vals.isEmpty ? vals.max() : nil       // any tier with a missing price ⇒ unknown
+            }
+            let caps = m["capabilities"] as? [String: Any]
+            out.append(OpenCodeModelInfo(
+                providerID: provider, modelID: (m["modelID"] as? String) ?? id, name: (m["name"] as? String) ?? id,
+                status: m["status"] as? String, apiURL: nil,
+                costInput: maxOf { num($0["input"]) }, costOutput: maxOf { num($0["output"]) },
+                cacheRead: maxOf { num(($0["cache"] as? [String: Any])?["read"]) }, cacheWrite: maxOf { num(($0["cache"] as? [String: Any])?["write"]) },
+                contextLimit: ((m["limit"] as? [String: Any])?["context"] as? NSNumber)?.intValue,
+                supportsTools: caps?["tools"] as? Bool, supportsReasoning: nil,
+                enabled: m["enabled"] as? Bool, hasEndpointURL: false))
+        }
+        return out
     }
 
     /// `provider/model` ids only (the non-verbose listing).
@@ -92,6 +124,12 @@ enum OpenCodeModelRegistry {
     /// How long a "free" verification stays valid without re-reading provider data.
     static let verificationMaxAge: TimeInterval = 24 * 3600
 
+    /// A model can stay `active` in the catalog while the API already answers 404/410 ("has been deprecated"). The provider
+    /// error text and the registry marker below let JARVIS block it even though the catalog still lists it.
+    static let removedErrorText = "model removed"
+    static let removedMarker = "provider reports the model as removed (404/410)"
+    static let removedSticky: TimeInterval = 24 * 3600
+
     static func pricing(of m: OpenCodeModelInfo) -> PricingStatus {
         guard let i = m.costInput, let o = m.costOutput, i >= 0, o >= 0 else { return .unknown }
         let cache = [m.cacheRead, m.cacheWrite].compactMap { $0 }
@@ -113,7 +151,7 @@ enum OpenCodeModelRegistry {
     static func record(from m: OpenCodeModelInfo, verifiedAt: Date, source: String, existing: ModelRecord? = nil) -> ModelRecord {
         var r = existing ?? ModelRecord(id: m.fullID, engine: .openCode, provider: m.providerID, providerModelID: m.modelID, displayName: m.name)
         r.displayName = m.name
-        r.availability = (m.status == "active") ? .available : (m.status == nil ? .unknown : .unavailable)
+        r.availability = (m.status == "active" && m.enabled != false) ? .available : (m.status == nil ? .unknown : .unavailable)
         r.pricingStatus = pricing(of: m)
         r.inputPrice = m.costInput; r.outputPrice = m.costOutput
         r.contextLimit = m.contextLimit
@@ -123,8 +161,15 @@ enum OpenCodeModelRegistry {
         r.capabilities.supportsStreaming = false          // OpenCode run output is message-level (docs/OPENCODE_RESEARCH.md)
         r.updatedAt = verifiedAt
 
-        let host = m.apiURL.flatMap { URL(string: $0)?.host }
-        let keyless = keylessFreeProviders.contains(m.providerID) && host == freeHost
+        let host = m.apiURL.flatMap { URLComponents(string: $0)?.host }
+        // Classic catalog: the endpoint must be the Zen host. v2 `Model.Info` has no URL: the provider id is the (documented) signal.
+        let keyless = keylessFreeProviders.contains(m.providerID) && (host == freeHost || !m.hasEndpointURL)
+        // A model the API itself reported as removed stays blocked for a day, whatever the catalog says.
+        if let e = existing, e.blockedReason == removedMarker, let at = e.lastHealthCheck, verifiedAt.timeIntervalSince(at) < removedSticky {
+            r.freeVerified = false; r.availability = .unavailable; r.blockedReason = removedMarker
+            return r
+        }
+        if r.blockedReason == removedMarker { r.blockedReason = nil }
         switch r.pricingStatus {
         case .verifiedZero where keyless && r.availability == .available:
             r.freeVerified = true; r.freeVerifiedAt = verifiedAt; r.freeVerificationSource = source

@@ -17,6 +17,13 @@ protocol ProviderLineParser: AnyObject {
     /// Called when the process has exited; returns a failure if the run ended without a clean finish.
     func finalFailure(exitCode: Int32, stderrTail: String) -> ProviderError?
     var malformedLines: Int { get }
+    /// Some CLIs (OpenCode v2) do not always emit a terminal event. True if a clean exit (code 0) with the output seen so
+    /// far — and no error — is a complete answer. Default: no (a terminal event is required).
+    func completedOnCleanExit(exitCode: Int32) -> Bool
+}
+
+extension ProviderLineParser {
+    func completedOnCleanExit(exitCode: Int32) -> Bool { false }
 }
 
 enum ProviderErrorClassifier {
@@ -30,6 +37,7 @@ enum ProviderErrorClassifier {
     static func classify(_ text: String, provider id: ProviderID) -> ProviderError? {
         let t = text.lowercased()
         if has(t, ["no conversation found", "session not found", "thread not found", "no such session", "could not find session", "unknown session"]) { return .sessionLost(id) }
+        if has(t, ["unrecognized flag", "unknown option", "unknown argument", "unrecognised"]) { return .unavailable(id, "unsupported CLI version") }
         if has(t, ["not logged in", "please run /login", "(?<![\\w:./-])401(?![\\w:-])", "unauthorized", "authentication", "invalid api key", "sign in", "log in again"]) { return .authenticationRequired(id) }
         if has(t, ["usage limit", "limit reached", "rate limit", "rate_limit", "(?<![\\w:./-])429(?![\\w:-])", "too many requests", "\\bquota\\b"]) { return .rateLimited(id, resetsAt: nil) }
         if has(t, ["network", "enotfound", "econnrefused", "offline", "unable to connect", "failed to lookup", "\\bdns\\b", "internet connection"]) { return .networkUnavailable(id) }

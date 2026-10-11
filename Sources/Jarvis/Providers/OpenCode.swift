@@ -1,14 +1,24 @@
 import Foundation
 
-/// The private workspace OpenCode runs in. OpenCode is a coding agent whose defaults ALLOW bash/edit, so JARVIS runs it
-/// in an empty directory with a project `opencode.json` that rejects/denies every tool (docs/OPENCODE_RESEARCH.md):
-///  - `"*": "ask"` — in headless `run` a permission request is auto-rejected (observed; undocumented → canary-tested),
-///  - explicit `deny` for edit / web / outside-directory / sub-agents / skills / questions / lsp / doom-loop.
-/// `bash` is deliberately NOT denied outright: denying it makes the Zen free tier answer 403 ("only usable from within OpenCode").
+/// The private workspace OpenCode runs in. OpenCode is a coding agent whose defaults ALLOW tools, so JARVIS runs it in an
+/// empty directory whose project config rejects/denies every tool (docs/OPENCODE_RESEARCH.md). Two generations, two formats:
+///  - classic (1.18.x) `opencode.json`:   `"*":"ask"` (auto-rejected headless) + explicit denies,
+///  - v2 (1.19+)       `opencode.jsonc`:  ordered `permissions` rules — `* ask`, then deny `execute` (Code Mode, which could
+///    make network requests that the other rules did not cover), `edit`, `webfetch`, `websearch`.
+/// In BOTH, `bash`/`shell` and `read` are deliberately NOT denied outright: denying them makes the Zen free tier answer 403
+/// ("only usable from within OpenCode"); `ask` is rejected in non-interactive runs instead (REAL TESTED on both generations).
 enum OpenCodeWorkspace {
-    static let configJSON = """
+    static let classicConfigJSON = """
     {"permission":{"*":"ask","edit":"deny","webfetch":"deny","websearch":"deny","external_directory":"deny","task":"deny","skill":"deny","doom_loop":"deny","question":"deny","lsp":"deny"},"share":"disabled","autoupdate":false}
     """
+    static let v2ConfigJSONC = """
+    {"permissions":[{"action":"*","resource":"*","effect":"ask"},{"action":"execute","resource":"*","effect":"deny"},{"action":"edit","resource":"*","effect":"deny"},{"action":"webfetch","resource":"*","effect":"deny"},{"action":"websearch","resource":"*","effect":"deny"}]}
+    """
+    /// Kept for callers that only know the classic name.
+    static var configJSON: String { classicConfigJSON }
+
+    static func fileName(for flavor: OpenCodeCapabilities.RunFlavor) -> String { flavor == .standalone ? "opencode.jsonc" : "opencode.json" }
+    static func contents(for flavor: OpenCodeCapabilities.RunFlavor) -> String { flavor == .standalone ? v2ConfigJSONC : classicConfigJSON }
 
     /// Extra environment for OpenCode (on top of the standard allowlist): no self-update, no downloads, no foreign agent configs.
     static let environment: [String: String] = [
@@ -16,15 +26,51 @@ enum OpenCodeWorkspace {
         "OPENCODE_DISABLE_CLAUDE_CODE": "1", "OPENCODE_DISABLE_DEFAULT_PLUGINS": "1",
     ]
 
-    /// Creates/refreshes `<providerWorkspace>/opencode` containing only the restrictive config. Returns its path.
+    /// Creates/refreshes `<providerWorkspace>/opencode` containing ONLY the restrictive config of the given generation
+    /// (a config of the other generation is removed so nothing ambiguous remains). Returns its path.
     @discardableResult
-    static func prepare(under providerWorkspace: String) throws -> String {
+    static func prepare(under providerWorkspace: String, flavor: OpenCodeCapabilities.RunFlavor = .classic) throws -> String {
         let dir = (providerWorkspace as NSString).appendingPathComponent("opencode")
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let file = (dir as NSString).appendingPathComponent("opencode.json")
-        let data = Data(configJSON.utf8)
-        if (try? Data(contentsOf: URL(fileURLWithPath: file))) != data { try data.write(to: URL(fileURLWithPath: file), options: .atomic) }
+        let keep = fileName(for: flavor)
+        for other in ["opencode.json", "opencode.jsonc"] where other != keep { try? FileManager.default.removeItem(atPath: (dir as NSString).appendingPathComponent(other)) }
+        let file = (dir as NSString).appendingPathComponent(keep)
+        let data = Data(contents(for: flavor).utf8)
+        if FileManager.default.contents(atPath: file) != data { try data.write(to: URL(fileURLWithPath: file), options: .atomic) }
         return dir
+    }
+}
+
+/// What the installed OpenCode CLI can do, read from its own `--help` output (the CLI changed between 1.18.x "classic" and
+/// 1.19.x "v2"): classic = `models --verbose` (prices) + `run --pure`; v2 = documented `api model.list` (prices as `cost[]`)
+/// + `run --standalone` (a private server, never the shared background service). JARVIS only runs a CLI generation it can
+/// read prices from — otherwise free routing is disabled, never guessed.
+struct OpenCodeCapabilities: Equatable, Sendable {
+    enum RunFlavor: Equatable, Sendable { case classic, standalone, unsupported }
+    enum CatalogSource: Equatable, Sendable { case modelsVerbose, apiModelList, none }
+    var runFlavor: RunFlavor
+    var catalogSource: CatalogSource
+    var supportsJSONFormat: Bool
+    var supportsModelFlag: Bool
+
+    var canListPrices: Bool { catalogSource != .none }
+    static let verifiedClassic = OpenCodeCapabilities(runFlavor: .classic, catalogSource: .modelsVerbose, supportsJSONFormat: true, supportsModelFlag: true)
+    static let verifiedV2 = OpenCodeCapabilities(runFlavor: .standalone, catalogSource: .apiModelList, supportsJSONFormat: true, supportsModelFlag: true)
+
+    static func parse(modelsHelp: String, runHelp: String, apiHelp: String = "") -> OpenCodeCapabilities {
+        let flavor: RunFlavor = runHelp.contains("--pure") ? .classic : runHelp.contains("--standalone") ? .standalone : .unsupported
+        let source: CatalogSource = modelsHelp.contains("--verbose") ? .modelsVerbose
+            : (flavor == .standalone && apiHelp.contains("operation") ? .apiModelList : .none)
+        return OpenCodeCapabilities(runFlavor: flavor, catalogSource: source, supportsJSONFormat: runHelp.contains("--format"),
+                                    supportsModelFlag: runHelp.contains("--model") || runHelp.contains("-m,"))
+    }
+
+    var isSupported: Bool { canListPrices && runFlavor != .unsupported && supportsJSONFormat && supportsModelFlag }
+
+    func unsupportedReason(version: String?) -> String? {
+        if isSupported { return nil }
+        if !canListPrices { return "OpenCode \(version ?? "?") exposes no readable model prices — free routing disabled" }
+        return "OpenCode \(version ?? "?") has an unsupported `run` interface — free routing disabled"
     }
 }
 
@@ -33,16 +79,18 @@ enum OpenCodeWorkspace {
 struct OpenCodeSpec: CLIProviderSpec {
     let id = ProviderID.openCode
     let modelID: String                   // "opencode/<id>"
+    var flavor: OpenCodeCapabilities.RunFlavor = .classic
 
     /// The ONLY way to obtain a spec: refuses anything that is not a current member of the verified free pool.
-    static func make(for model: ModelRecord, now: Date = Date()) -> OpenCodeSpec? {
-        guard model.engine == .openCode, model.provider == "opencode",
+    static func make(for model: ModelRecord, flavor: OpenCodeCapabilities.RunFlavor = .classic, now: Date = Date()) -> OpenCodeSpec? {
+        guard model.engine == .openCode, model.provider == "opencode", flavor != .unsupported,
               model.isFreePoolMember, OpenCodeModelRegistry.isVerificationFresh(model, now: now) else { return nil }
-        return OpenCodeSpec(modelID: model.id)
+        return OpenCodeSpec(modelID: model.id, flavor: flavor)
     }
 
     func arguments(sessionID: String?, newSessionID: String, workingDirectory: String) -> [String] {
-        var args = ["run", "--pure", "--format", "json", "-m", modelID]
+        // `--standalone` = a private in-process server (never the shared background service of the 1.19 CLI generation).
+        var args = ["run", flavor == .standalone ? "--standalone" : "--pure", "--format", "json", "-m", modelID]
         if let sessionID { args += ["-s", sessionID] }
         return args
     }
@@ -123,26 +171,34 @@ final class OpenCodeEventParser: ProviderLineParser {
         return out
     }
 
+    /// OpenCode 1.19 (v2) sometimes ends the JSON stream after the text part without a `step_finish` (observed, non-deterministic):
+    /// exit code 0 + at least one text part + no error event is a complete answer.
+    func completedOnCleanExit(exitCode: Int32) -> Bool { exitCode == 0 && texts > 0 && !failureSent }
+
     func finalFailure(exitCode: Int32, stderrTail: String) -> ProviderError? {
         if finished || failureSent { return nil }
         if validEvents == 0 && exitCode == 0 { return .malformedOutput(id) }
         if !toolAttempts.isEmpty && texts == 0 { return .unavailable(id, "the model asked for tools instead of answering") }
-        if texts > 0 && exitCode == 0 { return .malformedOutput(id) }
+        if completedOnCleanExit(exitCode: exitCode) { return nil }
         if let c = ProviderErrorClassifier.classify(stderrTail, provider: id) { return c }
         return .processFailed(id, exitCode: exitCode)
     }
 
+    /// Error events: classic = `{"error":{"name":…,"data":{"statusCode":N,"message":…}}}`; v2 = `{"error":{"type":"provider.…","status":N,"message":…}}`.
     static func map(error: [String: Any]?, id: ProviderID) -> ProviderError {
         let data = error?["data"] as? [String: Any]
-        let status = (data?["statusCode"] as? NSNumber)?.intValue
-        let message = (data?["message"] as? String) ?? (error?["name"] as? String) ?? ""
+        let status = (data?["statusCode"] as? NSNumber)?.intValue ?? (error?["status"] as? NSNumber)?.intValue
+        let message = (data?["message"] as? String) ?? (error?["message"] as? String) ?? (error?["name"] as? String) ?? ""
         let lower = message.lowercased()
         if lower.contains("only be used from within opencode") { return .unavailable(id, "free tier refused the request") }
+        if lower.contains("has been deprecated") || lower.contains("model not found") { return .unavailable(id, OpenCodeModelRegistry.removedErrorText) }
         switch status {
         case 401: return .authenticationRequired(id)
         case 403: return .unavailable(id, "access refused")
+        case 404, 410: return .unavailable(id, OpenCodeModelRegistry.removedErrorText)       // "Model x has been deprecated" while still listed
         case 429: return .rateLimited(id, resetsAt: nil)
         case .some(let s) where s >= 500: return .unavailable(id, "service error")
+        case 400 where lower.contains("unavailable"): return .unavailable(id, "model unavailable")
         default: break
         }
         return ProviderErrorClassifier.classify(message, provider: id) ?? .processFailed(id, exitCode: 1)

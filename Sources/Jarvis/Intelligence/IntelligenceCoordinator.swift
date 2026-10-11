@@ -36,12 +36,26 @@ final class IntelligenceCoordinator: IntelligenceProviderResolving {
 
     var hasProviders: Bool { ProviderID.allCases.contains { supervisor.availability()[$0]?.state == .ready } }
 
+    /// Compact status for the Conversation badge / System panel.
+    var statusBadge: (text: String, usable: Bool) {
+        if supervisor.lastRefresh == nil && providers.lastRefresh == nil { return ("CHECKING PROVIDERS", false) }
+        let a = supervisor.availability()
+        let now = Date()
+        if let e = preference.providerID {
+            let st = a[e]
+            return ("\(e.shortName) · \(st?.state.label ?? "—")", st?.isUsable(at: now) == true)
+        }
+        let usable = ProviderID.allCases.filter { a[$0]?.isUsable(at: now) == true }
+        return usable.isEmpty ? ("NO PROVIDER READY", false) : ("AUTO · \(usable.count) READY", true)
+    }
+
     // MARK: Routing
 
     func route(_ profile: TaskProfile, preference override: ProviderPreference? = nil) async -> RoutingDecision {
-        if supervisor.lastRefresh == nil { await supervisor.refreshAll(remoteCatalog: true) }
+        // First use: find out which subscription CLIs / the local model are ready. OpenCode is NOT touched here (lazy, see below).
+        if supervisor.lastRefresh == nil { await supervisor.refreshAll(remoteCatalog: false, includeOpenCode: false) }
         let pref = override ?? preference
-        if pref == .auto || pref == .openCodeFree, routingSettings.allowFreeCloud { await supervisor.ensureFreshCatalog() }
+        if ModelRouter.mayUseFreeCloud(profile, preference: pref, settings: routingSettings) { await supervisor.ensureFreshCatalog() }
         let decision = ModelRouter.route(profile, snapshot: supervisor.snapshot(preference: pref, settings: routingSettings))
         lastDecision = decision
         return decision
@@ -122,6 +136,7 @@ final class IntelligenceCoordinator: IntelligenceProviderResolving {
         case .cancelled:
             if let id = resolved.runID { audit.finish(id, status: .cancelled, resultText: report.resultText.isEmpty ? nil : report.resultText, toolAttempts: report.toolAttempts) }
         case .failed(let error):
+            if case .unavailable(.openCode, OpenCodeModelRegistry.removedErrorText) = error, let m = resolved.model { supervisor.openCode.markModelGone(m) }
             supervisor.recordFailure(engine, subject: resolved.model, error: error)
             if let id = resolved.runID {
                 // An already-escalated run keeps its `.escalated` status.

@@ -217,6 +217,22 @@ struct ProviderSupervisorTests {
 @MainActor
 @Suite("Automatic routing through the real conversation stack", .serialized)
 struct CoordinatorIntegrationTests {
+    @Test func openCodeIsReadLazilyNeverForLightweightHeavyOrSensitiveRequestsAndOnlyOncePerDay() async throws {
+        let h = IntelligenceHarness()
+        h.passBenchmarks("opencode/alpha-free")
+        await h.supervisor.refreshAll(remoteCatalog: false, includeOpenCode: false)                  // what app launch does
+        #expect(h.catalogReads == 0 && h.openCode.state == .unknown)
+        await h.ask(simple)                                                                         // lightweight → Local first
+        await h.ask("Design the architecture for a scalable multiplayer backend. One sentence.")     // heavy → premium only
+        await h.ask("My password is hunter2. Explain how hash maps work.")                           // sensitive → never free cloud
+        #expect(h.catalogReads == 0)
+        await h.ask(coding)                                                                         // development question → may use free cloud → read once
+        #expect(h.catalogReads == 1 && h.openCode.state == .ready && h.lastReply?.content == "OPENCODE_OK")
+        await h.ask(coding)
+        #expect(h.catalogReads == 1)                                                                // still fresh (24 h)
+        h.shutdown()
+    }
+
     @Test func aLightweightTaskRunsOnTheLocalModelAndTheDecisionIsPersisted() async throws {
         let h = IntelligenceHarness()
         await h.refresh()
@@ -245,6 +261,18 @@ struct CoordinatorIntegrationTests {
         for (k, v) in ["selected": "opencode/alpha-free", "freeVerified": "true", "codingBenchmarkPassed": "true", "providerReady": "true",
                        "localModelIneligible": "true", "tier": "development-free-first"] { #expect(reason[k] == v, "\(k)") }
         #expect(h.args("opencode").contains("-m opencode/alpha-free"))
+    }
+
+    @Test func anOpenCodeV2StreamWithoutAStepFinishStillCompletesAndIsAudited() async throws {
+        let h = IntelligenceHarness()
+        h.installOpenCode(.noTerminalEvent("V2_ANSWER"))
+        h.passBenchmarks("opencode/alpha-free")
+        await h.refresh()
+        await h.ask(coding)
+        #expect(h.lastReply?.content == "V2_ANSWER" && h.lastReply?.status == .complete)
+        let run = try #require(h.runs().last)
+        #expect(run.engine == .openCode && run.status == .succeeded && run.inputTokens == nil)       // no usage event without step_finish
+        #expect(h.launches("claude") == 0)                                                           // not mistaken for a failure → no escalation
     }
 
     @Test func withoutBenchmarkEvidenceDevelopmentEscalatesToClaudeAndSaysWhy() async throws {
@@ -298,6 +326,22 @@ struct CoordinatorIntegrationTests {
         #expect(runs.last?.selectionReason?.contains("\"rejected.opencode/alpha-free\":\"cooldown\"") == true)
         let health = try #require(try h.repo.health(.openCode, subject: "opencode/alpha-free"))
         #expect(health.consecutiveFailures == 2 && health.cooldownUntil != nil && health.lastErrorCategory == "unavailable")
+    }
+
+    @Test func aModelThatReturns410IsBlockedEscalatedAndNeverTriedAgain() async throws {
+        let h = IntelligenceHarness()
+        h.installOpenCode(.gone410)
+        h.passBenchmarks("opencode/alpha-free")
+        await h.refresh()
+        await h.ask(coding)
+        #expect(h.lastReply?.content == "CLAUDE_OK" && h.launches("opencode") == 1)
+        let m = try #require(h.openCode.model("opencode/alpha-free"))
+        #expect(!m.isFreePoolMember && m.blockedReason == OpenCodeModelRegistry.removedMarker && m.availability == .unavailable)
+        await h.refresh()                                                                           // catalog still says "active, free" → must stay blocked
+        #expect(h.openCode.freePool.isEmpty)
+        await h.ask(coding)
+        #expect(h.launches("opencode") == 1 && h.launches("claude") == 2)
+        #expect(h.runs().last?.selectionReason?.contains("provider reports the model as removed") == true)
     }
 
     @Test func escalationIsBoundedToOneHandOver() async {

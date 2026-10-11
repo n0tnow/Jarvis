@@ -101,6 +101,8 @@ final class LocalRuntime {
     @ObservationIgnored private var job: Job?
     @ObservationIgnored private var idleTimer: Task<Void, Never>?
     @ObservationIgnored private var generation = 0                 // identifies the current worker process
+    /// Lets Settings change the idle-unload time at runtime (falls back to `config`).
+    @ObservationIgnored var idleUnloadProvider: (() -> TimeInterval)?
     /// Called for meaningful lifecycle events (loaded, unloaded, crashed) — never per token.
     @ObservationIgnored var onEvent: ((String) -> Void)?
     /// Called when the worker dies unexpectedly (supervisor records the failure).
@@ -366,10 +368,11 @@ final class LocalRuntime {
 
     private func scheduleIdleUnload() {
         idleTimer?.cancel()
-        guard config.idleUnloadSeconds > 0 else { return }
+        let seconds = idleUnloadProvider?() ?? config.idleUnloadSeconds
+        guard seconds > 0 else { return }
         let gen = generation
         idleTimer = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(self?.config.idleUnloadSeconds ?? 300))
+            try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled, let self, self.generation == gen, self.job == nil, self.state == .ready else { return }
             await self.unload()
         }

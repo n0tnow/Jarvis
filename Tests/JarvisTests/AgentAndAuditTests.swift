@@ -201,6 +201,42 @@ struct AuditTrailTests {
         #expect(h.lastReply?.content == "CLAUDE_OK")
     }
 
+    @Test func contextRetrievalIsTargetedBoundedAndTaskScoped() throws {
+        let h = IntelligenceHarness()
+        let t1 = try h.repo.insertTask(title: "Network sync analysis"), t2 = try h.repo.insertTask(title: "UNRELATED secret project")
+        func run(_ task: UUID, _ type: String, _ status: AgentRunStatus, summary: String, err: String? = nil) throws {
+            var r = AgentRunRecord(id: UUID(), taskID: task, agentType: type, engine: .openCode, model: "m", startedAt: Date())
+            r.status = status; r.resultSummary = summary; r.errorCategory = err
+            try h.repo.insert(r)
+        }
+        for i in 0..<6 { try run(t1, "Agent\(i)", .succeeded, summary: "12 chars · finding \(i)") }
+        try run(t1, "Broken", .failed, summary: "", err: "timeout")
+        try run(t2, "Other", .succeeded, summary: "9 chars · TOPSECRET")
+        let ctx = try #require(ContextRetrieval(repository: h.repo).preface(taskID: t1))
+        #expect(ctx.contains("Network sync analysis") && ctx.contains("finding 5") && ctx.contains("(timeout)"))
+        #expect(!ctx.contains("TOPSECRET") && !ctx.contains("UNRELATED"))                            // never other tasks
+        #expect(ctx.components(separatedBy: "\n- ").count - 1 <= 3 + 2)                              // ≤ 3 results + ≤ 2 problems
+        #expect(!ctx.contains("finding 0"))                                                         // only the newest few
+        var small = ContextRetrieval(repository: h.repo); small.maxCharacters = 80
+        #expect((small.preface(taskID: t1) ?? "").count <= 80)
+        #expect(ContextRetrieval(repository: h.repo).preface(taskID: nil) == nil && ContextRetrieval(repository: nil).preface(taskID: t1) == nil)
+    }
+
+    @Test func anAgentWithATaskReceivesOnlyTheBoundedPrefaceNotTheHistory() async throws {
+        let h = IntelligenceHarness()
+        h.passBenchmarks("opencode/alpha-free"); await h.refresh()
+        let task = try h.repo.insertTask(title: "Compare options")
+        for i in 0..<5 {
+            var r = AgentRunRecord(id: UUID(), taskID: task, agentType: "Old\(i)", engine: .claudeCode, model: nil, startedAt: Date().addingTimeInterval(Double(i)))
+            r.status = .succeeded; r.resultSummary = String(repeating: "x", count: 400)
+            try h.repo.insert(r)
+        }
+        let result = await h.agents.spawn(AgentDescriptor(type: "ResearchAgent", prompt: "Compare two options.", profile: research, taskID: task))
+        #expect(result.isCompleted)
+        let run = try #require(h.runs().last)
+        #expect((run.promptChars ?? 0) <= "Compare two options.".count + ContextRetrieval(repository: nil).maxCharacters + 20)  // hash covers the original prompt only
+    }
+
     @Test func auditFailuresNeverBreakTheConversation() async {
         let h = IntelligenceHarness()
         h.database.close()                                                                          // simulate a dead database
@@ -270,6 +306,46 @@ struct BenchmarkTests {
         #expect(try h.repo.benchmarks(modelID: "m1").allSatisfy { !$0.passed })
     }
 
+    @Test func aRemovedModelEndsItsBenchmarkEarlyInsteadOfBurningRequests() async throws {
+        let h = IntelligenceHarness()
+        let runner = BenchmarkRunner(repository: h.repo, artifacts: h.artifacts)
+        let calls = CallCounter()
+        var removedCalled = false
+        struct Gone: IntelligenceProvider {
+            let counter: CallCounter
+            var id: String { "gone" }; var displayName: String { "Gone" }
+            func supports(_ kind: IntelligenceRequestKind) -> Bool { true }
+            func respond(to request: IntelligenceRequest) -> AsyncThrowingStream<IntelligenceEvent, Error> {
+                counter.bump()
+                return AsyncThrowingStream { $0.finish(throwing: ProviderError.unavailable(.openCode, OpenCodeModelRegistry.removedErrorText)) }
+            }
+        }
+        let outcomes = await runner.run(modelID: "opencode/exo-free", groups: BenchmarkGroup.allCases, makeProvider: { Gone(counter: calls) }, onModelRemoved: { removedCalled = true })
+        #expect(calls.value == 1 && removedCalled)
+        #expect(outcomes.count == BenchmarkSuite.all.count && outcomes.allSatisfy { !$0.passed })
+        #expect(outcomes.dropFirst().allSatisfy { $0.detail == "skipped: model removed" })
+    }
+
+    @Test func aProviderThatKeepsFailingStopsConsumingBenchmarkRequests() async throws {
+        let h = IntelligenceHarness()
+        let runner = BenchmarkRunner(repository: h.repo, artifacts: h.artifacts)
+        let calls = CallCounter()
+        struct Flaky: IntelligenceProvider {
+            let counter: CallCounter
+            var id: String { "flaky" }; var displayName: String { "Flaky" }
+            func supports(_ kind: IntelligenceRequestKind) -> Bool { true }
+            func respond(to request: IntelligenceRequest) -> AsyncThrowingStream<IntelligenceEvent, Error> {
+                counter.bump()
+                return AsyncThrowingStream { $0.finish(throwing: ProviderError.processFailed(.openCode, exitCode: 1)) }
+            }
+        }
+        let outcomes = await runner.run(modelID: "opencode/flaky", groups: BenchmarkGroup.allCases, makeProvider: { Flaky(counter: calls) })
+        #expect(calls.value == BenchmarkRunner.maxConsecutiveProviderFailures)
+        #expect(outcomes.count == BenchmarkSuite.all.count && outcomes.dropFirst(3).allSatisfy { $0.detail == "skipped: provider failing" })
+        #expect(runner.needsBenchmark("opencode/flaky") == false)                                 // every case has a (failed) result
+        #expect(runner.needsBenchmark("opencode/never-run"))
+    }
+
     @Test func benchmarkEvidenceUnlocksAutomaticRoutingAndFailureKeepsItLocked() async throws {
         let h = IntelligenceHarness()
         await h.refresh()
@@ -309,4 +385,10 @@ struct BenchmarkTests {
         _ = await runner.run(modelID: "m", groups: [.coding]) { ScriptedProvider(answer: { _ in [.textDelta("6"), .finished] }) }
         #expect(try FileManager.default.contentsOfDirectory(atPath: FileManager.default.currentDirectoryPath).sorted() == before)
     }
+}
+
+final class CallCounter: @unchecked Sendable {
+    private let lock = NSLock(); private var n = 0
+    func bump() { lock.lock(); n += 1; lock.unlock() }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return n }
 }

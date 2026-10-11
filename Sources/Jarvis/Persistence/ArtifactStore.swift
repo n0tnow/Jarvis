@@ -58,7 +58,10 @@ final class ArtifactStore: @unchecked Sendable {
     }
 
     func read(_ record: ArtifactRecord) throws -> Data {
-        try Data(contentsOf: paths.artifacts.appendingPathComponent(record.relativePath))
+        guard let data = FileManager.default.contents(atPath: paths.artifacts.appendingPathComponent(record.relativePath).path) else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        return data
     }
 
     /// True if the file still exists and matches its recorded hash.

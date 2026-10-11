@@ -14,6 +14,8 @@ struct AgentDescriptor: Sendable {
     var preference: ProviderPreference?                // nil = the user's current setting
     var validator: (@Sendable (String) async -> BenchmarkSuite.Verdict)?
     var timeout: TimeInterval = 180
+    /// Prepend a small, bounded memory preface about `taskID` (ContextRetrieval). Never the full history.
+    var includeTaskContext = true
 }
 
 /// Retry/escalation are bounded and configurable (DEC-026): never an open loop.
@@ -154,7 +156,9 @@ final class AgentRunManager {
         var attempts = 0
         var escalations = 0
         var repairsLeft = policy.maxRepairAttempts
-        var prompt = d.prompt
+        var basePrompt = d.prompt
+        if d.includeTaskContext, let pre = ContextRetrieval(repository: audit.repository).preface(taskID: d.taskID) { basePrompt = pre + "\n\n---\n\n" + d.prompt }
+        var prompt = basePrompt
         var previousEngine: ProviderID?
         var lastRunID: UUID?
         var lastError: ProviderError?
@@ -204,7 +208,7 @@ final class AgentRunManager {
                         audit.update(runID) { $0.validationStatus = .failed; $0.retryCount += 1 }
                         if repairsLeft > 0 {
                             repairsLeft -= 1
-                            prompt = "Your previous answer did not pass validation (\(v.detail)). Answer again, following the original instructions exactly.\n\nOriginal task:\n\(d.prompt)"
+                            prompt = "Your previous answer did not pass validation (\(v.detail)). Answer again, following the original instructions exactly.\n\nOriginal task:\n\(basePrompt)"
                             continue repairLoop
                         }
                         finish(runID, resolved, .completed, result, validation: .failed, overrideStatus: .failed); closed = true
@@ -224,7 +228,7 @@ final class AgentRunManager {
             escalations += 1
             index += 1
             repairsLeft = policy.maxRepairAttempts
-            prompt = d.prompt
+            prompt = basePrompt
             if index < candidates.count {
                 audit.update(runID) { $0.escalatedTo = candidates[index].engine.rawValue; $0.status = .escalated }
                 onEvent?("Escalated to \(candidates[index].engine.displayName)")

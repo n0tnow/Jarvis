@@ -44,10 +44,9 @@ final class ProviderSupervisor {
     // MARK: Discovery
 
     /// Refreshes every engine. `remoteCatalog` asks OpenCode to refresh its price snapshot (needed before trusting "free").
-    func refreshAll(remoteCatalog: Bool = true) async {
+    func refreshAll(remoteCatalog: Bool = true, includeOpenCode: Bool = true) async {
         async let sub: Void = providers.refresh()
-        async let oc: Void = openCode.refresh(remote: remoteCatalog)
-        _ = await (sub, oc)
+        if includeOpenCode { async let oc: Void = openCode.refresh(remote: remoteCatalog); _ = await (sub, oc) } else { _ = await sub }
         local?.inspect()
         benchmarkCache = nil
         lastRefresh = clock()
@@ -99,6 +98,8 @@ final class ProviderSupervisor {
     }
 
     func invalidateBenchmarks() { benchmarkCache = nil }
+
+    func benchmarkSummary(_ modelID: String, _ group: BenchmarkGroup) -> BenchmarkSummary? { benchmarkSummaries()[modelID]?[group] }
 
     private func benchmarkSummaries() -> [String: [BenchmarkGroup: BenchmarkSummary]] {
         if let c = benchmarkCache { return c }
@@ -197,6 +198,7 @@ final class ProviderSupervisor {
     /// Stops everything this supervisor manages (the local worker). CLI providers are per-request and are killed by
     /// `ProcessRegistry.killAll()` at termination.
     func shutdown() {
+        autoRestartLocal = false                       // terminating: a killed worker is not a crash to recover from
         local?.shutdownNow()
         resources.stop()
     }

@@ -190,6 +190,16 @@ struct CatalogTests {
         #expect(!second.isFreePoolMember && !second.freeVerified && second.pricingStatus == .paid)
     }
 
+    @Test func aModelTheApiReportedAsRemovedStaysBlockedForADayEvenIfTheCatalogStillListsItFree() {
+        let info = OpenCodeCatalog.parse(verboseFixture).first { $0.fullID == "opencode/big-pickle" }!
+        var gone = OpenCodeModelRegistry.record(from: info, verifiedAt: RouteFixtures.now, source: "a")
+        gone.availability = .unavailable; gone.freeVerified = false; gone.blockedReason = OpenCodeModelRegistry.removedMarker; gone.lastHealthCheck = RouteFixtures.now
+        let soon = OpenCodeModelRegistry.record(from: info, verifiedAt: RouteFixtures.now.addingTimeInterval(3600), source: "b", existing: gone)
+        #expect(!soon.isFreePoolMember && soon.blockedReason == OpenCodeModelRegistry.removedMarker)
+        let later = OpenCodeModelRegistry.record(from: info, verifiedAt: RouteFixtures.now.addingTimeInterval(25 * 3600), source: "c", existing: gone)
+        #expect(later.isFreePoolMember && later.blockedReason == nil)                           // re-evaluated after a day
+    }
+
     @Test func verificationExpiresAfterADay() {
         let m = RouteFixtures.freeModel("x", verifiedAgo: 3600)
         #expect(OpenCodeModelRegistry.isVerificationFresh(m, now: RouteFixtures.now))
@@ -271,6 +281,25 @@ struct OpenCodeParserTests {
         #expect(!r.events.contains { if case .text = $0 { return true }; return false })
     }
 
+    @Test func aDeprecatedModelStillListedAsActiveIsATypedRemovalNotAGenericFailure() {
+        for code in [404, 410] {
+            let e = OpenCodeEventParser.map(error: ["data": ["statusCode": code, "message": "Model exo-free has been deprecated."]], id: .openCode)
+            #expect(e == .unavailable(.openCode, OpenCodeModelRegistry.removedErrorText))
+        }
+    }
+
+    @Test func v2ErrorEventsAreMappedFromTheirOwnShape() {
+        func map(_ status: Int, _ message: String) -> ProviderError { OpenCodeEventParser.map(error: ["type": "provider.invalid-request", "status": status, "message": message], id: .openCode) }
+        #expect(map(410, "Model exo-free has been deprecated.") == .unavailable(.openCode, OpenCodeModelRegistry.removedErrorText))     // real 1.19.0 sample
+        #expect(map(400, "Upstream request failed: Model is unavailable.") == .unavailable(.openCode, "model unavailable"))                // real 1.19.0 sample
+        #expect(OpenCodeEventParser.map(error: ["type": "provider.auth", "status": 403, "message": "OpenCode's free tier can only be used from within OpenCode"], id: .openCode) == .unavailable(.openCode, "free tier refused the request"))
+        #expect(map(429, "slow down") == .rateLimited(.openCode, resetsAt: nil) && map(401, "x") == .authenticationRequired(.openCode))
+        if case .unavailable = map(503, "x") {} else { Issue.record("503") }
+        let p = OpenCodeEventParser()
+        let events = p.parse(line: Data(#"{"type":"error","sessionID":"ses_x","error":{"type":"provider.invalid-request","message":"Model exo-free has been deprecated.","status":410}}"#.utf8))
+        #expect(events.contains(.failure(.unavailable(.openCode, OpenCodeModelRegistry.removedErrorText))))
+    }
+
     @Test func statusCodesMapToTypedErrors() {
         func map(_ code: Int) -> ProviderError { OpenCodeEventParser.map(error: ["data": ["statusCode": code, "message": "x"]], id: .openCode) }
         #expect(map(401) == .authenticationRequired(.openCode))
@@ -281,7 +310,22 @@ struct OpenCodeParserTests {
     @Test func malformedOrEmptyOutputIsAFailure() {
         #expect(feed(["not json at all", "{broken"]).failure == .malformedOutput(.openCode))
         #expect(feed([]).failure == .malformedOutput(.openCode))
-        #expect(feed([#"{"type":"text","sessionID":"s1","part":{"text":"half an answer"}}"#]).failure == .malformedOutput(.openCode))
+        // Text but the process died abnormally (killed / crashed): NOT a complete answer.
+        #expect(feed([#"{"type":"text","sessionID":"s1","part":{"text":"half an answer"}}"#], exit: 143).failure != nil)
+    }
+
+    @Test func v2MayEndTheStreamWithoutAStepFinishSoACleanExitWithTextIsComplete() {
+        let p = OpenCodeEventParser()
+        _ = p.parse(line: Data(#"{"type":"step_start","sessionID":"ses_v2","part":{}}"#.utf8))
+        _ = p.parse(line: Data(#"{"type":"text","sessionID":"ses_v2","part":{"text":"JARVIS_OK"}}"#.utf8))
+        #expect(p.completedOnCleanExit(exitCode: 0) && p.finalFailure(exitCode: 0, stderrTail: "") == nil)
+        #expect(!p.completedOnCleanExit(exitCode: 1) && p.finalFailure(exitCode: 1, stderrTail: "") != nil)
+        // An error event, or no text at all, never counts as complete.
+        let e = OpenCodeEventParser()
+        _ = e.parse(line: Data(#"{"type":"text","sessionID":"s","part":{"text":"x"}}"#.utf8))
+        _ = e.parse(line: Data(#"{"type":"error","sessionID":"s","error":{"data":{"statusCode":503,"message":"x"}}}"#.utf8))
+        #expect(!e.completedOnCleanExit(exitCode: 0))
+        #expect(!OpenCodeEventParser().completedOnCleanExit(exitCode: 0))
     }
 
     @Test func unsafeSessionIdsAreIgnored() {
@@ -292,5 +336,213 @@ struct OpenCodeParserTests {
         let r = feed([#"{"type":"text","sessionID":"s1","part":{"text":"one"}}"#, #"{"type":"text","sessionID":"s1","part":{"text":"two"}}"#,
                       #"{"type":"step_finish","sessionID":"s1","part":{"reason":"stop"}}"#])
         #expect(r.events.filter { if case .text = $0 { return true }; return false } == [.text("one"), .text("\n\ntwo")])
+    }
+}
+
+
+// MARK: - OpenCode CLI generations (real --help texts captured on this Mac)
+
+private let classicModelsHelp = """
+opencode models [provider]
+
+list all available models
+
+Options:
+  -h, --help        show help
+      --verbose     use more verbose model output (includes metadata like costs)
+      --refresh     refresh the models cache from models.dev
+"""
+private let classicRunHelp = """
+opencode run [message..]
+Options:
+      --pure         run without external plugins
+  -m, --model        model to use in the format of provider/model
+      --format       format: default (formatted) or json (raw JSON events)
+      --auto         auto-approve permissions that are not explicitly denied (dangerous!)
+"""
+private let v2ModelsHelp = """
+DESCRIPTION
+  List all available models
+
+USAGE
+  opencode models [flags]
+
+FLAGS
+  --standalone       Run with a private server instead of the background service
+  --server string    Connect to a server URL instead of the background service
+"""
+private let v2RunHelp = """
+USAGE
+  opencode run [flags] [<message...>]
+
+FLAGS
+  --standalone            Run with a private server instead of the background service
+  --server string         Connect to a server URL instead of the background service
+  --model, -m string      Model to use in the format provider/model#variant
+  --format choice         Output format (choices: default, json)
+  --auto                  Auto-approve permissions that are not explicitly denied
+"""
+
+private let v2ApiHelp = """
+USAGE
+  opencode api [flags] <operation | method path...>
+ARGUMENTS
+  operation | method path... string    OpenAPI operation ID, or an HTTP method followed by a path
+"""
+
+/// Real-format `opencode api model.list` output (Model.Info with tiered `cost[]`), trimmed.
+private let v2ModelListJSON = """
+{"location":{"directory":"/x"},"data":[
+ {"id":"big-pickle","providerID":"opencode","name":"Big Pickle","status":"active","enabled":true,"cost":[{"input":0,"output":0,"cache":{"read":0,"write":0}}],"limit":{"context":200000,"output":32000},"capabilities":{"tools":true,"input":["text"],"output":["text"]}},
+ {"id":"tiered-free","providerID":"opencode","name":"Tiered","status":"active","enabled":true,"cost":[{"input":0,"output":0,"cache":{"read":0,"write":0}},{"tier":{"type":"context","size":100000},"input":0.5,"output":2,"cache":{"read":0,"write":0}}],"limit":{"context":1000000,"output":1000}},
+ {"id":"exo-free","providerID":"opencode","name":"Exo","status":"deprecated","enabled":true,"cost":[{"input":0,"output":0,"cache":{"read":0,"write":0}}],"limit":{"context":1048576,"output":1000}},
+ {"id":"off-free","providerID":"opencode","name":"Off","status":"active","enabled":false,"cost":[{"input":0,"output":0,"cache":{"read":0,"write":0}}],"limit":{"context":1000,"output":1000}},
+ {"id":"nocost","providerID":"opencode","name":"NoCost","status":"active","enabled":true,"cost":[],"limit":{"context":1000,"output":1000}},
+ {"id":"space-bunny-free","providerID":"opencode-go","name":"Space Bunny","status":"active","enabled":true,"cost":[{"input":0,"output":0,"cache":{"read":0,"write":0}}],"limit":{"context":1000,"output":1000}},
+ {"id":"glm-5.3","providerID":"opencode-go","name":"GLM","status":"active","enabled":true,"cost":[{"input":1.4,"output":4.4,"cache":{"read":0,"write":0}}],"limit":{"context":1000,"output":1000}}
+]}
+"""
+
+@MainActor
+@Suite("OpenCode CLI generations", .serialized)
+struct OpenCodeGenerationTests {
+    @Test func theClassicGenerationUsesModelsVerboseAndPure() {
+        let c = OpenCodeCapabilities.parse(modelsHelp: classicModelsHelp, runHelp: classicRunHelp)
+        #expect(c.isSupported && c.runFlavor == .classic && c.catalogSource == .modelsVerbose && c.unsupportedReason(version: "1.18.34") == nil)
+        #expect(OpenCodeSpec(modelID: "opencode/x").arguments(sessionID: nil, newSessionID: "", workingDirectory: "/tmp") == ["run", "--pure", "--format", "json", "-m", "opencode/x"])
+    }
+
+    @Test func the119GenerationReadsPricesThroughTheDocumentedApiAndRunsStandalone() {
+        let c = OpenCodeCapabilities.parse(modelsHelp: v2ModelsHelp, runHelp: v2RunHelp, apiHelp: v2ApiHelp)
+        #expect(c.isSupported && c.runFlavor == .standalone && c.catalogSource == .apiModelList)
+        #expect(OpenCodeService.modelListArguments == ["api", "model.list"])                         // the ONLY api operation JARVIS invokes
+        let spec = OpenCodeSpec.make(for: RouteFixtures.freeModel("x"), flavor: c.runFlavor, now: RouteFixtures.now)
+        #expect(spec?.arguments(sessionID: "ses_1", newSessionID: "", workingDirectory: "/tmp") == ["run", "--standalone", "--format", "json", "-m", "opencode/x", "-s", "ses_1"])
+        #expect(OpenCodeSpec.make(for: RouteFixtures.freeModel("x"), flavor: .unsupported, now: RouteFixtures.now) == nil)
+    }
+
+    @Test func aCliThatCannotListPricesOrHasNoRunInterfaceIsRefused() {
+        let noApi = OpenCodeCapabilities.parse(modelsHelp: v2ModelsHelp, runHelp: v2RunHelp, apiHelp: "")
+        #expect(!noApi.isSupported && noApi.unsupportedReason(version: "1.19.0")?.contains("no readable model prices") == true)
+        let weird = OpenCodeCapabilities.parse(modelsHelp: classicModelsHelp, runHelp: "opencode run\n  --something-else")
+        #expect(!weird.isSupported && weird.unsupportedReason(version: "9.9")?.contains("unsupported `run` interface") == true)
+    }
+
+    @Test func v2ModelListIsParsedWithEveryCostTierConsidered() {
+        let infos = OpenCodeCatalog.parseModelList(v2ModelListJSON)
+        #expect(infos.count == 7)
+        let r = Dictionary(uniqueKeysWithValues: infos.map { ($0.fullID, OpenCodeModelRegistry.record(from: $0, verifiedAt: RouteFixtures.now, source: "v2")) })
+        #expect(r["opencode/big-pickle"]?.isFreePoolMember == true && r["opencode/big-pickle"]?.contextLimit == 200000)
+        #expect(r["opencode/tiered-free"]?.pricingStatus == .paid && r["opencode/tiered-free"]?.isFreePoolMember == false)      // a priced context tier makes it paid
+        #expect(r["opencode/exo-free"]?.isFreePoolMember == false && r["opencode/exo-free"]?.availability == .unavailable)       // status "deprecated"
+        #expect(r["opencode/off-free"]?.isFreePoolMember == false)                                                              // enabled: false
+        #expect(r["opencode/nocost"]?.pricingStatus == .unknown && r["opencode/nocost"]?.isFreePoolMember == false)             // no price ⇒ never free
+        #expect(r["opencode-go/space-bunny-free"]?.isFreePoolMember == false && r["opencode-go/space-bunny-free"]?.blockedReason?.contains("credentialed") == true)
+        #expect(r["opencode-go/glm-5.3"]?.pricingStatus == .paid)
+        #expect(OpenCodeCatalog.parseModelList("not json").isEmpty && OpenCodeCatalog.parseModelList("{\"data\":[]}").isEmpty)
+    }
+
+    @Test func eachGenerationGetsItsOwnRestrictiveWorkspaceConfigAndNeverBoth() throws {
+        let dir = NSTemporaryDirectory() + "oc-gen-\(UUID().uuidString)"
+        let classic = try OpenCodeWorkspace.prepare(under: dir, flavor: .classic)
+        let classicFiles = try FileManager.default.contentsOfDirectory(atPath: classic)
+        #expect(classicFiles == ["opencode.json"])
+        let v2 = try OpenCodeWorkspace.prepare(under: dir, flavor: .standalone)
+        let v2Files = try FileManager.default.contentsOfDirectory(atPath: v2)
+        #expect(v2 == classic && v2Files == ["opencode.jsonc"])                                         // the other generation's file is removed
+        let text = try String(contentsOfFile: v2 + "/opencode.jsonc", encoding: .utf8)
+        #expect(text == OpenCodeWorkspace.v2ConfigJSONC)
+        let rules = (try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])?["permissions"] as? [[String: String]] ?? []
+        func effect(_ a: String) -> String? { rules.last { $0["action"] == a }?["effect"] }
+        #expect(rules.first?["action"] == "*" && rules.first?["effect"] == "ask")                    // everything else: ask ⇒ rejected headless
+        for a in ["execute", "edit", "webfetch", "websearch"] { #expect(effect(a) == "deny", "\(a)") }       // Code Mode could make network requests
+        #expect(effect("shell") == nil && effect("read") == nil)                                       // denying these makes the free tier answer 403
+        #expect(!text.contains("allow"))
+    }
+
+    /// A fake `opencode` binary (real child process) that answers --version / --help / models / api like the given generation.
+    private func fakeOpenCode(in dir: String, version: String, modelsHelp: String, runHelp: String, apiHelp: String = "", catalog: String, emptyApiAnswers: Int = 0) -> String {
+        try! modelsHelp.write(toFile: dir + "/models.help", atomically: true, encoding: .utf8)
+        try! runHelp.write(toFile: dir + "/run.help", atomically: true, encoding: .utf8)
+        try! apiHelp.write(toFile: dir + "/api.help", atomically: true, encoding: .utf8)
+        try! catalog.write(toFile: dir + "/catalog.txt", atomically: true, encoding: .utf8)
+        try! "".write(toFile: dir + "/api.count", atomically: true, encoding: .utf8)
+        return FakeCLI.script("""
+        echo "$@" >> \(dir)/opencode.calls
+        case "$1" in
+          --version) echo "\(version)";;
+          models) if [ "$2" = "--help" ]; then cat \(dir)/models.help; else cat \(dir)/catalog.txt; fi;;
+          run) if [ "$2" = "--help" ]; then cat \(dir)/run.help; else cat >/dev/null; echo "RUN-WAS-LAUNCHED" >> \(dir)/opencode.calls; fi;;
+          api) if [ "$2" = "--help" ]; then cat \(dir)/api.help; else
+                 echo x >> \(dir)/api.count; n=$(wc -l < \(dir)/api.count)
+                 if [ "$n" -le \(emptyApiAnswers) ]; then echo '{"location":{},"data":[]}'; else cat \(dir)/catalog.txt; fi
+               fi;;
+        esac
+        """, in: dir, name: "opencode")
+    }
+
+    @Test func theRealProbeRejectsACliWithNoPriceSourceWithoutEverRunningIt() async throws {
+        let h = IntelligenceHarness()
+        h.openCode.catalogOverride = nil                                                           // use the real probing branch
+        h.prefs.openCodePathOverride = fakeOpenCode(in: h.dir, version: "1.19.0", modelsHelp: v2ModelsHelp, runHelp: v2RunHelp, apiHelp: "", catalog: "")
+        await h.openCode.refresh(remote: true)
+        guard case .unavailable(let why) = h.openCode.state else { Issue.record("must be unavailable, got \(h.openCode.state)"); return }
+        #expect(why.contains("no readable model prices") && h.openCode.version == "1.19.0" && h.openCode.freePool.isEmpty)
+        let calls = (try? String(contentsOfFile: h.dir + "/opencode.calls", encoding: .utf8)) ?? ""
+        #expect(!calls.contains("--verbose") && !calls.contains("model.list") && !calls.contains("RUN-WAS-LAUNCHED"))
+        #expect(h.openCode.provider(for: RouteFixtures.freeModel("alpha-free")) == nil)
+    }
+
+    @Test func theRealProbeReadsV2PricesThroughApiModelListWithBoundedPollingAndBuildsAStandaloneLauncher() async throws {
+        let h = IntelligenceHarness()
+        h.openCode.catalogOverride = nil
+        OpenCodeService.catalogPollInterval = 0.05
+        defer { OpenCodeService.catalogPollInterval = 2.5 }
+        h.prefs.openCodePathOverride = fakeOpenCode(in: h.dir, version: "1.19.0", modelsHelp: v2ModelsHelp, runHelp: v2RunHelp, apiHelp: v2ApiHelp, catalog: v2ModelListJSON, emptyApiAnswers: 2)
+        await h.openCode.refresh(remote: true)
+        #expect(h.openCode.state == .ready && h.openCode.capabilities?.runFlavor == .standalone)
+        #expect(h.openCode.freePool.map(\.id) == ["opencode/big-pickle"])
+        let calls = (try? String(contentsOfFile: h.dir + "/opencode.calls", encoding: .utf8)) ?? ""
+        #expect(calls.components(separatedBy: "\n").filter { $0 == "api model.list" }.count == 3)           // 2 empty (unsettled snapshot) + 1 real answer
+        #expect(!calls.contains("credential") && !calls.contains("integration") && !calls.contains("--verbose"))
+        let model = try #require(h.openCode.model("opencode/big-pickle"))
+        #expect(h.openCode.freePool.first?.freeVerificationSource?.contains("api model.list") == true)
+        let provider = try #require(h.openCode.provider(for: model))
+        let r = await OneShotRunner.run(provider: provider, prompt: "hello")
+        _ = r
+        let after = (try? String(contentsOfFile: h.dir + "/opencode.calls", encoding: .utf8)) ?? ""
+        #expect(after.contains("run --standalone --format json -m opencode/big-pickle") && !after.contains("--pure"))
+        let wsFiles = try FileManager.default.contentsOfDirectory(atPath: h.dir + "/work/opencode")
+        #expect(wsFiles == ["opencode.jsonc"])
+    }
+
+    @Test func ifTheServiceNeverSettlesPollingStopsAndFreeRoutingStaysOff() async {
+        let h = IntelligenceHarness()
+        h.openCode.catalogOverride = nil
+        OpenCodeService.catalogPollInterval = 0.02
+        defer { OpenCodeService.catalogPollInterval = 2.5 }
+        h.prefs.openCodePathOverride = fakeOpenCode(in: h.dir, version: "1.19.0", modelsHelp: v2ModelsHelp, runHelp: v2RunHelp, apiHelp: v2ApiHelp, catalog: v2ModelListJSON, emptyApiAnswers: 100)
+        await h.openCode.refresh(remote: true)
+        guard case .unavailable(let why) = h.openCode.state else { Issue.record("must be unavailable"); return }
+        #expect(why.contains("model list not ready") && h.openCode.freePool.isEmpty)
+        let n = ((try? String(contentsOfFile: h.dir + "/opencode.calls", encoding: .utf8)) ?? "").components(separatedBy: "\n").filter { $0 == "api model.list" }.count
+        #expect(n == OpenCodeService.catalogPollAttempts)                                            // bounded
+    }
+
+    @Test func theRealProbeAcceptsTheClassicGenerationAndReadsPricesFromModelsVerbose() async throws {
+        let h = IntelligenceHarness()
+        h.openCode.catalogOverride = nil
+        h.setCatalog([("alpha-free", 0, 0), ("pricey", 2, 6)])
+        h.prefs.openCodePathOverride = fakeOpenCode(in: h.dir, version: "1.18.34", modelsHelp: classicModelsHelp, runHelp: classicRunHelp, catalog: h.catalog)
+        await h.openCode.refresh(remote: true)
+        #expect(h.openCode.state == .ready && h.openCode.capabilities?.runFlavor == .classic && h.openCode.freePool.map(\.id) == ["opencode/alpha-free"])
+        let calls = (try? String(contentsOfFile: h.dir + "/opencode.calls", encoding: .utf8)) ?? ""
+        #expect(calls.contains("models --pure --verbose --refresh") && !calls.contains("model.list"))
+    }
+
+    @Test func unrecognizedFlagsAreATypedUnsupportedVersionError() {
+        let p = OpenCodeEventParser()
+        let err = p.finalFailure(exitCode: 1, stderrTail: "ERROR\n  Unrecognized flag: --pure in command opencode run")
+        #expect(err == .unavailable(.openCode, "unsupported CLI version"))
     }
 }

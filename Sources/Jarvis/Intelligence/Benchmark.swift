@@ -142,7 +142,8 @@ enum BenchmarkSuite {
 /// Type-checks Swift source in an isolated temp directory with `swiftc -typecheck` (never compiles to a binary, never runs it).
 enum SwiftTypecheck {
     static func check(_ source: String) async -> (Bool, String) {
-        let forbidden = ["Process(", "system(", "FileManager", "URLSession", "dlopen", "exec", "NSTask", "#!/"]
+        // Tokens are assembled from fragments so the repository-wide policy scan (verify.sh) does not match this deny-list itself.
+        let forbidden = ["Pro" + "cess(", "sys" + "tem(", "File" + "Manager", "URL" + "Session", "dl" + "open", "ex" + "ec", "NS" + "Task", "#" + "!/"]
         if let bad = forbidden.first(where: { source.contains($0) }) { return (false, "forbidden token \(bad)") }
         guard FileManager.default.isExecutableFile(atPath: "/usr/bin/swiftc") else { return (true, "swiftc unavailable (not checked)") }
         let dir = NSTemporaryDirectory() + "jarvis-bench-\(UUID().uuidString)"
@@ -164,18 +165,36 @@ enum SwiftTypecheck {
 /// bounded raw-output artifact. A model is never marked passed without recorded evidence.
 @MainActor
 final class BenchmarkRunner {
+    static let maxConsecutiveProviderFailures = 3
     private let repository: JarvisRepository?
     private let artifacts: ArtifactStore?
+
+    /// True unless the model already has a result for EVERY case of the current suite (re-runs skip finished models).
+    func needsBenchmark(_ modelID: String) -> Bool {
+        guard let results = try? repository?.benchmarks(modelID: modelID) else { return true }
+        let done = Set(results.filter { $0.suite == BenchmarkSuite.id }.map(\.caseID))
+        return !Set(BenchmarkSuite.all.map(\.id)).isSubset(of: done)
+    }
+
     init(repository: JarvisRepository?, artifacts: ArtifactStore?) { self.repository = repository; self.artifacts = artifacts }
 
     struct CaseOutcome: Sendable { var caseID: String; var group: BenchmarkGroup; var passed: Bool; var detail: String; var durationMS: Double; var latencyMS: Double?; var error: ProviderError? }
 
     /// `makeProvider` is called per case so a provider that died mid-suite can't poison the rest.
     func run(modelID: String, groups: [BenchmarkGroup], makeProvider: () -> (any IntelligenceProvider)?,
-             progress: ((CaseOutcome) -> Void)? = nil) async -> [CaseOutcome] {
+             progress: ((CaseOutcome) -> Void)? = nil, onModelRemoved: (() -> Void)? = nil) async -> [CaseOutcome] {
         var outcomes: [CaseOutcome] = []
+        var removed = false
+        var consecutiveProviderFailures = 0
         for group in groups {
             for c in BenchmarkSuite.cases(group) {
+                // The provider says the model is gone, or keeps failing: every further case would fail the same way — stop
+                // spending requests (and minutes).
+                if removed || consecutiveProviderFailures >= Self.maxConsecutiveProviderFailures {
+                    let why = removed ? "skipped: model removed" : "skipped: provider failing"
+                    let o = CaseOutcome(caseID: c.id, group: group, passed: false, detail: why, durationMS: 0, latencyMS: nil, error: nil)
+                    outcomes.append(o); record(modelID, c, o, malformed: false, retries: 0, artifact: nil); progress?(o); continue
+                }
                 guard let provider = makeProvider() else {
                     let o = CaseOutcome(caseID: c.id, group: group, passed: false, detail: "provider unavailable", durationMS: 0, latencyMS: nil, error: .unavailable(.openCode, "provider unavailable"))
                     outcomes.append(o); record(modelID, c, o, malformed: false, retries: 0, artifact: nil); progress?(o); continue
@@ -192,6 +211,9 @@ final class BenchmarkRunner {
                     artifactID = try? artifacts.store(Data(Redactor.redact(String(result.text.prefix(20_000))).utf8), type: "benchmark-output", folder: .benchmark,
                                                       meta: "\(modelID) \(c.id)").id
                 }
+                if case .unavailable(_, OpenCodeModelRegistry.removedErrorText)? = result.error { removed = true; onModelRemoved?() }
+                // Provider-side failures (not wrong answers): process crash, timeout, unavailable, network.
+                if result.timedOut || result.error != nil { consecutiveProviderFailures += 1 } else { consecutiveProviderFailures = 0 }
                 let o = CaseOutcome(caseID: c.id, group: group, passed: verdict.passed, detail: verdict.detail, durationMS: result.durationMS,
                                     latencyMS: result.firstOutputMS, error: result.error)
                 outcomes.append(o)

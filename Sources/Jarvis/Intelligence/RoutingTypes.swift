@@ -155,6 +155,14 @@ struct RoutingDecision: Equatable, Sendable {
         return "{}"
     }
 
+    /// One line for Settings / the System panel: what was chosen and the policy tier behind it.
+    var summary: String {
+        switch outcome {
+        case .selected(let c): return "\(c.label) · \(reasons["tier"] ?? "")"
+        case .refused: return "refused · " + (rejected.values.sorted().first ?? "no eligible provider")
+        }
+    }
+
     /// Short, user-facing explanation of a refusal.
     func refusalMessage(_ l: ReplyLanguage = .en) -> String? {
         guard case .refused(let r) = outcome else { return nil }

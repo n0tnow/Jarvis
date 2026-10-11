@@ -137,6 +137,10 @@ struct CLIProvider: IntelligenceProvider {
             Log.providers.error("\(spec.id.rawValue, privacy: .public): failed (\(String(describing: failure), privacy: .public)) exit=\(code)")
             return .failed(failure)
         }
+        if !finished && finalFailureIsNil(parser, code, stderr) && parser.completedOnCleanExit(exitCode: code) {
+            out.yield(.finished)                                     // a clean exit with a complete answer stands in for the missing terminal event
+            return .done
+        }
         if !finished {
             let err = parser.finalFailure(exitCode: code, stderrTail: stderr)
                 ?? (parser.malformedLines > 0 && !emitted ? .malformedOutput(spec.id) : .processFailed(spec.id, exitCode: code))
@@ -145,6 +149,8 @@ struct CLIProvider: IntelligenceProvider {
         }
         return .done
     }
+
+    private func finalFailureIsNil(_ parser: ProviderLineParser, _ code: Int32, _ stderr: String) -> Bool { parser.finalFailure(exitCode: code, stderrTail: stderr) == nil }
 
     /// A rate-limit *warning* seen mid-stream must not discard a completed answer.
     private func isHard(_ e: ProviderError) -> Bool {

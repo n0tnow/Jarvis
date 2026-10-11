@@ -264,6 +264,35 @@ struct LocalProviderPolicyTests {
         rt.shutdownNow()
     }
 
+    @Test func stoppedMeansTheWorkerHasReallyEndedTheJobSoTheNextRequestIsNeverRefusedAsBusy() async {
+        // Regression found by the REAL live test: provider.waitUntilStopped returned before the worker acknowledged the cancel.
+        let (rt, _, _) = FakeWorker.makeRuntime()
+        let prompt = "LONG hello"
+        let provider = LocalQwenProvider(runtime: rt, profile: TaskProfile(category: .conversation, complexity: .trivial))
+        let req = FakeCLI.request(prompt)
+        let consumer = Task { @MainActor in for try await _ in provider.respond(to: req) {} }
+        while rt.state != .running { try? await Task.sleep(nanoseconds: 10_000_000) }
+        consumer.cancel()
+        await provider.waitUntilStopped(req.id)
+        #expect(rt.state == .ready)                                                                // not .running: the job has ended
+        let next = await FakeCLI.collect(provider.respond(to: FakeCLI.request("hi")))
+        #expect(next.error == nil && FakeCLI.text(next.events) == "t0 t1 t2 ")
+        rt.shutdownNow()
+    }
+
+    @Test func aCancelledLocalStreamIsNeverReportedAsFinished() async {
+        let (rt, _, _) = FakeWorker.makeRuntime()
+        let provider = LocalQwenProvider(runtime: rt, profile: TaskProfile(category: .conversation, complexity: .trivial))
+        let req = FakeCLI.request("LONG hello")
+        var sawFinished = false
+        let consumer = Task { @MainActor in for try await e in provider.respond(to: req) { if case .finished = e { sawFinished = true } } }
+        while rt.state != .running { try? await Task.sleep(nanoseconds: 10_000_000) }
+        consumer.cancel(); _ = await consumer.result
+        await provider.waitUntilStopped(req.id)
+        #expect(!sawFinished)
+        rt.shutdownNow()
+    }
+
     @Test func theLocalPromptCarriesTheNoToolsInstruction() {
         let p = LocalQwenProvider.prompt(for: FakeCLI.request("hello"))
         #expect(p.contains("NO tools") && p.contains("[Request]\nhello") && p.contains("Keep answers short"))

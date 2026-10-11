@@ -32,6 +32,21 @@ enum ModelRouter {
         }
     }
 
+    /// Whether a free-cloud route could be chosen for this request — i.e. whether re-reading OpenCode's prices is worth it.
+    /// Reading prices may start OpenCode's own background service (≈290 MB), so JARVIS does it lazily: never at launch, never
+    /// for lightweight tasks (Local first) or heavy/sensitive ones (premium only).
+    static func mayUseFreeCloud(_ p: TaskProfile, preference: ProviderPreference, settings: RoutingSettings) -> Bool {
+        guard settings.allowFreeCloud else { return false }
+        if p.privacy == .sensitive && !settings.allowSensitiveOnFreeCloud { return false }
+        switch preference {
+        case .openCodeFree: return true
+        case .auto:
+            let heavy = p.complexity >= .complex || p.category == .architecture || p.category == .security
+            return !heavy && !LocalModelPolicy.evaluate(p).eligible
+        default: return false
+        }
+    }
+
     // MARK: Explicit modes (no silent fallback)
 
     private static func explicitLocal(_ d: inout RoutingDecision, _ v: LocalModelPolicy.Verdict, _ s: RouterSnapshot) -> RoutingDecision {
@@ -165,6 +180,9 @@ enum ModelRouter {
         ok.sort { a, b in
             let ra = a.1?.passRate ?? -1, rb = b.1?.passRate ?? -1
             if ra != rb { return ra > rb }
+            // Privacy-preserving tie-break: documented zero-retention models first, then everything else.
+            let za = a.0.dataPolicy == .zeroRetention, zb = b.0.dataPolicy == .zeroRetention
+            if za != zb { return za }
             let la = a.1?.medianLatencyMS ?? .infinity, lb = b.1?.medianLatencyMS ?? .infinity
             if la != lb { return la < lb }
             return a.0.id < b.0.id

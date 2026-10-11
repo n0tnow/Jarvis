@@ -21,6 +21,9 @@ enum ProviderEnvironment {
         "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
         "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_ORG_ID", "OPENAI_PROJECT", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN",
         "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE", "GOOGLE_APPLICATION_CREDENTIALS",
+        // V0.3.1: OpenCode can pick up many provider keys / its server password from the environment — none may reach it.
+        "OPENCODE_API_KEY", "OPENCODE_SERVER_PASSWORD", "OPENCODE_SERVER_USERNAME", "OPENROUTER_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY",
+        "GEMINI_API_KEY", "GOOGLE_API_KEY", "XAI_API_KEY", "DEEPSEEK_API_KEY", "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "GITHUB_TOKEN",
     ]
 
     static func make(base: [String: String] = ProcessInfo.processInfo.environment, extraPath: [String] = []) -> [String: String] {

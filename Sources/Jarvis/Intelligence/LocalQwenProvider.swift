@@ -36,9 +36,13 @@ struct LocalQwenProvider: IntelligenceProvider {
                         case .done(let s): continuation.yield(.usage(input: s.promptTokens, output: s.generationTokens))
                         }
                     }
-                    continuation.yield(.finished)
+                    // A cancelled consumer just stops iterating: that is NOT a finished answer.
+                    if !Task.isCancelled { continuation.yield(.finished) }
                     continuation.finish()
                 } catch { continuation.finish(throwing: error) }
+                // `waitUntilStopped` resolves with this task: don't report "stopped" until the worker has really ended the job,
+                // or the next request would find the runtime still busy.
+                await runtime.waitForJobEnd()
             }
             RunTracker.shared.add(request.id, task)
             continuation.onTermination = { _ in task.cancel() }

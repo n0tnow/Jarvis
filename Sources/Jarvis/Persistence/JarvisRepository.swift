@@ -315,6 +315,13 @@ final class JarvisRepository: @unchecked Sendable {
         }
     }
 
+    struct TaskInfo: Equatable, Sendable { var title: String; var status: String; var summary: String? }
+    func taskInfo(_ id: UUID) throws -> TaskInfo? {
+        try database.readOne("SELECT title, status, summary FROM tasks WHERE id = ?", [.text(id.uuidString)]).flatMap { r in
+            r.string("title").map { TaskInfo(title: $0, status: r.string("status") ?? "", summary: r.string("summary")) }
+        }
+    }
+
     func taskStatus(_ id: UUID) throws -> String? { try database.readOne("SELECT status FROM tasks WHERE id = ?", [.text(id.uuidString)])?.string("status") }
 
     func count(_ table: String) throws -> Int {
