@@ -87,7 +87,8 @@ final class IntelligenceCoordinator: IntelligenceProviderResolving {
     }
 
     func makeResolved(_ c: RoutingCandidate, decision: RoutingDecision, profile: TaskProfile, prompt: String, depth: Int,
-                      agentType: String = "Conversation", taskID: UUID? = nil, parent: UUID? = nil, escalatedFrom: ProviderID? = nil) -> ResolvedProvider? {
+                      agentType: String = "Conversation", taskID: UUID? = nil, parent: UUID? = nil, escalatedFrom: ProviderID? = nil,
+                      label: String? = nil, owner: RunOwner = .conversation) -> ResolvedProvider? {
         let provider: any IntelligenceProvider
         switch c.engine {
         case .claudeCode, .codex:
@@ -102,9 +103,12 @@ final class IntelligenceCoordinator: IntelligenceProviderResolving {
         }
         var d = decision
         if depth > 0, let from = escalatedFrom { d.reasons["escalatedFrom"] = from.rawValue; d.reasons["selected"] = c.model ?? c.engine.rawValue }
-        let runID = audit.begin(agentType: agentType, taskID: taskID, parent: parent, engine: c.engine, model: c.model, decision: d, prompt: prompt, privacy: profile.privacy)
+        let runID = audit.begin(agentType: agentType, taskID: taskID, parent: parent, engine: c.engine, model: c.model, decision: d, prompt: prompt,
+                                privacy: profile.privacy, label: label, owner: owner)
         if let from = escalatedFrom { audit.update(runID) { $0.escalatedFrom = from.rawValue } }
-        return ResolvedProvider(provider: provider, id: c.engine, model: c.model, runID: runID, decision: d, profile: profile, escalationDepth: depth)
+        // EVERY engine is observed through the sanitization boundary: raw output never reaches the runtime, console or database.
+        let observed = SafeProvider(base: provider, runID: runID, hub: audit.hub)
+        return ResolvedProvider(provider: observed, id: c.engine, model: c.model, runID: runID, decision: d, profile: profile, escalationDepth: depth)
     }
 
     func escalate(from failed: ResolvedProvider, error: ProviderError, prompt: String) async -> ResolvedProvider? {
@@ -118,7 +122,10 @@ final class IntelligenceCoordinator: IntelligenceProviderResolving {
             if let m = next.model, supervisor.cooldownUntil(next.engine, m, now: now) != nil { continue }
             guard supervisor.availability()[next.engine]?.state == .ready else { continue }
             if let r = makeResolved(next, decision: decision, profile: profile, prompt: prompt, depth: failed.escalationDepth + 1, escalatedFrom: failed.id) {
-                if let runID = failed.runID { audit.update(runID) { $0.escalatedTo = next.engine.rawValue; $0.status = .escalated } }
+                if let runID = failed.runID {
+                    audit.update(runID) { $0.escalatedTo = next.engine.rawValue; $0.status = .escalated }
+                    audit.hub?.noteEscalation(runID, from: failed.name, to: r.name)
+                }
                 audit.activity("escalation", "Escalated from \(failed.name) to \(r.name)", runID: r.runID)
                 onEvent?("Escalated to \(r.name)")
                 return r

@@ -6,6 +6,8 @@ import Foundation
 @MainActor
 final class AuditRecorder {
     let repository: JarvisRepository?
+    /// V0.3.2: the live observer of run lifecycle (set by `AppContext`). Receives only sanitized data.
+    var hub: ExecutionHub?
     private var runs: [UUID: AgentRunRecord] = [:]
     private(set) var failures = 0
 
@@ -13,8 +15,13 @@ final class AuditRecorder {
 
     @discardableResult
     func begin(agentType: String, taskID: UUID? = nil, parent: UUID? = nil, engine: ProviderID, model: String?,
-               decision: RoutingDecision?, prompt: String, privacy: PrivacyLevel, now: Date = Date()) -> UUID {
+               decision: RoutingDecision?, prompt: String, privacy: PrivacyLevel, label: String? = nil, owner: RunOwner = .conversation,
+               now: Date = Date()) -> UUID {
         var run = AgentRunRecord(id: UUID(), taskID: taskID, parentAgentRunID: parent, agentType: agentType, engine: engine, model: model, startedAt: now)
+        // What the run is for: an explicit label, else a short REDACTED excerpt of the prompt — none for sensitive tasks.
+        run.label = label.map { OutputSanitizer.sanitize(String($0.prefix(80))) }
+            ?? (privacy == .sensitive ? "Private request" : Redactor.excerpt(prompt, max: 70))
+        run.activity = "Starting"
         run.selectionReason = decision?.reasonJSON
         run.privacy = privacy
         run.status = .running
@@ -22,6 +29,8 @@ final class AuditRecorder {
         run.promptChars = prompt.count
         runs[run.id] = run
         save { try $0.insert(run) }
+        hub?.begin(AgentRunView(id: run.id, label: run.label ?? agentType, agentType: agentType, engine: engine, model: model, parent: parent, phase: .starting,
+                                startedAt: now, activity: "Starting", owner: owner))
         return run.id
     }
 
@@ -49,8 +58,25 @@ final class AuditRecorder {
             if !toolAttempts.isEmpty { run.toolsUsed = Array(Set(run.toolsUsed + toolAttempts.map { "attempted-refused:\($0)" })).sorted() }
             if let validation { run.validationStatus = validation }
         }
+        hub?.finish(id, phase: RunPhase(status), errorCategory: error.map(Self.category), summary: nil)
         // Finished runs are written; keep memory bounded.
         if runs.count > 200 { runs = runs.filter { $0.value.finishedAt == nil } }
+    }
+
+    /// Restart reconciliation (V0.3.2): runs recorded as running/queued belong to a previous JARVIS process that no longer exists.
+    /// They become `interrupted` (never "running forever") and a console event records why. Returns how many were reconciled.
+    @discardableResult
+    func reconcileStaleRuns(now: Date = Date()) -> Int {
+        guard let repository else { return 0 }
+        guard let ids = try? repository.markInterrupted(at: now), !ids.isEmpty else { return 0 }
+        for id in ids {
+            let next = ((try? repository.eventCount(runID: id)) ?? 0) + 1
+            let e = AgentConsoleEvent(id: next, runID: id, timestamp: now, kind: .interrupted, source: "JARVIS",
+                                      summary: "Run interrupted: JARVIS stopped before it finished (the provider process did not survive the restart).", severity: .warning)
+            save { try $0.appendEvents([e]) }
+        }
+        try? repository.addActivity(kind: "warning", message: "\(ids.count) run(s) were interrupted by a restart and marked as such")
+        return ids.count
     }
 
     func recordTool(_ runID: UUID, tool: String, summary: String?, status: String, exitCode: Int? = nil) {

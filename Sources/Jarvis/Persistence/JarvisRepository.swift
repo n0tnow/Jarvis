@@ -127,8 +127,9 @@ final class JarvisRepository: @unchecked Sendable {
             try ctx.execute("""
                 INSERT INTO agent_runs(id, task_id, parent_agent_run_id, agent_type, engine, model, cost_class, selection_reason, privacy,
                     started_at, finished_at, status, tools_used, files_read, files_changed, validation_status, result_summary,
-                    retry_count, escalated_from, escalated_to, error_category, prompt_hash, prompt_chars, input_tokens, output_tokens)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    retry_count, escalated_from, escalated_to, error_category, prompt_hash, prompt_chars, input_tokens, output_tokens,
+                    label, progress_source, steps_total, steps_done, progress_fraction, activity)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, Self.params(run))
         }
     }
@@ -139,7 +140,8 @@ final class JarvisRepository: @unchecked Sendable {
                 UPDATE agent_runs SET task_id=?2, parent_agent_run_id=?3, agent_type=?4, engine=?5, model=?6, cost_class=?7,
                     selection_reason=?8, privacy=?9, started_at=?10, finished_at=?11, status=?12, tools_used=?13, files_read=?14,
                     files_changed=?15, validation_status=?16, result_summary=?17, retry_count=?18, escalated_from=?19,
-                    escalated_to=?20, error_category=?21, prompt_hash=?22, prompt_chars=?23, input_tokens=?24, output_tokens=?25
+                    escalated_to=?20, error_category=?21, prompt_hash=?22, prompt_chars=?23, input_tokens=?24, output_tokens=?25,
+                    label=?26, progress_source=?27, steps_total=?28, steps_done=?29, progress_fraction=?30, activity=?31
                 WHERE id = ?1
                 """, Self.params(run))
         }
@@ -151,7 +153,9 @@ final class JarvisRepository: @unchecked Sendable {
          .date(r.startedAt), .opt(r.finishedAt), .text(r.status.rawValue), .text(json(r.toolsUsed)), .text(json(r.filesRead)),
          .text(json(r.filesChanged)), .text(r.validationStatus.rawValue), .opt(r.resultSummary), .int(Int64(r.retryCount)),
          .opt(r.escalatedFrom), .opt(r.escalatedTo), .opt(r.errorCategory), .opt(r.promptHash), .opt(r.promptChars),
-         .opt(r.inputTokens), .opt(r.outputTokens)]
+         .opt(r.inputTokens), .opt(r.outputTokens),
+         .opt(r.label.map { OutputSanitizer.sanitize($0) }), .text(r.progressSource.rawValue), .opt(r.stepsTotal), .opt(r.stepsDone),
+         .opt(r.progressFraction), .opt(r.activity.map { OutputSanitizer.sanitize($0) })]
     }
 
     func agentRun(_ id: UUID) throws -> AgentRunRecord? {
@@ -188,7 +192,167 @@ final class JarvisRepository: @unchecked Sendable {
         run.escalatedFrom = r.string("escalated_from"); run.escalatedTo = r.string("escalated_to")
         run.errorCategory = r.string("error_category"); run.promptHash = r.string("prompt_hash"); run.promptChars = r.int("prompt_chars")
         run.inputTokens = r.int("input_tokens"); run.outputTokens = r.int("output_tokens")
+        run.label = r.string("label"); run.progressSource = r.string("progress_source").flatMap(ProgressSource.init(rawValue:)) ?? .unknown
+        run.stepsTotal = r.int("steps_total"); run.stepsDone = r.int("steps_done"); run.progressFraction = r.double("progress_fraction")
+        run.activity = r.string("activity")
         return run
+    }
+
+    // MARK: Filtered history (paginated — never "load everything")
+
+    struct RunFilter: Equatable, Sendable {
+        var engine: ProviderID?
+        var statuses: [AgentRunStatus] = []
+        var text: String?                 // matches label, agent type or model (case-insensitive substring)
+        var since: Date?
+        var until: Date?
+    }
+
+    func agentRuns(filter: RunFilter, limit: Int = 25, offset: Int = 0) throws -> [AgentRunRecord] {
+        var sql = "SELECT * FROM agent_runs WHERE 1=1"; var p: [SQLValue] = []
+        if let e = filter.engine { sql += " AND engine = ?"; p.append(.text(e.rawValue)) }
+        if !filter.statuses.isEmpty { sql += " AND status IN (" + filter.statuses.map { _ in "?" }.joined(separator: ",") + ")"; p += filter.statuses.map { .text($0.rawValue) } }
+        if let t = filter.text?.trimmingCharacters(in: .whitespaces), !t.isEmpty {
+            sql += " AND (label LIKE ? ESCAPE '\\' OR agent_type LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\')"
+            let like = "%" + t.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_") + "%"
+            p += [.text(like), .text(like), .text(like)]
+        }
+        if let s = filter.since { sql += " AND started_at >= ?"; p.append(.date(s)) }
+        if let u = filter.until { sql += " AND started_at < ?"; p.append(.date(u)) }
+        sql += " ORDER BY started_at DESC LIMIT ? OFFSET ?"; p += [.int(Int64(max(1, min(limit, 200)))), .int(Int64(max(0, offset)))]
+        return try database.read(sql, p).compactMap(Self.run)
+    }
+
+    /// The most recent run of each engine (provider cards: "last result").
+    func lastRunPerEngine() throws -> [ProviderID: AgentRunRecord] {
+        var out: [ProviderID: AgentRunRecord] = [:]
+        for e in ProviderID.allCases {
+            if let r = try database.readOne("SELECT * FROM agent_runs WHERE engine = ? ORDER BY started_at DESC LIMIT 1", [.text(e.rawValue)]).flatMap(Self.run) { out[e] = r }
+        }
+        return out
+    }
+
+    /// Restart reconciliation: a run still recorded as running/queued can only belong to a previous JARVIS process that is gone.
+    @discardableResult
+    func markInterrupted(at now: Date = Date()) throws -> [UUID] {
+        let stale = try interruptedRuns()
+        guard !stale.isEmpty else { return [] }
+        try database.write { ctx in
+            try ctx.execute("""
+                UPDATE agent_runs SET status = 'interrupted', finished_at = ?, error_category = COALESCE(error_category, 'interrupted'),
+                    activity = 'Interrupted — JARVIS stopped before this run finished' WHERE status IN ('running','queued')
+                """, [.date(now)])
+        }
+        return stale.map(\.id)
+    }
+
+    // MARK: Console events (sanitized text only)
+
+    static let maxEventsPerRun = 5000
+
+    func appendEvents(_ events: [AgentConsoleEvent]) throws {
+        guard !events.isEmpty else { return }
+        try database.write { ctx in
+            for e in events {
+                try ctx.execute("""
+                    INSERT OR IGNORE INTO agent_events(run_id, seq, ts, kind, source, severity, summary, detail, artifact_id) VALUES (?,?,?,?,?,?,?,?,?)
+                    """, [.text(e.runID.uuidString), .int(Int64(e.id)), .date(e.timestamp), .text(e.kind.rawValue), .text(e.source), .text(e.severity.rawValue),
+                          .text(e.summary), .opt(e.detail), .opt(e.artifactID?.uuidString)])
+            }
+            if let run = events.first?.runID {
+                try ctx.execute("DELETE FROM agent_events WHERE run_id = ? AND seq <= (SELECT max(seq) FROM agent_events WHERE run_id = ?) - ?",
+                                [.text(run.uuidString), .text(run.uuidString), .int(Int64(Self.maxEventsPerRun))])
+            }
+        }
+    }
+
+    func events(runID: UUID, afterSeq: Int = 0, limit: Int = 500) throws -> [AgentConsoleEvent] {
+        try database.read("SELECT * FROM agent_events WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?",
+                          [.text(runID.uuidString), .int(Int64(afterSeq)), .int(Int64(max(1, min(limit, 2000))))]).compactMap { r in
+            guard let seq = r.int("seq"), let kind = r.string("kind").flatMap(ConsoleEventKind.init(rawValue:)), let src = r.string("source"), let sum = r.string("summary") else { return nil }
+            return AgentConsoleEvent(id: seq, runID: runID, timestamp: r.date("ts") ?? Date(), kind: kind, source: src, summary: sum, detail: r.string("detail"),
+                                     severity: r.string("severity").flatMap(EventSeverity.init(rawValue:)) ?? .info, artifactID: Self.uuid(r.string("artifact_id")))
+        }
+    }
+
+    func eventCount(runID: UUID) throws -> Int {
+        try database.readOne("SELECT count(*) AS n FROM agent_events WHERE run_id = ?", [.text(runID.uuidString)])?.int("n") ?? 0
+    }
+
+    /// Timeline across runs: key events only (no provider output lines), newest first.
+    struct TimelineRow: Equatable, Sendable {
+        var event: AgentConsoleEvent
+        var agentType: String
+        var engine: ProviderID
+        var model: String?
+        var label: String?
+    }
+
+    func recentTimeline(limit: Int = 60, excludingRuns: Set<UUID> = []) throws -> [TimelineRow] {
+        try database.read("""
+            SELECT e.*, r.agent_type AS a_type, r.engine AS a_engine, r.model AS a_model, r.label AS a_label
+            FROM agent_events e JOIN agent_runs r ON r.id = e.run_id
+            WHERE e.kind != 'providerOutput' ORDER BY e.ts DESC, e.seq DESC LIMIT ?
+            """, [.int(Int64(max(1, min(limit * 2, 400))))]).compactMap { r -> TimelineRow? in
+            guard let run = Self.uuid(r.string("run_id")), !excludingRuns.contains(run), let seq = r.int("seq"),
+                  let kind = r.string("kind").flatMap(ConsoleEventKind.init(rawValue:)), let src = r.string("source"), let sum = r.string("summary"),
+                  let engine = r.string("a_engine").flatMap(ProviderID.init(rawValue:)) else { return nil }
+            let e = AgentConsoleEvent(id: seq, runID: run, timestamp: r.date("ts") ?? Date(), kind: kind, source: src, summary: sum, detail: r.string("detail"),
+                                      severity: r.string("severity").flatMap(EventSeverity.init(rawValue:)) ?? .info)
+            return TimelineRow(event: e, agentType: r.string("a_type") ?? "Agent", engine: engine, model: r.string("a_model"), label: r.string("a_label"))
+        }.prefix(limit).map { $0 }
+    }
+
+    func pruneEvents(olderThan: Date) throws {
+        try database.write { ctx in try ctx.execute("DELETE FROM agent_events WHERE ts < ?", [.date(olderThan)]) }
+    }
+
+    // MARK: Structured steps
+
+    func saveSteps(runID: UUID, _ steps: [AgentStep]) throws {
+        try database.write { ctx in
+            for s in steps {
+                try ctx.execute("""
+                    INSERT INTO agent_run_steps(run_id, idx, title, weight, state) VALUES (?,?,?,?,?)
+                    ON CONFLICT(run_id, idx) DO UPDATE SET title=excluded.title, weight=excluded.weight, state=excluded.state
+                    """, [.text(runID.uuidString), .int(Int64(s.index)), .text(OutputSanitizer.sanitize(s.title)), .double(s.weight), .text(s.state.rawValue)])
+            }
+        }
+    }
+
+    func steps(runID: UUID) throws -> [AgentStep] {
+        try database.read("SELECT * FROM agent_run_steps WHERE run_id = ? ORDER BY idx", [.text(runID.uuidString)]).compactMap { r in
+            guard let i = r.int("idx"), let t = r.string("title"), let st = r.string("state").flatMap(StepState.init(rawValue:)) else { return nil }
+            return AgentStep(index: i, title: t, weight: r.double("weight") ?? 1, state: st)
+        }
+    }
+
+    // MARK: Report-ready queries ("what ran today? which models? what failed? how long?")
+
+    struct RunStats: Equatable, Sendable {
+        var total = 0
+        var byEngine: [String: Int] = [:]
+        var byModel: [String: Int] = [:]
+        var byStatus: [String: Int] = [:]
+        var escalated = 0
+        var totalSeconds: Double = 0
+    }
+
+    func runStats(since: Date, until: Date? = nil) throws -> RunStats {
+        var stats = RunStats()
+        let rows = try database.read("""
+            SELECT engine, model, status, escalated_to, (COALESCE(finished_at, started_at) - started_at) AS secs FROM agent_runs
+            WHERE started_at >= ? AND started_at < ?
+            """, [.date(since), .date(until ?? Date.distantFuture)])
+        for r in rows {
+            stats.total += 1
+            stats.byEngine[r.string("engine") ?? "?", default: 0] += 1
+            if let m = r.string("model") { stats.byModel[m, default: 0] += 1 }
+            stats.byStatus[r.string("status") ?? "?", default: 0] += 1
+            if r.string("escalated_to") != nil { stats.escalated += 1 }
+            stats.totalSeconds += r.double("secs") ?? 0
+        }
+        return stats
     }
 
     // MARK: Tool executions + file changes

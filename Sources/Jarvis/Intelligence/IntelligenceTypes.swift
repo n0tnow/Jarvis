@@ -116,7 +116,8 @@ struct ModelRecord: Equatable, Sendable {
 
 // MARK: - Agent runs / audit
 
-enum AgentRunStatus: String, Codable, Sendable { case queued, running, succeeded, failed, cancelled, escalated }
+/// `interrupted` = JARVIS stopped (quit/crash) while the run was recorded as running; reconciled at the next start (V0.3.2).
+enum AgentRunStatus: String, Codable, Sendable { case queued, running, succeeded, failed, cancelled, escalated, interrupted }
 enum ValidationStatus: String, Codable, Sendable { case notRun, passed, failed, skipped }
 
 struct AgentRunRecord: Equatable, Sendable {
@@ -144,6 +145,13 @@ struct AgentRunRecord: Equatable, Sendable {
     var promptChars: Int?
     var inputTokens: Int?
     var outputTokens: Int?
+    // V0.3.2 observability
+    var label: String?                    // what the run is for (sanitized; "Conversation" for private ones)
+    var progressSource: ProgressSource = .unknown
+    var stepsTotal: Int?
+    var stepsDone: Int?
+    var progressFraction: Double?
+    var activity: String?
     var costClass: CostClass { engine.costClass }
 }
 

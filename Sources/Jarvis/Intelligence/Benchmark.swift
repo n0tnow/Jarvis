@@ -182,12 +182,17 @@ final class BenchmarkRunner {
 
     /// `makeProvider` is called per case so a provider that died mid-suite can't poison the rest.
     func run(modelID: String, groups: [BenchmarkGroup], makeProvider: () -> (any IntelligenceProvider)?,
-             progress: ((CaseOutcome) -> Void)? = nil, onModelRemoved: (() -> Void)? = nil) async -> [CaseOutcome] {
+             progress: ((CaseOutcome) -> Void)? = nil, onModelRemoved: (() -> Void)? = nil,
+             onCaseStart: ((Int, BenchmarkSuite.Case) -> Void)? = nil) async -> [CaseOutcome] {
         var outcomes: [CaseOutcome] = []
         var removed = false
         var consecutiveProviderFailures = 0
+        var caseIndex = -1
         for group in groups {
             for c in BenchmarkSuite.cases(group) {
+                caseIndex += 1
+                if Task.isCancelled { return outcomes }                       // user pressed Stop: finish quietly between cases
+                onCaseStart?(caseIndex, c)
                 // The provider says the model is gone, or keeps failing: every further case would fail the same way — stop
                 // spending requests (and minutes).
                 if removed || consecutiveProviderFailures >= Self.maxConsecutiveProviderFailures {

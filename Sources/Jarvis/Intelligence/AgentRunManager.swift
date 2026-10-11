@@ -16,6 +16,10 @@ struct AgentDescriptor: Sendable {
     var timeout: TimeInterval = 180
     /// Prepend a small, bounded memory preface about `taskID` (ContextRetrieval). Never the full history.
     var includeTaskContext = true
+    /// What the agent is working on (shown in the Observatory). Optional; sanitized.
+    var title: String?
+    /// Measurable structured steps (title, weight). The ONLY source of progress: none given ⇒ indeterminate.
+    var steps: [(String, Double)] = []
 }
 
 /// Retry/escalation are bounded and configurable (DEC-026): never an open loop.
@@ -173,12 +177,14 @@ final class AgentRunManager {
                 claim(candidate, d.profile); slot.candidate = candidate
             }
             guard let resolved = coordinator.makeResolved(candidate, decision: decision, profile: d.profile, prompt: d.prompt, depth: escalations,
-                                                          agentType: d.type, taskID: d.taskID, parent: d.parentRunID, escalatedFrom: previousEngine),
+                                                          agentType: d.type, taskID: d.taskID, parent: d.parentRunID, escalatedFrom: previousEngine,
+                                                          label: d.title, owner: .agent),
                   let runID = resolved.runID else { index += 1; continue }
             lastRunID = runID
             active.append(ActiveAgent(id: runID, type: d.type, engine: candidate.engine, model: candidate.model, startedAt: Date(), parent: d.parentRunID,
                                       isHeavy: isHeavy(candidate, d.profile)))
             runTracking[runID] = trackingID
+            if !d.steps.isEmpty { audit.hub?.setSteps(runID, d.steps) }
             onEvent?("\(d.type) started using \(resolved.name)")
             audit.activity("agent", "\(d.type) started using \(resolved.name)", runID: runID, taskID: d.taskID)
 
@@ -202,12 +208,17 @@ final class AgentRunManager {
                     break repairLoop                                       // engine failed → escalate to the next candidate
                 }
                 if let validator = d.validator {
+                    audit.hub?.setPhase(runID, .verifying, activity: "Validating output")
+                    audit.hub?.emit(runID, .validationStarted, source: "JARVIS", summary: "Validating the answer")
                     let v = await validator(result.text)
+                    audit.hub?.emit(runID, .validationFinished, source: "JARVIS", summary: v.passed ? "Validation passed" : "Validation failed: \(v.detail)", severity: v.passed ? .success : .warning)
                     lastValidation = v.passed ? .passed : .failed
                     if !v.passed {
                         audit.update(runID) { $0.validationStatus = .failed; $0.retryCount += 1 }
                         if repairsLeft > 0 {
                             repairsLeft -= 1
+                            audit.hub?.noteRetry(runID, count: audit.record(runID)?.retryCount ?? 1)
+                            audit.hub?.setPhase(runID, .running, activity: "Repair attempt")
                             prompt = "Your previous answer did not pass validation (\(v.detail)). Answer again, following the original instructions exactly.\n\nOriginal task:\n\(basePrompt)"
                             continue repairLoop
                         }
@@ -231,6 +242,7 @@ final class AgentRunManager {
             prompt = basePrompt
             if index < candidates.count {
                 audit.update(runID) { $0.escalatedTo = candidates[index].engine.rawValue; $0.status = .escalated }
+                audit.hub?.noteEscalation(runID, from: candidate.engine.displayName, to: candidates[index].engine.displayName)
                 onEvent?("Escalated to \(candidates[index].engine.displayName)")
                 audit.activity("escalation", "\(d.type) escalated from \(candidate.engine.displayName) to \(candidates[index].engine.displayName)", runID: runID, taskID: d.taskID)
             }

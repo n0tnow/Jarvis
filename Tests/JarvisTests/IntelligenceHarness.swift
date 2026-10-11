@@ -11,6 +11,8 @@ final class IntelligenceHarness {
     let repo: JarvisRepository
     let artifacts: ArtifactStore
     let audit: AuditRecorder
+    let hub: ExecutionHub
+    var observatory: AgentObservatory!
     let prefs = Preferences(defaults: UserDefaults(suiteName: "jarvis-ih-\(UUID().uuidString)")!)
     let store = JarvisStore()
     let conversation = ConversationStore()
@@ -38,6 +40,8 @@ final class IntelligenceHarness {
         repo = JarvisRepository(database: database)
         artifacts = ArtifactStore(paths: paths, database: database)
         audit = AuditRecorder(repository: repo)
+        hub = ExecutionHub(repository: repo, artifacts: artifacts, audit: audit)
+        audit.hub = hub
         providers = ProviderManager(preferences: prefs, environmentBase: ["PATH": "/usr/bin:/bin", "HOME": NSTemporaryDirectory()], workingDirectory: dir + "/work")
         openCode = OpenCodeService(repository: repo, preferences: prefs, environmentBase: ["PATH": "/usr/bin:/bin", "HOME": NSTemporaryDirectory()], providerWorkspace: dir + "/work")
         let (rt, rdir, pidfile) = FakeWorker.makeRuntime(mode: localMode, idleUnload: 300)
@@ -45,8 +49,11 @@ final class IntelligenceHarness {
         supervisor = ProviderSupervisor(providers: providers, openCode: openCode, local: runtime, resources: resources, repository: repo)
         coordinator = IntelligenceCoordinator(providers: providers, supervisor: supervisor, audit: audit, preferences: prefs)
         agents = AgentRunManager(coordinator: coordinator, resources: resources)
+        observatory = AgentObservatory(hub: hub, supervisor: supervisor, openCode: openCode, local: runtime, repository: repo, artifacts: artifacts)
+        observatory.demo = ObservatoryDemo(hub: hub)
         DemoScenario.seed(store)
         service = ConversationService(store: store, conversation: conversation, windows: windows, resolver: coordinator)
+        hub.installStopRouting(conversation: service, agents: agents, userTask: { _ in nil }, demo: { [weak self] in self?.observatory.demo })
         let me = self
         providers.probeOverride = { id, _ in
             await MainActor.run { ProviderStatus(id: id, state: me.states[id] ?? .notInstalled, version: "1.0.0", executablePath: me.providerPaths[id]) }
@@ -127,6 +134,25 @@ final class IntelligenceHarness {
         return path
     }
 
+    /// Claude answering in several deltas (a secret may be split across them).
+    @discardableResult
+    func installClaude(chunks: [String]) -> String {
+        let marker = "\(dir)/claude.launches"
+        let deltas = chunks.map { "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"\($0)\"}}}" }.joined(separator: "\n")
+        let path = FakeCLI.script("echo \"$$\" >> \(marker)\ncat >/dev/null\ncat <<'EOF'\n{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"sess-1\"}\n\(deltas)\n{\"type\":\"result\",\"is_error\":false,\"result\":\"x\"}\nEOF", in: dir, name: "claude")
+        providerPaths[.claudeCode] = path
+        return path
+    }
+
+    /// Every artifact file's text (to prove nothing sensitive was written to disk).
+    func artifactFilesText() -> String {
+        var out = ""
+        if let e = FileManager.default.enumerator(at: paths.artifacts, includingPropertiesForKeys: nil) {
+            for case let url as URL in e { if let d = try? Data(contentsOf: url) { out += String(decoding: d, as: UTF8.self) + "\n" } }
+        }
+        return out
+    }
+
     func launches(_ name: String) -> Int {
         ((try? String(contentsOfFile: "\(dir)/\(name).launches", encoding: .utf8)) ?? "").split(separator: "\n").count
     }
@@ -144,7 +170,7 @@ final class IntelligenceHarness {
     /// Everything stored in SQLite as one string (to assert that nothing sensitive was persisted).
     func databaseText() -> String {
         var out = ""
-        for table in ["agent_runs", "activity_events", "tool_executions", "tasks", "artifacts", "model_benchmarks", "model_registry", "provider_health"] {
+        for table in ["agent_runs", "activity_events", "tool_executions", "tasks", "artifacts", "model_benchmarks", "model_registry", "provider_health", "agent_events", "agent_run_steps"] {
             for row in (try? database.read("SELECT * FROM \(table)")) ?? [] { out += "\(row)\n" }
         }
         return out

@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1]
+    static let all: [Migration] = [v1, v2]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -156,6 +156,32 @@ struct Migration: Sendable {
             last_failure_at REAL, last_error_category TEXT, cooldown_until REAL,
             last_success_at REAL, updated_at REAL NOT NULL,
             PRIMARY KEY (engine, subject)
+        )
+        """,
+    ])
+
+    /// V2 — agent observability (V0.3.2): run label/progress/activity, sanitized console events, structured steps.
+    /// Events hold ONLY text that already crossed `OutputSanitizer`; there is no raw-output table.
+    static let v2 = Migration(version: 2, name: "agent observability", statements: [
+        "ALTER TABLE agent_runs ADD COLUMN label TEXT",
+        "ALTER TABLE agent_runs ADD COLUMN progress_source TEXT",
+        "ALTER TABLE agent_runs ADD COLUMN steps_total INTEGER",
+        "ALTER TABLE agent_runs ADD COLUMN steps_done INTEGER",
+        "ALTER TABLE agent_runs ADD COLUMN progress_fraction REAL",
+        "ALTER TABLE agent_runs ADD COLUMN activity TEXT",
+        """
+        CREATE TABLE agent_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE, seq INTEGER NOT NULL,
+            ts REAL NOT NULL, kind TEXT NOT NULL, source TEXT NOT NULL, severity TEXT NOT NULL, summary TEXT NOT NULL,
+            detail TEXT, artifact_id TEXT, UNIQUE (run_id, seq)
+        )
+        """,
+        "CREATE INDEX idx_agent_events_run ON agent_events(run_id, seq)",
+        "CREATE INDEX idx_agent_events_ts ON agent_events(ts)",
+        """
+        CREATE TABLE agent_run_steps (
+            run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE, idx INTEGER NOT NULL, title TEXT NOT NULL,
+            weight REAL NOT NULL DEFAULT 1, state TEXT NOT NULL, PRIMARY KEY (run_id, idx)
         )
         """,
     ])

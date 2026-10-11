@@ -55,6 +55,8 @@ final class ConversationService {
     private(set) var isResponding = false
     private(set) var respondingProvider: ProviderID?
     private(set) var respondingProviderName: String?
+    /// Audit/observatory id of the run currently being answered (so Stop can be addressed by run id).
+    private(set) var respondingRunID: UUID?
     var hasProviders: Bool { resolver.hasProviders }
 
     init(store: JarvisStore, conversation: ConversationStore, windows: any JarvisWindowControlling,
@@ -203,6 +205,7 @@ final class ConversationService {
     private func runAttempt(_ resolved: ResolvedProvider, kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID) async -> Attempt {
         respondingProvider = resolved.id
         respondingProviderName = resolved.name
+        respondingRunID = resolved.runID
         conversation.setProvider(messageID, resolved.name)
         resolver.providerStarted(resolved.id)
         store.log("\(resolved.name) response started", kind: .info)
@@ -255,6 +258,7 @@ final class ConversationService {
         responseMessageID = nil
         respondingProvider = nil
         respondingProviderName = nil
+        respondingRunID = nil
         if ownsThinking, store.state == .thinking { store.setState(.idle) }   // back to calm; provider errors never leave JARVIS stuck
         ownsThinking = false
     }
