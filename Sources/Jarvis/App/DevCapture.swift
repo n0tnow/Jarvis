@@ -92,6 +92,20 @@ enum DevCapture {
             w.showCompactHUD(); await settle(800)
             snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_task_active", in: directory)
             w.hideCompactHUD()
+            // V0.5: proposals (the completed demo task produced a "no regression test" finding; add a critical one for the visual contrast)
+            context.opportunities.settings = { AutonomySettings(mode: .askBeforeActing) }
+            for _ in 0..<80 where context.opportunities.pending.isEmpty { await settle(100) }
+            if let done = engine.orderedViews.first(where: { $0.task.state == .completed }), let root = done.task.workspaceRoot {
+                _ = await context.opportunities.ingest(RawFinding(origin: .systemMaintenance, title: "Push the branch to origin", summary: "The fix is committed locally only.", category: .maintenance,
+                                                                   evidence: [EvidenceItem(kind: .taskResult, summary: "The task changed calc.py", reference: "calc.py")], affectedPaths: ["calc.py"],
+                                                                   originTaskID: done.id, projectRoot: root, eventKey: "capture:critical"))
+            }
+            await settle(500)
+            context.hud.section = .tasks; w.showFullHUD(section: .tasks); context.hud.selectedTaskID = nil; await settle(700)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "tasks_proposals", in: directory)
+            w.showCompactHUD(); await settle(700)
+            snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_suggestion", in: directory)
+            w.hideCompactHUD()
             engine.cancelAll(); await engine.waitUntilIdle()
             context.hud.selectedTaskID = nil; context.hud.section = .dashboard
             for p in projects { try? FileManager.default.removeItem(atPath: p) }

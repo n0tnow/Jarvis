@@ -11,10 +11,12 @@ import Foundation
 ///   --provider-live-test    REAL requests through ConversationService→ProviderManager→provider (uses your subscriptions; opt-in), print results, exit
 ///   --intelligence-live-test  REAL tests of the V0.3.1 stack (SQLite, local Qwen, OpenCode free model, routing, lifecycle); opt-in
 ///   --task-live-test        REAL end-to-end test of the V0.4 task engine on isolated fixture projects (OpenCode free preferred); opt-in
+///   --proactive-live-test   REAL test of the V0.5 proactive layer (opportunities, policy, proposals, auto action, denial, restart) on isolated fixtures; opt-in
 ///   --benchmark-models      (with the above) also run the benchmark suite on verified-free OpenCode models and record results
 ///   --demo-agents           developer-only: simulate a few agent runs (never persisted, labelled SIMULATED)
 ///   --demo-stress           developer-only: simulate a high-rate console stream (performance measurement)
 ///   --demo-tasks <n>        developer-only (needs --no-providers): n scripted autonomous tasks parked on a blocked coding agent (performance measurement)
+///   --demo-proposals        developer-only (needs --no-providers): one scripted task finishes and leaves a pending proposal + a critical one (performance measurement)
 ///   --no-providers          never contact Claude Code / Codex (providers report "not installed"); used by verify.sh
 ///   --smoke-test            run the automated window/state smoke test, print results, exit
 ///   --close-after <sec>     hide all HUD windows after <sec> seconds (to observe the closed/idle resource profile)
@@ -32,8 +34,10 @@ struct LaunchOptions {
     var demoAgents = false
     var demoStress = false
     var demoTasks = 0
+    var demoProposals = false
     var intelligenceLiveTest = false
     var taskLiveTest = false
+    var proactiveLiveTest = false
     var benchmarkModels = false
     var liveDirectory: String?
 
@@ -48,9 +52,11 @@ struct LaunchOptions {
             case "--no-providers": noProviders = true
             case "--demo-agents": demoAgents = true
             case "--demo-stress": demoStress = true
+            case "--demo-proposals": demoProposals = true
             case "--demo-tasks": demoTasks = it.next().flatMap(Int.init) ?? 1
             case "--intelligence-live-test": intelligenceLiveTest = true
             case "--task-live-test": taskLiveTest = true
+            case "--proactive-live-test": proactiveLiveTest = true
             case "--benchmark-models": benchmarkModels = true
             case "--live-dir": liveDirectory = it.next()
             case "--capture": captureDirectory = it.next()

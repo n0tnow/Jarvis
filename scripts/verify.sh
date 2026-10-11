@@ -61,7 +61,7 @@ swift_db=$(grep -rln "sqlite3_open" Sources | grep -v Persistence/SQLiteDatabase
 [ -z "$swift_db" ] && pass "raw SQLite access is confined to Persistence/SQLiteDatabase.swift" || fail "raw sqlite3 use outside the persistence engine: $swift_db"
 
 # --- V0.3.2 Agent Observatory: raw provider output may only enter observable/durable state through the sanitization boundary ---
-forbid "no pseudo-terminal / embedded shell (Agent Console is read-only JARVIS-managed output)" "forkpty|openpty|posix_openpt|/dev/ptmx|NSTask|\\bsudo\\b" "^Sources/Jarvis/Tasks/TaskPlan\\.swift"
+forbid "no pseudo-terminal / embedded shell (Agent Console is read-only JARVIS-managed output)" "forkpty|openpty|posix_openpt|/dev/ptmx|NSTask|\\bsudo\\b" "^Sources/Jarvis/Tasks/TaskPlan\\.swift|^Sources/Jarvis/Proactive/OpportunityAssessor\\.swift"
 forbid "console text enters the hub only via SafeProvider / SafeToolOutput (or the labelled developer simulation)" "\\.appendOutput\\(" "^Sources/Jarvis/Observability/(SafeProvider|SafeToolOutput|ObservatoryDemo|ExecutionHub)\\.swift"
 forbid "console events are persisted only by the hub / audit recorder (events are sanitized by construction)" "\\.appendEvents\\(" "^Sources/Jarvis/(Observability/ExecutionHub|Intelligence/AuditRecorder|Persistence/JarvisRepository)\\.swift"
 forbid "console output artifacts are written only by the hub" "folder: *\\.providerOutput" "^Sources/Jarvis/Observability/ExecutionHub\\.swift"
@@ -72,7 +72,7 @@ tracked_logs=$(git ls-files 2>/dev/null | grep -E '\.(log|ndjson)$|(^|/)console[
 
 
 # --- V0.4 Autonomous task engine: bounded, user-initiated, no unrestricted write/shell/Git power ---
-forbid "no destructive/remote Git operations anywhere in the product (reset --hard, clean, force push, push, checkout -f, rebase, filter-branch)" "reset +--hard|git +clean|clean +-f|push +--force|push +-f|checkout +-f|filter-branch|\"push\"|\"rebase\"|git +push|git +commit" "^Sources/Jarvis/Tasks/TaskPlan\\.swift"
+forbid "no destructive/remote Git operations anywhere in the product (reset --hard, clean, force push, push, checkout -f, rebase, filter-branch)" "reset +--hard|git +clean|clean +-f|push +--force|push +-f|checkout +-f|filter-branch|\"push\"|\"rebase\"|git +push|git +commit" "^Sources/Jarvis/Tasks/TaskPlan\\.swift|^Sources/Jarvis/Proactive/OpportunityAssessor\\.swift"
 git_mut=$(grep -nE '"(commit|push|reset|clean|checkout|add|rm|stash|merge|rebase|pull|fetch|clone|config|tag|branch)"' Sources/Jarvis/Tasks/GitTool.swift | grep -v '^\s*//' || true)
 [ -z "$git_mut" ] && pass "GitTool is read-only (status/branch/HEAD only)" || { fail "GitTool contains a mutating Git subcommand"; echo "$git_mut" | head -3; }
 shells=$(grep -nE 'static let names: Set<String> = .*"(sh|bash|zsh|dash|ksh|env|curl|wget|git|rm|osascript|perl|ruby|ssh|sudo)"' Sources/Jarvis/Tasks/CommandProfiles.swift || true)
@@ -86,6 +86,25 @@ ui_db=$(grep -rnE 'app\.repository|\.repository\??\.(update|insert|setTaskStatus
 [ -z "$ui_db" ] && pass "the UI never writes the task database (task/step/approval state changes only through TaskEngine)" || { fail "UI touches the repository"; echo "$ui_db" | head -3; }
 tracked_fix=$(git ls-files 2>/dev/null | grep -E 'jarvis-task-(demo|fixture)|(^|/)\.jarvis/|task-(checkpoint|report)' || true)
 [ -z "$tracked_fix" ] && pass "no task fixture, checkpoint or report output is tracked by git" || fail "tracked task output: $tracked_fix"
+
+
+# --- V0.5 Proactive reasoning: a DECISION layer above the task engine — it never executes, never approves itself, never polls ---
+# (OpportunityAssessor.swift holds DETECTION keywords such as "git push"/"purchase": words that make the policy stricter, not actions.)
+pro_writes=$(grep -rnE '\.write\(to:|\.write\(contentsOf|createFile\(|removeItem\(|moveItem\(|copyItem\(|setAttributes\(|Process\(\)|ManagedProcess|CommandRunner|\.apply\(|\.delete\(' Sources/Jarvis/Proactive | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$pro_writes" ] && pass "the proactive layer never edits files, deletes, applies edits or launches processes (only the V0.4 TaskEngine executes)" || { fail "proactive layer executes something"; echo "$pro_writes" | head -3; }
+pro_tools=$(grep -rn 'ProjectTools(' Sources/Jarvis/Proactive | grep -v 'capabilities: .readOnly' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$pro_tools" ] && pass "the proactive layer only reads the project (ProjectTools with readOnly capabilities)" || { fail "proactive layer uses a writing ProjectTools"; echo "$pro_tools" | head -3; }
+pro_poll=$(grep -rnE 'Task\.sleep|Timer\.|asyncAfter|scheduledTimer|DispatchSource' Sources/Jarvis/Proactive | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$pro_poll" ] && pass "proactive reasoning is event-driven (no timers, no polling, no sleeping)" || { fail "polling/timer in the proactive layer"; echo "$pro_poll" | head -3; }
+pro_decide=$(grep -rnE 'status = \.approved|state = \.approved|\.approve\(' Sources/Jarvis/Proactive Sources/Jarvis/Persistence/OpportunityRepository.swift | grep -v 'Proactive/ProposalService.swift' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$pro_decide" ] && pass "only ProposalService records proposal decisions (no model/provider text can approve)" || { fail "approval state written outside ProposalService"; echo "$pro_decide" | head -3; }
+pro_callers=$(grep -rn 'proposalService\.approve(' Sources | grep -v 'Sources/Jarvis/UI/' || true)
+[ -z "$pro_callers" ] && pass "proposals are approved only from the HUD buttons" || { fail "proposal approval called outside the UI"; echo "$pro_callers" | head -3; }
+pro_submit=$(grep -rn 'tasks\.submit(\|taskEngine\.submit(\|engine\.submit(' Sources/Jarvis/Proactive | grep -v 'Proactive/OpportunityEngine.swift' || true)
+[ -z "$pro_submit" ] && pass "automatic and approved actions become tasks only through OpportunityEngine → TaskEngine.submit" || { fail "task creation bypasses OpportunityEngine"; echo "$pro_submit" | head -3; }
+[ "$(grep -c 'neverGranted' Sources/Jarvis/Proactive/OpportunityPolicy.swift)" -ge 1 ] && pass "the policy treats never-grantable capabilities as critical" || fail "policy no longer references neverGranted capabilities"
+pro_ext=$(grep -rnE 'StoreKit|SecItem|paidAPI|URLSession|openai\.com|anthropic\.com' Sources/Jarvis/Proactive | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$pro_ext" ] && pass "no paid-API / purchase / credential execution code in the proactive layer" || { fail "external-effect code in the proactive layer"; echo "$pro_ext" | head -3; }
 
 print "== Smoke test (real window manager, store, status item)"
 log=$(mktemp)

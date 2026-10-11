@@ -460,6 +460,40 @@ enum SmokeTest {
             await resetWorld()
         }
 
+        // --- V0.5 proactive layer on the real app context: scripted agents + temporary project + temporary database (no provider, no quota)
+        do {
+            let engine = context.taskEngine
+            let original = engine.agents
+            let runner = DemoAgentRunner(audit: context.audit)
+            engine.agents = runner
+            let prefsSettings = context.opportunities.settings
+            context.opportunities.settings = { AutonomySettings(mode: .askBeforeActing) }
+            let project = TaskDemo.makeProject()
+            defer { engine.agents = original; context.opportunities.settings = prefsSettings; try? FileManager.default.removeItem(atPath: project) }
+            check("V0.5 the default autonomy mode is conservative (Ask Before Acting) with proactive reasoning on", context.preferences.autonomyMode == .askBeforeActing && context.preferences.proactiveReasoningEnabled && context.preferences.showProposals)
+            let tasksBefore = (try? context.repository?.engineTasks(limit: 100).count) ?? 0
+            let id = await { () -> UUID? in if case .success(let id) = await engine.submit(goal: "Fix the failing calculation test", kind: .development, workspacePath: project) { return id }; return nil }()
+            if let id { await engine.waitUntilFinished(id) }
+            let proposed = await waitUntil { !context.opportunities.pending.isEmpty }
+            let testFile = FileManager.default.contents(atPath: project + "/test_calc.py").map { String(decoding: $0, as: UTF8.self) } ?? ""
+            check("V0.5 a finished task produced ONE pending proposal and changed nothing by itself (Ask Before Acting)",
+                  proposed && context.opportunities.pending.count == 1 && ((try? context.repository?.engineTasks(limit: 100).count) ?? 0) == tasksBefore + 1 && testFile.components(separatedBy: "def test_").count == 2,
+                  "pending=\(context.opportunities.pending.count)")
+            w.showCompactHUD(); await settle(500)
+            let panel = NSApp.windows.first { $0 is HUDPanel }
+            check("V0.5 Compact HUD stays exactly 392×448 with a pending suggestion", panel?.frame.size == CompactHUDLayout.size, "\(String(describing: panel?.frame.size))")
+            svc.submit("show proposals", origin: .compactHUD); await settle(700)
+            check("V0.5 'show proposals' opens the Full HUD on Tasks (Compact closed)", context.hud.section == .tasks && w.isFullHUDOpen && !w.isCompactHUDOpen)
+            if let p = context.opportunities.pending.first {
+                _ = context.proposalService.deny(p.id, source: .test)
+                await settle(300)
+                check("V0.5 denying creates no task and records the decision (cooldown)", context.opportunities.pending.isEmpty && ((try? context.repository?.engineTasks(limit: 100).count) ?? 0) == tasksBefore + 1
+                      && ((try? context.repository?.opportunity(p.opportunityID)) ?? nil)?.status == .denied)
+            }
+            w.hideFullHUD(); w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
         print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")

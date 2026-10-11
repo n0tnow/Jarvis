@@ -11,9 +11,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
-        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && (options.smokeTest || options.captureDirectory != nil))
+        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && (options.smokeTest || options.captureDirectory != nil))
         let liveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true)
-            : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true) : nil)
+            : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true)
+            : (options.proactiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-proactive", isDirectory: true) : nil))
         context = AppContext(stubIntelligence: stubbed, dataDirectory: liveData)
         let ctx = context!
         Self.terminationHook = { MainActor.assumeIsolated { ctx.prepareForTermination() } }
@@ -36,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if options.demoAgents { context.observatory.demo?.startShowcase(); context.observatory.selectedRunID = context.hub.activeRuns.first { $0.agentType == "PlannerAgent" }?.id }
         if options.demoStress { context.observatory.selectedRunID = context.observatory.demo?.startStress(linesPerSecond: 400) }
         if options.demoTasks > 0, context.intelligenceIsStubbed { Task { await TaskDemo.park(context: context, count: options.demoTasks) } }
+        if options.demoProposals, context.intelligenceIsStubbed { Task { await TaskDemo.leaveProposals(context: context) } }
         if let state = options.state { DemoScenario.apply(state, to: context.store) }
         if options.openCompact { context.windows.showCompactHUD() }
         if options.openFull { context.windows.showFullHUD(section: options.section) }
@@ -51,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if options.intelligenceLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures"
             Task { await IntelligenceLiveTest.run(context: context, captureDirectory: dir, benchmark: options.benchmarkModels) }
+        }
+        if options.proactiveLiveTest {
+            let context = context!, dir = options.liveDirectory ?? "captures"
+            Task { await ProactiveLiveTest.run(context: context, captureDirectory: dir) }
         }
         if options.taskLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures"
@@ -71,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await DevCapture.run(directory: directory, context: context) }
         }
         // Find out which engines are actually usable (event-driven, once; no polling). Stubbed runs never touch real providers.
-        if !options.intelligenceLiveTest && !options.taskLiveTest {
+        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest {
             let context = context!
             Task { await context.refreshIntelligence(includeOpenCode: false) }     // OpenCode is read lazily (may start its background service)
         }
