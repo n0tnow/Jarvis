@@ -1,0 +1,9 @@
+{
+  "name": "com.jarvis.bridge",
+  "displayName": "JARVIS Editor Bridge",
+  "version": "0.6.0",
+  "unity": "2021.3",
+  "description": "Typed, local, file-based Editor bridge used by the JARVIS macOS app. No network, no arbitrary code execution: a fixed list of inspection and bounded mutation operations.",
+  "author": { "name": "JARVIS" },
+  "keywords": [ "jarvis", "editor", "bridge" ]
+}

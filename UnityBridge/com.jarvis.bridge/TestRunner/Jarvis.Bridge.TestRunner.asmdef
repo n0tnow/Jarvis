@@ -1,0 +1,14 @@
+{
+  "name": "Jarvis.Bridge.TestRunner",
+  "rootNamespace": "Jarvis.Bridge",
+  "references": [ "Jarvis.Bridge.Editor", "UnityEditor.TestRunner", "UnityEngine.TestRunner" ],
+  "includePlatforms": [ "Editor" ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [ "JARVIS_HAS_TEST_FRAMEWORK" ],
+  "versionDefines": [ { "name": "com.unity.test-framework", "expression": "1.1.0", "define": "JARVIS_HAS_TEST_FRAMEWORK" } ],
+  "noEngineReferences": false
+}
