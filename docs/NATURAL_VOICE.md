@@ -1,6 +1,6 @@
 # Natural Voice & Presence (V0.8)
 
-Status: IMPLEMENTED · AUTOMATED TESTED · **REAL TESTED with SYNTHETIC speech in a closed acoustic loop** (`--natural-voice-live-test`; the speaker→microphone coupling was measured on this Mac's real hardware) · **HUMAN SPEECH · WAKE/RECOGNITION IN A REAL ROOM · VOICE NATURALNESS · VOICEOVER · PHYSICAL FEEL: MANUAL TEST REQUIRED** (README 224–343). Decisions: DEC-069…086 (`DECISIONS.md`). Issues: JARVIS-V08-1…12 (`KNOWN_ISSUES.md`). Builds on `VOICE_IO.md` (V0.7), which stays valid for everything it describes (Push-to-Talk, STT providers, speech rendering).
+Status: IMPLEMENTED · AUTOMATED TESTED · **REAL TESTED with SYNTHETIC speech in a closed acoustic loop** (`--natural-voice-live-test`; the speaker→microphone coupling was measured on this Mac's real hardware) · **HUMAN SPEECH · WAKE/RECOGNITION IN A REAL ROOM · VOICE NATURALNESS · VOICEOVER · PHYSICAL FEEL: MANUAL TEST REQUIRED** (README 224–343). Decisions: DEC-069…087 (`DECISIONS.md`). Issues: JARVIS-V08-1…14 (`KNOWN_ISSUES.md`). Builds on `VOICE_IO.md` (V0.7), which stays valid for everything it describes (Push-to-Talk, STT providers, speech rendering).
 
 ## 1. What it is (and is not)
 
