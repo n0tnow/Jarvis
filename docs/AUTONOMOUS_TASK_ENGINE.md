@@ -190,3 +190,6 @@ would be required). No Git commit/push. Resume after a restart is explicit. Buil
 ## Voice-created tasks (V0.7)
 A spoken goal ("Jarvis, analyze the test project") goes through `ConversationService.submit(source: .voice)` → `GoalIntake` → `TaskEngine.submit` — the same single path. The task records `input_channel = voice` (informational) and is otherwise identical: `origin = userTask`, same capabilities, risk, workspace guard, approvals and validation. The voice turn ends with the spoken acknowledgement ("On it. I created the task …"); the task keeps running on its own and its completion is NOT announced by voice (text/UI only). Approvals are never decided by speech (DEC-065).
 
+
+## Hands-free tasks (V0.8)
+A hands-free request ("Jarvis, … analyze the multiplayer issue") is the same `submit(source: .voice)` → `GoalIntake` → `TaskEngine.submit` path with `input_channel = voice`; wake detection grants no capability and no approval. The voice turn ends with the spoken acknowledgement and the follow-up window (≤ 8 s) — it never stays open for the task, and task completion is never spoken spontaneously (DEC-083). Wake mode and the sentinel are independent of the task engine: a running task, OpenCode or a loaded Qwen do not block wake detection (measured next to Qwen; Unity/OpenCode: README 285–290).

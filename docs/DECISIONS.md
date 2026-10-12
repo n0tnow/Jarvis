@@ -323,3 +323,98 @@ Decision: The Whisper helper (≈0.86 GB resident while loaded, ≈1.6 s cold st
 Status: Accepted (V0.7)
 Decision: V0.7 Voice I/O Foundation (this milestone) · V0.8 Natural Voice Session (wake word, VAD, hands-free turn-taking, barge-in, interruption) · V0.9 Web Research & Asset Acquisition · V0.10 Project Memory · V0.11 General Computer Use · V0.12 Advanced Multi-Agent / Routing · V1.0 integrated stable JARVIS. Asset acquisition is NOT V0.7. Items of the old plan that are not in the new list (Unity multiplayer workflows, self-controlled UI, reports) are unscheduled backlog attached to the nearest milestone (see `docs/ROADMAP.md`).
 
+
+## DEC-069 — Wake mode is opt-in; the microphone model changes explicitly
+Status: Accepted (V0.8)
+Decision: Wake listening is OFF by default (`Key.wakeEnabled … ?? false`), is never started unconditionally (only `HandsFreeCoordinator.applySettings()` — saved preference + voice enabled + microphone allowed + helper installed), and the menu bar/Settings can switch it off at any time; Push-to-Talk (right ⌥) is unchanged and works with wake mode off, failed or unavailable. Turning wake mode off stops the helper and removes the microphone engine.
+Why: continuous listening is the largest privacy change since V0.7; it must be a visible, deliberate choice. `verify.sh` and unit guards pin the default and the single entry point.
+
+## DEC-070 — The wake word is detected locally by a small head on frozen speech features, trained on synthetic speech
+Status: Accepted (V0.8)
+Decision: `jarvis_sentinel_worker.py` (ONNX Runtime, CPU, one thread, offline, no key) runs openWakeWord's frozen mel + speech-embedding models (Apache-2.0, release v0.5.1, pinned SHA-256) and the JARVIS head `jarvis_head.npz` trained locally (`scripts/train_wake_head.sh`) on synthetic speech from Supertonic 3 with augmentation and three hard-negative mining rounds. Shipped rules: threshold 0.9, patience 3 (240 ms), utterance-initial (`WakeContextGate`, segment ≤ 1.6 s). The pretrained "hey jarvis" model is NOT used (CC BY-NC-SA weights, phrase "Hey Jarvis", bare word 19 %). Cloud/keyed engines (Porcupine) and continuous-STT wake are excluded by policy.
+Why: measured on 133 held-out clips (unseen Apple voices) and 2.9 h of ordinary speech: 70/70 positives, 0 false events (`docs/NATURAL_VOICE.md` §3, `tune_wake_rules.py` sweep). Honest limits: synthetic evidence only; acoustic look-alikes can fire (JARVIS-V08-1).
+
+## DEC-071 — The wake buffer is bounded and memory-only; full STT never runs before the wake word
+Status: Accepted (V0.8)
+Decision: Before wake only the sentinel hears audio: a ≤ 3 s ring (`AudioRing`), an energy gate that sends the helper nothing in a quiet room, a bounded 120-frame queue, 100 ms messages; no recogniser session, transcript, task or log exists. A lone "Jarvis" never opens the recogniser (`continuationSeconds` decides whether speech continues in the same breath). Nothing is written to disk (no audio code, no schema; live test scans the data and runtime directories).
+Why: the privacy model must be provable, not promised.
+
+## DEC-072 — Wake is activation, not authentication; voice authority is unchanged
+Status: Accepted (V0.8)
+Decision: Anyone near the microphone can wake JARVIS; a hands-free transcript has exactly the authority of typed text and passes `ConversationService.submit(source: .voice)`; spoken "approve/yes/evet onayla/tamam yap" never approves (ApprovalGuard, V0.7 DEC-065, live-tested through the wake path); no voice biometrics, no spoken confirmation protocol; media, other people and JARVIS' own voice are not trusted more than typing.
+Why: authentication is out of scope; the existing approval boundary is the safety net.
+
+## DEC-073 — VAD is Silero (in the sentinel); the energy detector only gates
+Status: Accepted (V0.8)
+Decision: Silero VAD (MIT, 1.8 MB ONNX) runs in the same helper as the wake head (no extra runtime). The adaptive-energy detector failed in 12 dB noise (never ended a segment, fired on a fan) and is used only as the idle gate (`EnergyGate`). VAD never carries authority.
+Why: benchmark on pause/noise fixtures (`bench_vad.py`).
+
+## DEC-074 — Natural endpointing is hint-based, bounded and LLM-free
+Status: Accepted (V0.8)
+Decision: `EndpointPolicy`: 0.5–0.65 s after a finished sentence, 1.0 s unknown, 1.5 s unfinished, hard cap 1.7 s, turn cap 45 s; the hint is the recogniser's provisional transcript, refreshed by an immediate preview when the VAD closes; a stop after a hesitation («Unity'deki.») is not trusted.
+Why: 0.9 s hesitations must not split a turn (measured); finished commands should not wait a full second (0.5–0.68 s measured).
+
+## DEC-075 — One turn manager coordinates I/O only
+Status: Accepted (V0.8)
+Decision: `TurnMachine` (pure) + `HandsFreeCoordinator` (effects) own wake/VAD/utterance/endpoint/response/barge-in states; the V0.7 `VoiceCoordinator` still owns the capture/STT/submit session; Push-to-Talk wins over hands-free at any time; follow-up windows (8 s, ≤ 8 turns) are bounded and not opened after a PTT turn; restart never restores an active state. No reasoning, approval, file or task code is reachable (structural guards).
+Why: one authoritative state, no second assistant.
+
+## DEC-076 — Barge-in uses JARVIS' own known output, not an echo canceller
+Status: Accepted (V0.8)
+Decision: Speech is played by JARVIS' own output engine (`SpeechPlayer`), so the reference level is known; `BargeInDetector` fires on mic ≥ 8 dB above the predicted echo + VAD speech + ≥ 0.3 s + ≥ 65 % duty; coupling learned per playback but capped; transcripts that quote JARVIS' own recent speech are dropped. Voice Processing I/O was measured and rejected as the default (≈ 15 % of a core continuously, partial cancellation of other processes' audio, fragile (re)initialisation). No claim of full-duplex AEC.
+Why: simplest robust solution with evidence (real coupling on this Mac; closed-loop live test: onset→decision 320 ms, stop 24–36 ms, no false barge-in).
+
+## DEC-077 — JARVIS must never create a turn from its own voice
+Status: Accepted (V0.8)
+Decision: Wake events are ignored unless the turn manager is in WAKE and nothing of JARVIS is audible and 0.7 s passed since it spoke (ring cleared); VAD during speech feeds only the barge-in detector; the post-recognition quote filter is the last net. Tested with JARVIS saying «Jarvis» over its own echo.
+Why: mandatory requirement; also protects against media saying the name only to the extent that the rules (utterance-initial, patience) do.
+
+## DEC-078 — The preferred JARVIS voice is local neural (Supertonic 3); Apple system voices remain the fallback
+Status: Accepted (V0.8) — naturalness NOT verified by a human
+Decision: `neural-supertonic` (ONNX Runtime CPU helper, model `Supertone/supertonic-3` @ `724fb5ab…`, OpenRAIL-M weights / MIT code, 381 MB, ≈ 0.5 GB RSS, offline, no key, cost class LOCAL) is chosen by Auto when installed, healthy and memory pressure is normal; otherwise `apple-synthesizer`. Category: incremental chunk TTS. Rejected: Chatterbox (1.8–3.2 GB, 4.2 GB peak, 2 s first audio), Piper (three unrelated speakers, NC/unclear voice licences, GPL engine), Kokoro (no Turkish).
+Why: same speaker style in Turkish and English, latency/memory/licence acceptable. Quality is a listening decision (manual A/B in Settings → Voice).
+
+## DEC-079 — JARVIS Voice Identity v1 is original and provider-independent
+Status: Accepted (V0.8)
+Decision: `JarvisVoiceIdentity` describes the character (mature male, calm, precise, restrained, medium-low, short pauses); `VoiceIdentityMapper` maps it to a synthesiser (presets Default = M5, Calm = M3, System Fallback). No actor/performer/person is imitated or cloned; no reference-voice input exists (`verify.sh`).
+Why: the product identity must not depend on, or infringe, anyone's voice.
+
+## DEC-080 — Microphone and speaker have explicit owners
+Status: Accepted (V0.8)
+Decision: `MicrophoneHub` is the only path to the microphone engine (wake subscription, utterance, Push-to-Talk adapter; engine exists only while subscribed); `SpeechPlayer` is the only output engine (output only, no input node); helpers go through `HelperHost` → `ManagedProcess`.
+Why: no two capture engines, no PTT-vs-wake fights, testable transitions.
+
+## DEC-081 — Voice turns ask the existing provider for a speakable answer; the answer stays one
+Status: Accepted (V0.8)
+Decision: `ResponsePresentation.voiceConversation` prepends a one-line preamble to the prompt of voice turns (all providers); no second model call rewrites anything; speech = the shown answer (V0.7 DEC-063).
+Why: concise spoken answers without a second, contradictory text.
+
+## DEC-082 — Mixed-language handling is bounded
+Status: Accepted (V0.8)
+Decision: `LanguageContinuity` keeps the reply language inside a conversation; `TechnicalTerms` only restores canonical spelling of a fixed term list in final transcripts (never adds/guesses words). Whisper turbo stays an optional model.
+Why: mixed Turkish/English recognition is still the weakest case; no hallucinating post-processing.
+
+## DEC-083 — No surprise speech
+Status: Accepted (V0.8)
+Decision: JARVIS speaks only answers to voice turns, previews and the wake acknowledgement; task completion, proposals and approvals are never announced aloud; a spoken acknowledgement of the wake word is optional (default: a short sound, no speech).
+Why: V0.8 adds presence, not interruptions.
+
+## DEC-084 — Helper supervision and resource policy
+Status: Accepted (V0.8)
+Decision: `HelperHost` (state, bounded restarts: 3 per 10 min then cooldown, controlled stop, tree kill at quit), sentinel liveness ping only while audio flows, neural voice on demand + 180 s idle unload + memory-pressure unload (the 124 MB sentinel stays), Auto falls back to Apple under pressure.
+Why: correctness over premium voice quality; no orphans; no idle timers.
+
+## DEC-085 — Models and runtimes are installed only by explicit scripts; weights are never committed
+Status: Accepted (V0.8)
+Decision: `scripts/setup_voice_ai.sh --natural` (pinned revisions/checksums) and `scripts/train_wake_head.sh`; `verify.sh` forbids tracked `onnx/npz/safetensors/gguf/audio`; JARVIS and its helpers never download (`auto_download=False`, `HF_HUB_OFFLINE`).
+Why: no surprise multi-GB downloads, reproducible provenance (`NATURAL_VOICE.md` §3.3, §8).
+
+## DEC-086 — Roadmap name for V0.8
+Status: Accepted (V0.8)
+Decision: V0.8 is "Natural Voice & Presence" (local wake word, VAD, hands-free turn taking, barge-in, self-speech suppression, neural JARVIS voice, prosody/identity, conversational latency). V0.9 Web Research & Asset Acquisition · V0.10 Project Memory · V0.11 General Computer Use · V0.12 Advanced Multi-Agent/Routing · V1.0 stable. Supersedes only the V0.8 row name of DEC-068.
+
+## DEC-087 — Barge-in measures the speech band in 20 ms slices; speech inside a deaf window is re-checked
+Status: Accepted (V0.8; refines DEC-078/079, supersedes nothing)
+Decision: the barge-in level is taken from the microphone after a 250 Hz second-order high-pass (`SpeechBandFilter`) and fed to `BargeInDetector` in 20 ms slices, so the ≥ 65 % duty rule works per slice (a dense click train or a door thud no longer looks like speech while the VAD is saturated by JARVIS' own echo). `TurnMachine` re-checks the VAD (`.deaf` timer) when speech began inside the acknowledgement/post-speech deaf window and is still going after it (a «Jarvis, … open the Tasks screen» comma pause used to lose the rest of the sentence). A diagnostics-only, text-free event trace (`HandsFreeCoordinator.eventTrace`, 80 entries, memory only) records names and times of turn events.
+Why: found by the closed-loop live test (clicks at +6 dB and a thud interrupted the answer; the one-breath English command was lost); both failures were reproduced and fixed with unit tests. Limits: JARVIS-V08-5 (a quiet voice under a loud echo may not interrupt).
+

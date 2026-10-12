@@ -1,6 +1,6 @@
 # Architecture (V0.1)
 
-Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.7 (voice I/O around the conversation pipeline; V0.6 Unity agent, V0.5 proactive layer, V0.4 task engine below). Decisions behind it: `DECISIONS.md`.
+Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.8 (natural voice & presence: wake word, VAD, hands-free turns, barge-in, neural voice — an I/O layer, no authority) on V0.7 (voice I/O around the conversation pipeline; V0.6 Unity agent, V0.5 proactive layer, V0.4 task engine below). Decisions behind it: `DECISIONS.md`.
 
 ## Shape
 
@@ -163,3 +163,12 @@ Seams for V0.8: `AudioInput` (any capture source), `VoiceCoordinator.pushToTalkP
 - V0.4–V0.7 are implemented (see above). Later (DEC-068): V0.8 natural voice session, V0.9 web research + asset acquisition, V0.10 project memory, V0.11 computer use, V0.12 advanced multi-agent — all through `TaskEngine.submit` and the V0.5 policy.
 - Voice (V0.7 done): `VoiceCoordinator` owns the voice lifecycle and only claims `JarvisState.listening` while capture runs (never clobbering another owner).
 - Self-controlled UI (V0.10, with project memory): protocol may need `currentSection`, `hideSettings`, and a "don't steal focus" open variant.
+
+## Natural voice & presence (V0.8 — DEC-069…086; details `NATURAL_VOICE.md`)
+```
+MicrophoneHub (ONE engine while anyone subscribes) ─ wake subscription (opt-in) ─► EnergyGate ─► SentinelRuntime ─► jarvis_sentinel_worker.py (wake head + Silero VAD; no STT, no network)
+                                                    ─ utterance / PTT subscription ─► VoiceCoordinator.beginUtterance ─► STTSession ─► FINAL ─► ConversationService.submit(source: .voice)
+SentinelRuntime events ─► HandsFreeCoordinator ─► TurnMachine (pure) ─► effects: start/end/discard utterance · stop speaking · acknowledge · single-shot timers
+VoiceResponseSpeaker ─► PlayerBackedTTSProvider(NeuralSpeechEngine | AppleSpeechEngine) ─► SpeechPlayer (own AVAudioEngine, OUTPUT only) ─► reference levels ─► BargeInDetector
+```
+`Sources/Jarvis/Voice/Natural/`: `EndpointPolicy`, `TurnMachine` (+ `WakeContextGate`), `BargeInDetector`, `HandsFreeCoordinator` (+ `VoicePresence`), `AudioHub` (`MicrophoneHub`, `HubAudioInput`, `AudioRing`, `EnergyGate`), `HelperHost` (+ `RestartBudget`), `SentinelRuntime`, `NeuralVoice` (runtime, engine, provider), `VoiceIdentity`, `TranscriptGuards` (`WakePhrase`, `SelfSpeechFilter`, `LanguageContinuity`), `TechnicalTerms`, `WakeCue`; `Voice/SpeechPlayer.swift`, `Voice/PlayerBackedTTS.swift`. Helpers (`scripts/voice-ai/`): `jarvis_sentinel_worker.py`, `jarvis_tts_worker.py`, `jarvis_wake_head.py`, `jarvis_audio_features.py`; bench/training tooling in `scripts/voice-ai/bench/`. Test/live-test only: `Services/Demo/VoiceTestRig.swift` (scripted microphone, simulated speaker, scripted answers), `App/NaturalVoiceLiveTest.swift`.

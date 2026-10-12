@@ -189,3 +189,6 @@ Mixed-language speech; Whisper previews are re-decodes; Apple provider needs mac
 ## 15. V0.7 vs V0.8 (preparation, not implementation)
 
 Extension points that exist: `AudioInput` (any capture source), `VoiceCoordinator.pushToTalkPressed/Released` (any trigger), `VoiceResponseSpeaker.stop` (barge-in hook), `STTSession` / `TextToSpeechProvider` (streaming providers), `VoiceSettings`. **Not implemented:** wake word, VAD/auto-endpointing, hands-free turn-taking, barge-in, full-duplex/echo handling, spoken confirmations. They need their own decisions (privacy: continuous capture; approvals: a confirmation protocol) — V0.8 may begin only with the user's approval.
+
+## 16. V0.8 (natural voice & presence)
+V0.8 builds on everything above and changes three things: wake mode (opt-in) adds a continuous, local, bounded listening path before Push-to-Talk is needed; speech is now played by JARVIS' own output engine (the Apple synthesiser renders with `write`, the neural voice returns PCM) so barge-in can tell the user from JARVIS; and the preferred voice is a local neural voice with the Apple voices as fallback. §1 "does not have a wake word …" and §15 are superseded for those items; everything else (privacy of raw audio, PTT rules, providers, sanitization, authority, stop semantics) is unchanged. See `NATURAL_VOICE.md`.

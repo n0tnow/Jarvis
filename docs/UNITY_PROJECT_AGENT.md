@@ -122,3 +122,6 @@ Every editor answer passes `UnityResponseSanitizer` in the single choke point `U
 ## 14. V0.6 vs later milestones
 
 V0.6 operates *existing* project content through typed editor operations. V0.7 turned out to be Voice I/O (see `VOICE_IO.md`; web research / asset acquisition moved to V0.9, DEC-068). Voice adds no Unity capability: a spoken “is Unity connected?” is the same typed question; a spoken Unity goal is a normal task. Web/asset work is not started: no web access, downloads, Asset Store or licence handling exists in JARVIS.
+
+## Natural voice (V0.8)
+Voice still adds no Unity capability: "Jarvis, Unity'deki son testler ne durumda?" is an ordinary request through the typed pipeline (deterministic state answers where the router has them, otherwise a model or a V0.4 task). The Unity bridge, policy and mutation lock are untouched; the heavy-state measurement (real headless editor + Qwen + Whisper + neural voice + wake sentinel) is in `NATURAL_VOICE.md` §11.

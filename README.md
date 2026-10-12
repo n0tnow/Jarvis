@@ -1,8 +1,8 @@
 # JARVIS
 
-A native macOS menu-bar AI operating layer (long-term). V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.7 voice I/O** (hold right ⌥ to talk — Turkish or English; the final transcript enters the SAME pipeline as typed text; local/system speech only) · **V0.4 autonomous task engine** (you give a bounded goal; JARVIS plans, executes with agents/tools, validates with real builds/tests, repairs within bounds, reports — user-initiated only) · **V0.3.2 agent observatory** (live sanitized consoles, truthful progress, history, Stop) · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. JARVIS contacts no network host itself.
+A native macOS menu-bar AI operating layer (long-term). V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.8 natural voice** (opt-in local wake word “Jarvis”, natural endpointing, barge-in, a local neural JARVIS voice — still the same pipeline) · **V0.7 voice I/O** (hold right ⌥ to talk — Turkish or English; the final transcript enters the SAME pipeline as typed text; local/system speech only) · **V0.4 autonomous task engine** (you give a bounded goal; JARVIS plans, executes with agents/tools, validates with real builds/tests, repairs within bounds, reports — user-initiated only) · **V0.3.2 agent observatory** (live sanitized consoles, truthful progress, history, Stop) · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. JARVIS contacts no network host itself.
 
-- **Version:** V0.7 — **READY FOR MANUAL TEST** (Voice I/O Foundation: Push-to-Talk, streaming/incremental STT, incremental TTS, voice session state, Turkish + English: `docs/VOICE_IO.md`). V0.6 — READY FOR MANUAL TEST (Unity Project Agent & Editor Bridge inside the V0.4 engine: `docs/UNITY_PROJECT_AGENT.md`). V0.5 — READY FOR MANUAL TEST (decision layer above the V0.4 task engine: `docs/PROACTIVE_REASONING.md`). V0.4 — READY FOR MANUAL TEST (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3, V0.3.1, V0.3.2 and V0.4 are not yet). Details: `docs/AUTONOMOUS_TASK_ENGINE.md`, `docs/AGENT_OBSERVABILITY.md`, `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
+- **Version:** V0.8 — **READY FOR MANUAL TEST** (Natural Voice & Presence: opt-in local wake word + VAD, hands-free turn taking with a bounded follow-up window, barge-in with self-speech suppression, local neural JARVIS voice with Apple fallback, original voice identity: `docs/NATURAL_VOICE.md`; not user-verified — human speech, voice naturalness and the real room are manual). V0.7 — READY FOR MANUAL TEST (Voice I/O Foundation: Push-to-Talk, streaming/incremental STT, incremental TTS, voice session state, Turkish + English: `docs/VOICE_IO.md`). V0.6 — READY FOR MANUAL TEST (Unity Project Agent & Editor Bridge inside the V0.4 engine: `docs/UNITY_PROJECT_AGENT.md`). V0.5 — READY FOR MANUAL TEST (decision layer above the V0.4 task engine: `docs/PROACTIVE_REASONING.md`). V0.4 — READY FOR MANUAL TEST (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3, V0.3.1, V0.3.2 and V0.4 are not yet). Details: `docs/AUTONOMOUS_TASK_ENGINE.md`, `docs/AGENT_OBSERVABILITY.md`, `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
 - Handoff for agents: `PROJECT_STATE.md`, `AGENTS.md` (includes the Git workflow: `main` only, linear history)
 
 ## Requirements
@@ -18,13 +18,16 @@ open build/Jarvis.app         # menu bar icon appears (no Dock icon)
 scripts/verify.sh             # full automated verification
 scripts/test.sh               # unit tests only
 scripts/setup_local_ai.sh     # optional, once: isolated MLX runtime (605 MB, 57 pinned packages) for the on-device model — downloads NO model
+scripts/setup_voice_ai.sh --natural  # optional, once (V0.8): isolated ONNX runtime (≈190 MB), 3 pinned wake/VAD feature models (4 MB, SHA-256 verified) and ONE pinned neural voice (Supertonic 3, ≈381 MB, OpenRAIL-M); then scripts/train_wake_head.sh trains the local “Jarvis” head (≈ 0.6 MB, synthetic speech, 20–60 min). Never downloaded by JARVIS itself
 scripts/setup_voice_ai.sh     # optional, once: isolated speech runtime (≈480 MB) + ONE pinned Whisper model (≈460 MB, MIT upstream) for the more accurate local recogniser; JARVIS never downloads it itself. Without it, voice uses Apple's on-device recogniser
 ```
 
-**Opt-in REAL tests** (V0.7: `Jarvis --voice-live-test [--voice-audible] [--voice-no-whisper] [--voice-real-mic] [--voice-combined]` — SYNTHETIC speech from the macOS voices through the real recognisers, the real conversation path and real TTS, real OS-level Right-Option key events, resource figures; silent by default) (spend only free/local engines plus two tiny Claude Code requests; never part of `verify.sh`):
+**Opt-in REAL tests** (V0.8: `Jarvis --natural-voice-live-test [--natural-audible] [--natural-acoustic] [--natural-combined] [--natural-idle <min>]` — SYNTHETIC speech through the real wake sentinel, turn manager, Whisper, the same ConversationService and the neural/Apple voice in a closed acoustic loop (scripted microphone + simulated speaker with this Mac's measured echo coupling); `--natural-acoustic` additionally measures the REAL speaker→microphone loop (audible, levels only); silent by default) (V0.7: `Jarvis --voice-live-test [--voice-audible] [--voice-no-whisper] [--voice-real-mic] [--voice-combined]` — SYNTHETIC speech from the macOS voices through the real recognisers, the real conversation path and real TTS, real OS-level Right-Option key events, resource figures; silent by default) (spend only free/local engines plus two tiny Claude Code requests; never part of `verify.sh`):
 `build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1/V0.3.2 stack, own data directory), `--unity-live-test [--unity-no-provider]` (V0.6: a REAL headless Unity editor started by JARVIS on a disposable fixture copied to a temp folder — typed scene/component/property edits, compile/domain reload, EditMode+PlayMode tests, Play Mode, Console delta, dirty-scene and Play-Mode protection, cancellation, relaunch, and real OpenCode-FREE-routed fixes of a compile error and a failing test; own data directory, never your game), `--proactive-live-test` (V0.5: real proposal → approval → V0.4 task, low-risk auto action, denial, relaunch — OpenCode FREE, isolated fixtures, own data directory), `--demo-proposals` (labelled simulated suggestions for the UI), `--task-live-test` (V0.4: the real task engine on isolated temporary fixture projects — OpenCode FREE preferred, own data directory, never the JARVIS repository) and `--provider-live-test` (V0.3 Claude Code / Codex).
 
 **Global shortcuts** (work while any app is focused; no permission): hold **Option** and press **Command** → toggle Compact HUD (fires ~0.3 s later unless it turns out to be a double press). Hold **Option** and press **Command twice quickly** (within 0.3 s) → toggle Full HUD. Either Command key. Ignored if you add another key, a click, Shift or Control (so ⌥⌘D, ⌥⌘-click etc. are untouched). Turn off in Settings → Enable global shortcuts.
+
+**Wake word (V0.8, Settings → Voice → Wake word “Jarvis”, OFF by default):** a small local detector listens for “Jarvis”; before it hears it nothing is transcribed, stored or sent (bounded in-memory audio; recognition starts only when you speak after the word). Say “Jarvis” (a soft sound, ATTENTIVE), speak, JARVIS answers in the JARVIS voice and listens for a follow-up for ≈ 8 s; speak over it to interrupt. Wake is an activation, not authentication — approvals stay HUD buttons. Needs `scripts/setup_voice_ai.sh --natural` + `scripts/train_wake_head.sh`; without them wake mode says why it is unavailable and Push-to-Talk keeps working.
 
 **Push-to-Talk (V0.7, Settings → Voice, off by default):** HOLD the **right Option (⌥) key by itself** for a moment, speak Turkish or English, release. The microphone is open only while it is held; the transcript shows while you speak and becomes ONE normal message when you let go; JARVIS answers in text and aloud (stop: the Stop button, the menu bar item, "stop talking", a new Push-to-Talk or typing). Needs the macOS microphone permission (asked on first use) and nothing else. Spoken "yes/approve" never approves anything — approvals are HUD buttons.
 
@@ -63,6 +66,7 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | **V0.4 autonomous task engine:** goal intake → durable task → validated structured plan → event-driven scheduler → analysis/coding/review agents + build/test tools → deterministic validation → bounded repair (1) + escalation (1) → checkpoints, report; workspace sandbox, write leases, Git baseline + user-change protection, approvals for destructive actions, cancellation, restart recovery (explicit resume) | IMPLEMENTED · AUTOMATED TESTED (≈105 task tests on isolated Git fixtures) · **REAL TESTED** (`--task-live-test`: OpenCode FREE fixed a failing test end to end; cancel, interrupt/resume) · MANUAL TEST REQUIRED |
 | **V0.5 proactive reasoning & approval policy:** after a task, JARVIS derives findings from recorded facts, deduplicates them and a deterministic policy decides ignore / record / propose / require approval / (opt-in) auto low-risk action; approved or automatic work becomes a normal V0.4 task with a bound scope; JARVIS never approves its own proposal; event-driven, no polling | IMPLEMENTED · AUTOMATED TESTED (≈54 tests, isolated Git fixtures) · **REAL TESTED** (`--proactive-live-test` 26/26, OpenCode FREE) · MANUAL TEST REQUIRED |
 | **V0.6 Unity Project Agent:** JARVIS-owned typed Editor bridge (embedded package, local file spool — no MCP, no socket, no network, no arbitrary C#/menu/shell), Unity step types inside the V0.4 engine, truthful connection state, identity-safe scene/component/property edits, saved only for what JARVIS changed, unsaved user work + Play Mode protected, Unity's own compiler/test/Console state as validation, review cannot overrule hard facts | IMPLEMENTED · AUTOMATED TESTED (≈105 new tests; simulated editor = MOCK) · **REAL TESTED** (`--unity-live-test` 59/59 on Unity 6000.5.1f1, incl. OpenCode FREE fixing a real compile error and a real failing test) · MANUAL TEST REQUIRED |
+| **V0.8 Natural voice & presence:** opt-in local wake word (custom head on frozen features, ONNX, no key/cloud) + Silero VAD in one helper, natural hint-based endpointing (0.5–1.5 s), turn manager with a bounded follow-up window, barge-in with self-speech suppression from JARVIS' own known output (no echo-canceller claim), local neural JARVIS voice (Supertonic 3; Apple voices as fallback; incremental chunk synthesis), original voice identity v1, speakable answers for voice turns, one microphone hub + one output engine | IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (synthetic speech, closed loop) · human speech / voice naturalness / real room MANUAL TEST REQUIRED |
 | **V0.7 Voice I/O:** hold-to-talk (right ⌥), partial then FINAL transcript → the typed pipeline (`ConversationService.submit`), Apple on-device + local Whisper recognisers (Turkish/English, real language detection for Whisper), incremental sentence TTS with the macOS voices, speech rendering/chunking/long-answer policy, stop at once, voice-created V0.4 tasks (`input_channel`), approvals HUD-only, no stored audio, no network/paid API | IMPLEMENTED · AUTOMATED TESTED · **REAL TESTED with SYNTHETIC speech** · **HUMAN SPEECH / TTS QUALITY / VOICEOVER: MANUAL TEST REQUIRED** |
 | Full HUD (Dashboard, Tasks, Agents, System; Report/Memory placeholders) | IMPLEMENTED · MANUAL TEST REQUIRED |
 | JARVIS Core visualization for all 7 states | IMPLEMENTED · VISUALLY VERIFIED (screenshots) |
@@ -94,11 +98,11 @@ Sources/Jarvis/
   Persistence/ V0.3.1: SQLite engine, migrations, repository, artifacts, redaction (+ V0.4 TaskRepository)
   Observability/ V0.3.2: sanitizer, execution hub, SafeProvider/SafeToolOutput, Agent Observatory
   Unity/      V0.6: Unity discovery/detection, typed protocol, file-spool transport, policy, service/connection, mutation lock, launcher, bridge installer (+ UnityBridge/ = the C# Editor package and the fixture)
-  Voice/      V0.7: voice coordinator, push-to-talk machine, speech chunker/renderer, response speaker, microphone input/permission, STT/TTS providers (Apple, Whisper helper)
+  Voice/      V0.8 Natural/: turn machine, endpoint policy, barge-in detector, hands-free coordinator, microphone hub, helper host, wake/VAD sentinel runtime, neural voice, voice identity, transcript guards; SpeechPlayer + PlayerBackedTTS. V0.7: voice coordinator, push-to-talk machine, speech chunker/renderer, response speaker, microphone input/permission, STT/TTS providers (Apple, Whisper helper)
   Proactive/  V0.5: opportunity model, deterministic policy, normaliser/dedup, assessor, finding extractor, revalidator, OpportunityEngine, ProposalService
   Tasks/      V0.4: task model/state machines, plans, workspace guard, project tools, command profiles, leases, engine, reports, intake
 Tests/JarvisTests/            unit tests (Swift Testing)
-scripts/                      build_app.sh, test.sh, verify.sh, setup_local_ai.sh, local-ai/ (worker + pinned requirements), setup_voice_ai.sh, voice-ai/ (speech worker + pinned requirements)
+scripts/                      build_app.sh, test.sh, verify.sh, setup_local_ai.sh, local-ai/ (worker + pinned requirements), setup_voice_ai.sh [--natural], train_wake_head.sh, voice-ai/ (speech, wake/VAD and neural-voice workers + pinned requirements, bench/)
 docs/                         architecture, decisions, roadmap, issues, log, current task
 captures/                     dev screenshots (git-ignored)
 ```
@@ -109,7 +113,7 @@ See `docs/KNOWN_ISSUES.md`. Notably: conversation history is in-memory (the audi
 
 ## Next milestone
 
-V0.8 — Natural Voice Session (wake word, VAD, hands-free turn-taking, barge-in) — **not started; do not start it until the user approves V0.7** (`docs/ROADMAP.md`, DEC-068: web research & asset acquisition are V0.9).
+V0.9 — Web Research & Asset Acquisition — **not started; do not start it until the user approves V0.8** (`docs/ROADMAP.md`, DEC-068/086).
 
 ## Manual test checklist (V0.1)
 
@@ -155,6 +159,130 @@ Optional set-up for the local model: `scripts/setup_local_ai.sh` (needs `uv`; th
 37. **STOP GENERATION** while an OpenCode or local answer is running: it stops within a second; no `opencode` / worker process remains.
 38. Quit JARVIS while the local model is loaded → no `jarvis_local_worker.py` process remains. After a force-quit (`kill -9`) the worker also exits by itself.
 39. Data check: `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select agent_type, engine, model, status from agent_runs order by started_at desc limit 5"` shows your requests (engine/model/status/reason; no prompt text, no secrets).
+
+### V0.8 additions (natural voice & presence) — MANUAL TEST REQUIRED
+V0.8 is AUTOMATED TESTED and REAL TESTED with SYNTHETIC speech in a closed acoustic loop (`Jarvis --natural-voice-live-test`; wake word, VAD, endpointing, turn taking, barge-in, self-speech, neural voice, Push-to-Talk, approvals, resources, quit cleanup). Nothing below has been done by a person yet: **every item is MANUAL TEST REQUIRED**, subjective ones (voice naturalness, personality, latency feel, fatigue, battery) especially. Wake mode is OFF by default. Details: `docs/NATURAL_VOICE.md`.
+
+224. Launch JARVIS (`build/Jarvis.app`, or `open build/Jarvis.app`). Install the optional natural-voice components first if you want them: `scripts/setup_voice_ai.sh --natural` then `scripts/train_wake_head.sh` (the wake head is trained locally on synthetic speech; neural voice + wake helper stay "not installed" without them and Push-to-Talk/Apple voice keep working).
+225. Settings → Voice: Enable voice on, then turn **Wake word “Jarvis”** on. Confirm the status row says **LISTENING FOR "JARVIS"** (or an honest reason if not: microphone not allowed yet, helper not installed). The first time macOS may ask for the microphone — allow it.
+226. Confirm full speech recognition is NOT running before the wake word: Activity Monitor shows no `Jarvis`-owned Whisper helper (`python … jarvis_stt_worker.py`) and the System panel says WAKE · LOCAL DETECTOR; only `jarvis_sentinel_worker.py` (≈ 125 MB) runs. Settings → developer controls → Voice diagnostics shows the same.
+227. Confirm no raw recording is created: nothing new appears in `~/Library/Application Support/JARVIS` apart from `jarvis.sqlite*`, artefacts and logs (no `.wav/.caf/.m4a/.pcm`); `find ~/Library/Application\ Support/JARVIS -newer build/Jarvis.app -type f`.
+228. Say “Jarvis” naturally (one short word, then a pause). Expect a short soft sound and the ATTENTIVE chip.
+229. Confirm JARVIS woke (Compact/Full show ATTENTIVE; the status line “Go ahead — I’m listening.”).
+230. Say it quietly (just above a whisper, a metre away). Note whether it wakes (JARVIS-V08-2: a very quiet voice may need repeating).
+231. Say it quickly (“Jarvis!” as one syllable-ish).
+232. Say it with a Turkish pronunciation (“Carvis”, “Jarvis” as a Turkish reader would).
+233. Say similar non-wake words (“Service”, “Marvin”, “Harvest”, “Hey Travis”, “Çarşı”).
+234. Confirm no false wake (a rare one is a documented limit, JARVIS-V08-1 — count them).
+235. Play ordinary speech (a video, a podcast, people talking) for several minutes at normal volume.
+236. Confirm no false wake during it; if one happens, note what was playing.
+237. Make JARVIS say its own name (Settings → “Test English” says “Hello, I am Jarvis …”; or ask “who are you?”).
+238. Confirm JARVIS does not wake itself (no ATTENTIVE chip, no sound afterwards).
+239. Wake JARVIS (“Jarvis”).
+240. Pause before speaking (2–3 s).
+241. Confirm the ATTENTIVE state is shown and the Wake status stays honest.
+242. Say nothing.
+243. Confirm that after ≈ 7 s JARVIS returns to WAKE (no hidden listening; Voice diagnostics shows the transition) and that the recogniser helper never started.
+244. Wake again.
+245. Speak a Turkish command (“Jarvis, görevler ekranını aç”, “Jarvis, sistem durumunu söyle”).
+246. Confirm the endpoint feels natural (JARVIS answers about 0.5–1 s after you finish; not while you are still speaking).
+247. Confirm Turkish speech recognition (the message shows your sentence with the voice mark).
+248. Confirm the Turkish response (spoken and shown are the same answer).
+249. Evaluate the JARVIS Turkish voice naturalness (MANUAL TEST REQUIRED: pronunciation, rhythm, pauses, warmth).
+250. Evaluate the voice personality (calm, composed, precise — not theatrical, not robotic).
+251. Speak English (“Jarvis, open the Tasks screen.”).
+252. Confirm English speech recognition.
+253. Confirm the English response.
+254. Evaluate the JARVIS English voice (MANUAL TEST REQUIRED).
+255. Speak a mixed technical sentence (“Jarvis, BoxCollider değişikliğini kontrol et”, “Play Mode testlerini çalıştır”).
+256. Confirm the technical terms (JARVIS-V08-7: mixed language is still the weakest case; note what was heard).
+257. Ask with a mid-sentence hesitation (“Jarvis, Unity’deki … şey … son testlere bak”).
+258. Confirm there is no premature endpoint (ONE message, not two).
+259. Ask with a longer intentional pause (3 s of silence in the middle).
+260. Observe the endpoint behaviour (a deliberate pause > 1.7 s is a new turn — by design).
+261. Ask something that produces a long answer (“Jarvis, projeyi uzun uzun anlat”, with a provider connected, or Settings → “Test …”).
+262. Interrupt immediately (start speaking within the first second).
+263. Confirm JARVIS stops (≈ 0.3 s after you start; your sentence becomes the new turn).
+264. Interrupt mid-answer.
+265. Confirm it stops and the old answer does not resume.
+266. Continue speaking your new request.
+267. Confirm the new turn is captured, transcribed and answered.
+268. Interrupt near the end of the answer.
+269. Confirm no stale speech resumes afterwards.
+270. Make keyboard noise while JARVIS speaks (type for 10 s).
+271. Confirm no false barge-in.
+272. Make small room noise (a chair, a cough, a glass).
+273. Confirm no false barge-in (a cough or a clear word may; note it).
+274. Test speaker echo (turn the Mac speakers up, then down; try headphones).
+275. Confirm JARVIS does not transcribe itself (no message that quotes JARVIS’ own sentence). Note the volume at which your voice stops interrupting (JARVIS-V08-4).
+276. Ask a follow-up WITHOUT “Jarvis” right after an answer.
+277. Confirm the follow-up is accepted (ATTENTIVE window ≈ 8 s).
+278. Wait past the attentive window (≈ 10 s).
+279. Speak without the wake word.
+280. Confirm it is ignored (no message, no recogniser, no answer).
+281. Wake again.
+282. Confirm the session returns normally.
+283. Start a safe long-running task (a read-only analysis of a throw-away project, “Jarvis, analyze the multiplayer issue”).
+284. Confirm the acknowledgement is spoken (“On it. I created the task …”).
+285. Confirm the task continues after the voice turn closes (Tasks screen; JARVIS is back to WAKE; no spontaneous speech later).
+286. Ask for the task status while the task runs (“Jarvis, what are you doing?”).
+287. Confirm the answer (deterministic, short, spoken and shown).
+288. Ask about the Unity state (“Jarvis, Unity durumu?”) with a Unity project selected.
+289. Confirm the deterministic state path where possible (no provider call for state questions).
+290. Create a safe pending approval (a throw-away project, a task whose plan deletes a file).
+291. Say “approve”.
+292. Confirm it is still pending (JARVIS says approvals are decided only with the HUD buttons).
+293. Say “evet onayla”.
+294. Confirm it is still pending.
+295. Approve or deny ONLY with the HUD buttons.
+296. Turn wake mode off (Settings, or the menu-bar item “Turn Wake Mode Off”).
+297. Confirm the microphone is not listening: no orange microphone indicator, no `jarvis_sentinel_worker.py` process.
+298. Confirm Push-to-Talk still works (hold right ⌥, speak, release).
+299. Turn wake mode on again.
+300. Test with the Compact HUD open.
+301. Confirm it stays exactly 392 × 448 in WAKE, ATTENTIVE, LISTENING, SPEAKING and INTERRUPTED.
+302. Test with the Full HUD open (the voice strip shows the state and the last latencies).
+303. Test with no HUD open (menu bar only).
+304. Test with JARVIS in the background (another app in front).
+305. Test the menu-bar controls (right-click: Turn Wake Mode On/Off, Stop Speaking while speaking).
+306. Test Reduce Motion (System Settings → Accessibility → Display): voice works identically; nothing animates.
+307. Test VoiceOver: states are announced (Wake mode on, Listening, Interrupted); VAD transitions and partial transcripts are not.
+308. Check that VoiceOver does not fight excessively with JARVIS’ own speech (JARVIS-V07-7 / V08-12; note how bad it is).
+309. Preview the JARVIS voice (Settings → JARVIS voice → Hear it → Turkish / English).
+310. Compare the Apple fallback (System Fallback → Hear it).
+311. Compare the neural voice (JARVIS Default and JARVIS Calm).
+312. Rate Turkish naturalness (1–5).
+313. Rate English naturalness (1–5).
+314. Rate mixed technical pronunciation (“BoxCollider”, “Play Mode”, “GameObject”).
+315. Rate latency perception (wake → answer; interruption → reply).
+316. Rate voice fatigue after 10 minutes of conversation.
+317. Rate personality consistency across Turkish and English (one identity, or two different people?).
+318. Trigger memory pressure if safely possible (open large apps) and watch Settings → Voice: “Using: …” falls back to the Apple voice.
+319. Confirm graceful fallback (speech continues with the Apple voice, wake mode keeps listening).
+320. Restore normal state (close the large apps).
+321. Quit JARVIS while wake mode is on.
+322. Confirm every helper exits (`pgrep -fl jarvis_` shows nothing).
+323. Relaunch.
+324. Confirm the wake preference is restored (only if you left it on) and the microphone permission is not asked again.
+325. Confirm full STT is not active after relaunch (no recogniser helper until you speak).
+326. Quit while JARVIS is speaking.
+327. Confirm the audio stops at once.
+328. Relaunch.
+329. Confirm no stale speech (nothing is spoken at launch).
+330. Inspect Application Support (`~/Library/Application Support/JARVIS`).
+331. Confirm no microphone recording exists there.
+332. Inspect SQLite (`sqlite3 …/jarvis.sqlite .schema`).
+333. Confirm no audio blob / waveform / partial-transcript column exists.
+334. Run wake mode for an extended idle period (≥ 1 hour in a quiet room).
+335. Confirm no phantom wake or turn (Activity feed shows no “Wake word heard”).
+336. Observe CPU (Activity Monitor: JARVIS ≈ 0 %; the sentinel ≈ 0 % in a quiet room).
+337. Observe memory (sentinel ≈ 125 MB; no growth over the hour).
+338. Test on battery if practical.
+339. Record the subjective battery impact (Activity Monitor → Energy).
+340. Test physical distance (0.5 m, 1 m, 2 m, across the room).
+341. Test faster speech.
+342. Test softer speech.
+343. Test normal room noise (fan, music at low volume, a second person talking).
 
 ### V0.7 additions (voice I/O) — MANUAL TEST REQUIRED
 Developer-only: `build/Jarvis.app/Contents/MacOS/Jarvis --voice-live-test` (silent REAL test with synthetic speech; add `--voice-audible` to hear it, `--voice-real-mic` to open the real microphone for 1.5 s). Optional better recogniser: `scripts/setup_voice_ai.sh`. Automated runs never open the microphone.

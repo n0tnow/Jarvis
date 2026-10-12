@@ -92,3 +92,6 @@ Unity findings are ordinary findings: V0.5 policy stays authoritative. Unity con
 ## Voice (V0.7)
 The proactive layer is unchanged and has no voice code: proposals are approved only with HUD buttons (a spoken or typed "approve" is answered with a notice, never executed), and nothing proactive is ever spoken spontaneously. A voice-created task is a normal user task (`origin = userTask`, depth 0) for the budget and policy rules.
 
+
+## Natural voice (V0.8)
+Still no voice code in the proactive layer. Proposals are approved only with HUD buttons; "approve"/"evet onayla" said after the wake word is answered with the HUD-only notice (live-tested through the wake path with an isolated pending approval); nothing proactive is spoken spontaneously.

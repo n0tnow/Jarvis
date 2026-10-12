@@ -293,3 +293,32 @@ DEC-057 … DEC-068 (voice is I/O; right-⌥ Push-to-Talk; ephemeral audio and t
 ### Remaining Work
 User manual test (README 154–223): human speech (Turkish/English/mixed), TTS naturalness, VoiceOver, Reduce Motion, physical right-⌥ feel, background use. V0.8 (wake word, VAD, hands-free, barge-in) only with approval. No tag.
 
+
+
+## 2026-10-12 — V0.8 Natural Voice & Presence
+
+### Goal
+Turn V0.7 Push-to-Talk into a natural voice presence without a second assistant: opt-in local wake word, VAD, natural endpointing, hands-free turn taking with a follow-up window, barge-in with self-speech suppression, a local neural JARVIS voice (Apple fallback), voice identity, low latency — all still `ConversationService.submit(source: .voice)`.
+
+### Changes
+`Voice/Natural/` (EndpointPolicy, TurnMachine, BargeInDetector + SpeechBandFilter, HandsFreeCoordinator, AudioHub = MicrophoneHub/AudioRing/EnergyGate, HelperHost, SentinelRuntime, NeuralVoice, VoiceIdentity, TranscriptGuards, TechnicalTerms, WakeCue) · `Voice/SpeechPlayer` + `PlayerBackedTTS` (own output engine; Apple synthesiser re-based on `AVSpeechSynthesizer.write`) · helpers `scripts/voice-ai/jarvis_sentinel_worker.py` (wake head on frozen openWakeWord features + Silero VAD), `jarvis_tts_worker.py` (Supertonic 3), `scripts/setup_voice_ai.sh --natural`, `scripts/train_wake_head.sh`, `bench/` · `ResponsePresentation.voiceConversation` (speakable answers from the existing provider) · Settings/Full HUD/Compact HUD (stays 392×448)/menu bar · `--natural-voice-live-test` with `Services/Demo/VoiceTestRig` (scripted microphone + simulated speaker) · verify.sh V0.8 guards · docs (`NATURAL_VOICE.md`, DEC-069…087, JARVIS-V08-1…13, README checklist 224–343).
+
+### Research and benchmarks (details in `docs/NATURAL_VOICE.md`)
+Wake: pretrained hey_jarvis vs a locally trained head on frozen features (2.9 h held-out). VAD: Silero vs energy. Echo: Voice Processing I/O vs reference-level gating on a real speaker→microphone loop. TTS: Supertonic 3, Chatterbox, Piper.
+
+### Real findings (found by tests and live runs; all fixed)
+* State-machine bugs: `case … where` guards applied to the last pattern only; barge-in state overwritten by `beginUtterance`; PTT during transcribing; `RestartBudget` blocked again after cooldown; transcribing stuck after an interrupted PTT (watchdog + empty transcript).
+* Wake: v1 head too many false activations → mining; priming gap after resets → continuous model; mid-sentence wakes → utterance-initial rule; lone «Jarvis» must never open the recogniser → continuation timer.
+* Endpointing: «Unity'deki.» stop after a hesitation is not trusted; question particles are not connectors.
+* Echo: coupling learned from the pre-arrival silence made JARVIS' own Apple voice look like the user → skip the first 0.25 s, clamp −34…−10; click trains → duty rule; a 90 Hz thud and dense clicks while the VAD is saturated by the echo → 250 Hz high-pass + 20 ms slices (DEC-087).
+* Speech that resumed inside the acknowledgement deaf window («Jarvis, … open the Tasks screen») was lost → `.deaf` re-check (DEC-087).
+* Test rig: paced frame emission, quiet-frame level, bounded answers last ≈ 4–5 s so barge-in timing is phrase-based, a two-word synthetic Turkish clip is misread as English by Whisper (longer fixture), combined-sample bookkeeping.
+
+### Results
+Unit: see `PROJECT_STATE.md`. `--natural-voice-live-test`: 55/55 (loop simulated), 58/58 with `--natural-acoustic --natural-idle 6`, plus the optional `--natural-combined` sample next to `--unity-live-test`. Numbers: `docs/NATURAL_VOICE.md` §11.
+
+### Decisions
+DEC-069 … DEC-087.
+
+### Remaining Work
+User manual test (README 224–343): a human saying «Jarvis», recognition of a human voice, false wakes from real conversation and media, real-room barge-in, voice naturalness (A/B of the JARVIS presets), VoiceOver, Reduce Motion, battery. V0.9 only with approval. No tag.

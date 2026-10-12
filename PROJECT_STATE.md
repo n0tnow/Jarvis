@@ -4,20 +4,20 @@
 
 ## Current Version
 
-V0.7 — Voice I/O Foundation (Push-to-Talk, streaming/incremental STT, incremental TTS, voice session state; voice is an I/O layer on the SAME conversation pipeline); builds on V0.6 — Unity Project Agent & Editor Bridge (Unity as a controlled execution environment inside the V0.4 engine), V0.5 — proactive reasoning, opportunity engine & approval policy (a decision layer above the V0.4 task engine) and on V0.4 — autonomous task engine (user-initiated goals; on top of V0.3.2 observatory, V0.3.1 intelligence infrastructure, V0.3 Claude Code / Codex and V0.2.1). App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3, V0.3.1, V0.3.2 and V0.4 are not**.
+V0.8 — Natural Voice & Presence (opt-in local wake word + VAD, hands-free turn taking, barge-in, local neural JARVIS voice; still an I/O layer on the SAME conversation pipeline); builds on V0.7 — Voice I/O Foundation (Push-to-Talk, streaming/incremental STT, incremental TTS, voice session state), V0.6 — Unity Project Agent & Editor Bridge (Unity as a controlled execution environment inside the V0.4 engine), V0.5 — proactive reasoning, opportunity engine & approval policy (a decision layer above the V0.4 task engine) and on V0.4 — autonomous task engine (user-initiated goals; on top of V0.3.2 observatory, V0.3.1 intelligence infrastructure, V0.3 Claude Code / Codex and V0.2.1). App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3, V0.3.1, V0.3.2, V0.4 and later are not**.
 
 ## Current Milestone
 
-V0.7: Voice I/O Foundation (hold right ⌥ → local/system STT → FINAL transcript → the typed pipeline → spoken answer). NOT V0.8 (wake word, VAD, hands-free, barge-in), no web/asset acquisition (V0.9), no spoken approvals, no stored audio.
+V0.8: Natural Voice & Presence (opt-in wake word "Jarvis" → VAD → natural endpointing → the typed pipeline → local neural JARVIS voice; follow-up window; barge-in). NOT V0.9 (web research & asset acquisition), no spoken approvals, no voice biometrics, no stored audio, no cloud/paid speech.
 
 ## Status
 
-**V0.7 — READY FOR MANUAL TEST** (V0.6 and earlier: READY FOR MANUAL TEST as before)
-(Automated + REAL verification passed on this Mac with SYNTHETIC speech; no human has spoken to it. Not user-verified. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.8.)
+**V0.8 — READY FOR MANUAL TEST** (V0.7 and earlier: READY FOR MANUAL TEST as before)
+(Automated + REAL verification passed on this Mac with SYNTHETIC speech in a closed acoustic loop; no human has spoken to it. Not user-verified. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.9.)
 
 ## Current Objective
 
-User manual test of `build/Jarvis.app` (README items 154–223 for V0.7 — enable Settings → Voice first; optional better recogniser: `scripts/setup_voice_ai.sh`; 126–153 for V0.6 — on the disposable fixture first, 92–125 for V0.5, 67–91 for V0.4, 40–66 for V0.3.2, 33–39 for V0.3.1, 26–32 for V0.3). Use a throw-away project for the V0.4 items. Optional local-model setup: `scripts/setup_local_ai.sh`.
+User manual test of `build/Jarvis.app` (README items 224–343 for V0.8 — install first: `scripts/setup_voice_ai.sh --natural` + `scripts/train_wake_head.sh`, then Settings → Voice → Wake word; 154–223 for V0.7 — enable Settings → Voice first; optional better recogniser: `scripts/setup_voice_ai.sh`; 126–153 for V0.6 — on the disposable fixture first, 92–125 for V0.5, 67–91 for V0.4, 40–66 for V0.3.2, 33–39 for V0.3.1, 26–32 for V0.3). Use a throw-away project for the V0.4 items. Optional local-model setup: `scripts/setup_local_ai.sh`.
 
 ## Completed (IMPLEMENTED)
 
@@ -35,6 +35,26 @@ User manual test of `build/Jarvis.app` (README items 154–223 for V0.7 — enab
 - Settings: Reduce Motion, Show Developer Controls, Launch at Login (disabled placeholder, NOT implemented).
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
+
+## V0.8 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED with SYNTHETIC speech in a closed acoustic loop · human speech / voice naturalness / real room / VoiceOver / battery MANUAL TEST REQUIRED)
+
+* Opt-in wake word «Jarvis» (OFF by default): custom head trained locally on frozen openWakeWord features + Silero VAD in ONE helper (`jarvis_sentinel_worker.py`, ONNX CPU, ≈ 120 MB); an energy gate sends NOTHING to it in a quiet room (0.00 CPU-s idle); before the word only a ≤ 3 s in-memory ring exists — no STT, no transcript, no file, no network. Shipped rules: threshold 0.9, patience 3, utterance-initial ≤ 1.6 s; a lone «Jarvis» never opens the recogniser.
+* Natural endpointing (hint-based 0.5–1.5 s, 45 s cap), `TurnMachine` (pure reducer) + `HandsFreeCoordinator`, bounded follow-up window, barge-in from JARVIS' own known output (no echo-canceller claim; speech-band level, 20 ms slices), self-speech filters, language continuity, speakable voice answers (`ResponsePresentation.voiceConversation`, same provider, no second call).
+* ONE `MicrophoneHub` (wake + Push-to-Talk + utterance) and ONE output engine (`SpeechPlayer`); local neural JARVIS voice (Supertonic 3, ≈ 530 MB resident, unload on idle/pressure) with Apple voices as fallback; original voice identity v1 (Default / Calm / System Fallback); helpers supervised by `HelperHost` (3 starts / 10 min), no orphans.
+* Installed only by `scripts/setup_voice_ai.sh --natural` + `scripts/train_wake_head.sh` (pinned, SHA-256 checked, never committed, never downloaded by the app). Spoken «approve/yes/evet/onayla/tamam yap» never approves (HUD-only); wake is activation, not authentication.
+* Honest limits: all wake/VAD/TTS-loop evidence is SYNTHETIC (Apple voices); acoustic look-alikes can wake; barge-in coupling measured on one MacBook Air; neural voice is the technical preference, not yet listened to. See `docs/NATURAL_VOICE.md`, `docs/KNOWN_ISSUES.md` JARVIS-V08-1…13.
+
+### Real findings
+Listed in `docs/DEVELOPMENT_LOG.md` (V0.8 entry); notably the closed-loop test found the lost «Jarvis, … open …» continuation after a comma pause and the click/thud barge-in (DEC-087).
+
+### Results
+Unit/smoke/verify: see "Tested". `--natural-voice-live-test`: 55/55 (loop simulated), 58/58 with the real speaker→microphone loop and a 6 min idle hold; numbers in `docs/NATURAL_VOICE.md` §11.
+
+### Decisions
+DEC-069 … DEC-087.
+
+### Remaining Work
+User manual test (README 224–343). V0.9 (Web Research & Asset Acquisition) only with approval. No tag.
 
 ## V0.7 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED with SYNTHETIC speech · human speech / TTS quality / VoiceOver MANUAL TEST REQUIRED)
 
@@ -130,6 +150,9 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Tested
 
+**V0.8 (2026-10-12) — `scripts/verify.sh` → VERIFY PASSED (113 PASS / 0 FAIL / 2 SKIP, idle CPU 0.02 CPU-s per 8 s, RSS 72 MB):** 897 unit tests (118 suites; ≈ 124 new over V0.7's 773: endpoint policy, turn machine incl. the deaf-window re-check, barge-in detector + speech-band filter, hands-free coordinator with a fake helper and fake microphone, helper host/restart budget, wake/neural runtimes with fake helpers, transcript guards, voice identity/presets, authority and structural guards). Smoke test PASSED (V0.8 checks included; no microphone, helper or dialog in automated runs).
+**REAL TESTED — `Jarvis --natural-voice-live-test`:** SYNTHETIC speech (Apple system voices; never a person) through a closed acoustic loop (scripted microphone + simulated speaker with this Mac's measured coupling) into the REAL sentinel (wake head + Silero VAD), REAL Whisper, the REAL ConversationService and the REAL neural/Apple voice: final runs 55/55 (loop simulated), 58/58 with `--natural-acoustic --natural-idle 6` (REAL speaker→microphone loop, levels only; 6 min idle hold), 56/56 (+1 skipped) with `--natural-combined` next to a real `--unity-live-test` (59/59). V0.7 `--voice-live-test` regression 36/36. Numbers: `docs/NATURAL_VOICE.md` §11. (Earlier runs found and fixed the real defects listed in `docs/DEVELOPMENT_LOG.md`.)
+**NOT done / MANUAL TEST REQUIRED:** a human saying «Jarvis» (accent, distance, quiet voice), false wakes from real conversation/media, recognition of human speech, real-room barge-in and speaker volume, neural voice naturalness (A/B of the JARVIS presets), mixed-language quality, VoiceOver, Reduce Motion, battery over a day, headphones.
 **V0.7 (2026-10-12) — `scripts/verify.sh` → VERIFY PASSED:** 773 unit tests (100 suites; ≈135 new: speech chunker incl. delta-cut property tests, renderer, language guess, push-to-talk machine + hotkey service, coordinator lifecycle/permission/rapid-PTT/stop/stale-event tests, shared-submission-path and authority tests, approvals-HUD-only, Whisper runtime against a fake helper with real processes, provider selection/cost, WER/CER, structural guards) · V0.7 policy greps (voice has no approval/task/file/network path, microphone and permission APIs in one file each, no audio-writing code or audio schema, no paid/cloud speech, helper offline/bounded, only the microphone usage string) · smoke 109 PASS / 0 FAIL / 2 SKIP (6 new voice checks: idle microphone closed, PTT does nothing in automated runs, Compact stays 392×448 in every voice state, exclusivity) · idle 0.01 CPU-s in 8 s, RSS 49 MB (voice present, disabled).
 **REAL TESTED — `Jarvis --voice-live-test` (final AUDIBLE run with `--voice-real-mic`: 37 PASS / 0 FAIL; earlier runs 36–38, one with a real Unity editor + Qwen + Whisper resident):** SYNTHETIC speech (macOS system voices; never a person) through the REAL Apple on-device and local Whisper recognisers: partial/final semantics, Whisper language detection (tr/en correct), STT benchmark (mean WER/CER Apple 0.24/0.11 vs Whisper 0.18/0.05), Turkish AND English end to end through the real coordinator and the typed pipeline (`ConversationService.submit`) → deterministic command → real TTS (release → first audio ≈240–310 ms Apple, ≈400–430 ms Whisper), typed-twin equality, mixed-language transcripts recorded, voice → normal V0.4 task (`input_channel = voice`), rapid PTT, PTT during speech, **real OS-level Right-Option key events** with Full/Compact/no HUD (key repeat included), TTS rendering + real playback timing + stop (0–3 ms) + incremental sentence synthesis while text streams, real microphone open/close (15 frames/1.5 s), idle voice 0.00 CPU-s/6 s, helper 855 MB loaded / 0 % idle, no network socket, no audio file in the data directory, masked fake secrets, restart → IDLE, SIGTERM of a child JARVIS leaves no helper, memory-pressure warning unloads the helper in 0.03 s, Unity + Qwen + Whisper + JARVIS simultaneously at NORMAL memory pressure.
 **NOT done / MANUAL TEST REQUIRED:** recognition quality for a real human voice, TTS naturalness/pronunciation, VoiceOver, Reduce Motion, the physical right-⌥ feel, background use from another app by a person, mixed-language quality (the weakest case), Claude/Codex are not involved in voice, no windowed-Unity + voice session. README 154–223.
@@ -193,7 +216,7 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Important Decisions
 
-See `docs/DECISIONS.md` (DEC-001…DEC-068). Key ones:
+See `docs/DECISIONS.md` (DEC-001…DEC-087). Key ones:
 - Native Swift/SwiftUI/AppKit only (no Electron/React/Tauri/web UI).
 - UI/window state (`HUDState`) separated from application/task state (`JarvisStore`); closing HUDs never touches tasks.
 - All window control goes through `JarvisWindowControlling`.
@@ -218,7 +241,7 @@ None.
 
 ## Next Action
 
-**Wait for the user's manual V0.3 … V0.7 test** (V0.7: README 154–223 — enable Settings → Voice; V0.6: 126–153, on the fixture first) (`README.md` items 26–32, 33–39, 40–66, 67–91, 92–125 and 126–153). Do not start V0.8 (wake word + VAD + barge-in) without approval.
+**Wait for the user's manual V0.3 … V0.8 test** (V0.8: README 224–343 — install `scripts/setup_voice_ai.sh --natural` + `scripts/train_wake_head.sh`, enable Settings → Voice → Wake word; V0.7: README 154–223 — enable Settings → Voice; V0.6: 126–153, on the fixture first) (`README.md` items 26–32, 33–39, 40–66, 67–91, 92–125, 126–153, 154–223 and 224–343). Do not start V0.9 (Web Research & Asset Acquisition) without explicit approval.
 
 ## Git
 
@@ -226,4 +249,4 @@ None.
 
 ## Last Updated
 
-2026-10-12 — V0.7 implemented, AUTOMATED TESTED, REAL TESTED with synthetic speech (real recognisers, real TTS, real key events, real microphone plumbing), verified. READY FOR MANUAL TEST.
+2026-10-12 — V0.8 implemented, AUTOMATED TESTED, REAL TESTED with synthetic speech (real sentinel/VAD, real Whisper, real neural + Apple voices, real speaker→microphone loop levels), verified. READY FOR MANUAL TEST.

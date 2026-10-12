@@ -305,3 +305,61 @@ Description: Typed turns are not spoken; task completion, proposals and approval
 Status: Open · NON-BLOCKING
 Description: Apple's recogniser/synthesiser run in system processes (`localspeechrecognition`, `SpeechSynthesisServerXPC`, `corespeechd` …): their memory/CPU is observed (tens of MB) but not controllable or attributable to JARVIS, and their network behaviour cannot be inspected (JARVIS itself has no socket). Installing a dictation language model is a system-level side effect (the dev machine's en-US `SpeechTranscriber` assets were installed once during research, ≈16 s).
 
+
+## V0.8 — Natural Voice & Presence
+
+### JARVIS-V08-1 — Acoustic look-alikes can wake JARVIS
+Status: Open · NON-BLOCKING · MANUAL TEST REQUIRED
+Description: On the adversarial look-alike list (90 words: "Jervis", "Jarvik", "Cervix", "Carpet" …) 26 fire at the shipped settings (live loop: ≤ 1 of 6 common look-alikes). Ordinary continuous speech: 0 false wakes in 2.9 h of synthetic speech, but that is a small, synthetic sample. Real rooms, TV, other voices: unknown. Mitigations: threshold 0.9, patience 3, utterance-initial rule; a false wake only opens a bounded attentive window (no recogniser unless speech follows, nothing is submitted without a transcript).
+
+### JARVIS-V08-2 — The wake word must start an utterance, and a very quiet voice may be missed
+Status: Open · by design
+Description: "… so, Jarvis, do X" in the middle of a long sentence does not wake JARVIS (utterance-initial rule). The energy gate needs the level to rise ≥ 10 dB above the room's floor (≥ −58 dBFS): a whisper in a silent room can be missed. Saying the word again works.
+
+### JARVIS-V08-3 — The wake head was trained on synthetic speech only
+Status: Open · MANUAL TEST REQUIRED
+Description: Training and test voices are all synthesisers (Supertonic / Apple). Real accents, microphones, distance and room acoustics are untested (README 224–343). Retraining is a script (`train_wake_head.sh`).
+
+### JARVIS-V08-4 — Barge-in has no echo canceller
+Status: Open · documented limit
+Description: It relies on the level difference between the user and JARVIS' own voice at the microphone (measured on this MacBook Air only: coupling −26…−30 dB). A quiet voice below the echo, a very loud speaker, headphones with leakage, or a different machine may interrupt late, never, or (rarely) on loud non-speech. Push-to-Talk and Stop Speaking always work. Voice Processing I/O is the measured alternative (≈ 15 % CPU, fragile re-initialisation).
+
+### JARVIS-V08-5 — The neural voice has not been listened to by a person
+Status: Open · MANUAL TEST REQUIRED
+Description: Technical status only (licence, latency, memory, offline, cancellation, stability). Naturalness, personality fit, Turkish/English pronunciation, "BoxCollider"/"Play Mode" pronunciation, fatigue: unknown until README 249, 254 and 309–317 are done. The Apple fallback's only Turkish voice (Yelda) is female: the "same identity in both languages" holds only with the neural voice.
+
+### JARVIS-V08-6 — Neural first audio is slower than Apple's
+Status: Open · NON-BLOCKING
+Description: ≈ 0.3–1.0 s for the first phrase (Apple ≈ 0.15 s); ≈ 0.3 CPU-s per second of audio on 2 threads; ≈ 0.5 GB resident while loaded (unloads after 180 s idle and under memory pressure). The model is not a streaming model (incremental chunk TTS).
+
+### JARVIS-V08-7 — Mixed Turkish/English recognition is still the weakest case
+Status: Open · NON-BLOCKING
+Description: `TechnicalTerms` only restores canonical spelling of known terms; it cannot repair a mis-heard word. Whisper turbo (optional, 1.8 GB) recognises code-switching better.
+
+### JARVIS-V08-8 — Endpoint latency is 0.5–1.0 s
+Status: Open · NON-BLOCKING
+Description: A finished sentence ends the turn ≈ 0.5–0.7 s after the last word (hint from a fresh preview), an ambiguous one after 1.0 s, an unfinished one after 1.5 s. The hint depends on the recogniser's punctuation (Whisper punctuates; Apple's streaming partials do not), so Apple turns tend to wait the full 1.0 s.
+
+### JARVIS-V08-9 — Upstream status of the neural voice
+Status: Open · NON-BLOCKING
+Description: The Supertonic repository is archived/read-only upstream; the weights are OpenRAIL-M (use-based restrictions: no impersonation, disclose machine-generated content — JARVIS is openly an AI assistant). The revision is pinned; Piper (fast, NC/unclear licences) and Chatterbox (heavy) were measured as alternatives.
+
+### JARVIS-V08-10 — Wake feature models are frozen at openWakeWord v0.5.1
+Status: Open · NON-BLOCKING
+Description: The mel/embedding models are from a 2024 release (Apache-2.0). They are small and stable; replacing them means retraining the head.
+
+### JARVIS-V08-11 — Hung or crash-looping sentinel
+Status: Open · NON-BLOCKING
+Description: A hung helper is detected only while audio flows (ping every 20 s, 4 s to answer), then restarted; after 3 restarts in 10 minutes wake mode reports "unavailable" until toggled. Push-to-Talk is unaffected.
+
+### JARVIS-V08-12 — Battery and VoiceOver
+Status: Open · MANUAL TEST REQUIRED
+Description: All measurements ran on AC power; CPU/runtime evidence (0.00 CPU-s in a quiet room, 0.1 % of a core with continuous speech) predicts a small battery cost, but nobody has measured it on battery. Announcements are polite and state-only; overlap with JARVIS' own speech is unverified (as JARVIS-V07-7).
+
+### JARVIS-V08-13 — Installation weight and effort
+Status: Open · by design
+Description: `setup_voice_ai.sh --natural` needs `uv` and network once (≈ 190 MB runtime + 4 MB models + 381 MB voice); `train_wake_head.sh` takes 20–60 minutes. Without them wake mode and the neural voice are "unavailable" with an explanation; Push-to-Talk and the Apple voice keep working.
+
+### JARVIS-V08-14 — Occasional timing flakes in two automated checks (open, not a product defect as far as known)
+Seen once each: the V0.7 `--voice-live-test` check "no managed process left after shutdown" (registry count 1 right after `voice.shutdown()`, passed on every rerun; the failing check now prints the executable names) and the smoke test "Exclusivity: Full visible → Compact hotkey → only Compact" inside one `verify.sh` run (passed on rerun and in the next full verify). Both are timing-sensitive checks under load; neither reproduced after.
+
