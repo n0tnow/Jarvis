@@ -1,6 +1,6 @@
 # Architecture (V0.1)
 
-Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.3.1 (intelligence infrastructure on top of V0.3). Decisions behind it: `DECISIONS.md`.
+Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.7 (voice I/O around the conversation pipeline; V0.6 Unity agent, V0.5 proactive layer, V0.4 task engine below). Decisions behind it: `DECISIONS.md`.
 
 ## Shape
 
@@ -123,6 +123,17 @@ V0.4 task (Unity project ⇒ unity capabilities) ─► plan (unityInspect/Edit/
 ```
 `Sources/Jarvis/Unity/` (discovery, detector, protocol, transport, policy, service, lock, launcher, installer, generated package) · `Tasks/TaskEngine+Unity.swift` · `Tasks/ReviewAuthority.swift` · `UnityBridge/` (C# package + disposable fixture) · `Persistence` v5.
 
+## Voice I/O (V0.7 — DEC-057…068; details `VOICE_IO.md`)
+```
+hold right ⌥ ─► GlobalHotkeyService (same permission-free modifier sampling as ⌥⌘) ─► PushToTalkMachine ─► VoiceCoordinator (ONE lifecycle authority)
+   MicrophoneInput (AVAudioEngine, created on press / destroyed on release, 16 kHz mono frames) ─► STTSession ─► partial transcripts (provisional, composer area only)
+   release ─► mic stops FIRST ─► finish() ─► FINAL transcript ─► ConversationService.submit(source: .voice)   ← the SAME entry point as typed text
+        ─► IntelligenceRouter ─► deterministic command │ local │ provider │ TaskEngine (GoalIntake; tasks.input_channel = voice) ─► ConversationStore
+   ConversationStore messages ─► VoiceResponseSpeaker ─► SpeechChunker ─► SpeechRenderer ─► TextToSpeechProvider (bounded queue, stop at once)
+```
+`Sources/Jarvis/Voice/`: `VoiceTypes` (states, capabilities, events, errors, metrics) · `VoiceCoordinator` (state machine, PTT lifecycle, handoff, JarvisState ownership) · `VoiceResponseSpeaker` (follows the shown answer, long-answer policy, turn/stale protection) · `SpeechChunker` + `SpeechRenderer` (pure, deterministic) · `PushToTalkMachine` (pure) · `VoiceSelection` (pure provider selection, cost-first) · `AudioInput` (`MicrophoneInput`) · `MicrophoneAccess` (the only permission file) · `SpeechToText` (protocols, `TranscriptText.clean` sanitizer hop) · `AppleSpeechSTT` (SpeechAnalyzer/DictationTranscriber) · `WhisperRuntime` (helper supervision + `WhisperSTTProvider`) · `TextToSpeech` · `AppleSpeechSynthesizer`. Helper: `scripts/voice-ai/jarvis_stt_worker.py` (offline, in-memory audio, exits on stdin EOF). UI: `UI/Components/VoiceViews.swift`, `UI/Settings/VoiceSettingsSection.swift`. Test/live-test only (`Services/Demo`, `App/VoiceLiveTest.swift`): `FixtureAudio`.
+Seams for V0.8: `AudioInput` (any capture source), `VoiceCoordinator.pushToTalkPressed/Released` (any trigger — wake word/VAD can drive the same entry points), `VoiceResponseSpeaker.stop` (barge-in hook), `STTSession`/`TextToSpeechProvider` (streaming providers). Nothing of V0.8 exists.
+
 ## Windows
 
 - **Invariant (DEC-015):** Compact XOR Full visible, enforced only in `WindowManager`.
@@ -149,6 +160,6 @@ V0.4 task (Unity project ⇒ unity capabilities) ─► plan (unityInspect/Edit/
 ## Extension points for later milestones (not implemented)
 
 - V0.2: replace `LocalCommandHandler` with a command router (needs a response channel; today it only writes to the activity log).
-- V0.4 and V0.5 are implemented (see above). Later: V0.6 Unity Project Agent, V0.7 web research + asset acquisition, V0.8 project memory — all through `TaskEngine.submit` and the V0.5 policy.
-- Voice (V0.5–0.7): something must arbitrate `setState` between STT/LLM/task engine.
-- Self-controlled UI (V0.8): protocol may need `currentSection`, `hideSettings`, and a "don't steal focus" open variant.
+- V0.4–V0.7 are implemented (see above). Later (DEC-068): V0.8 natural voice session, V0.9 web research + asset acquisition, V0.10 project memory, V0.11 computer use, V0.12 advanced multi-agent — all through `TaskEngine.submit` and the V0.5 policy.
+- Voice (V0.7 done): `VoiceCoordinator` owns the voice lifecycle and only claims `JarvisState.listening` while capture runs (never clobbering another owner).
+- Self-controlled UI (V0.10, with project memory): protocol may need `currentSection`, `hideSettings`, and a "don't steal focus" open variant.

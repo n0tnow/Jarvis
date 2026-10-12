@@ -186,3 +186,7 @@ would be required). No Git commit/push. Resume after a restart is explicit. Buil
 * `codeChange` in a Unity project takes the Unity mutation lock and is refused during Play Mode.
 * **Review authority (DEC-050):** `runReview` weighs the reviewer's verdict against the deterministic record (`ReviewAuthority`): pass → pass; fail with hard validators passed and no verifiable blocking evidence and no review gate → the step PASSES with "Review advice (not blocking)" in the report; fail otherwise fails as before. The reviewer prompt asks for `issues: [{text, severity: blocking|advice, evidence}]`. A user constraint "review gate" restores the veto.
 * Checkpoints carry a bounded Unity section; reports carry `unity` facts and `advisories`.
+
+## Voice-created tasks (V0.7)
+A spoken goal ("Jarvis, analyze the test project") goes through `ConversationService.submit(source: .voice)` → `GoalIntake` → `TaskEngine.submit` — the same single path. The task records `input_channel = voice` (informational) and is otherwise identical: `origin = userTask`, same capabilities, risk, workspace guard, approvals and validation. The voice turn ends with the spoken acknowledgement ("On it. I created the task …"); the task keeps running on its own and its completion is NOT announced by voice (text/UI only). Approvals are never decided by speech (DEC-065).
+

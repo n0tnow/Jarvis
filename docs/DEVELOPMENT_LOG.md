@@ -260,3 +260,36 @@ DEC-047 … DEC-056.
 
 ### Remaining Work
 User manual test (README 126–153). Visual validation, wider destructive operations and multi-editor orchestration are future work. V0.7 only with approval. No tag.
+
+## 2026-10-12 — V0.7: Voice I/O Foundation
+
+### Goal
+Make JARVIS usable by voice (Turkish and English) without a second assistant: Push-to-Talk, streaming/incremental STT, incremental TTS, a truthful voice session state — all as an I/O layer on the SAME conversation pipeline, local/system only, no stored audio, no spoken approvals, measured latency and resources.
+
+### Research (measured on this Mac, macOS 26.4, M5, 16 GB; details `docs/VOICE_IO.md`)
+* Apple `SpeechTranscriber` (SpeechAnalyzer) supports 30 locales — **no Turkish**; `DictationTranscriber` does (tr-TR, en-US, native streaming partials, ≈60 ms finalisation) and needs no extra permission. `AssetInventory.status` reports "supported" for a dictation locale that is already installed and transcribes fine → readiness uses `installedLocales`.
+* Whisper-small (MLX, helper process) beat Apple on technical/Turkish words (mean CER 0.05 vs 0.11, WER 0.18 vs 0.24 on 8 synthetic fixtures), detects Turkish/English for real, 0.2 s per utterance, ≈0.86 GB resident; Whisper-large-v3-turbo handles code-switching better (1.8 GB) → optional. `mlx-whisper` declares PyTorch but never imports it → installed `--no-deps` (venv 480 MB instead of 1.2 GB).
+* Piper (ONNX) measured as an optional neural TTS (RTF 0.02–0.07, 200–290 MB; GPL-3/voice licences); `AVSpeechSynthesizer` chosen (free, on-device, 140–170 ms to first buffer, 21 ms to playback).
+* `NSEvent.modifierFlags` hides the left/right Option bits; `CGEventSource.flagsState` exposes them (permission-free) → Push-to-Talk = right ⌥ alone.
+
+### Changes
+`Sources/Jarvis/Voice/` (coordinator, response speaker, pure PTT machine / chunker / renderer / selection, microphone input + permission, STT/TTS protocols, Apple recogniser, Whisper runtime + provider, Apple synthesizer) · `ConversationService.submit(source:)` + `InputSource` on messages and tasks (schema v6 `tasks.input_channel`) · `ApprovalGuard` (typed/spoken approval words never decide) · stop-talking + menu-bar Stop Speaking · Settings → Voice, voice strip/Compact chip/System row/mic mark · Preferences + `ResourceManager.observePressureRise` · `GlobalHotkeyService` gains the PTT machine (same sampling) · `scripts/voice-ai/` worker + `scripts/setup_voice_ai.sh` (pinned model, explicit) · `Info.plist` microphone string (only privacy key) · verify.sh V0.7 guards (nothing weakened; two narrow documented exemptions) · unit tests (chunker/renderer/PTT/coordinator/Whisper-with-fake-helper/selection/authority/guards/metrics) · `--voice-live-test` (+ `Services/Demo/FixtureAudio`) · docs, README checklist 154–223, roadmap correction (DEC-068).
+
+### Real findings (found by tests / live runs; all fixed)
+* The delta-cut property test caught a chunker bug: a trailing space was trimmed when a stream cut fell right after a sentence end ("TheEditMode"); and short sentences were not merged at the final flush.
+* The coordinator judged "too short" before the last captured frames were counted (frames reach it asynchronously) → judged after the frame queue drains.
+* A new Push-to-Talk during a standalone/Settings phrase did not stop it (state was not SPEAKING) → any active speech is stopped on every press.
+* The first live run produced silent fixtures: `AVSpeechUtterance.volume = 0` (used for the silent playback tests) also muted `write()` rendering → rendering is never muted (Whisper rightly returned nothing for silence).
+* `ManagedProcess.runOnce` caps output at 64 KB → a process listing was truncated in the live test.
+* The router did not know "ekranını/sayfasını/bölümünü" → "görevler ekranını aç" was sent to a provider; added to the tolerated words (found by the Turkish end-to-end test).
+* Live-test timing: the combined Unity+voice sample first ran after the Unity editor had exited (sample placed after the long benchmark) → moved before it.
+
+### Results
+Unit/smoke/verify: see `PROJECT_STATE.md`. `--voice-live-test`: 38/38 REAL checks with synthetic speech (the transcripts were identical across repeated complete runs); end to end release → first audible audio ≈ 240–290 ms (Apple) / ≈ 400–417 ms (Whisper); idle voice = 0.00 CPU-s per 6 s; real microphone plumbing proven (15 frames in 1.5 s, engine stops); SIGTERM of a child JARVIS leaves no helper.
+
+### Decisions
+DEC-057 … DEC-068 (voice is I/O; right-⌥ Push-to-Talk; ephemeral audio and the single privacy string; provider abstraction + cost-first selection; Whisper default / Apple fallback; Apple TTS with incremental sentence synthesis; spoken = shown; stop at once; no spoken approvals; ephemeral sessions; helper resource policy; roadmap correction).
+
+### Remaining Work
+User manual test (README 154–223): human speech (Turkish/English/mixed), TTS naturalness, VoiceOver, Reduce Motion, physical right-⌥ feel, background use. V0.8 (wake word, VAD, hands-free, barge-in) only with approval. No tag.
+

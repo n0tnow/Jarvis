@@ -114,7 +114,7 @@ Status: Open · NON-BLOCKING
 Description: Matching is alias/phrase based, not NLP: unusual phrasings fall through to "needs a provider" (truthful, never a wrong action). A bare "stop"/"close"/"clear"/"open" is treated as a command. Turkish coverage is a small explicit alias set; replies are English except for Turkish input. Worker-vs-reasoning is a keyword heuristic (verb + technical noun).
 
 ### JARVIS-014 — Conversation is in-memory only
-Status: Open · FUTURE MILESTONE (V0.4/V0.8)
+Status: Open · FUTURE MILESTONE (V0.10 project memory)
 Description: Messages are Codable and bounded (500) but not persisted; cleared on quit. Provider-side sessions are kept by the CLIs.
 
 ## Resolved
@@ -268,3 +268,40 @@ Description: Since DEC-050 a failing AI review no longer fails a task whose hard
 ### JARVIS-V06-7 — Test framework dependency of the bridge's test ops
 Status: Open · NON-BLOCKING
 Description: `runTests` needs `com.unity.test-framework` in the project (the fixture uses 1.7.0, resolved offline from the editor's built-in packages). Without it `getTestAvailability` says unavailable and a Unity test step fails honestly. PlayMode runs depend on the project's own PlayMode asmdefs.
+
+### JARVIS-V07-1 — Voice UI and real human speech are not user-verified
+Status: Open · MANUAL TEST REQUIRED
+Description: Automated tests (unit, smoke, captures) and the REAL `--voice-live-test` (synthetic speech from the macOS voices through the real recognisers, the real conversation path, real TTS, real OS-level Right-Option key events, a real microphone open/close) passed — but nobody has spoken to JARVIS. Recognition quality for a real voice (accent, distance, noise, speed), TTS naturalness/pronunciation/fatigue, VoiceOver behaviour, Reduce Motion, the physical right-Option feel and background use from another app are unverified. Synthetic speech flatters accuracy (clean, consistent). README items 154–223.
+
+### JARVIS-V07-2 — Mixed Turkish/English technical speech is the weakest case
+Status: Open · NON-BLOCKING
+Description: Whisper-small commits to one language per utterance: with Auto it may hear a Turkish sentence with English product words as English (and garble the Turkish part); with a fixed Turkish setting it garbles English terms. Apple's recogniser mishears technical words ("Play more", "added mode"). The domain prompt (Jarvis, Unity, Play Mode, EditMode, BoxCollider …) helps single-language sentences. A larger Whisper model (large-v3-turbo, ≈1.6 GB download, ≈1.8 GB resident) was measured separately and handled the code-switched fixture better; it is optional (point `Whisper model folder` at it) and not the default because of memory. Recommendation until you have tried it with your own voice: set the recognition language explicitly (Turkish for Turkish speech with English terms).
+
+### JARVIS-V07-3 — Whisper previews are re-decodes, not native streaming
+Status: Open · by design (documented)
+Description: While the key is held the local recogniser re-decodes the audio so far (first preview after ≈1 s of speech, then about once per 1.2 s, never two at once) and decodes everything once more at release (≈0.2–0.4 s for a few seconds of speech). Apple's recogniser streams natively (first partial ≈1 s after speech starts, finalisation ≈0.06 s) but is less accurate. Previews are provisional and never become messages.
+
+### JARVIS-V07-4 — Apple on-device speech needs macOS 26; no SFSpeechRecognizer fallback
+Status: Open · NON-BLOCKING
+Description: `SpeechTranscriber` (SpeechAnalyzer) has no Turkish on macOS 26.4, so the Apple provider uses `DictationTranscriber` (tr-TR and en-US verified). It requires macOS 26; on macOS 14/15 only the optional Whisper helper provides speech input (the classic `SFSpeechRecognizer` was not used because it needs a second privacy permission). JARVIS never downloads Apple's language models itself (Settings → Install asks the system to).
+
+### JARVIS-V07-5 — Voices are the installed standard ones; quality unknown
+Status: Open · MANUAL TEST REQUIRED
+Description: The Mac used for development has only compact/standard voices (Yelda tr-TR, Samantha en-US …); premium/enhanced voices need to be added by the user (System Settings → Accessibility → Spoken Content). TTS is incremental sentence synthesis (no native streaming). Neural voices (Piper: measured RTF 0.02–0.07 and 200–290 MB; Kokoro/XTTS) are optional future providers — licences (Piper is GPL-3, voice licences vary, XTTS non-commercial) and Turkish support must be decided first.
+
+### JARVIS-V07-6 — The shortcut is fixed to the right Option key
+Status: Open · NON-BLOCKING
+Description: Only on/off is configurable. Keyboards without a right Option key, or users who need AltGr, can turn the shortcut off (voice can still be driven by the Settings test buttons only — there is no other trigger until V0.8). A press while the previous transcript is still being finalised (≈0.1–0.4 s) is ignored, not queued.
+
+### JARVIS-V07-7 — Spoken replies and VoiceOver can overlap
+Status: Open · MANUAL TEST REQUIRED
+Description: Replies are both announced to VoiceOver (V0.2) and spoken by the synthesiser when voice is used with VoiceOver on. Not verified by a person; the live region is not suppressed.
+
+### JARVIS-V07-8 — Speech is not spontaneous (by design)
+Status: Open · by design
+Description: Typed turns are not spoken; task completion, proposals and approvals are never announced by voice (text/UI only); JARVIS never listens while speaking (no echo cancellation: use headphones or wait). Hands-free listening, barge-in and spoken confirmations are V0.8.
+
+### JARVIS-V07-9 — Apple speech services cannot be attributed
+Status: Open · NON-BLOCKING
+Description: Apple's recogniser/synthesiser run in system processes (`localspeechrecognition`, `SpeechSynthesisServerXPC`, `corespeechd` …): their memory/CPU is observed (tens of MB) but not controllable or attributable to JARVIS, and their network behaviour cannot be inspected (JARVIS itself has no socket). Installing a dictation language model is a system-level side effect (the dev machine's en-US `SpeechTranscriber` assets were installed once during research, ≈16 s).
+

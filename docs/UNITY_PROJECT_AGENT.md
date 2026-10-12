@@ -119,6 +119,6 @@ Every editor answer passes `UnityResponseSanitizer` in the single choke point `U
 * **Future multi-editor / Multiplayer Play Mode:** nothing assumes a single editor or process — connections are per project with their own spool, status, pid and session; a second editor for another project (or a clone project) is just another connection. Orchestrating several Play Mode instances is a later milestone.
 * A model-planned Unity task can only be as good as the plan; `unityInspect` shows ambiguity, but the planner may still choose poor steps (bounded by validation).
 
-## 14. V0.6 vs V0.7
+## 14. V0.6 vs later milestones
 
-V0.6 operates *existing* project content through typed editor operations. V0.7 (voice / web research / asset acquisition) is not started: no web access, downloads, Asset Store, licence handling, TTS/STT.
+V0.6 operates *existing* project content through typed editor operations. V0.7 turned out to be Voice I/O (see `VOICE_IO.md`; web research / asset acquisition moved to V0.9, DEC-068). Voice adds no Unity capability: a spoken “is Unity connected?” is the same typed question; a spoken Unity goal is a normal task. Web/asset work is not started: no web access, downloads, Asset Store or licence handling exists in JARVIS.

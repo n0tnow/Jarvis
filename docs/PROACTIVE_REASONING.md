@@ -88,3 +88,7 @@ Findings are limited to what V0.4 records (plus optional reviewer suggestions) �
 
 ## V0.6 interplay
 Unity findings are ordinary findings: V0.5 policy stays authoritative. Unity content/design wording (lighting, scene layout, UI flow, art direction, skybox, post-processing, camera angle…) is design impact → PROPOSAL (never AUTO in any mode); "purchase/Asset Store/paid asset" → critical (external effect `purchase`, unsupported); "delete unused prefabs" → destructive → approval. Unity capabilities are not in the auto-action capability set (`read/write/build/test` only), so no Unity mutation can ever be an automatic action. The decision layer has no reference to the Unity layer (guarded).
+
+## Voice (V0.7)
+The proactive layer is unchanged and has no voice code: proposals are approved only with HUD buttons (a spoken or typed "approve" is answered with a notice, never executed), and nothing proactive is ever spoken spontaneously. A voice-created task is a normal user task (`origin = userTask`, depth 0) for the budget and policy rules.
+

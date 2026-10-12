@@ -45,3 +45,7 @@ Additive transactional migration. `opportunities` (project, origin, origin task/
 
 ## Schema v5 — Unity project agent (V0.6)
 Additive transactional migration: `task_steps.unity_params` (JSON of the bounded, typed `UnityStepParams` — scene, targets, test mode/filters, observe seconds, expectations, explicit actions). Nothing else is persisted for Unity: editor/connection state is transient; console text is sanitized into step evidence/reports; the Unity checkpoint section (Console baseline fingerprints, editor version, connection/play/compile facts, validated-step evidence, approved dirty scenes) lives in the task checkpoint artifact; there is no table or column for raw Unity output. The bridge's own spool files live in the project's `Library/JarvisBridge` (Unity-owned, git-ignored, regenerated).
+
+## Schema v6 — voice input channel (V0.7)
+Additive transactional migration: `tasks.input_channel TEXT NOT NULL DEFAULT 'typed'` ('typed' | 'voice'). Informational only: it changes no policy, capability, risk or approval (`origin` stays `userTask`). **Nothing else about voice is persisted**: there is no audio, waveform, recording, partial-transcript or transcript-history column or table (guarded by `verify.sh`); voice diagnostics are in-memory (`VoiceTurnMetrics`) plus bounded, content-free activity lines (lengths, language, latency). Voice preferences are UserDefaults like every other setting. The speech helper's model lives outside the data directory (`~/AI/models/whisper-small-mlx`, git-ignored by location) and its runtime under `runtime/voice-venv`.
+

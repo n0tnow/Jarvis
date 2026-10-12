@@ -1,8 +1,8 @@
 # JARVIS
 
-A native macOS menu-bar AI operating layer (long-term). V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.4 autonomous task engine** (you give a bounded goal; JARVIS plans, executes with agents/tools, validates with real builds/tests, repairs within bounds, reports — user-initiated only) · **V0.3.2 agent observatory** (live sanitized consoles, truthful progress, history, Stop) · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. Autonomous project work is not enabled yet (V0.4).
+A native macOS menu-bar AI operating layer (long-term). V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.7 voice I/O** (hold right ⌥ to talk — Turkish or English; the final transcript enters the SAME pipeline as typed text; local/system speech only) · **V0.4 autonomous task engine** (you give a bounded goal; JARVIS plans, executes with agents/tools, validates with real builds/tests, repairs within bounds, reports — user-initiated only) · **V0.3.2 agent observatory** (live sanitized consoles, truthful progress, history, Stop) · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. JARVIS contacts no network host itself.
 
-- **Version:** V0.6 — **READY FOR MANUAL TEST** (Unity Project Agent & Editor Bridge inside the V0.4 engine: `docs/UNITY_PROJECT_AGENT.md`). V0.5 — READY FOR MANUAL TEST (decision layer above the V0.4 task engine: `docs/PROACTIVE_REASONING.md`). V0.4 — READY FOR MANUAL TEST (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3, V0.3.1, V0.3.2 and V0.4 are not yet). Details: `docs/AUTONOMOUS_TASK_ENGINE.md`, `docs/AGENT_OBSERVABILITY.md`, `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
+- **Version:** V0.7 — **READY FOR MANUAL TEST** (Voice I/O Foundation: Push-to-Talk, streaming/incremental STT, incremental TTS, voice session state, Turkish + English: `docs/VOICE_IO.md`). V0.6 — READY FOR MANUAL TEST (Unity Project Agent & Editor Bridge inside the V0.4 engine: `docs/UNITY_PROJECT_AGENT.md`). V0.5 — READY FOR MANUAL TEST (decision layer above the V0.4 task engine: `docs/PROACTIVE_REASONING.md`). V0.4 — READY FOR MANUAL TEST (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3, V0.3.1, V0.3.2 and V0.4 are not yet). Details: `docs/AUTONOMOUS_TASK_ENGINE.md`, `docs/AGENT_OBSERVABILITY.md`, `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
 - Handoff for agents: `PROJECT_STATE.md`, `AGENTS.md` (includes the Git workflow: `main` only, linear history)
 
 ## Requirements
@@ -18,12 +18,15 @@ open build/Jarvis.app         # menu bar icon appears (no Dock icon)
 scripts/verify.sh             # full automated verification
 scripts/test.sh               # unit tests only
 scripts/setup_local_ai.sh     # optional, once: isolated MLX runtime (605 MB, 57 pinned packages) for the on-device model — downloads NO model
+scripts/setup_voice_ai.sh     # optional, once: isolated speech runtime (≈480 MB) + ONE pinned Whisper model (≈460 MB, MIT upstream) for the more accurate local recogniser; JARVIS never downloads it itself. Without it, voice uses Apple's on-device recogniser
 ```
 
-**Opt-in REAL tests** (spend only free/local engines plus two tiny Claude Code requests; never part of `verify.sh`):
+**Opt-in REAL tests** (V0.7: `Jarvis --voice-live-test [--voice-audible] [--voice-no-whisper] [--voice-real-mic] [--voice-combined]` — SYNTHETIC speech from the macOS voices through the real recognisers, the real conversation path and real TTS, real OS-level Right-Option key events, resource figures; silent by default) (spend only free/local engines plus two tiny Claude Code requests; never part of `verify.sh`):
 `build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1/V0.3.2 stack, own data directory), `--unity-live-test [--unity-no-provider]` (V0.6: a REAL headless Unity editor started by JARVIS on a disposable fixture copied to a temp folder — typed scene/component/property edits, compile/domain reload, EditMode+PlayMode tests, Play Mode, Console delta, dirty-scene and Play-Mode protection, cancellation, relaunch, and real OpenCode-FREE-routed fixes of a compile error and a failing test; own data directory, never your game), `--proactive-live-test` (V0.5: real proposal → approval → V0.4 task, low-risk auto action, denial, relaunch — OpenCode FREE, isolated fixtures, own data directory), `--demo-proposals` (labelled simulated suggestions for the UI), `--task-live-test` (V0.4: the real task engine on isolated temporary fixture projects — OpenCode FREE preferred, own data directory, never the JARVIS repository) and `--provider-live-test` (V0.3 Claude Code / Codex).
 
 **Global shortcuts** (work while any app is focused; no permission): hold **Option** and press **Command** → toggle Compact HUD (fires ~0.3 s later unless it turns out to be a double press). Hold **Option** and press **Command twice quickly** (within 0.3 s) → toggle Full HUD. Either Command key. Ignored if you add another key, a click, Shift or Control (so ⌥⌘D, ⌥⌘-click etc. are untouched). Turn off in Settings → Enable global shortcuts.
+
+**Push-to-Talk (V0.7, Settings → Voice, off by default):** HOLD the **right Option (⌥) key by itself** for a moment, speak Turkish or English, release. The microphone is open only while it is held; the transcript shows while you speak and becomes ONE normal message when you let go; JARVIS answers in text and aloud (stop: the Stop button, the menu bar item, "stop talking", a new Push-to-Talk or typing). Needs the macOS microphone permission (asked on first use) and nothing else. Spoken "yes/approve" never approves anything — approvals are HUD buttons.
 
 **Commands you can type** (Full HUD or Compact command field; optional “Jarvis,” prefix, case/punctuation ignored):
 
@@ -60,6 +63,7 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | **V0.4 autonomous task engine:** goal intake → durable task → validated structured plan → event-driven scheduler → analysis/coding/review agents + build/test tools → deterministic validation → bounded repair (1) + escalation (1) → checkpoints, report; workspace sandbox, write leases, Git baseline + user-change protection, approvals for destructive actions, cancellation, restart recovery (explicit resume) | IMPLEMENTED · AUTOMATED TESTED (≈105 task tests on isolated Git fixtures) · **REAL TESTED** (`--task-live-test`: OpenCode FREE fixed a failing test end to end; cancel, interrupt/resume) · MANUAL TEST REQUIRED |
 | **V0.5 proactive reasoning & approval policy:** after a task, JARVIS derives findings from recorded facts, deduplicates them and a deterministic policy decides ignore / record / propose / require approval / (opt-in) auto low-risk action; approved or automatic work becomes a normal V0.4 task with a bound scope; JARVIS never approves its own proposal; event-driven, no polling | IMPLEMENTED · AUTOMATED TESTED (≈54 tests, isolated Git fixtures) · **REAL TESTED** (`--proactive-live-test` 26/26, OpenCode FREE) · MANUAL TEST REQUIRED |
 | **V0.6 Unity Project Agent:** JARVIS-owned typed Editor bridge (embedded package, local file spool — no MCP, no socket, no network, no arbitrary C#/menu/shell), Unity step types inside the V0.4 engine, truthful connection state, identity-safe scene/component/property edits, saved only for what JARVIS changed, unsaved user work + Play Mode protected, Unity's own compiler/test/Console state as validation, review cannot overrule hard facts | IMPLEMENTED · AUTOMATED TESTED (≈105 new tests; simulated editor = MOCK) · **REAL TESTED** (`--unity-live-test` 59/59 on Unity 6000.5.1f1, incl. OpenCode FREE fixing a real compile error and a real failing test) · MANUAL TEST REQUIRED |
+| **V0.7 Voice I/O:** hold-to-talk (right ⌥), partial then FINAL transcript → the typed pipeline (`ConversationService.submit`), Apple on-device + local Whisper recognisers (Turkish/English, real language detection for Whisper), incremental sentence TTS with the macOS voices, speech rendering/chunking/long-answer policy, stop at once, voice-created V0.4 tasks (`input_channel`), approvals HUD-only, no stored audio, no network/paid API | IMPLEMENTED · AUTOMATED TESTED · **REAL TESTED with SYNTHETIC speech** · **HUMAN SPEECH / TTS QUALITY / VOICEOVER: MANUAL TEST REQUIRED** |
 | Full HUD (Dashboard, Tasks, Agents, System; Report/Memory placeholders) | IMPLEMENTED · MANUAL TEST REQUIRED |
 | JARVIS Core visualization for all 7 states | IMPLEMENTED · VISUALLY VERIFIED (screenshots) |
 | Window-management layer for future UI self-control | IMPLEMENTED · AUTOMATED TESTED |
@@ -67,8 +71,8 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | Developer state simulator | IMPLEMENTED |
 | Settings (Reduce Motion, Developer Controls) | IMPLEMENTED |
 | Launch at Login | PLANNED (disabled placeholder) |
-| Report view, Memory view | PLANNED (V0.8) |
-| Voice (V0.7+), memory, browser/computer control, web/asset acquisition, visual validation of Unity | PLANNED — see `docs/ROADMAP.md` |
+| Report view, Memory view | PLANNED (V0.10) |
+| Wake word / hands-free / barge-in (V0.8), web research & asset acquisition (V0.9), project memory (V0.10), computer use (V0.11), advanced multi-agent (V0.12), visual validation of Unity | PLANNED — see `docs/ROADMAP.md` |
 
 ## Architecture overview
 
@@ -78,7 +82,7 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 
 ```
 Package.swift                 SwiftPM manifest (no dependencies)
-Resources/Info.plist          LSUIElement agent, no usage strings
+Resources/Info.plist          LSUIElement agent; the ONLY usage string is the microphone (V0.7)
 Sources/Jarvis/
   App/        entry point, AppContext (composition root), launch options, dev smoke test / capture
   Core/       JarvisState, JarvisStore, HUDState, Preferences, observation bridge
@@ -90,10 +94,11 @@ Sources/Jarvis/
   Persistence/ V0.3.1: SQLite engine, migrations, repository, artifacts, redaction (+ V0.4 TaskRepository)
   Observability/ V0.3.2: sanitizer, execution hub, SafeProvider/SafeToolOutput, Agent Observatory
   Unity/      V0.6: Unity discovery/detection, typed protocol, file-spool transport, policy, service/connection, mutation lock, launcher, bridge installer (+ UnityBridge/ = the C# Editor package and the fixture)
+  Voice/      V0.7: voice coordinator, push-to-talk machine, speech chunker/renderer, response speaker, microphone input/permission, STT/TTS providers (Apple, Whisper helper)
   Proactive/  V0.5: opportunity model, deterministic policy, normaliser/dedup, assessor, finding extractor, revalidator, OpportunityEngine, ProposalService
   Tasks/      V0.4: task model/state machines, plans, workspace guard, project tools, command profiles, leases, engine, reports, intake
 Tests/JarvisTests/            unit tests (Swift Testing)
-scripts/                      build_app.sh, test.sh, verify.sh, setup_local_ai.sh, local-ai/ (worker + pinned requirements)
+scripts/                      build_app.sh, test.sh, verify.sh, setup_local_ai.sh, local-ai/ (worker + pinned requirements), setup_voice_ai.sh, voice-ai/ (speech worker + pinned requirements)
 docs/                         architecture, decisions, roadmap, issues, log, current task
 captures/                     dev screenshots (git-ignored)
 ```
@@ -104,7 +109,7 @@ See `docs/KNOWN_ISSUES.md`. Notably: conversation history is in-memory (the audi
 
 ## Next milestone
 
-V0.7 — to be confirmed by the user (voice I/O is next in `docs/ROADMAP.md`; web research / asset acquisition are separate). **Do not start V0.7 until the user approves V0.6.**
+V0.8 — Natural Voice Session (wake word, VAD, hands-free turn-taking, barge-in) — **not started; do not start it until the user approves V0.7** (`docs/ROADMAP.md`, DEC-068: web research & asset acquisition are V0.9).
 
 ## Manual test checklist (V0.1)
 
@@ -150,6 +155,79 @@ Optional set-up for the local model: `scripts/setup_local_ai.sh` (needs `uv`; th
 37. **STOP GENERATION** while an OpenCode or local answer is running: it stops within a second; no `opencode` / worker process remains.
 38. Quit JARVIS while the local model is loaded → no `jarvis_local_worker.py` process remains. After a force-quit (`kill -9`) the worker also exits by itself.
 39. Data check: `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select agent_type, engine, model, status from agent_runs order by started_at desc limit 5"` shows your requests (engine/model/status/reason; no prompt text, no secrets).
+
+### V0.7 additions (voice I/O) — MANUAL TEST REQUIRED
+Developer-only: `build/Jarvis.app/Contents/MacOS/Jarvis --voice-live-test` (silent REAL test with synthetic speech; add `--voice-audible` to hear it, `--voice-real-mic` to open the real microphone for 1.5 s). Optional better recogniser: `scripts/setup_voice_ai.sh`. Automated runs never open the microphone.
+154. Settings → **Voice** → turn **Enable voice (Push-to-Talk)** on (it is off by default). Relaunch JARVIS with Voice enabled.
+155. Confirm the microphone is NOT active: the macOS menu bar shows no orange microphone dot, `Activity Monitor` shows no `Jarvis` audio use, the System panel says Voice READY · PUSH-TO-TALK, JARVIS state is Idle.
+156. Open Settings → Voice. Confirm the **Shortcut** row (hold right ⌥), the microphone row (NOT ASKED YET / ALLOWED / DENIED) and the explanation text.
+157. Confirm the **Speech recogniser** list: Whisper (local, MLX) and Apple Speech (on-device) each with READY / SETUP NEEDED and cost class LOCAL / SYSTEM; the line “Using: …” says which one Auto picks and why. (Whisper needs `scripts/setup_voice_ai.sh` once.)
+158. Confirm the **TTS** side: Turkish voice and English voice pickers list only voices that really are installed (Yelda, Samantha, …); “Test Turkish” / “Test English” speak a short phrase; “Stop” silences it.
+159. Confirm the **Recognition language** setting (Auto / Turkish / English) and its explanation (Whisper detects Turkish/English; Apple cannot, so Auto then uses your system language).
+160. Choose voices and the speech rate; the choice persists after relaunch.
+161. With another app (or JARVIS) in front, **hold the right ⌥ key alone** for about a second. macOS asks for **microphone** access — the first time only.
+162. Allow it. Confirm nothing else is requested (no Accessibility, no Speech Recognition prompt).
+163. Hold the right ⌥ again: after ≈0.25 s the microphone opens and JARVIS shows **LISTENING** (menu-bar glyph, Compact/Full state chip, the red mic chip).
+164. The LISTENING indication is unmistakable without colour (icon + word); with Compact open the command field shows “Listening…”; with Full open the Conversation panel shows a voice strip with a small level bar.
+165. Say a Turkish sentence while holding, e.g. “Jarvis, Unity'deki son task'ın durumunu göster.”
+166. While speaking: a provisional transcript appears (Apple: updates continuously; Whisper: a preview about every 1.2 s after the first second). It may change; it is never added as a message.
+167. Release the key. The **LISTENING indication stops immediately** and the macOS microphone dot disappears (before the transcript is even ready).
+168. Exactly ONE user message appears (with a small mic mark) — the final transcript; no partial messages are left behind.
+169. Judge the Turkish transcript: diacritics (ç ğ ı ö ş ü İ) preserved, “Unity”, “task”, “Play Mode”, “Console”, “BoxCollider” recognised?
+170. Settings → Speech recogniser: choose **Apple Speech**, then **Whisper**, and repeat a Turkish sentence with each. An explicit choice never falls back — if one is not ready JARVIS says why. Tell me which is more accurate/faster for your voice.
+171. JARVIS answers in the Conversation panel AND aloud (Turkish answer, Turkish voice).
+172. The spoken answer says the same thing as the text (no extra or contradictory content; markdown/code is not read literally).
+173. Turn **Speak responses to voice requests** off: voice requests get text-only answers; turn it on again: spoken again.
+174. Hold the key and say an English sentence, e.g. “Jarvis, run the EditMode tests.” Confirm recognition and an English reply spoken with the English voice.
+175. Say a mixed sentence, e.g. “Jarvis, BoxCollider değişikliğini kontrol et and run the relevant test.” Note what was heard (mixed speech is the hardest case — try Recognition language = Turkish / English / Auto and tell me which works best).
+176. Check the semantics: even if words are wrong, is the command still recognisable? (The approval policy protects you either way.)
+177. Test **Push-to-Talk with JARVIS in the background** (another app in front): works the same.
+178. Test with the **Compact HUD** open: the transcript replaces the placeholder in the command field; Compact stays exactly 392×448.
+179. Test with the **Full HUD** open: voice strip in the Conversation panel; the answer appears there.
+180. Test with **no HUD open**: LISTENING shows in the menu-bar glyph; the answer is spoken (and visible when you open a HUD).
+181. Say a deterministic command: “Jarvis, görevler ekranını aç” / “Jarvis, open the Tasks screen”. The Tasks screen opens (Compact closes), a short reply is spoken.
+182. Confirm no heavy provider was started for it (Agents section: no new run; no `claude`/`codex`/`opencode` process) — deterministic commands use the same fast path as typing.
+183. Say a safe task goal with a project folder chosen in Settings: “Jarvis, analyze the test project.”
+184. Confirm a normal V0.4 task appears (Tasks screen; `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select title, origin, input_channel from tasks order by created_at desc limit 3"` shows origin userTask, input_channel voice) and JARVIS speaks only a short acknowledgement while the task keeps running.
+185. Confirm voice did not bypass anything: capabilities, workspace guard, approvals and validation are exactly as for a typed goal.
+186. Ask for something that needs approval (e.g. a task whose goal asks to delete a file) — the approval card appears in the HUD.
+187. Confirm JARVIS only says that the approval is needed in the HUD (or nothing) — it does not approve.
+188. While the approval is pending say “approve” / “evet, onayla” / “yes, do it”.
+189. Confirm **nothing is approved**: JARVIS replies that approvals are decided only with the HUD buttons; the card is still waiting (typing “approve” behaves the same).
+190. Deny it with the **HUD button**; confirm the task ends as denied.
+191. Ask something with a long answer by voice (e.g. “explain how the task engine validates a plan in detail”).
+192. Confirm **bounded speech**: only the first few sentences (about half a minute at most) are read, then “The full answer is on screen.”; code blocks/tables are never read out; the full text is in the panel.
+193. While JARVIS is speaking press **Stop Speaking** (Compact stop button, Full HUD “STOP SPEAKING”, or the menu-bar item). Confirm it stops at once.
+194. Confirm no later phrase of that answer plays afterwards.
+195. While JARVIS is speaking, hold the right ⌥ again: speech stops first, then LISTENING starts (an explicit stop — NOT barge-in; JARVIS never listens while it speaks).
+196. Press and release the key rapidly twice (and tap it very briefly): nothing weird happens — no stuck LISTENING, no duplicate message, no old transcript.
+197. Confirm a recording shorter than about a third of a second is discarded with a short notice, and that a second press while the previous transcript is still being finalised is simply ignored.
+198. Deny microphone access (System Settings → Privacy & Security → Microphone → JARVIS off), hold the key.
+199. Confirm a clear explanation (no endless prompts, System Settings does not open by itself, the “Open System Settings” button is explicit) and that typing/commands still work.
+200. Re-enable the permission. While listening, **unplug/disconnect the microphone** (or switch the input device) if practical.
+201. Confirm graceful recovery: the session ends with a message, no stuck LISTENING/SPEAKING, and the next press works.
+202. Judge Turkish TTS quality (naturalness, speed, pronunciation of Unity/Play Mode/BoxCollider). Compact voices are what is installed by default — try Spoken Content premium voices if you want better.
+203. Judge English TTS quality the same way.
+204. Judge mixed-language pronunciation (Turkish voice reading English words and vice-versa).
+205. Judge volume and speech rate (Settings → Speech rate); tell me whether the default is comfortable over a longer session (fatigue).
+206. With **VoiceOver** on: states are announced as words (Listening / Transcribing / Speaking / microphone denied), the Stop Speaking button has a label. Tell me if spoken replies and VoiceOver overlap badly.
+207. Confirm VoiceOver does not announce every partial transcript update.
+208. With **Reduce Motion** on (or Settings → Reduce Motion): the voice strip level bar is static; nothing animates; voice is fully usable.
+209. Confirm the Compact HUD is **exactly 392×448** in every voice state (Listening, Transcribing, Thinking, Speaking, error).
+210. Confirm Compact/Full HUD **exclusivity** still holds while voice is active.
+211. Quit JARVIS (⌘Q) **while it is speaking** and again while the Whisper helper is loaded.
+212. Confirm playback stops at once and `pgrep -fl jarvis_stt_worker` shows nothing (the helper dies with JARVIS).
+213. Relaunch JARVIS.
+214. Confirm the voice state is **IDLE** (never LISTENING/SPEAKING restored) and the microphone is not active.
+215. Confirm no raw recording exists: `find ~/Library/Application\ Support/JARVIS ~/AI \( -iname '*.wav' -o -iname '*.caf' -o -iname '*.m4a' \)` finds nothing, and the SQLite files contain no audio.
+216. Optional: in a Unity project fixture (or a safe read-only project) ask by voice: “Unity bağlı mı?”
+217. Confirm a state answer without a heavy coder: the reply comes from JARVIS' real Unity state (connected / not connected) and no provider run is started for it.
+218. Ask by voice for the task status: “Son task çalışıyor mu?” / “what are you doing?” Confirm a truthful, state-based answer.
+219. Open the Agents section and Activity: confirm only short voice lines (Voice: listening · transcript submitted (N characters) · first audio N ms · helper loaded/unloaded) and no transcript text or audio anywhere.
+220. Settings → Show Developer Controls → Voice diagnostics: last-turn latencies (STT start / first partial / finalisation, text→TTS, TTS→audio, release→audio) look plausible; helper memory is shown separately from JARVIS' own.
+221. Memory: Activity Monitor — JARVIS stays small (≈100–160 MB); the Whisper helper ≈0.9 GB only while loaded and disappears after ≈2 minutes idle (or when memory is tight); Apple's speech services are separate system processes.
+222. Idle: with Voice enabled and nothing happening, JARVIS shows ≈0 % CPU and no audio use (no polling, no always-on microphone).
+223. Tell me whether the right-Option shortcut feels right (too easy to trigger by accident? hard to reach?), whether the 0.25 s hold is good, and report anything odd (I add it to `docs/KNOWN_ISSUES.md`).
 
 ### V0.6 additions (Unity Project Agent) — MANUAL TEST REQUIRED
 **Prepare:** `docs/UNITY_PROJECT_AGENT.md`. Unity 6000.5.1f1 (or the version your fixture declares) must be installed via Unity Hub and signed in. **Use the disposable fixture, never your real game first:** `cp -R UnityBridge/Fixture ~/Desktop/JarvisFixture` (+ optionally `git init` and commit there). JARVIS starts its own headless editor for it (first open imports the project: allow a minute or two); you may also open the folder in Unity yourself first — JARVIS then connects to YOUR editor after you approve the bridge install.

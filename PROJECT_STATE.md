@@ -4,20 +4,20 @@
 
 ## Current Version
 
-V0.6 — Unity Project Agent & Editor Bridge (Unity as a controlled execution environment inside the V0.4 engine); builds on V0.5 — proactive reasoning, opportunity engine & approval policy (a decision layer above the V0.4 task engine) and on V0.4 — autonomous task engine (user-initiated goals; on top of V0.3.2 observatory, V0.3.1 intelligence infrastructure, V0.3 Claude Code / Codex and V0.2.1). App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3, V0.3.1, V0.3.2 and V0.4 are not**.
+V0.7 — Voice I/O Foundation (Push-to-Talk, streaming/incremental STT, incremental TTS, voice session state; voice is an I/O layer on the SAME conversation pipeline); builds on V0.6 — Unity Project Agent & Editor Bridge (Unity as a controlled execution environment inside the V0.4 engine), V0.5 — proactive reasoning, opportunity engine & approval policy (a decision layer above the V0.4 task engine) and on V0.4 — autonomous task engine (user-initiated goals; on top of V0.3.2 observatory, V0.3.1 intelligence infrastructure, V0.3 Claude Code / Codex and V0.2.1). App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3, V0.3.1, V0.3.2 and V0.4 are not**.
 
 ## Current Milestone
 
-V0.6: Unity Project Agent & Editor Bridge (typed, capability-controlled, observable Unity operations inside the V0.4 engine). NOT V0.7 (voice / web / assets), no real-game mutation, no visual validation.
+V0.7: Voice I/O Foundation (hold right ⌥ → local/system STT → FINAL transcript → the typed pipeline → spoken answer). NOT V0.8 (wake word, VAD, hands-free, barge-in), no web/asset acquisition (V0.9), no spoken approvals, no stored audio.
 
 ## Status
 
-**V0.6 — READY FOR MANUAL TEST** (V0.5 and earlier: READY FOR MANUAL TEST as before)
-(Automated + REAL verification passed on this Mac: OpenCode 2.0.26 FREE end to end on an isolated fixture. Not user-verified. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.5.)
+**V0.7 — READY FOR MANUAL TEST** (V0.6 and earlier: READY FOR MANUAL TEST as before)
+(Automated + REAL verification passed on this Mac with SYNTHETIC speech; no human has spoken to it. Not user-verified. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.8.)
 
 ## Current Objective
 
-User manual test of `build/Jarvis.app` (README items 126–153 for V0.6 — on the disposable fixture first, 92–125 for V0.5, 67–91 for V0.4, 40–66 for V0.3.2, 33–39 for V0.3.1, 26–32 for V0.3). Use a throw-away project for the V0.4 items. Optional local-model setup: `scripts/setup_local_ai.sh`.
+User manual test of `build/Jarvis.app` (README items 154–223 for V0.7 — enable Settings → Voice first; optional better recogniser: `scripts/setup_voice_ai.sh`; 126–153 for V0.6 — on the disposable fixture first, 92–125 for V0.5, 67–91 for V0.4, 40–66 for V0.3.2, 33–39 for V0.3.1, 26–32 for V0.3). Use a throw-away project for the V0.4 items. Optional local-model setup: `scripts/setup_local_ai.sh`.
 
 ## Completed (IMPLEMENTED)
 
@@ -27,7 +27,7 @@ User manual test of `build/Jarvis.app` (README items 126–153 for V0.6 — on t
 - In-memory activity feed (capped at 200), demo agents/tools/project panels (clearly tagged DEMO / NOT CONNECTED).
 - Menu bar `NSStatusItem`: state-specific template glyphs (distinct shapes), ~2 Hz timer only in animated states, right-click menu (Open / Compact / Settings / Quit).
 - Compact HUD (borderless floating panel): identity, state, active task + step + elapsed + step-segmented progress, OPEN JARVIS / PAUSE-RESUME / STOP, command field, dev state strip.
-- Full HUD (large borderless resizable window, centered, screen-adaptive, min 980×620 enforced): Dashboard (System/Project/Tasks · Core · Activity/Agents/Tools), Tasks, System; Report and Memory are PLANNED placeholders (V0.8). Section navigation via `HUDState.section`.
+- Full HUD (large borderless resizable window, centered, screen-adaptive, min 980×620 enforced): Dashboard (System/Project/Tasks · Core · Activity/Agents/Tools), Tasks, System; Report and Memory are PLANNED placeholders (V0.10). Section navigation via `HUDState.section`.
 - JARVIS Core visualization: Core Graphics renderer driven by a capped `CADisplayLink` that exists only while the HUD is visible and Reduce Motion is off.
 - Window-management layer (`JarvisWindowControlling` / `WindowManager`): show/hide/toggle compact, show(section)/hide/bringForward full, settings.
 - Demo/dev mode: state simulator (compact + full), reset demo task, add demo event; demo state switching keeps the task coherent (Completed completes it, Error fails it, Idle pauses it).
@@ -35,6 +35,15 @@ User manual test of `build/Jarvis.app` (README items 126–153 for V0.6 — on t
 - Settings: Reduce Motion, Show Developer Controls, Launch at Login (disabled placeholder, NOT implemented).
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
+
+## V0.7 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED with SYNTHETIC speech · human speech / TTS quality / VoiceOver MANUAL TEST REQUIRED)
+
+Reference: `docs/VOICE_IO.md`, DEC-057…068. Code: `Sources/Jarvis/Voice/`, `UI/Components/VoiceViews.swift`, `UI/Settings/VoiceSettingsSection.swift`, `Services/Conversation/ApprovalGuard.swift`, `scripts/voice-ai/` + `scripts/setup_voice_ai.sh`, schema v6 (`tasks.input_channel`).
+- **Voice is I/O, not intelligence:** hold the RIGHT Option key alone (≥ 0.25 s) → microphone → partial transcripts (provisional, never messages) → FINAL transcript → `ConversationService.submit(source: .voice)` (the typed path) → router/commands/providers/TaskEngine unchanged → the shown answer is spoken. Spoken goals become normal V0.4 tasks (`input_channel = voice`, `origin = userTask`).
+- **Providers (local/system only, cost-first, explicit choice never falls back):** STT = local Whisper-small (MLX helper, optional ≈460 MB model via `scripts/setup_voice_ai.sh`; real language detection, best measured accuracy) preferred in Auto, else Apple on-device `DictationTranscriber` (native streaming, zero setup, macOS 26). TTS = Apple system voices, incremental sentence synthesis (not native streaming). No paid/cloud speech, no API key, no network.
+- **Safety:** microphone only while the key is held (never at launch/in tests), closes at release before recognition; raw audio never persisted (bounded in-memory buffers); only `NSMicrophoneUsageDescription`; transcripts/helper text sanitized; a spoken or typed "yes/approve" never approves (HUD buttons only; `ApprovalGuard`); voice layer has no path to approvals/tasks/files/network (`verify.sh` + unit guards).
+- **Speech:** deterministic `SpeechChunker` (delta-cut-invariant) + `SpeechRenderer` + `LongAnswerPolicy` (≈520 chars / 7 phrases then "the full answer is on screen"; code/tables never read); `stopSpeaking()` at once (buttons, menu bar, "stop talking", typed message, new Push-to-Talk).
+- **Resources:** helper on demand, 120 s idle unload, memory-pressure unload; idle voice costs nothing (no polling); Compact stays 392×448.
 
 ## V0.6 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED · UI/windowed-editor/real-game MANUAL TEST REQUIRED)
 
@@ -121,6 +130,10 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Tested
 
+**V0.7 (2026-10-12) — `scripts/verify.sh` → VERIFY PASSED:** 773 unit tests (100 suites; ≈135 new: speech chunker incl. delta-cut property tests, renderer, language guess, push-to-talk machine + hotkey service, coordinator lifecycle/permission/rapid-PTT/stop/stale-event tests, shared-submission-path and authority tests, approvals-HUD-only, Whisper runtime against a fake helper with real processes, provider selection/cost, WER/CER, structural guards) · V0.7 policy greps (voice has no approval/task/file/network path, microphone and permission APIs in one file each, no audio-writing code or audio schema, no paid/cloud speech, helper offline/bounded, only the microphone usage string) · smoke 109 PASS / 0 FAIL / 2 SKIP (6 new voice checks: idle microphone closed, PTT does nothing in automated runs, Compact stays 392×448 in every voice state, exclusivity) · idle 0.01 CPU-s in 8 s, RSS 49 MB (voice present, disabled).
+**REAL TESTED — `Jarvis --voice-live-test` (final AUDIBLE run with `--voice-real-mic`: 37 PASS / 0 FAIL; earlier runs 36–38, one with a real Unity editor + Qwen + Whisper resident):** SYNTHETIC speech (macOS system voices; never a person) through the REAL Apple on-device and local Whisper recognisers: partial/final semantics, Whisper language detection (tr/en correct), STT benchmark (mean WER/CER Apple 0.24/0.11 vs Whisper 0.18/0.05), Turkish AND English end to end through the real coordinator and the typed pipeline (`ConversationService.submit`) → deterministic command → real TTS (release → first audio ≈240–310 ms Apple, ≈400–430 ms Whisper), typed-twin equality, mixed-language transcripts recorded, voice → normal V0.4 task (`input_channel = voice`), rapid PTT, PTT during speech, **real OS-level Right-Option key events** with Full/Compact/no HUD (key repeat included), TTS rendering + real playback timing + stop (0–3 ms) + incremental sentence synthesis while text streams, real microphone open/close (15 frames/1.5 s), idle voice 0.00 CPU-s/6 s, helper 855 MB loaded / 0 % idle, no network socket, no audio file in the data directory, masked fake secrets, restart → IDLE, SIGTERM of a child JARVIS leaves no helper, memory-pressure warning unloads the helper in 0.03 s, Unity + Qwen + Whisper + JARVIS simultaneously at NORMAL memory pressure.
+**NOT done / MANUAL TEST REQUIRED:** recognition quality for a real human voice, TTS naturalness/pronunciation, VoiceOver, Reduce Motion, the physical right-⌥ feel, background use from another app by a person, mixed-language quality (the weakest case), Claude/Codex are not involved in voice, no windowed-Unity + voice session. README 154–223.
+
 **V0.6 (2026-10-12):** unit tests incl. ≈105 new V0.6 tests — foundation (versions, discovery, detection, protocol, parsing, plan validation), policy, spool transport against a scripted file-protocol editor, the whole engine against a **simulated editor (MOCK TESTED)** (scenarios A–N, install/upgrade approvals, lock, cancellation, restart, security, report), review authority (generic), V0.5 interplay, structural guards; `verify.sh` extended with V0.6 guards.
 **REAL TESTED — `Jarvis --unity-live-test` (59 PASS / 0 FAIL, Unity 6000.5.1f1, headless editor started by JARVIS, disposable fixture in a temp folder, own data dir):** discovery, detection, bridge install by approval, connect, inspect, component/property edits + saves (verified in editor AND scene file), idempotent retries, compile + domain reload + reconnect, EditMode + PlayMode tests, Play Mode, Console delta + sanitization, dirty-scene approval (deny/approve), Play Mode mutation block (policy and bridge), ambiguity, path escape + unknown operation rejection, destructive approval (deny/approve/not-requested), V0.5 design proposal, cancellation, relaunch recovery, **OpenCode FREE fixing a real compile error and a real failing test**, no secret in the data directory, graceful owned-editor shutdown. Planner/Unity agent were scripted in the scene scenarios (the editor was under test); provider scenarios used the real router.
 **NOT done:** visual validation, a windowed editor, any real game (never touched), Claude/Codex as Unity coders (no escalation was needed), multi-editor orchestration, real SIGKILL crash.
@@ -180,7 +193,7 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Important Decisions
 
-See `docs/DECISIONS.md` (DEC-001…DEC-056). Key ones:
+See `docs/DECISIONS.md` (DEC-001…DEC-068). Key ones:
 - Native Swift/SwiftUI/AppKit only (no Electron/React/Tauri/web UI).
 - UI/window state (`HUDState`) separated from application/task state (`JarvisStore`); closing HUDs never touches tasks.
 - All window control goes through `JarvisWindowControlling`.
@@ -205,12 +218,12 @@ None.
 
 ## Next Action
 
-**Wait for the user's manual V0.3 … V0.6 test** (V0.6: README 126–153, on the fixture first) (`README.md` items 26–32, 33–39, 40–66, 67–91, 92–125 and 126–153). Do not start V0.7 without approval.
+**Wait for the user's manual V0.3 … V0.7 test** (V0.7: README 154–223 — enable Settings → Voice; V0.6: 126–153, on the fixture first) (`README.md` items 26–32, 33–39, 40–66, 67–91, 92–125 and 126–153). Do not start V0.8 (wake word + VAD + barge-in) without approval.
 
 ## Git
 
-`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; V0.3 commits start at `58c6948`; V0.3.1 at `f2665a5`; V0.3.2 at `e445f3f`; V0.4 at `41fd038`; V0.5 commits follow `7f6b3d5` (… `962c432`); V0.6 commits follow `962c432`; **no tag**; no AI co-author trailers (user rule). Policy: `AGENTS.md` → Git Workflow, DEC-011.
+`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; V0.3 commits start at `58c6948`; V0.3.1 at `f2665a5`; V0.3.2 at `e445f3f`; V0.4 at `41fd038`; V0.5 commits follow `7f6b3d5` (… `962c432`); V0.6 commits follow `962c432` (… `fea2000`); V0.7 commits follow `fea2000`; **no tag**; no AI co-author trailers (user rule). Policy: `AGENTS.md` → Git Workflow, DEC-011.
 
 ## Last Updated
 
-2026-10-12 — V0.6 implemented, AUTOMATED TESTED, REAL TESTED (real headless Unity editor + OpenCode FREE on a disposable fixture), verified. READY FOR MANUAL TEST.
+2026-10-12 — V0.7 implemented, AUTOMATED TESTED, REAL TESTED with synthetic speech (real recognisers, real TTS, real key events, real microphone plumbing), verified. READY FOR MANUAL TEST.

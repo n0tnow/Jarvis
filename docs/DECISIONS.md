@@ -274,3 +274,52 @@ Decision: One mutating Unity step (edit, compile, test, Play Mode, script change
 ## DEC-056 — Fixtures only; no acquisition; the real game is never an automated target
 Status: Accepted
 Decision: Automated V0.6 acceptance runs on a disposable fixture copied to a temp folder and a headless editor started and owned by the test. The user's real project is never opened or modified by automated tests. No Asset Store, downloads, licence handling, package installation or purchases exist in V0.6 (V0.7+).
+
+## DEC-057 — Voice is an I/O layer around the existing conversation pipeline, never a second intelligence
+Status: Accepted (V0.7)
+Decision: Spoken input and typed input converge BEFORE routing: a FINAL transcript is submitted through the same `ConversationService.submit` (wired once, in `AppContext`; the only difference is `source: .voice`, a label with no authority). Router, `GoalIntake`, providers, `TaskEngine`, V0.5 policy, persistence and observability are unchanged. Only the FINAL transcript ever enters the pipeline; a partial transcript is provisional, lives in the composer area, and is never a message, a task goal, a log line or a database row. A spoken task goal becomes a normal V0.4 task (`tasks.input_channel = 'voice'`, schema v6, informational only: `origin` stays `userTask`, capabilities/risk/approvals are identical). `verify.sh` and unit tests pin that the voice layer cannot reach approvals, tasks, files, repositories or the conversation store.
+
+## DEC-058 — Push-to-Talk is "hold the right Option key alone"; release is the end of the utterance; no always-on microphone in V0.7
+Status: Accepted (V0.7)
+Decision: PTT reuses the permission-free modifier-state sampling of the ⌥⌘ chords (one `GlobalHotkeyService`, no event tap/global monitor/Carbon hotkey, DEC-008/013): the RIGHT Option key (device-dependent flag bit read from the session flag state — `NSEvent.modifierFlags` hides it) held alone for 0.25 s with no other key or click starts capture; releasing it stops capture IMMEDIATELY (before any recognition work); an extra modifier or another key during the arming phase cancels (typing AltGr characters on a Turkish layout can never open the microphone); key repeat cannot restart it. Release — not VAD — is the authoritative endpoint (continuous endpointing, wake word, hands-free listening and barge-in belong to V0.8). The microphone engine is created on press and destroyed on release; nothing runs while idle; voice is OFF by default and the first press asks macOS for the microphone (never at launch, never in tests).
+
+## DEC-059 — Raw audio is ephemeral; the microphone usage string is the only privacy key
+Status: Accepted (V0.7)
+Decision: Audio exists only in memory for one push-to-talk session (bounded: 60 s hold limit, bounded frame queue, 75 s helper buffer) and is never written to disk, SQLite, artifacts, logs or the repository (`verify.sh` greps for audio-writing code, audio columns and audio file types; the live test scans the data directory). Voice diagnostics record lengths, language, provider and latencies — not transcripts and not audio. `Info.plist` gains exactly `NSMicrophoneUsageDescription`; no entitlement; `verify.sh` fails on any other `NS*UsageDescription`. `AVCaptureDevice` appears in one file (`Voice/MicrophoneAccess.swift`), `AVAudioEngine` in one (`Voice/AudioInput.swift`).
+
+## DEC-060 — Speech providers sit behind small protocols; selection is cost-first and explicit choices never fall back
+Status: Accepted (V0.7)
+Decision: `SpeechToTextProvider` / `TextToSpeechProvider` expose truthful availability (READY / needs explicit setup / unavailable), capabilities (languages, partial mode, language detection, confidence, cost class, network), and lifecycle (`unload`, `shutdownNow`). `VoiceProviderSelection` (pure): a PAID or UNKNOWN cost class is never auto-selected; Auto picks by measured accuracy among READY providers; under memory pressure a model-loading provider is skipped; an explicit choice that is not ready is refused with the reason (no fallback). No API key, paid API, cloud speech endpoint or credential exists anywhere (`verify.sh`). Nothing is downloaded by JARVIS: models/assets are installed only by an explicit user action (`scripts/setup_voice_ai.sh`, Settings → Install).
+
+## DEC-061 — Default speech recognition: local Whisper (MLX) when installed and memory is normal; Apple on-device speech otherwise
+Status: Accepted (V0.7) — evidence in `docs/VOICE_IO.md`
+Decision: Measured on synthetic Turkish/English/technical speech (same fixtures, same host): Whisper-small (MLX) beats Apple's on-device recogniser on technical words and Turkish diacritics, detects Turkish/English for real and exposes a confidence; Apple is faster (≈60 ms finalisation vs ≈200 ms) and has native streaming partials but no language detection and no setup. Auto therefore prefers Whisper when it is installed and memory pressure is normal, and falls back to Apple (reason recorded). Both are local/system, offline, key-less and free. Apple's `SpeechTranscriber` has no Turkish on macOS 26.4, so Apple Speech uses `DictationTranscriber` (verified for tr-TR and en-US). Whisper is not natively streaming: previews are produced by re-decoding the audio so far (stated as such in the UI and docs).
+
+## DEC-062 — Default speech output: Apple system voices with incremental sentence synthesis (not native streaming)
+Status: Accepted (V0.7)
+Decision: `AVSpeechSynthesizer` (on-device, free, Turkish "Yelda" + English voices present on the dev Mac; user may pick any installed voice, premium voices if the user installed them). It synthesises complete phrases one after another, so speech starts at the first stable sentence while the rest of the answer is still arriving — described everywhere as incremental sentence synthesis, never as native streaming. Neural alternatives (Piper, Kokoro, XTTS) were researched/benchmarked and are optional future providers (license/size/Turkish-support trade-offs in `docs/VOICE_IO.md`).
+
+## DEC-063 — The spoken answer is the shown answer; speech rendering is presentation; long answers are bounded
+Status: Accepted (V0.7)
+Decision: `VoiceResponseSpeaker` follows the very messages the conversation shows (no second model call, no separate "text to say"). `SpeechChunker` (deterministic, streaming-safe — chunking is independent of how deltas are cut, property-tested) releases only stable sentences; `SpeechRenderer` removes markdown/URLs/paths/emoji and normalises symbols per language without folding Turkish letters or adding content; code blocks and tables are never read (one short note). `LongAnswerPolicy`: at most ≈520 characters / 7 phrases are spoken, then "The full answer is on screen." Typed turns are not spoken; task completion is never announced spontaneously (text/UI only) — background speech that surprises the user is deferred to a future, explicit design.
+
+## DEC-064 — Speech can always be stopped at once; a stale phrase can never play
+Status: Accepted (V0.7)
+Decision: `stopSpeaking()` silences playback immediately and drops queued/in-flight phrases; it is reachable from the Stop button (Compact, Full), the menu bar, "stop talking", a new typed message, and a new Push-to-Talk (which stops speech BEFORE the microphone opens — an explicit stop, not conversational barge-in, which is V0.8; no echo cancellation exists, so JARVIS never listens while speaking). Chunk ids are unique across turns and every provider event is checked against the turn's in-flight set, so events from an earlier turn are ignored.
+
+## DEC-065 — A spoken (or typed) "yes/approve" never approves anything
+Status: Accepted (V0.7)
+Decision: Approvals remain HUD buttons (V0.4 `TaskEngine.decide`, V0.5 `ProposalService`); there is no code path from text — typed or spoken — to a decision. While an approval is pending, a short reply made only of approval/denial words ("yes", "approve", "do it", "onayla", "evet", "hayır") is answered with "approvals are decided only with the buttons in the HUD" instead of being sent to a model (`ApprovalGuard`; typed and spoken alike); real requests that merely contain such a word are untouched. Voice carries no extra trust, and no less.
+
+## DEC-066 — Voice sessions are ephemeral; the voice layer owns no durable state
+Status: Accepted (V0.7)
+Decision: Voice state (`IDLE/REQUESTING PERMISSION/LISTENING/TRANSCRIBING/THINKING/SPEAKING/ERROR`) is in memory and starts IDLE at every launch — LISTENING/SPEAKING/TRANSCRIBING are never restored. `listening` is shown only while capture really runs; `speaking` only once audio started; failures return to IDLE (an error clears itself after 6 s) and text stays fully usable. Preferences (enabled, language, providers, voices, rate) are UserDefaults like all other settings; the only database change is the informational `tasks.input_channel` column.
+
+## DEC-067 — Speech helper resource policy: on demand, idle unload, pressure unload — decided by measurement
+Status: Accepted (V0.7)
+Decision: The Whisper helper (≈0.86 GB resident while loaded, ≈1.6 s cold start, 0 % CPU idle) starts on the first utterance, unloads after 120 s idle (Settings), and unloads on memory-pressure rise (`ResourceManager.observePressureRise`, same event as the local model); it never unloads during an utterance; Auto skips it under pressure. No Unity-specific rule exists: the combined measured state (Unity + provider + Whisper) stays within the 16 GB budget, and the pressure signal is the arbiter. Apple's recogniser and synthesiser run in system services (a few tens of MB observed). The helper is launched only through `ManagedProcess`, killed with the app tree on quit/SIGTERM (live-tested) and never outlives JARVIS (stdin EOF).
+
+## DEC-068 — Roadmap correction (supersedes the V0.7+ rows of the V0.6 roadmap)
+Status: Accepted (V0.7)
+Decision: V0.7 Voice I/O Foundation (this milestone) · V0.8 Natural Voice Session (wake word, VAD, hands-free turn-taking, barge-in, interruption) · V0.9 Web Research & Asset Acquisition · V0.10 Project Memory · V0.11 General Computer Use · V0.12 Advanced Multi-Agent / Routing · V1.0 integrated stable JARVIS. Asset acquisition is NOT V0.7. Items of the old plan that are not in the new list (Unity multiplayer workflows, self-controlled UI, reports) are unscheduled backlog attached to the nearest milestone (see `docs/ROADMAP.md`).
+
