@@ -38,7 +38,8 @@ enum DevCapture {
 
         // Other sections
         DemoScenario.apply(.working, to: store)
-        for section in [HUDSection.tasks, .agents, .report, .system, .memory] {
+        if let repo = context.repository { _ = ResearchDemo.seed(repo, artifacts: context.artifacts); context.researchModel.refresh() }          // synthetic DEMO rows (V0.9)
+        for section in [HUDSection.tasks, .agents, .research, .report, .system, .memory] {
             context.hud.section = section
             await settle(500)
             snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "full_section_\(section.rawValue)", in: directory)

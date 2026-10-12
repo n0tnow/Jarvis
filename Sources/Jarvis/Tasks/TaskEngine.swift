@@ -55,6 +55,11 @@ final class TaskEngine {
     var agents: any StepAgentRunner
     /// V0.6: the Unity tool layer (nil = Unity steps fail with `unityUnavailable`). Owns connections, the mutation lock and owned editors.
     var unity: UnityService?
+    /// V0.9: web research + acquisition services (nil = research/acquisition steps fail truthfully with "not available").
+    var web: ResearchServices?
+    /// Settings → Web research: the master switch and the browser tier switch (closures so a change applies to the next task at once).
+    @ObservationIgnored var webAllowed: () -> Bool = { true }
+    @ObservationIgnored var browserTierAllowed: () -> Bool = { true }
     var limits = Limits()
     /// Called after every persisted change (the store projection / HUD refresh).
     @ObservationIgnored var onChange: (() -> Void)?
@@ -73,6 +78,8 @@ final class TaskEngine {
     private(set) var revision = 0
 
     @ObservationIgnored var contexts: [UUID: TaskContext] = [:]
+    /// V0.9: the user-facing one-paragraph result of finished research/acquisition tasks (the recommendation), for the conversation message.
+    @ObservationIgnored var researchSummaries: [UUID: String] = [:]
     @ObservationIgnored var runners: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored var decisions: [UUID: CheckedContinuation<Bool, Never>] = [:]
     @ObservationIgnored private var activityToken: NSObjectProtocol?
@@ -119,6 +126,8 @@ final class TaskEngine {
         var unityFacts: [String] = []
         var unityProposed: [String: [UnityEditAction]] = [:]
         var unityProposalRuns: [String: UUID] = [:]
+        /// V0.9: research / acquisition state of a web task (nil for every other task).
+        var research: ResearchRuntime?
 
         init(record: TaskRecord, steps: [TaskStepRecord], workspace: WorkspaceGuard, tools: ProjectTools, profiles: ProjectProfiles) {
             self.record = record; self.steps = steps; self.workspace = workspace; self.tools = tools; self.profiles = profiles
@@ -143,7 +152,7 @@ final class TaskEngine {
     func submit(goal rawGoal: String, kind: TaskKind, workspacePath: String, constraints: [String] = [], preference: ProviderPreference? = nil,
                 title: String? = nil, destructiveRequested: Bool = false, id: UUID? = nil, origin: TaskOrigin = .userTask,
                 originTaskID: UUID? = nil, originOpportunityID: UUID? = nil, autonomyDepth: Int = 0, scope: TaskScope? = nil,
-                inputChannel: InputSource = .typed) async -> Result<UUID, TaskSubmitError> {
+                inputChannel: InputSource = .typed, capabilities: CapabilitySet? = nil, prepare: ((TaskContext) -> Void)? = nil) async -> Result<UUID, TaskSubmitError> {
         let goal = rawGoal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !goal.isEmpty else { return .failure(.empty) }
         guard let repository else { return .failure(.persistenceUnavailable) }
@@ -151,24 +160,25 @@ final class TaskEngine {
         if let id, (try? repository.engineTask(id)) != nil { return .success(id) }
         if activeCount >= limits.maxActiveTasks { return .failure(.tooManyActiveTasks(activeCount)) }
         let ws: WorkspaceGuard
-        do { ws = try WorkspaceGuard(rootPath: workspacePath) } catch { return .failure(.workspace(String(describing: error))) }
+        do { ws = kind.isWebTask ? try WorkspaceGuard(researchRoot: workspacePath) : try WorkspaceGuard(rootPath: workspacePath) } catch { return .failure(.workspace(String(describing: error))) }
 
         let profile = TaskClassifier.profile(for: goal)
         var record = TaskRecord(id: id ?? UUID(), title: Self.makeTitle(title ?? goal), goal: String(goal.prefix(1500)), kind: kind)
         record.origin = origin; record.originTaskID = originTaskID; record.originOpportunityID = originOpportunityID; record.autonomyDepth = autonomyDepth; record.scope = scope
         record.inputChannel = inputChannel
         record.category = kind == .development ? .repositoryModification : .research
-        record.risk = destructiveRequested ? .high : (kind == .development ? .medium : .low)
+        record.risk = destructiveRequested ? .high : (kind == .development || kind == .acquisition ? .medium : .low)
         record.destructiveRequested = destructiveRequested && kind == .development
         record.privacy = profile.privacy
         record.workspaceRoot = ws.root
-        record.capabilities = .for(kind, unityProject: UnityProjectDetector.isUnityProject(root: ws.root))
+        record.capabilities = capabilities ?? .for(kind, unityProject: UnityProjectDetector.isUnityProject(root: ws.root))
         record.constraints = constraints
         record.preference = preference
         record.activity = "Created"
         do { try repository.insert(record) } catch { return .failure(.persistenceUnavailable) }
         let ctx = TaskContext(record: record, steps: [], workspace: ws, tools: ProjectTools(workspace: ws, capabilities: record.capabilities), profiles: ProfileDiscovery.discover(ws))
         contexts[record.id] = ctx
+        prepare?(ctx)
         publish(ctx)
         note("Task created: \(record.title)", .info, taskID: record.id)
         startRunner(ctx)

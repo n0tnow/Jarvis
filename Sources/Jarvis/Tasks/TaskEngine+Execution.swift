@@ -29,6 +29,13 @@ extension TaskEngine {
         case .unityTest: outcome = await runUnityTest(ctx, key)
         case .unityPlayMode: outcome = await runUnityPlayMode(ctx, key)
         case .unityValidate: outcome = await runUnityValidate(ctx, key)
+        case .researchSearch: outcome = await runResearchSearch(ctx, key)
+        case .researchRead: outcome = await runResearchRead(ctx, key)
+        case .researchExtract: outcome = await runResearchExtract(ctx, key)
+        case .researchVerify: outcome = await runResearchVerify(ctx, key)
+        case .researchReport: outcome = await runResearchReport(ctx, key)
+        case .acquire: outcome = await runAcquire(ctx, key)
+        case .importAsset: outcome = await runImportAsset(ctx, key)
         }
         leases.release(owner: Self.leaseOwner(step))
         unity?.lock.release(owner: Self.leaseOwner(step))

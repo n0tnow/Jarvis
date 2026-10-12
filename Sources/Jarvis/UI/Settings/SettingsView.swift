@@ -96,6 +96,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             VoiceSettingsSection()
+            WebResearchSettingsSection()
             Section {
                 LabeledContent("Version", value: "\(AppInfo.version) (\(AppInfo.milestone))")
                 LabeledContent("Permissions", value: app.preferences.voiceEnabled ? "Microphone (only while you hold Push-to-Talk)" : "None requested")

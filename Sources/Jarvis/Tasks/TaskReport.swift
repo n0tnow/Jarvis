@@ -105,6 +105,12 @@ struct TaskReport: Codable, Equatable, Sendable {
         case .unsafeEditorState: "Leave Play Mode and save or discard your unsaved Unity changes, then run the task again."
         case .compileFailed: "Open the Unity Console, fix the compiler errors (or adjust the goal) and run the task again."
         case .unityTimeout: "Check that the Unity Editor is responsive (it may be importing or showing a dialog), then run the task again."
+        case .networkUnavailable: "Check the internet connection, then run the research again."
+        case .blockedByNetworkPolicy: "JARVIS only reads the public internet (no localhost, private networks or non-web links). Use a public https source."
+        case .noSources: "Nothing readable was found. Rephrase the question, ask for a deeper search, or open sources yourself."
+        case .acquisitionRefused: "JARVIS did not download this: open the listing yourself if you want it (account actions and purchases are never automatic)."
+        case .downloadFailed: "The download did not complete or failed verification; nothing partial was kept. Try again later."
+        case .interactionRequired: "The site asks for a login or a human check (CAPTCHA). JARVIS does not bypass that — open the page yourself."
         }
     }
 

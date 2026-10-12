@@ -26,10 +26,14 @@ struct JarvisPaths: Sendable {
     }
     func folder(_ f: Folder) -> URL { artifacts.appendingPathComponent(f.rawValue, isDirectory: true) }
     var runtime: URL { root.appendingPathComponent("runtime", isDirectory: true) }
+    /// V0.9: downloaded third-party artifacts live ONLY here (quarantine), one folder per acquisition; never inside a project, never in SQLite.
+    var acquisitions: URL { root.appendingPathComponent("acquisitions", isDirectory: true) }
+    /// V0.9: the workspace root research tasks run in (they have no project; it stays empty).
+    var researchWorkspace: URL { root.appendingPathComponent("research-workspace", isDirectory: true) }
 
     func ensureDirectories() throws {
         let fm = FileManager.default
-        for dir in [root, artifacts] + Folder.allCases.map(folder) {
+        for dir in [root, artifacts, acquisitions, researchWorkspace] + Folder.allCases.map(folder) {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
     }

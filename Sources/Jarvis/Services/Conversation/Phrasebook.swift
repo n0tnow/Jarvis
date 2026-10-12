@@ -12,6 +12,7 @@ enum Phrasebook {
         case .dashboard: pick(l, "Opening the dashboard.", "Ana ekranı açıyorum.")
         case .tasks: pick(l, "Opening your tasks.", "Görevleri açıyorum.")
         case .agents: pick(l, "Opening the agents.", "Ajanları açıyorum.")
+        case .research: pick(l, "Opening research.", "Araştırmayı açıyorum.")
         case .report: pick(l, "Opening the report.", "Raporu açıyorum.")
         case .system: pick(l, "Opening system.", "Sistemi açıyorum.")
         case .memory: pick(l, "Opening memory.", "Belleği açıyorum.")
@@ -47,6 +48,10 @@ enum Phrasebook {
     static func taskStarted(_ title: String, readOnly: Bool, _ l: ReplyLanguage) -> String {
         pick(l, "On it. I created the task “\(title)” and will plan it, \(readOnly ? "inspect the project" : "work through it, validate the result") and report back. Follow it in Tasks or Agents — say “stop” to cancel.",
              "Başlıyorum. “\(title)” görevini oluşturdum; planlayıp \(readOnly ? "projeyi inceleyeceğim" : "adım adım yürütüp sonucu doğrulayacağım") ve sonucu bildireceğim. Tasks veya Agents ekranından izleyebilirsiniz — iptal için “durdur” deyin.")
+    }
+    static func researchStarted(_ title: String, _ l: ReplyLanguage) -> String {
+        pick(l, "Researching. I created the task “\(title)”: I will search, read the sources and write a cited report — nothing is downloaded, imported or bought. Follow it on the Research screen; say “stop” to cancel.",
+             "Araştırıyorum. “\(title)” görevini oluşturdum: arayıp kaynakları okuyacak ve kaynaklı bir rapor yazacağım — hiçbir şey indirilmez, içe aktarılmaz ya da satın alınmaz. Research ekranından izleyebilirsiniz; iptal için “durdur” deyin.")
     }
     static func needsProject(_ l: ReplyLanguage) -> String {
         pick(l, "That is project work, so I need a project folder first. Open Tasks and choose one (Choose folder…), then ask again. Nothing was started.",

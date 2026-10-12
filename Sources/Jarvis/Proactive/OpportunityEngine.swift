@@ -86,6 +86,19 @@ final class OpportunityEngine {
 
     // MARK: Ingest
 
+    /// V0.9: JARVIS (or the user, from the Tasks screen) may SUGGEST researching something — e.g. "the projectile system has no throw animation; research free options?".
+    /// It becomes a normal proposal: the policy answers `propose` at most (never an automatic task), the user approves it with the HUD button, and
+    /// only then an ordinary read-only research task starts. Acquisition is never part of it.
+    @discardableResult
+    func proposeResearch(goal: String, reason: String, projectRoot: String, originTaskID: UUID? = nil, eventKey: String? = nil) async -> IngestResult {
+        let action = ProposedAction(kind: .other, goal: String(goal.prefix(400)), expectedFiles: [], scope: TaskScope(allowedStepTypes: [.researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport], maxChangedFiles: 0, maxSteps: 6),
+                                    validationPlan: "A cited report: facts with evidence, assessments labelled, unknowns listed; nothing is downloaded or changed.", expectedBenefit: "Evidence for a decision, with sources you can open.", taskKind: .research)
+        let finding = RawFinding(origin: .userDeferredIdea, title: "Research: " + String(goal.prefix(120)), summary: reason, category: .documentation,
+                                 evidence: [EvidenceItem(kind: .modelClaim, summary: reason)], affectedPaths: [], originTaskID: originTaskID, projectRoot: projectRoot, claimedDesignImpact: false,
+                                 requestedCapabilities: [.researchWeb], proposedAction: action, eventKey: eventKey ?? "research:" + Redactor.sha256(goal).prefix(16))
+        return await ingest(finding)
+    }
+
     @discardableResult
     func ingest(_ f: RawFinding) async -> IngestResult {
         let s = settings()
@@ -227,8 +240,17 @@ final class OpportunityEngine {
         let seed = proposalID.map { "task:proposal:\($0.uuidString)" } ?? "task:auto:\(opp.id.uuidString)"
         let tid = Self.derivedID(seed)
         let originDepth = (opp.originTaskID.flatMap { (try? repository.engineTask($0)) ?? nil })?.autonomyDepth ?? 0
-        let result = await tasks.submit(goal: action.goal, kind: action.taskKind, workspacePath: opp.projectRoot, title: opp.title, id: tid, origin: origin,
+        let result: Result<UUID, TaskSubmitError>
+        if action.taskKind == .research {
+            // V0.9: an approved RESEARCH proposal is an ordinary web research task (read-only; never automatic; no acquisition rides along with it).
+            guard origin == .approvedProposal else { return nil }
+            var req = ResearchIntake.parse(goal: action.goal, id: tid)
+            req.createdAt = clock()
+            result = await tasks.submitResearch(req, origin: origin, scope: action.scope, originTaskID: opp.originTaskID, originOpportunityID: opp.id, autonomyDepth: originDepth + 1)
+        } else {
+            result = await tasks.submit(goal: action.goal, kind: action.taskKind, workspacePath: opp.projectRoot, title: opp.title, id: tid, origin: origin,
                                         originTaskID: opp.originTaskID, originOpportunityID: opp.id, autonomyDepth: originDepth + 1, scope: action.scope)
+        }
         guard case .success(let id) = result else { return nil }
         var o = opp; o.status = .taskCreated; o.taskID = id; o.updatedAt = clock()
         try? repository.update(o)

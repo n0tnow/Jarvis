@@ -13,6 +13,7 @@ extension TaskEngine {
     func finalizeFailure(_ ctx: TaskContext) async {
         if ctx.cancelRequested || Task.isCancelled { await finalizeCancelled(ctx); return }
         let (cat, why) = ctx.hardFailure ?? (.validationFailed, "The task failed.")
+        await ctx.research?.pipeline?.markEnded(.providerFailed(why))          // the durable research row must not stay on "searching"
         let report = makeReport(ctx, cleanup: nil, forState: .failed, failure: (cat, why))
         guard transition(ctx, to: .failed, activity: "Failed — \(cat.label)", failure: (cat, why)) else { return }
         finish(ctx, report: report)
@@ -20,6 +21,7 @@ extension TaskEngine {
 
     func finalizeCancelled(_ ctx: TaskContext) async {
         guard !ctx.record.state.isTerminal else { return }
+        await ctx.research?.pipeline?.markEnded(.cancelled)
         for s in ctx.steps where [.running, .verifying, .waitingForApproval, .ready].contains(s.state) { setStep(ctx, s.key, to: .cancelled) }
         let heldLeases = ctx.record.id
         let n = leases.leases(forTask: heldLeases).count
@@ -158,7 +160,7 @@ extension TaskEngine {
 
     /// Rebuilds the in-memory context of a persisted task.
     func loadContext(_ t: TaskRecord) -> TaskContext? {
-        guard let root = t.workspaceRoot, let ws = try? WorkspaceGuard(rootPath: root), let repository else {
+        guard let root = t.workspaceRoot, let ws = try? (t.kind.isWebTask ? WorkspaceGuard(researchRoot: root) : WorkspaceGuard(rootPath: root)), let repository else {
             var failed = t; failed.state = .failed; failed.failureCategory = .workspaceViolation; failed.failureReason = "The project folder is no longer available."
             failed.finishedAt = Date(); try? self.repository?.update(failed)
             return nil

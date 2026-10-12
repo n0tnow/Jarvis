@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1, v2, v3, v4, v5, v6]
+    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -307,5 +307,53 @@ struct Migration: Sendable {
     /// partial-transcript storage anywhere in the schema: raw microphone audio is never persisted.
     static let v6 = Migration(version: 6, name: "voice input channel", statements: [
         "ALTER TABLE tasks ADD COLUMN input_channel TEXT NOT NULL DEFAULT 'typed'",
+    ])
+
+    /// V7 — web research & asset acquisition (V0.9): sessions, queries, sources (provenance), claims (evidence), candidates and acquisitions.
+    /// Metadata, hashes, URLs (sanitized, no tokens) and SMALL bounded excerpts only: no page bodies, no archive of third-party content, no binaries.
+    /// Downloaded artifacts live in the quarantine folder (Application Support/acquisitions), referenced here by relative path.
+    static let v7 = Migration(version: 7, name: "web research and asset acquisition", statements: [
+        """
+        CREATE TABLE research_sessions (
+            id TEXT PRIMARY KEY, goal TEXT NOT NULL, type TEXT NOT NULL, constraints TEXT, freshness TEXT, status TEXT NOT NULL, deep INTEGER NOT NULL DEFAULT 0,
+            project_facts TEXT, meter TEXT, note TEXT, report_artifact_id TEXT, markdown_artifact_id TEXT, created_at REAL NOT NULL, updated_at REAL NOT NULL, finished_at REAL
+        )
+        """,
+        "CREATE INDEX idx_research_sessions_updated ON research_sessions(updated_at)",
+        """
+        CREATE TABLE research_queries (
+            id TEXT PRIMARY KEY, research_id TEXT NOT NULL, text TEXT NOT NULL, provider TEXT NOT NULL, result_count INTEGER NOT NULL DEFAULT 0, failure TEXT, at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_research_queries_session ON research_queries(research_id)",
+        """
+        CREATE TABLE research_sources (
+            id TEXT PRIMARY KEY, research_id TEXT NOT NULL, url TEXT NOT NULL, final_url TEXT, domain TEXT, title TEXT, type TEXT NOT NULL, official TEXT NOT NULL,
+            retrieved_at REAL NOT NULL, published_at REAL, author TEXT, content_hash TEXT, license TEXT, method TEXT NOT NULL, auth_required INTEGER NOT NULL DEFAULT 0,
+            dynamic INTEGER NOT NULL DEFAULT 0, http_status INTEGER, trust INTEGER NOT NULL DEFAULT 0, excerpt TEXT, note TEXT, injection_flags TEXT
+        )
+        """,
+        "CREATE INDEX idx_research_sources_session ON research_sources(research_id)",
+        """
+        CREATE TABLE research_claims (
+            id TEXT PRIMARY KEY, research_id TEXT NOT NULL, subject TEXT, kind TEXT NOT NULL, statement TEXT NOT NULL, epistemic TEXT NOT NULL, status TEXT NOT NULL,
+            freshness TEXT, evidence TEXT, note TEXT, created_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_research_claims_session ON research_claims(research_id)",
+        """
+        CREATE TABLE research_candidates (
+            id TEXT PRIMARY KEY, research_id TEXT NOT NULL, name TEXT NOT NULL, url TEXT NOT NULL, rank INTEGER NOT NULL DEFAULT 0, verdict TEXT, data TEXT NOT NULL, updated_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_research_candidates_session ON research_candidates(research_id)",
+        """
+        CREATE TABLE acquisitions (
+            id TEXT PRIMARY KEY, research_id TEXT, candidate_id TEXT, task_id TEXT, state TEXT NOT NULL, class TEXT NOT NULL, name TEXT NOT NULL, source_url TEXT, sha256 TEXT,
+            size INTEGER, trust TEXT, data TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_acquisitions_state ON acquisitions(state)",
+        "CREATE INDEX idx_acquisitions_research ON acquisitions(research_id)",
     ])
 }

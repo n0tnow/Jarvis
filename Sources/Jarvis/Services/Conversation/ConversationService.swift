@@ -64,6 +64,8 @@ final class ConversationService {
     var hasProviders: Bool { resolver.hasProviders }
     /// V0.4: the autonomous task layer. nil (tests, stubbed runs) keeps the V0.3 behaviour: worker requests start nothing.
     @ObservationIgnored weak var taskSubmitter: (any TaskSubmitting)?
+    /// V0.9: web research tasks (same entry point for typed and spoken requests). nil = research requests stay ordinary conversation.
+    @ObservationIgnored weak var researchSubmitter: (any ResearchSubmitting)?
     /// Called at the start of every accepted submission (V0.7: a typed message silences speech that is still playing).
     @ObservationIgnored var onSubmit: ((InputSource) -> Void)?
     /// "stop talking" also silences speech that is playing (V0.7): returns true when something was being spoken.
@@ -120,8 +122,11 @@ final class ConversationService {
             }
 
         case .reasoningRequired(let prompt, let lang):
+            // "Research this error / find a free animation / compare these libraries" is a web RESEARCH task (read-only, bounded, cited).
+            if researchSubmitter != nil, ResearchIntake.isResearchRequest(prompt) {
+                handleResearchRequest(prompt, language: lang, channel: source)
             // "Analyze the multiplayer issue" with a project chosen is a bounded read-only TASK; without a project it stays a conversation.
-            if let intent = GoalIntake.analysis(for: prompt), let submitter = taskSubmitter, submitter.hasProject {
+            } else if let intent = GoalIntake.analysis(for: prompt), let submitter = taskSubmitter, submitter.hasProject {
                 handleTaskRequest(prompt, intent: intent, language: lang, channel: source)
             } else {
                 handleProviderRequest(.reasoning, prompt: prompt, language: lang, origin: origin, presentation: source == .voice ? .voiceConversation : .text)
@@ -162,6 +167,21 @@ final class ConversationService {
             defer { self.pendingTaskAcks -= 1 }
             switch await submitter.submitTask(goal: prompt, intent: intent, channel: channel) {
             case .started(let title): self.conversation.appendJarvis(Phrasebook.taskStarted(title, readOnly: intent.kind == .readOnlyAnalysis, language), route: .worker)
+            case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
+            case .rejected(let why): self.conversation.appendJarvis(why, tone: .notice, route: .worker)
+            }
+            self.announceLatestReply()
+        }
+    }
+
+    private func handleResearchRequest(_ prompt: String, language: ReplyLanguage, channel: InputSource) {
+        guard let submitter = researchSubmitter else { return }
+        pendingTaskAcks += 1
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.pendingTaskAcks -= 1 }
+            switch await submitter.submitResearch(goal: prompt, channel: channel) {
+            case .started(let title): self.conversation.appendJarvis(Phrasebook.researchStarted(title, language), route: .worker)
             case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
             case .rejected(let why): self.conversation.appendJarvis(why, tone: .notice, route: .worker)
             }

@@ -69,7 +69,7 @@ enum OpportunityAssessor {
         var effects = f.claimedExternalEffects
         for (e, words) in effectWords where words.contains(where: t.contains) { effects.insert(e) }
         let destructive: Destructiveness = destructiveWords.contains(where: t.contains) ? (t.contains("delete everything") || t.contains("rm -rf") || t.contains("entire") ? .significant : .limited) : .none
-        var caps = f.requestedCapabilities.union(f.proposedAction?.taskKind == .development ? [.readProject, .writeProject, .runTests] : [.readProject])
+        var caps = f.requestedCapabilities.union(f.proposedAction?.taskKind == .development ? [.readProject, .writeProject, .runTests] : f.proposedAction?.taskKind == .research ? [] : [.readProject])
         if destructive != .none { caps.insert(.destructiveFileOperation) }
         for (e, cap) in [(ExternalEffect.gitPush, TaskCapability.gitPush), (.purchase, .purchase), (.deployment, .useNetwork), (.upload, .useNetwork), (.networkMutation, .useNetwork)] where effects.contains(e) { caps.insert(cap) }
 
@@ -128,6 +128,11 @@ enum OpportunityAssessor {
         let types: Set<StepType> = [.analysis, .codeChange, .test, .review, .build]
         let title = OutputSanitizer.sanitize(String(f.title.prefix(140)))
         let goalFromModel = f.proposedAction.map { OutputSanitizer.sanitize(String($0.goal.prefix(400))) }
+        // V0.9: a RESEARCH proposal is rebuilt deterministically too — read-only web research steps only, no project paths, no file changes.
+        if f.proposedAction?.taskKind == .research {
+            return ProposedAction(kind: .other, goal: goalFromModel ?? title, expectedFiles: [], scope: TaskScope(allowedStepTypes: [.researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport], maxChangedFiles: 0, maxSteps: 6),
+                                  validationPlan: "A cited report: facts with evidence, assessments labelled, unknowns listed; nothing is downloaded or changed.", expectedBenefit: "Evidence for a decision, with sources you can open.", taskKind: .research)
+        }
         switch category {
         case .testCoverage:
             let testFiles = files.filter(TaskScope.isTestPath)

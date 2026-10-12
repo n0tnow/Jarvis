@@ -37,6 +37,9 @@ final class AppContext {
     let unity: UnityService          // V0.6: typed Unity tool layer (discovery, connections, mutation lock, owned editors)
     let taskBridge: TaskBridge
     let taskIntake: TaskIntake
+    /// V0.9: web research + acquisition (nil in stubbed automated runs: they never touch the network).
+    let research: ResearchServices?
+    let researchModel: ResearchViewModel
     // V0.5 proactive layer: decides (never executes) — approved/auto actions become normal V0.4 tasks
     let opportunities: OpportunityEngine
     let proposalService: ProposalService
@@ -109,6 +112,12 @@ final class AppContext {
         unity = UnityService()
         taskEngine.unity = unity
         taskIntake = TaskIntake(engine: taskEngine, preferences: preferences)
+        research = stubIntelligence ? nil : ResearchServices.standard(paths: p, repository: repo, artifacts: artifacts)
+        taskEngine.web = research
+        let webPrefs = preferences
+        taskEngine.webAllowed = { [weak webPrefs] in webPrefs?.webResearchEnabled ?? true }
+        taskEngine.browserTierAllowed = { [weak webPrefs] in webPrefs?.webBrowserTierEnabled ?? true }
+        researchModel = ResearchViewModel(repository: repo, artifacts: artifacts, engine: taskEngine, preferences: preferences)
         opportunities = OpportunityEngine(repository: repo, audit: audit, tasks: taskEngine)
         proposalService = ProposalService(repository: repo, engine: opportunities)
         whisper = WhisperRuntime(config: .standard(paths: runtimePaths, modelPath: stubIntelligence ? "/nonexistent/jarvis-stub-whisper" : preferences.whisperModelPath))
@@ -140,7 +149,7 @@ final class AppContext {
         // (The closed-loop natural voice test answers from a script: non-command turns must never reach a real model or spend quota.)
         conversationService = ConversationService(store: store, conversation: conversation, windows: windowManager, resolver: voiceRig != nil ? ScriptedAnswerResolver() : coordinator)
         // Autonomous work is only enabled for the real app: stubbed automated runs never start tasks (and never reach providers).
-        if !stubIntelligence { conversationService.taskSubmitter = taskIntake }
+        if !stubIntelligence { conversationService.taskSubmitter = taskIntake; conversationService.researchSubmitter = taskIntake }
 
         // --- V0.7 voice: wiring (nothing starts here: no microphone, no helper process, no permission request) ---
         let voicePrefs = preferences
@@ -204,14 +213,19 @@ final class AppContext {
             self.taskBridge.finished(v)
             Task { @MainActor in await self.opportunities.taskFinished(v) }          // event-driven post-task reflection (bounded; no polling)
             if let report = self.taskEngine.report(for: v.id) {
-                self.conversation.appendJarvis(report.userSummary, tone: v.task.state == .completed ? .normal : .notice, route: .worker)
-                Announcer.announce(report.userSummary, high: v.task.state != .completed)
+                let text = self.taskEngine.researchSummary(for: v) ?? report.userSummary          // V0.9: a research task's message is its cited recommendation
+                self.conversation.appendJarvis(text, tone: v.task.state == .completed ? .normal : .notice, route: .worker)
+                Announcer.announce(text, high: v.task.state != .completed)
             }
         }
         if !stubIntelligence {
             // Restart reconciliation: stale RUNNING tasks → INTERRUPTED (resumed only by the user); leases of the dead process → stale;
             // tasks that were waiting for an approval wait again.
             let r = taskEngine.reconcileOnLaunch()
+            if let repo = self.repository {                                            // V0.9: in-flight research/downloads are INTERRUPTED, never resumed silently
+                _ = try? repo.reconcileResearchAfterRestart()
+                if let web = research, let active = try? repo.acquisitions(states: [.verifying, .approved, .downloading, .downloaded, .inspecting]) { for rec in web.acquisition.reconcile(active) { web.persistence?.save(rec) } }
+            }
             if r.leases > 0 { Log.app.info("released \(r.leases) stale file lease(s)") }
             taskEngine.restoreWaitingTasks()
             let nc = NSWorkspace.shared.notificationCenter
@@ -225,7 +239,7 @@ final class AppContext {
     }
 
     /// Normal termination / SIGTERM: stop scheduling, persist the interrupted state + checkpoints, release leases (processes are killed by `ProcessRegistry`).
-    func prepareForTermination() { taskEngine.prepareForTermination(); unity.forgetOwnedEditors(); handsFree.shutdown(); voice.shutdown() }
+    func prepareForTermination() { taskEngine.prepareForTermination(); research?.browser?.shutdown(); unity.forgetOwnedEditors(); handsFree.shutdown(); voice.shutdown() }
 
     /// User-triggered runs (benchmark, local test) whose Task can be cancelled from the Observatory.
     @ObservationIgnored fileprivate var userTasks: [UUID: Task<Void, Never>] = [:]

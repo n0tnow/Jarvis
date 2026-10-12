@@ -45,6 +45,13 @@ struct WorkspaceGuard: Sendable, Equatable {
         root = real
     }
 
+    /// V0.9: JARVIS' own, permanently EMPTY research workspace (inside its data folder, which `init(rootPath:)` refuses for projects). Web tasks carry no
+    /// project capability, so nothing can be read or written through it; it only gives the task engine a root to anchor on.
+    init(researchRoot path: String) throws {
+        guard path.hasPrefix("/"), path.contains("/Library/Application Support/JARVIS/research-workspace") || path.contains("/research-workspace"), let real = Self.realpath(path) else { throw Violation.invalidRoot("research workspace is not available") }
+        root = real
+    }
+
     private static func realpath(_ path: String) -> String? {
         guard let p = Darwin.realpath(path, nil) else { return nil }
         defer { free(p) }

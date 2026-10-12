@@ -11,13 +11,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
-        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
+        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
         let liveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true)
             : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true)
             : (options.proactiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-proactive", isDirectory: true)
             : (options.unityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-unity", isDirectory: true)
+            : (options.researchLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-research", isDirectory: true)
             : (options.voiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.voiceQuitChild ? "live-test-voice-child" : "live-test-voice", isDirectory: true)
-            : (options.naturalVoiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.naturalChild ? "live-test-natural-child" : "live-test-natural", isDirectory: true) : nil)))))
+            : (options.naturalVoiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.naturalChild ? "live-test-natural-child" : "live-test-natural", isDirectory: true) : nil))))))
         // The natural-voice live test runs the real stack in a closed acoustic loop (scripted microphone + simulated speaker); nothing else ever gets a rig.
         let rig: VoiceTestRig? = options.naturalVoiceLiveTest ? VoiceTestRig() : nil
         context = AppContext(stubIntelligence: stubbed, dataDirectory: liveData, voiceRig: rig)
@@ -82,6 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let context = context!, dir = options.liveDirectory ?? "captures", fixture = options.unityFixture, noProvider = options.unityNoProvider
             Task { await UnityLiveTest.run(context: context, captureDirectory: dir, fixtureTemplate: fixture, withProvider: !noProvider) }
         }
+        if options.researchLiveTest {
+            let context = context!, dir = options.liveDirectory ?? "captures"
+            Task { await ResearchLiveTest.run(context: context, captureDirectory: dir) }
+        }
         if options.voiceLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures", audible = options.voiceAudible, noWhisper = options.voiceNoWhisper, realMic = options.voiceRealMic, combined = options.voiceCombined
             if options.voiceQuitChild { Task { await VoiceLiveTest.runQuitChild(context: context) } }
@@ -111,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await DevCapture.run(directory: directory, context: context) }
         }
         // Find out which engines are actually usable (event-driven, once; no polling). Stubbed runs never touch real providers.
-        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.voiceLiveTest && !options.naturalVoiceLiveTest {
+        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.voiceLiveTest && !options.naturalVoiceLiveTest {
             let context = context!
             Task { await context.refreshIntelligence(includeOpenCode: false) }     // OpenCode is read lazily (may start its background service)
         }

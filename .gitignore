@@ -44,3 +44,7 @@ secrets.*
 *.gguf
 *.mlx
 *.npz
+
+# Python bytecode from the voice/helper scripts
+__pycache__/
+*.pyc

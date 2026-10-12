@@ -8,8 +8,16 @@ enum TaskKind: String, Codable, Sendable {
     case readOnlyAnalysis
     /// Change the project (bounded, validated, leased, audited).
     case development
+    /// V0.9: research the public web (read-only; no project, no files, no account actions). Authority level RESEARCH.
+    case research
+    /// V0.9: download ONE verified public artifact into the quarantine and inspect it. Authority level ACQUISITION; never imports, never executes.
+    case acquisition
 
-    var label: String { self == .development ? "Development" : "Analysis" }
+    var label: String {
+        switch self { case .development: "Development"; case .readOnlyAnalysis: "Analysis"; case .research: "Research"; case .acquisition: "Acquisition" }
+    }
+    /// Tasks that have no project: they run in JARVIS' own empty research workspace.
+    var isWebTask: Bool { self == .research || self == .acquisition }
 }
 
 enum RiskClass: String, Codable, Sendable, Comparable {
@@ -25,6 +33,10 @@ enum TaskCapability: String, Codable, Sendable, CaseIterable {
     // V0.6 Unity (DEC-048): typed editor operations. Granted per task kind; deletion stays approval-gated; package installation,
     // project upgrades, arbitrary C# and menu items are NOT capabilities at all.
     case inspectUnity, readUnityConsole, modifyUnityScene, saveUnityScene, createUnityPrefab, runUnityCompile, runUnityTests, controlUnityPlayMode, deleteUnityObject
+    // V0.9 (DEC-088…): typed web capabilities. `researchWeb` = read public pages through the URL-gated client (never a provider, never arbitrary requests);
+    // `downloadToQuarantine` = store ONE public artifact in the quarantine; `importIntoProject` = copy a quarantined, inspected artifact into the project
+    // (granted only to an import task the user approved). `useNetwork`/`useBrowser` stay ungrantable: they would mean unrestricted access.
+    case researchWeb, downloadToQuarantine, importIntoProject
 
     static let unityInspection: Set<TaskCapability> = [.inspectUnity, .readUnityConsole]
     static let unityDevelopment: Set<TaskCapability> = [.inspectUnity, .readUnityConsole, .modifyUnityScene, .saveUnityScene, .createUnityPrefab, .runUnityCompile, .runUnityTests, .controlUnityPlayMode]
@@ -34,6 +46,8 @@ struct CapabilitySet: Codable, Equatable, Sendable {
     var granted: Set<TaskCapability>
 
     static let readOnly = CapabilitySet(granted: [.readProject])
+    static let research = CapabilitySet(granted: [.researchWeb])
+    static let acquisition = CapabilitySet(granted: [.researchWeb, .downloadToQuarantine])
     static let development = CapabilitySet(granted: [.readProject, .writeProject, .runBuild, .runTests])
     /// Never grantable in V0.4 (documented in DEC-034): there is no code path that could honour them.
     static let neverGranted: Set<TaskCapability> = [.useNetwork, .useBrowser, .gitCommit, .gitPush, .purchase]
@@ -41,11 +55,13 @@ struct CapabilitySet: Codable, Equatable, Sendable {
     init(granted: Set<TaskCapability>) { self.granted = granted.subtracting(Self.neverGranted) }
     func allows(_ c: TaskCapability) -> Bool { granted.contains(c) }
     func allows(all cs: Set<TaskCapability>) -> Bool { cs.isSubset(of: granted) }
-    static func `for`(_ kind: TaskKind) -> CapabilitySet { kind == .development ? .development : .readOnly }
+    static func `for`(_ kind: TaskKind) -> CapabilitySet {
+        switch kind { case .development: .development; case .readOnlyAnalysis: .readOnly; case .research: .research; case .acquisition: .acquisition }
+    }
     /// A Unity project adds the typed Unity operations: inspection only for analysis tasks, bounded edit/compile/test/play for development.
     static func `for`(_ kind: TaskKind, unityProject: Bool) -> CapabilitySet {
         let base = Self.for(kind)
-        guard unityProject else { return base }
+        guard unityProject, !kind.isWebTask else { return base }
         return CapabilitySet(granted: base.granted.union(kind == .development ? TaskCapability.unityDevelopment : TaskCapability.unityInspection))
     }
 }
@@ -136,6 +152,8 @@ enum FailureCategory: String, Codable, Sendable {
     case cancelled, interrupted, malformedPlan, securityBlocked, workspaceChanged, scopeExceeded
     // V0.6
     case unityUnavailable, ambiguousTarget, unsafeEditorState, compileFailed, unityTimeout
+    // V0.9
+    case networkUnavailable, blockedByNetworkPolicy, noSources, acquisitionRefused, downloadFailed, interactionRequired
 
     var label: String {
         switch self {
@@ -146,6 +164,8 @@ enum FailureCategory: String, Codable, Sendable {
         case .malformedPlan: "malformed plan"; case .securityBlocked: "blocked by security policy"; case .workspaceChanged: "workspace changed unexpectedly"; case .scopeExceeded: "outside the approved scope"
         case .unityUnavailable: "Unity unavailable"; case .ambiguousTarget: "ambiguous target"; case .unsafeEditorState: "unsafe editor state"
         case .compileFailed: "Unity compilation failed"; case .unityTimeout: "Unity timed out"
+        case .networkUnavailable: "network unavailable"; case .blockedByNetworkPolicy: "blocked by the network policy"; case .noSources: "no readable sources"
+        case .acquisitionRefused: "acquisition refused"; case .downloadFailed: "download failed"; case .interactionRequired: "user interaction required"
         }
     }
 }
@@ -157,6 +177,11 @@ enum StepType: String, Codable, Sendable, CaseIterable {
     case analysis, codeChange, build, test, review, delete
     // V0.6 Unity steps (DEC-048): typed, deterministic, executed by JARVIS' Unity tool layer (the provider only proposes edit actions).
     case unityInspect, unityEdit, unityCompile, unityTest, unityPlayMode, unityValidate
+    // V0.9 research / acquisition steps: typed, deterministic JARVIS tools (models are only called INSIDE them, through the router, for validated JSON).
+    case researchSearch, researchRead, researchExtract, researchVerify, researchReport, acquire, importAsset
+
+    var isResearch: Bool { switch self { case .researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport: true; default: false } }
+    var isWeb: Bool { isResearch || self == .acquire }
 
     /// Short phrase for the Compact HUD while a Unity step is the current one.
     var unityActivity: String? {
@@ -181,6 +206,9 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .unityTest: [.runUnityTests]
         case .unityPlayMode: [.controlUnityPlayMode, .inspectUnity, .readUnityConsole]
         case .unityValidate: [.inspectUnity, .readUnityConsole]
+        case .researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport: [.researchWeb]
+        case .acquire: [.researchWeb, .downloadToQuarantine]
+        case .importAsset: [.readProject, .writeProject, .importIntoProject]
         }
     }
     /// Provider-executed (an agent run with a model) vs. deterministic JARVIS tool.
@@ -190,9 +218,12 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .analysis: "AnalysisAgent"; case .codeChange: "CodingAgent"; case .review: "ReviewAgent"
         case .build: "BuildTool"; case .test: "TestTool"; case .delete: "FileTool"
         case .unityInspect, .unityEdit, .unityCompile, .unityTest, .unityPlayMode, .unityValidate: "UnityTool"
+        case .researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport: "ResearchAgent"
+        case .acquire: "AcquisitionTool"
+        case .importAsset: "AssetImportTool"
         }
     }
-    var defaultRisk: RiskClass { self == .delete ? .high : (self == .codeChange || self == .unityEdit) ? .medium : .low }
+    var defaultRisk: RiskClass { self == .delete || self == .importAsset ? .high : (self == .codeChange || self == .unityEdit || self == .acquire) ? .medium : .low }
     /// Safe to repeat after an interruption without inspecting the world first.
     var idempotency: Idempotency {
         switch self {
@@ -200,6 +231,9 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .codeChange, .unityEdit: .inspectFirst
         case .delete: .manual
         case .unityInspect, .unityCompile, .unityTest, .unityPlayMode, .unityValidate: .retryable
+        case .researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport: .retryable
+        case .acquire: .retryable             // a partial download is deleted; a restart never resumes it silently (the user resumes explicitly)
+        case .importAsset: .manual            // writes into a project: never replayed automatically
         }
     }
     var label: String {
@@ -207,6 +241,8 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .analysis: "Analysis"; case .codeChange: "Code change"; case .build: "Build"; case .test: "Test"; case .review: "Review"; case .delete: "Delete"
         case .unityInspect: "Unity inspect"; case .unityEdit: "Unity edit"; case .unityCompile: "Unity compile"; case .unityTest: "Unity tests"
         case .unityPlayMode: "Unity Play Mode"; case .unityValidate: "Unity validation"
+        case .researchSearch: "Search"; case .researchRead: "Read sources"; case .researchExtract: "Extract"; case .researchVerify: "Verify"; case .researchReport: "Report"
+        case .acquire: "Download to quarantine"; case .importAsset: "Import asset"
         }
     }
 }
@@ -232,6 +268,14 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
     case unityCompiled         // Unity's compiler state is clean (and no new compiler errors)
     case unityTestsPass        // the requested Unity tests ran and all passed
     case unityPlayObserved     // Play Mode was really entered, observed and left, with no new errors
+    // V0.9: deterministic facts about the research/acquisition itself.
+    case researchSearched      // ≥1 provider answered and results were collected within budget
+    case researchRead          // ≥1 source was really fetched and parsed
+    case researchExtracted     // candidates/claims recorded (possibly none, for non-asset questions)
+    case researchVerified      // every candidate went through current price/licence/compatibility verification
+    case researchReported      // a report exists, facts carry evidence
+    case artifactAcquired      // the file is in the quarantine, hashed, type-checked and inspected
+    case assetImported         // every file was copied with a matching hash and provenance was written
 
     static func allowed(for type: StepType) -> Set<ValidationKind> {
         switch type {
@@ -246,6 +290,8 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
         case .unityCompile: [.unityCompiled]
         case .unityTest: [.unityTestsPass]
         case .unityPlayMode: [.unityPlayObserved]
+        case .researchSearch: [.researchSearched]; case .researchRead: [.researchRead]; case .researchExtract: [.researchExtracted]
+        case .researchVerify: [.researchVerified]; case .researchReport: [.researchReported]; case .acquire: [.artifactAcquired]; case .importAsset: [.assetImported]
         }
     }
     static func `default`(for type: StepType) -> ValidationKind {
@@ -254,6 +300,8 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
         case .test: .testPass; case .review: .reviewPass; case .delete: .fileRemoved
         case .unityInspect: .unityInspected; case .unityEdit, .unityValidate: .unityState; case .unityCompile: .unityCompiled
         case .unityTest: .unityTestsPass; case .unityPlayMode: .unityPlayObserved
+        case .researchSearch: .researchSearched; case .researchRead: .researchRead; case .researchExtract: .researchExtracted
+        case .researchVerify: .researchVerified; case .researchReport: .researchReported; case .acquire: .artifactAcquired; case .importAsset: .assetImported
         }
     }
     /// Plain-language aliases an LLM planner may use (the examples in the product spec) → the real validation.

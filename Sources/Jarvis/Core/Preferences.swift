@@ -22,6 +22,8 @@ final class Preferences {
         static let proactiveEnabled = "prefs.autonomy.proactiveEnabled"
         static let showProposals = "prefs.autonomy.showProposals"
         static let voiceEnabled = "prefs.voice.enabled"
+        static let webResearch = "prefs.web.research"
+        static let webBrowser = "prefs.web.browser"
         static let voicePTT = "prefs.voice.pushToTalk"
         static let voiceSpeak = "prefs.voice.speakResponses"
         static let voiceLanguage = "prefs.voice.language"
@@ -80,6 +82,10 @@ final class Preferences {
     var autonomySettings: AutonomySettings { AutonomySettings(mode: autonomyMode, proactiveEnabled: proactiveReasoningEnabled, showProposals: showProposals) }
     // V0.7 voice. The microphone is OFF unless the user turns Voice on here AND holds the Push-to-Talk key.
     var voiceEnabled: Bool { didSet { defaults.set(voiceEnabled, forKey: Key.voiceEnabled) } }
+    /// V0.9: web research on request (searching and reading public pages, downloads into the quarantine). Never runs by itself; off = no research task can start.
+    var webResearchEnabled: Bool { didSet { defaults.set(webResearchEnabled, forKey: Key.webResearch) } }
+    /// V0.9: allow the rendered-page (browser) tier for pages that need JavaScript. Off = plain HTTP only.
+    var webBrowserTierEnabled: Bool { didSet { defaults.set(webBrowserTierEnabled, forKey: Key.webBrowser) } }
     var voicePushToTalk: Bool { didSet { defaults.set(voicePushToTalk, forKey: Key.voicePTT) } }
     var voiceSpeakResponses: Bool { didSet { defaults.set(voiceSpeakResponses, forKey: Key.voiceSpeak) } }
     var voiceLanguage: VoiceLanguage { didSet { defaults.set(voiceLanguage.rawValue, forKey: Key.voiceLanguage) } }
@@ -134,6 +140,8 @@ final class Preferences {
         proactiveReasoningEnabled = defaults.object(forKey: Key.proactiveEnabled) as? Bool ?? true
         showProposals = defaults.object(forKey: Key.showProposals) as? Bool ?? true
         voiceEnabled = defaults.object(forKey: Key.voiceEnabled) as? Bool ?? false
+        webResearchEnabled = defaults.object(forKey: Key.webResearch) as? Bool ?? true
+        webBrowserTierEnabled = defaults.object(forKey: Key.webBrowser) as? Bool ?? true
         voicePushToTalk = defaults.object(forKey: Key.voicePTT) as? Bool ?? true
         voiceSpeakResponses = defaults.object(forKey: Key.voiceSpeak) as? Bool ?? true
         voiceLanguage = defaults.string(forKey: Key.voiceLanguage).flatMap(VoiceLanguage.init(rawValue:)) ?? .auto

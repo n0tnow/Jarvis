@@ -565,6 +565,26 @@ enum SmokeTest {
             await resetWorld()
         }
 
+        // --- V0.9 Web research: nothing runs at idle, the screen exists, the stubbed context has no network services, and Compact stays 392×448 with research text.
+        do {
+            check("V0.9 an automated run has NO research services (no network client, no browser) and nothing researches or downloads at idle", context.research == nil && context.taskEngine.web == nil && context.taskEngine.activeCount == 0)
+            check("V0.9 the Research screen is a Full HUD destination", HUDSection.allCases.contains(.research) && HUDSection.research.title == "RESEARCH")
+            check("V0.9 the production URL policy refuses localhost, private ranges and file: links", {
+                for u in ["http://localhost/", "http://127.0.0.1/", "http://192.168.1.1/", "http://169.254.169.254/", "file:///etc/passwd"] { if case .success = URLPolicy.production.validate(u) { return false } }
+                return true
+            }())
+            check("V0.9 spoken and typed research requests are recognised by the SAME intake (no separate voice path)", ResearchIntake.isResearchRequest("research this Unity error") && ResearchIntake.isResearchRequest("hamam oyunu için ücretsiz terlik animasyonu araştır") && !ResearchIntake.isResearchRequest("How are you?"))
+            w.hideFullHUD(); w.showFullHUD(section: .research); _ = await waitUntil { w.isFullHUDOpen && context.hud.section == .research }
+            await settle(300)
+            check("V0.9 the Research screen opens without starting anything and without a network client", w.isFullHUDOpen && context.taskEngine.activeCount == 0)
+            w.hideFullHUD(); w.showCompactHUD(); _ = await waitUntil { w.isCompactHUDOpen }
+            context.store.log("Researching · 6 sources", kind: .info)
+            await settle(200)
+            check("V0.9 the Compact HUD stays 392×448 while research text is shown", compactWindow()?.frame.size == CompactHUDLayout.size)
+            w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
         print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")

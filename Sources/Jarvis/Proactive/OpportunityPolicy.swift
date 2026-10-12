@@ -44,6 +44,15 @@ enum OpportunityPolicy {
             reasons = critical + ["criticalApprovalRequired"]
             decision = .requireApproval
         }
+        // 1b. WEB AUTHORITY (V0.9, DEC-088): an acquisition or an import is its own decision — always the user's; web research may only ever be PROPOSED (never automatic).
+        else if !a.requiredCapabilities.isDisjoint(with: [.downloadToQuarantine, .importIntoProject]) {
+            reasons = ["webAcquisitionOrImport", "separateDecisionRequired"]
+            decision = .requireApproval
+        }
+        else if a.requiredCapabilities.contains(.researchWeb) {
+            reasons = ["webResearch", "proposedNeverAutomatic"]
+            decision = .propose
+        }
         // 2. DESIGN / PRODUCT / SECURITY
         else if a.designImpact == .meaningful || category.isProductDecision || category == .security || (category == .refactor && a.relation != .direct) {
             if a.designImpact == .meaningful { reasons.append("designImpact") }

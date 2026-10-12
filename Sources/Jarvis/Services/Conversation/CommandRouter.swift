@@ -39,6 +39,8 @@ enum CommandRouter {
         "gorevlere": (.section(.tasks), .tr), "gorevi": (.section(.tasks), .tr),
         "agents": (.section(.agents), .en), "agent": (.section(.agents), .en), "workers": (.section(.agents), .en), "worker": (.section(.agents), .en), "observatory": (.section(.agents), .en),
         "ajanlar": (.section(.agents), .tr), "ajanlari": (.section(.agents), .tr), "ajan": (.section(.agents), .tr), "ajanlara": (.section(.agents), .tr), "isciler": (.section(.agents), .tr), "iscileri": (.section(.agents), .tr),
+        "research": (.section(.research), .en), "researches": (.section(.research), .en), "sources": (.section(.research), .en), "downloads": (.section(.research), .en), "quarantine": (.section(.research), .en),
+        "arastirma": (.section(.research), .tr), "arastirmayi": (.section(.research), .tr), "arastirmalar": (.section(.research), .tr), "arastirmalari": (.section(.research), .tr), "arastirmaya": (.section(.research), .tr), "kaynaklar": (.section(.research), .tr), "kaynaklari": (.section(.research), .tr),
         "system": (.section(.system), .en), "sistem": (.section(.system), .tr), "sistemi": (.section(.system), .tr), "sisteme": (.section(.system), .tr),
         "memory": (.section(.memory), .en), "memories": (.section(.memory), .en),
         "hafiza": (.section(.memory), .tr), "hafizayi": (.section(.memory), .tr), "hafizaya": (.section(.memory), .tr), "bellek": (.section(.memory), .tr), "bellegi": (.section(.memory), .tr), "bellege": (.section(.memory), .tr),

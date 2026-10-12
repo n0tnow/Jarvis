@@ -63,6 +63,12 @@ extension TaskSubmitting {
     func submitTask(goal: String, intent: GoalIntake.Intent) async -> TaskSubmission { await submitTask(goal: goal, intent: intent, channel: .typed) }
 }
 
+/// V0.9: research requests become ordinary web research TASKS (no project needed). Voice and typed text take the same path.
+@MainActor
+protocol ResearchSubmitting: AnyObject {
+    func submitResearch(goal: String, channel: InputSource) async -> TaskSubmission
+}
+
 @MainActor
 protocol EngineTaskControlling: AnyObject {
     func stopTask(_ id: UUID)
@@ -78,7 +84,7 @@ extension TaskEngine: EngineTaskControlling {
 
 /// Production `TaskSubmitting`: the project folder comes from the user's Settings choice; everything else is the engine.
 @MainActor
-final class TaskIntake: TaskSubmitting {
+final class TaskIntake: TaskSubmitting, ResearchSubmitting {
     private let engine: TaskEngine
     private let preferences: Preferences
     init(engine: TaskEngine, preferences: Preferences) { self.engine = engine; self.preferences = preferences }
@@ -91,6 +97,30 @@ final class TaskIntake: TaskSubmitting {
         let preference = preferences.providerPreference
         switch await engine.submit(goal: goal, kind: intent.kind, workspacePath: preferences.projectRoot, preference: preference == .auto ? nil : preference,
                                    destructiveRequested: intent.destructive, inputChannel: channel) {
+        case .success(let id): return .started(title: engine.view(id)?.task.title ?? goal)
+        case .failure(let e): return .rejected(e.description)
+        }
+    }
+
+    // MARK: Research (V0.9)
+
+    /// Facts about the connected Unity game, read-only, only when the goal talks about "the game / the project / our Unity project".
+    static func projectFacts(root: String) -> ProjectFacts? {
+        guard let d = UnityProjectDetector.describe(root: root) else { return nil }
+        let pipeline = d.renderPipeline.contains("URP") ? "URP" : d.renderPipeline.contains("HDRP") ? "HDRP" : d.renderPipeline == "Built-in" ? "Built-in" : nil
+        return ProjectFacts(name: d.projectName, unityVersion: d.declaredVersionRaw, renderPipeline: pipeline, hasTestFramework: d.hasTestFramework)
+    }
+
+    private func goalRefersToProject(_ goal: String) -> Bool {
+        let t = ResearchText.fold(goal)
+        return ["my game", "our game", "the game", "my project", "our project", "this project", "the project", "our unity", "my unity", "oyunum", "oyunumuz", "projem", "projemiz", "bu proje", "projeye", "oyuna", "oyunuma", "oyun icin", "icin uygun"].contains { t.contains($0) }
+    }
+
+    func submitResearch(goal: String, channel: InputSource) async -> TaskSubmission {
+        let facts = (hasProject && goalRefersToProject(goal)) ? Self.projectFacts(root: preferences.projectRoot) : nil
+        let request = ResearchIntake.parse(goal: goal, project: facts)
+        let preference = preferences.providerPreference
+        switch await engine.submitResearch(request, preference: preference == .auto ? nil : preference, inputChannel: channel) {
         case .success(let id): return .started(title: engine.view(id)?.task.title ?? goal)
         case .failure(let e): return .rejected(e.description)
         }
