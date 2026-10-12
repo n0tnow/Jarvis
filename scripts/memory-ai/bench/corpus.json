@@ -1,0 +1,797 @@
+{
+ "version": 1,
+ "note": "Synthetic, project-safe retrieval benchmark for V0.10 (no private data).",
+ "memories": [
+  {
+   "id": "m01",
+   "type": "DECISION",
+   "lang": "en",
+   "text": "Research browser uses system WebKit with a non-persistent data store instead of Playwright because it only needs read-only JavaScript rendering and avoids bundling a Chromium runtime."
+  },
+  {
+   "id": "m02",
+   "type": "DECISION",
+   "lang": "tr",
+   "text": "Araştırma tarayıcısı için Playwright yerine sistem WebKit kullanıldı; yalnızca salt okunur JavaScript render gerekiyordu ve ek bir Chromium çalışma zamanı istenmedi."
+  },
+  {
+   "id": "m03",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "The WebGL build target of the Unity project requires IL2CPP and cannot use threads."
+  },
+  {
+   "id": "m04",
+   "type": "DECISION",
+   "lang": "en",
+   "text": "Playwright was evaluated and not adopted: it needs a Node runtime and a browser download."
+  },
+  {
+   "id": "m05",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "Voice recognition uses Apple on-device speech with a local Whisper model as the more accurate option."
+  },
+  {
+   "id": "m06",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "Downloaded artifacts are stored in a quarantine folder and never copied directly into a Unity project; import is a separate approval-gated task."
+  },
+  {
+   "id": "m07",
+   "type": "CONSTRAINT",
+   "lang": "tr",
+   "text": "İndirilen dosyalar karantina klasöründe tutulur, doğrudan Unity projesine kopyalanmaz; içe aktarma ayrı ve onay gerektiren bir görevdir."
+  },
+  {
+   "id": "m08",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "Archives are inspected before extraction: path traversal, symlinks, zip bombs and lying size headers are rejected."
+  },
+  {
+   "id": "m09",
+   "type": "DECISION",
+   "lang": "en",
+   "text": "Unity import goes through the V0.4 task engine and the V0.6 Unity agent so that compile checks and Play Mode protection apply."
+  },
+  {
+   "id": "m10",
+   "type": "DECISION",
+   "lang": "tr",
+   "text": "Unity içe aktarma işlemi V0.4 görev motoru ve V0.6 Unity ajanı üzerinden yapılır; böylece derleme kontrolü ve Play Mode koruması geçerli olur."
+  },
+  {
+   "id": "m11",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "A spoken yes or approve never approves an action; approvals are HUD buttons only."
+  },
+  {
+   "id": "m12",
+   "type": "CONSTRAINT",
+   "lang": "tr",
+   "text": "Sesli 'evet' ya da 'onayla' hiçbir işlemi onaylamaz; onaylar yalnızca HUD düğmeleriyle verilir."
+  },
+  {
+   "id": "m13",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "Wake word mode is off by default and only a local sentinel hears audio before the wake word."
+  },
+  {
+   "id": "m14",
+   "type": "DECISION",
+   "lang": "en",
+   "text": "Voice is an input and output layer; final transcripts enter the same ConversationService as typed text."
+  },
+  {
+   "id": "m15",
+   "type": "FAILURE",
+   "lang": "en",
+   "text": "Voice Processing I/O echo cancellation was tested and rejected: about 15 percent of a core, only partial cancellation, and initialization errors."
+  },
+  {
+   "id": "m16",
+   "type": "FAILURE",
+   "lang": "tr",
+   "text": "Voice Processing I/O yankı engelleme denendi ve reddedildi: yaklaşık yüzde 15 çekirdek kullandı, kısmi engelleme sağladı ve başlatma hataları verdi."
+  },
+  {
+   "id": "m17",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "The Compact HUD remains exactly 392 by 448 points in every state."
+  },
+  {
+   "id": "m18",
+   "type": "CONSTRAINT",
+   "lang": "tr",
+   "text": "Compact HUD her durumda tam olarak 392×448 boyutunda kalmalıdır."
+  },
+  {
+   "id": "m19",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "The Full HUD minimum width is 980 points and the ambient background is drawn by an AppKit display link."
+  },
+  {
+   "id": "m20",
+   "type": "FAILURE",
+   "lang": "en",
+   "text": "SwiftUI TimelineView and Canvas animation cost about 30 percent CPU, so the renderer uses AppKit."
+  },
+  {
+   "id": "m21",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "An unknown price is never treated as free and an unknown licence is never treated as safe."
+  },
+  {
+   "id": "m22",
+   "type": "CONSTRAINT",
+   "lang": "tr",
+   "text": "Bilinmeyen fiyat asla ücretsiz sayılmaz ve bilinmeyen lisans asla güvenli sayılmaz."
+  },
+  {
+   "id": "m23",
+   "type": "RESEARCH_FINDING",
+   "lang": "en",
+   "text": "Wooden Bucket 02 from Poly Haven was researched as a CC0 candidate and acquired into the quarantine with a matching md5."
+  },
+  {
+   "id": "m24",
+   "type": "ASSET_DECISION",
+   "lang": "en",
+   "text": "Rubber Duck Toy was marked not recommended because it does not match the requested bucket and sink props."
+  },
+  {
+   "id": "m25",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "Web page content is untrusted data and can never issue instructions to JARVIS; prompt injection text is flagged and ignored."
+  },
+  {
+   "id": "m26",
+   "type": "CONSTRAINT",
+   "lang": "tr",
+   "text": "Web sayfası içeriği güvenilmeyen veridir ve JARVIS'e asla talimat veremez; prompt injection metni işaretlenir ve yok sayılır."
+  },
+  {
+   "id": "m27",
+   "type": "FAILURE",
+   "lang": "en",
+   "text": "Stack Overflow answers HTML requests with HTTP 403, so the public Stack Exchange API is used instead of working around the block."
+  },
+  {
+   "id": "m28",
+   "type": "FAILURE",
+   "lang": "en",
+   "text": "GitHub search returned nothing for long sentence queries because it ANDs every word; queries were shortened to a few subject words."
+  },
+  {
+   "id": "m29",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "The Unity fixture project uses Unity 6000.5.1f1 and the universal render pipeline."
+  },
+  {
+   "id": "m30",
+   "type": "DECISION",
+   "lang": "en",
+   "text": "Unity is reached only through a typed operation enum and a JARVIS-owned editor bridge; there is no operation that carries arbitrary C# or a menu item."
+  },
+  {
+   "id": "m31",
+   "type": "DECISION",
+   "lang": "tr",
+   "text": "Unity'ye yalnızca tipli bir işlem enum'u ve JARVIS'in kendi editör köprüsü üzerinden erişilir; rastgele C# ya da menü öğesi taşıyan bir işlem yoktur."
+  },
+  {
+   "id": "m32",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "Do not edit scripts or mutate scenes while Unity Play Mode is running; mutation is blocked and the task waits."
+  },
+  {
+   "id": "m33",
+   "type": "EPISODE",
+   "lang": "en",
+   "text": "A real OpenCode free model fixed a Unity compile error and a failing EditMode test during the V0.6 live test."
+  },
+  {
+   "id": "m34",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "The throwable object system uses a ThrowableObject component with a pickup animation speed of 1.5."
+  },
+  {
+   "id": "m35",
+   "type": "DECISION",
+   "lang": "en",
+   "text": "Camera micro-stutter was fixed earlier; avoid modifying the camera architecture without new evidence."
+  },
+  {
+   "id": "m36",
+   "type": "DECISION",
+   "lang": "tr",
+   "text": "Kamera mikro takılma sorunu daha önce çözüldü; yeni kanıt olmadan kamera mimarisini değiştirmeyin."
+  },
+  {
+   "id": "m37",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "Multiplayer uses Netcode for GameObjects with a host client topology."
+  },
+  {
+   "id": "m38",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "The main scene is SampleScene and the player prefab lives under Assets/Prefabs."
+  },
+  {
+   "id": "m39",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "A model is free only when OpenCode price data is all zero on the keyless tier; unknown price is never automatic."
+  },
+  {
+   "id": "m40",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "The local Qwen model is used only for lightweight tasks and never for coding, review, debugging or architecture."
+  },
+  {
+   "id": "m41",
+   "type": "CONSTRAINT",
+   "lang": "tr",
+   "text": "Yerel Qwen modeli yalnızca hafif görevler için kullanılır; kodlama, inceleme, hata ayıklama ve mimari için asla kullanılmaz."
+  },
+  {
+   "id": "m42",
+   "type": "LESSON",
+   "lang": "en",
+   "text": "Do not let a model-based review override deterministic passing tests without specific evidence."
+  },
+  {
+   "id": "m43",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "Sensitive text is never sent to free cloud models."
+  },
+  {
+   "id": "m44",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "SQLite stores URLs, hashes and bounded excerpts only, never full page bodies or binaries."
+  },
+  {
+   "id": "m45",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "API keys, tokens and credentials are never stored; the provider environment is an allowlist."
+  },
+  {
+   "id": "m46",
+   "type": "CONSTRAINT",
+   "lang": "tr",
+   "text": "API anahtarları, token'lar ve kimlik bilgileri asla saklanmaz; sağlayıcı ortamı bir izin listesidir."
+  },
+  {
+   "id": "m47",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "JARVIS never runs git reset, clean, checkout, commit or push on a project."
+  },
+  {
+   "id": "m48",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "Tasks are user-initiated only; the proactive layer proposes but never writes files or runs processes."
+  },
+  {
+   "id": "m49",
+   "type": "CONSTRAINT",
+   "lang": "en",
+   "text": "Interrupted tasks resume only by an explicit user action, never automatically after a restart."
+  },
+  {
+   "id": "m50",
+   "type": "CONSTRAINT",
+   "lang": "tr",
+   "text": "Yarıda kesilen görevler yeniden başlatmadan sonra otomatik değil, yalnızca kullanıcının açık eylemiyle devam eder."
+  },
+  {
+   "id": "m51",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "Progress is derived only from validated steps."
+  },
+  {
+   "id": "m52",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "The neural voice uses Supertonic 3 and unloads after 180 seconds idle."
+  },
+  {
+   "id": "m53",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "The wake word head is trained locally on synthetic speech."
+  },
+  {
+   "id": "m54",
+   "type": "PROJECT_FACT",
+   "lang": "tr",
+   "text": "Uyandırma kelimesi başlığı yerel olarak sentetik konuşmayla eğitilir."
+  },
+  {
+   "id": "m55",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "Kenney assets are CC0 and have a direct public zip link."
+  },
+  {
+   "id": "m56",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "Poly Haven provides an md5 checksum for each file and every asset is CC0."
+  },
+  {
+   "id": "m57",
+   "type": "PROJECT_FACT",
+   "lang": "tr",
+   "text": "Poly Haven her dosya için md5 sağlar ve tüm varlıklar CC0'dır."
+  },
+  {
+   "id": "m58",
+   "type": "PROJECT_FACT",
+   "lang": "en",
+   "text": "The idle CPU of the app is about 0.02 CPU seconds per 8 seconds at 72 MB."
+  },
+  {
+   "id": "m59",
+   "type": "PREFERENCE",
+   "lang": "en",
+   "text": "Free assets are preferred; purchases are never automatic and require approval."
+  },
+  {
+   "id": "m60",
+   "type": "PREFERENCE",
+   "lang": "tr",
+   "text": "Ücretsiz varlıklar tercih edilir; satın alma asla otomatik değildir ve onay gerektirir."
+  },
+  {
+   "id": "m61",
+   "type": "EPISODE",
+   "lang": "tr",
+   "text": "Hamam sahnesinde buhar efekti için parçacık sistemi kullanıldı ve GPU instancing kapatıldı."
+  },
+  {
+   "id": "m62",
+   "type": "PREFERENCE",
+   "lang": "tr",
+   "text": "Kova modeli düşük poligonlu olmalı ve stilize çizgi film görünümünde kalmalıdır."
+  }
+ ],
+ "queries": [
+  {
+   "id": "q01",
+   "kind": "en-en",
+   "text": "What did we decide about Playwright?",
+   "relevant": [
+    "m01",
+    "m02",
+    "m04"
+   ]
+  },
+  {
+   "id": "q02",
+   "kind": "en-en",
+   "text": "Why did the research browser use WebKit?",
+   "relevant": [
+    "m01",
+    "m02",
+    "m04"
+   ]
+  },
+  {
+   "id": "q03",
+   "kind": "en-en",
+   "text": "Can spoken approval authorize a critical action?",
+   "relevant": [
+    "m11",
+    "m12"
+   ]
+  },
+  {
+   "id": "q04",
+   "kind": "en-en",
+   "text": "What happens to downloads before import?",
+   "relevant": [
+    "m06",
+    "m07",
+    "m08"
+   ]
+  },
+  {
+   "id": "q05",
+   "kind": "en-en",
+   "text": "What is the Compact HUD size?",
+   "relevant": [
+    "m17",
+    "m18"
+   ]
+  },
+  {
+   "id": "q06",
+   "kind": "en-en",
+   "text": "Why is web content untrusted?",
+   "relevant": [
+    "m25",
+    "m26"
+   ]
+  },
+  {
+   "id": "q07",
+   "kind": "en-en",
+   "text": "Which model fixed the Unity compile error?",
+   "relevant": [
+    "m33"
+   ]
+  },
+  {
+   "id": "q08",
+   "kind": "en-en",
+   "text": "What assets did we research?",
+   "relevant": [
+    "m23",
+    "m24"
+   ]
+  },
+  {
+   "id": "q09",
+   "kind": "en-en",
+   "text": "Why was the rubber duck rejected?",
+   "relevant": [
+    "m24"
+   ]
+  },
+  {
+   "id": "q10",
+   "kind": "en-en",
+   "text": "Why can't we use Voice Processing I/O?",
+   "relevant": [
+    "m15",
+    "m16"
+   ]
+  },
+  {
+   "id": "q11",
+   "kind": "en-en",
+   "text": "Is an unknown license safe to use?",
+   "relevant": [
+    "m21",
+    "m22"
+   ]
+  },
+  {
+   "id": "q12",
+   "kind": "en-en",
+   "text": "Do we store API keys?",
+   "relevant": [
+    "m45",
+    "m46"
+   ]
+  },
+  {
+   "id": "q13",
+   "kind": "en-en",
+   "text": "How does the local Qwen model get used?",
+   "relevant": [
+    "m40",
+    "m41"
+   ]
+  },
+  {
+   "id": "q14",
+   "kind": "en-en",
+   "text": "What do we know about the camera?",
+   "relevant": [
+    "m35",
+    "m36"
+   ]
+  },
+  {
+   "id": "q15",
+   "kind": "en-en",
+   "text": "Which networking library does multiplayer use?",
+   "relevant": [
+    "m37"
+   ]
+  },
+  {
+   "id": "q16",
+   "kind": "en-en",
+   "text": "Why did GitHub search return nothing?",
+   "relevant": [
+    "m28"
+   ]
+  },
+  {
+   "id": "q17",
+   "kind": "en-en",
+   "text": "Why use the Stack Exchange API?",
+   "relevant": [
+    "m27"
+   ]
+  },
+  {
+   "id": "q18",
+   "kind": "en-en",
+   "text": "Can the app resume interrupted tasks automatically?",
+   "relevant": [
+    "m49",
+    "m50"
+   ]
+  },
+  {
+   "id": "q19",
+   "kind": "en-en",
+   "text": "Is a free model identified by its name?",
+   "relevant": [
+    "m39"
+   ]
+  },
+  {
+   "id": "q20",
+   "kind": "en-en",
+   "text": "What is the main scene?",
+   "relevant": [
+    "m38"
+   ]
+  },
+  {
+   "id": "q21",
+   "kind": "tr-tr",
+   "text": "Playwright hakkında ne karar vermiştik?",
+   "relevant": [
+    "m01",
+    "m02",
+    "m04"
+   ]
+  },
+  {
+   "id": "q22",
+   "kind": "tr-tr",
+   "text": "İndirilen dosyaları neden doğrudan Unity projesine atmıyoruz?",
+   "relevant": [
+    "m06",
+    "m07"
+   ]
+  },
+  {
+   "id": "q23",
+   "kind": "tr-tr",
+   "text": "Sesli onay kritik işlemi onaylayabilir mi?",
+   "relevant": [
+    "m11",
+    "m12"
+   ]
+  },
+  {
+   "id": "q24",
+   "kind": "tr-tr",
+   "text": "Compact HUD boyutu neydi?",
+   "relevant": [
+    "m17",
+    "m18"
+   ]
+  },
+  {
+   "id": "q25",
+   "kind": "tr-tr",
+   "text": "Web içeriği neden güvenilmez?",
+   "relevant": [
+    "m25",
+    "m26"
+   ]
+  },
+  {
+   "id": "q26",
+   "kind": "tr-tr",
+   "text": "Kamera ile ilgili ne biliyoruz?",
+   "relevant": [
+    "m35",
+    "m36"
+   ]
+  },
+  {
+   "id": "q27",
+   "kind": "tr-tr",
+   "text": "Yarım kalan görevler kendiliğinden devam eder mi?",
+   "relevant": [
+    "m49",
+    "m50"
+   ]
+  },
+  {
+   "id": "q28",
+   "kind": "tr-tr",
+   "text": "API anahtarlarını saklıyor muyuz?",
+   "relevant": [
+    "m45",
+    "m46"
+   ]
+  },
+  {
+   "id": "q29",
+   "kind": "tr-tr",
+   "text": "Yerel Qwen modeli ne için kullanılıyor?",
+   "relevant": [
+    "m40",
+    "m41"
+   ]
+  },
+  {
+   "id": "q30",
+   "kind": "tr-tr",
+   "text": "Bilinmeyen lisans güvenli mi?",
+   "relevant": [
+    "m21",
+    "m22"
+   ]
+  },
+  {
+   "id": "q31",
+   "kind": "tr-en",
+   "text": "Unity derleme hatasını hangi model düzeltti?",
+   "relevant": [
+    "m33"
+   ]
+  },
+  {
+   "id": "q32",
+   "kind": "tr-en",
+   "text": "Multiplayer hangi ağ kütüphanesini kullanıyor?",
+   "relevant": [
+    "m37"
+   ]
+  },
+  {
+   "id": "q33",
+   "kind": "tr-en",
+   "text": "GitHub araması neden sonuç döndürmedi?",
+   "relevant": [
+    "m28"
+   ]
+  },
+  {
+   "id": "q34",
+   "kind": "tr-en",
+   "text": "Stack Overflow neden doğrudan okunmuyor?",
+   "relevant": [
+    "m27"
+   ]
+  },
+  {
+   "id": "q35",
+   "kind": "tr-en",
+   "text": "Hangi varlıkları araştırdık?",
+   "relevant": [
+    "m23",
+    "m24"
+   ]
+  },
+  {
+   "id": "q36",
+   "kind": "tr-en",
+   "text": "Ana sahne hangisi?",
+   "relevant": [
+    "m38"
+   ]
+  },
+  {
+   "id": "q37",
+   "kind": "en-tr",
+   "text": "What did we do for the steam effect in the bath scene?",
+   "relevant": [
+    "m61"
+   ]
+  },
+  {
+   "id": "q38",
+   "kind": "en-tr",
+   "text": "What style should the bucket model have?",
+   "relevant": [
+    "m62"
+   ]
+  },
+  {
+   "id": "q39",
+   "kind": "mixed",
+   "text": "Unity import neden V0.4 ve V0.6 üzerinden gidiyor?",
+   "relevant": [
+    "m09",
+    "m10"
+   ]
+  },
+  {
+   "id": "q40",
+   "kind": "mixed",
+   "text": "WebKit'i neden Playwright yerine seçtik?",
+   "relevant": [
+    "m01",
+    "m02",
+    "m04"
+   ]
+  },
+  {
+   "id": "q41",
+   "kind": "mixed",
+   "text": "Compact HUD constraint neydi?",
+   "relevant": [
+    "m17",
+    "m18"
+   ]
+  },
+  {
+   "id": "q42",
+   "kind": "mixed",
+   "text": "NGO host client topology kullanıyor muyuz?",
+   "relevant": [
+    "m37"
+   ]
+  },
+  {
+   "id": "q43",
+   "kind": "mixed",
+   "text": "Play Mode açıkken script edit edebilir miyiz?",
+   "relevant": [
+    "m32"
+   ]
+  },
+  {
+   "id": "q44",
+   "kind": "mixed",
+   "text": "URP mi HDRP mi kullanıyoruz?",
+   "relevant": [
+    "m29"
+   ]
+  },
+  {
+   "id": "q45",
+   "kind": "mixed",
+   "text": "TimelineView neden kullanılmıyor?",
+   "relevant": [
+    "m20"
+   ]
+  },
+  {
+   "id": "q46",
+   "kind": "mixed",
+   "text": "Kenney pack lisansı nedir?",
+   "relevant": [
+    "m55"
+   ]
+  },
+  {
+   "id": "q47",
+   "kind": "mixed",
+   "text": "md5 checksum hangi kaynakta var?",
+   "relevant": [
+    "m56",
+    "m57"
+   ]
+  },
+  {
+   "id": "q48",
+   "kind": "mixed",
+   "text": "pickup animation speed kaç?",
+   "relevant": [
+    "m34"
+   ]
+  }
+ ]
+}

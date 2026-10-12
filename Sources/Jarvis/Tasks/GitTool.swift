@@ -13,6 +13,16 @@ enum GitTool {
         return await ManagedProcess.runOnce(executable: executable, arguments: ["-c", "core.quotepath=false"] + args, environment: env, workingDirectory: dir, timeout: 20)
     }
 
+    /// Read-only identity of a repository (V0.10 project memory): root commit (stable across moves and clones), branch, HEAD and the origin URL. Nothing is changed.
+    struct Identity: Equatable, Sendable { var rootCommit: String?; var branch: String?; var head: String?; var remote: String? }
+    static func identity(at dir: String) async -> Identity? {
+        guard let inside = await run(["rev-parse", "--is-inside-work-tree"], in: dir), inside.exitCode == 0, inside.output.trimmingCharacters(in: .whitespacesAndNewlines) == "true" else { return nil }
+        func out(_ r: ManagedProcess.RunResult?) -> String? { (r?.exitCode == 0) ? r?.output.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").first.map(String.init) : nil }
+        let root = out(await run(["rev-list", "--max-parents=0", "HEAD"], in: dir))
+        return Identity(rootCommit: root, branch: out(await run(["rev-parse", "--abbrev-ref", "HEAD"], in: dir)), head: out(await run(["rev-parse", "HEAD"], in: dir)),
+                        remote: out(await run(["remote", "get-url", "origin"], in: dir)))
+    }
+
     /// State BEFORE any write: which paths already carry the user's own uncommitted work.
     static func baseline(workspace: WorkspaceGuard, now: Date = Date()) async -> GitBaseline {
         let none = GitBaseline(isRepository: false, branch: nil, head: nil, dirtyPaths: [], untrackedPaths: [], capturedAt: now)

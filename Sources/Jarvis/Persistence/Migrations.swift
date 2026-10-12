@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7]
+    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7, v8]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -355,5 +355,61 @@ struct Migration: Sendable {
         """,
         "CREATE INDEX idx_acquisitions_state ON acquisitions(state)",
         "CREATE INDEX idx_acquisitions_research ON acquisitions(research_id)",
+    ])
+
+    /// V8 — project memory (V0.10): DERIVED knowledge about a project, with provenance. History tables stay history; nothing here duplicates them.
+    /// `memory_embeddings` is a derived, rebuildable index (model/revision/dimension tracked); canonical truth is `memory_items` + `memory_sources`.
+    /// No raw conversation archive, no page body, no secret: summaries are sanitized and bounded before they reach this schema.
+    static let v8 = Migration(version: 8, name: "project memory", statements: [
+        """
+        CREATE TABLE memory_projects (
+            key TEXT PRIMARY KEY, name TEXT NOT NULL, root_path TEXT, aliases TEXT, identity_kind TEXT NOT NULL, created_at REAL NOT NULL, last_seen REAL NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE memory_items (
+            id TEXT PRIMARY KEY, project_key TEXT NOT NULL, type TEXT NOT NULL, subject TEXT NOT NULL, key TEXT, value TEXT, summary TEXT NOT NULL, details TEXT,
+            status TEXT NOT NULL, strength INTEGER NOT NULL, importance INTEGER NOT NULL, scope TEXT NOT NULL, area TEXT, tags TEXT, origin TEXT NOT NULL,
+            created_at REAL NOT NULL, updated_at REAL NOT NULL, valid_from REAL NOT NULL, last_verified_at REAL, expires_at REAL, superseded_by TEXT,
+            pinned INTEGER NOT NULL DEFAULT 0, user_corrected INTEGER NOT NULL DEFAULT 0, current_sensitive INTEGER NOT NULL DEFAULT 0,
+            language TEXT, extraction_version INTEGER NOT NULL DEFAULT 1, canonical_hash TEXT NOT NULL, forgotten_at REAL
+        )
+        """,
+        "CREATE INDEX idx_memory_items_project ON memory_items(project_key, status)",
+        "CREATE INDEX idx_memory_items_key ON memory_items(project_key, key)",
+        "CREATE INDEX idx_memory_items_hash ON memory_items(project_key, canonical_hash)",
+        """
+        CREATE TABLE memory_sources (
+            memory_id TEXT NOT NULL REFERENCES memory_items(id) ON DELETE CASCADE, kind TEXT NOT NULL, ref TEXT NOT NULL, label TEXT NOT NULL, locator TEXT, observed_at REAL NOT NULL,
+            PRIMARY KEY (memory_id, kind, ref)
+        )
+        """,
+        """
+        CREATE TABLE memory_relations (
+            memory_id TEXT NOT NULL REFERENCES memory_items(id) ON DELETE CASCADE, predicate TEXT NOT NULL, target_kind TEXT NOT NULL, target TEXT NOT NULL,
+            PRIMARY KEY (memory_id, predicate, target_kind, target)
+        )
+        """,
+        "CREATE INDEX idx_memory_relations_target ON memory_relations(target_kind, target)",
+        """
+        CREATE TABLE memory_embeddings (
+            memory_id TEXT PRIMARY KEY REFERENCES memory_items(id) ON DELETE CASCADE, model_id TEXT NOT NULL, revision TEXT NOT NULL, dim INTEGER NOT NULL,
+            text_hash TEXT NOT NULL, vector BLOB NOT NULL, checksum TEXT NOT NULL, created_at REAL NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE memory_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, at REAL NOT NULL, project_key TEXT NOT NULL, kind TEXT NOT NULL, memory_id TEXT, detail TEXT
+        )
+        """,
+        "CREATE TABLE memory_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        """
+        CREATE TABLE memory_context_uses (
+            id TEXT PRIMARY KEY, run_id TEXT, task_id TEXT, project_key TEXT NOT NULL, agent_type TEXT NOT NULL, memory_ids TEXT NOT NULL, truth_keys TEXT,
+            items INTEGER NOT NULL, chars INTEGER NOT NULL, created_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_memory_context_run ON memory_context_uses(run_id)",
+        "CREATE INDEX idx_memory_context_task ON memory_context_uses(task_id)",
     ])
 }
