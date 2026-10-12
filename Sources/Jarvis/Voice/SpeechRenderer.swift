@@ -70,6 +70,7 @@ enum SpeechRenderer {
         for rawLine in s.components(separatedBy: "\n") {
             var l = rawLine.trimmingCharacters(in: .whitespaces)
             if l.isEmpty { continue }
+            if l.hasPrefix("Sources:") || l.hasPrefix("Kaynaklar:") { continue }          // provenance is shown, never read aloud (V0.10)
             if l.hasPrefix("|") {                                              // table row → cells joined; separator rows dropped
                 if l.contains("---") && l.allSatisfy({ "|-: ".contains($0) }) { continue }
                 l = l.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: ", ")

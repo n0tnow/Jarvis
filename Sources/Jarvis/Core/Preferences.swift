@@ -24,6 +24,10 @@ final class Preferences {
         static let voiceEnabled = "prefs.voice.enabled"
         static let webResearch = "prefs.web.research"
         static let webBrowser = "prefs.web.browser"
+        static let memoryEnabled = "prefs.memory.enabled"
+        static let memorySemantic = "prefs.memory.semantic"
+        static let memoryAutoLearn = "prefs.memory.autolearn"
+        static let memoryModelLearn = "prefs.memory.modellearn"
         static let voicePTT = "prefs.voice.pushToTalk"
         static let voiceSpeak = "prefs.voice.speakResponses"
         static let voiceLanguage = "prefs.voice.language"
@@ -86,6 +90,14 @@ final class Preferences {
     var webResearchEnabled: Bool { didSet { defaults.set(webResearchEnabled, forKey: Key.webResearch) } }
     /// V0.9: allow the rendered-page (browser) tier for pages that need JavaScript. Off = plain HTTP only.
     var webBrowserTierEnabled: Bool { didSet { defaults.set(webBrowserTierEnabled, forKey: Key.webBrowser) } }
+    /// V0.10: Project Memory (derived, provenance-backed knowledge about a project). Off = no memory is read, written or injected; everything else works unchanged.
+    var projectMemoryEnabled: Bool { didSet { defaults.set(projectMemoryEnabled, forKey: Key.memoryEnabled) } }
+    /// V0.10: use the local embedding helper for meaning-based search (needs scripts/setup_memory_ai.sh). Off or missing = keyword + structured search.
+    var memorySemanticEnabled: Bool { didSet { defaults.set(memorySemanticEnabled, forKey: Key.memorySemantic) } }
+    /// V0.10: remember meaningful finished tasks / research automatically (deterministic; no model).
+    var memoryAutoLearnEnabled: Bool { didSet { defaults.set(memoryAutoLearnEnabled, forKey: Key.memoryAutoLearn) } }
+    /// V0.10: after a meaningful task, ask ONE small model for proposed lessons (grounded in the report; never authoritative). Off by default: it spends a model request.
+    var memoryModelLearningEnabled: Bool { didSet { defaults.set(memoryModelLearningEnabled, forKey: Key.memoryModelLearn) } }
     var voicePushToTalk: Bool { didSet { defaults.set(voicePushToTalk, forKey: Key.voicePTT) } }
     var voiceSpeakResponses: Bool { didSet { defaults.set(voiceSpeakResponses, forKey: Key.voiceSpeak) } }
     var voiceLanguage: VoiceLanguage { didSet { defaults.set(voiceLanguage.rawValue, forKey: Key.voiceLanguage) } }
@@ -142,6 +154,10 @@ final class Preferences {
         voiceEnabled = defaults.object(forKey: Key.voiceEnabled) as? Bool ?? false
         webResearchEnabled = defaults.object(forKey: Key.webResearch) as? Bool ?? true
         webBrowserTierEnabled = defaults.object(forKey: Key.webBrowser) as? Bool ?? true
+        projectMemoryEnabled = defaults.object(forKey: Key.memoryEnabled) as? Bool ?? true
+        memorySemanticEnabled = defaults.object(forKey: Key.memorySemantic) as? Bool ?? true
+        memoryAutoLearnEnabled = defaults.object(forKey: Key.memoryAutoLearn) as? Bool ?? true
+        memoryModelLearningEnabled = defaults.object(forKey: Key.memoryModelLearn) as? Bool ?? false
         voicePushToTalk = defaults.object(forKey: Key.voicePTT) as? Bool ?? true
         voiceSpeakResponses = defaults.object(forKey: Key.voiceSpeak) as? Bool ?? true
         voiceLanguage = defaults.string(forKey: Key.voiceLanguage).flatMap(VoiceLanguage.init(rawValue:)) ?? .auto

@@ -103,7 +103,7 @@ final class MemoryService: @unchecked Sendable {
         var strength = c.strength
         var status: MemoryStatus = .current
         if c.origin == .model {
-            let corroborated = sources.contains { $0.isVerifiable && $0.kind != .agentRun }
+            let corroborated = c.grounded && sources.contains { $0.isVerifiable && $0.kind != .agentRun }
             strength = corroborated ? min(strength, .supported) : .inferred
             if strength <= .weak { status = .unverified }
         }
@@ -116,6 +116,7 @@ final class MemoryService: @unchecked Sendable {
         item.createdAt = now; item.updatedAt = now; item.validFrom = c.validFrom
         item.lastVerifiedAt = c.lastVerifiedAt ?? ((c.origin == .inspection || isUser) ? now : nil)
         item.pinned = c.pinned; item.userCorrected = c.userCorrected; item.currentSensitive = c.currentSensitive
+        if let hint = c.statusHint, trustedAuthor, hint == .superseded || hint == .archived { item.status = hint }
         item.language = MemoryText.guessLanguage(summary); item.sources = sources; item.relations = c.relations
         item.canonicalHash = MemoryText.canonicalHash(type: c.type, summary: summary, key: c.key, value: c.value)
 
@@ -134,6 +135,12 @@ final class MemoryService: @unchecked Sendable {
         }
 
         // 8. duplicates and conflicts among live items
+        // repeating history is not resurrecting it: an automatic source that restates something already superseded (or a record the documents themselves call historical)
+        // only adds its provenance to the old record
+        if !isUser, let hist = ((try? repository.memories(projectKey: projectKey, canonicalHash: item.canonicalHash)) ?? []).first(where: {
+            ($0.status == .superseded && $0.supersededBy != nil) || (($0.status == .superseded || $0.status == .archived) && (c.statusHint == .superseded || c.statusHint == .archived)) }) {
+            return merge(item, into: hist, now: now)
+        }
         let live = ((try? repository.memories(projectKey: projectKey, statuses: [.current, .stale, .unverified, .disputed])) ?? []).filter { $0.scope == .project }
         if let dup = live.first(where: { $0.canonicalHash == item.canonicalHash && $0.status != .disputed }) {
             return merge(item, into: dup, now: now)
@@ -198,7 +205,10 @@ final class MemoryService: @unchecked Sendable {
         let changesOverTime: Bool = [.projectFact, .validationResult, .knownIssue].contains(item.type)
         let strongest = conflicts.map(\.strength).max() ?? .inferred
         let wins: Bool
+        let repoAuthored: Set<MemoryOrigin> = [.document, .bootstrap, .inspection]
         if item.origin == .user { wins = true }
+        // an edited document / a fresh inspection IS the newer version of the same keyed record: it replaces it (the old one stays as history)
+        else if repoAuthored.contains(item.origin), item.key != nil, conflicts.allSatisfy({ $0.key == item.key && repoAuthored.contains($0.origin) }) { wins = true }
         else if item.strength > strongest { wins = true }
         else if item.strength == strongest, changesOverTime, conflicts.allSatisfy({ item.validFrom >= $0.validFrom }), item.origin != .model { wins = true }
         else { wins = false }

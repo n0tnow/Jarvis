@@ -38,6 +38,29 @@ extension TaskEngine {
     func runJob(_ ctx: TaskContext, _ job: AgentJob) async -> AgentJobResult {
         var job = job
         job.preference = ctx.record.preference
+        // V0.10: bounded Project Memory context for agents that work on the project (CURRENT TRUTH · MEMORY · UNCERTAINTY kept apart); the ids are audited per run.
+        var used: (packet: ContextPacket, project: ProjectIdentity)?
+        if let memory, Self.memoryAgents.contains(job.type) {
+            used = await memory.contextFor(agentType: job.type, goal: ctx.record.goal + " " + job.title, workspaceRoot: ctx.record.kind.isWebTask ? nil : ctx.record.workspaceRoot, taskID: ctx.record.id)
+            if let u = used {
+                job.prompt = ProjectContextBuilder.render(u.packet) + "\n\n---\n\n" + job.prompt
+                job.profile.estimatedContextTokens += u.packet.stats.approxTokens
+                note("Context · \(u.packet.stats.selected) memor\(u.packet.stats.selected == 1 ? "y" : "ies") for \(job.type)", .info, taskID: ctx.record.id)
+            }
+        }
+        let result = await runJobLoop(ctx, job)
+        if let u = used {
+            let runID: UUID?
+            switch result { case .completed(_, let id, _, _): runID = id; case .failed(let id, _, _, _): runID = id; case .cancelled(let id): runID = id; case .rejected: runID = nil }
+            memory?.recordUse(packet: u.packet, project: u.project, agentType: job.type, taskID: ctx.record.id, runID: runID)
+        }
+        return result
+    }
+
+    static let memoryAgents: Set<String> = ["PlannerAgent", "AnalysisAgent", "CodingAgent", "ReviewAgent", "UnityAgent", "ResearchAgent"]
+
+    private func runJobLoop(_ ctx: TaskContext, _ job: AgentJob) async -> AgentJobResult {
+        var job = job
         while true {
             let r = await agents.run(job)
             guard case .rejected(let why) = r else { return r }

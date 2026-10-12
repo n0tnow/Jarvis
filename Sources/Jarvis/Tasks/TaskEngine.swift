@@ -67,6 +67,8 @@ final class TaskEngine {
     @ObservationIgnored var onEvent: ((String, ActivityKind) -> Void)?
     /// A task reached a terminal state (conversation message, announcement).
     @ObservationIgnored var onFinished: ((TaskView) -> Void)?
+    /// V0.10: Project Memory (context for agents, audited by run). Nil = memory is not wired (stubbed automated runs).
+    @ObservationIgnored var memory: ProjectMemory?
     /// Approval requested / resolved (HUD state: awaiting approval).
     @ObservationIgnored var onApprovalChanged: (() -> Void)?
     /// V0.5: review suggestions (model claims) offered to the proactive layer — an event, never an action.

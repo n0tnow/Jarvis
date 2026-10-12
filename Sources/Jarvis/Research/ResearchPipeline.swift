@@ -387,7 +387,8 @@ actor ResearchPipeline {
     /// Words that name what the user is looking for: the goal's own terms plus the English terms of the planned structured queries (a Turkish goal is glossed or model-translated there).
     func relevanceTerms() -> [String] {
         var out: [String] = []
-        for text in [request.goal] + plannedQueries.filter { !$0.text.contains("site:") }.map(\.text) {
+        let structured = plannedQueries.filter({ !$0.text.contains("site:") }).map(\.text)
+        for text in [request.goal] + structured {
             for t in SearchTerms.subject(QueryBuilder.terms(text).joined(separator: " ")) where !out.contains(t) { out.append(t) }
         }
         return out

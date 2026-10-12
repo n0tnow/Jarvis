@@ -66,6 +66,8 @@ final class ConversationService {
     @ObservationIgnored weak var taskSubmitter: (any TaskSubmitting)?
     /// V0.9: web research tasks (same entry point for typed and spoken requests). nil = research requests stay ordinary conversation.
     @ObservationIgnored weak var researchSubmitter: (any ResearchSubmitting)?
+    /// V0.10: Project Memory (remember / correct / forget / "what did we decide…"). Typed and spoken text take this same path; nil = memory is not wired (stubbed runs).
+    @ObservationIgnored weak var memoryHandler: (any MemoryConversing)?
     /// Called at the start of every accepted submission (V0.7: a typed message silences speech that is still playing).
     @ObservationIgnored var onSubmit: ((InputSource) -> Void)?
     /// "stop talking" also silences speech that is playing (V0.7): returns true when something was being spoken.
@@ -107,6 +109,15 @@ final class ConversationService {
             conversation.appendJarvis(ApprovalGuard.notice(lang), tone: .notice, route: .local)
             return .localResponse(.approvalNeedsHUD, lang)
         }
+        // Project Memory: explicit remember / correct / forget and direct questions about the project's history are answered from RECORDS (no model, no invention).
+        if let memory = memoryHandler {
+            let command = memory.recognizes(text)
+            if command != .none {
+                let lang = InputNormalizer.normalize(text).language
+                handleMemoryCommand(command, language: lang, memory: memory)
+                return .localResponse(.memory, lang)
+            }
+        }
         let decision = router.route(text)
 
         switch decision {
@@ -119,6 +130,7 @@ final class ConversationService {
             case .greeting: conversation.appendJarvis(Phrasebook.greeting(lang), route: .local)
             case .thanks: conversation.appendJarvis(Phrasebook.thanks(lang), route: .local)
             case .approvalNeedsHUD: conversation.appendJarvis(ApprovalGuard.notice(lang), tone: .notice, route: .local)
+            case .memory: break                                   // answered by handleMemoryCommand
             }
 
         case .reasoningRequired(let prompt, let lang):
@@ -170,6 +182,17 @@ final class ConversationService {
             case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
             case .rejected(let why): self.conversation.appendJarvis(why, tone: .notice, route: .worker)
             }
+            self.announceLatestReply()
+        }
+    }
+
+    private func handleMemoryCommand(_ command: MemoryCommand, language: ReplyLanguage, memory: any MemoryConversing) {
+        pendingTaskAcks += 1
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.pendingTaskAcks -= 1 }
+            let text = await memory.reply(to: command, language: language)
+            self.conversation.appendJarvis(text, route: .local)
             self.announceLatestReply()
         }
     }

@@ -164,6 +164,10 @@ struct MemoryCandidate: Sendable {
     var userCorrected = false
     /// For a model-proposed candidate: the model that proposed it (recorded in the source list as a non-verifiable source).
     var proposedBy: String? = nil
+    /// A model's statement whose quoted evidence was found VERBATIM in the cited source (set only by the grounded extractor, never by the model).
+    var grounded = false
+    /// Bootstrap only: the documents themselves say this record is historical ("Superseded", "Resolved").
+    var statusHint: MemoryStatus? = nil
 }
 
 enum MemoryRejection: Equatable, Sendable, CustomStringConvertible {

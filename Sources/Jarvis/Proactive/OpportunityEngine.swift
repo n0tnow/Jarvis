@@ -312,10 +312,16 @@ final class OpportunityEngine {
         profile.requiresCoding = true; profile.containsProjectCode = true; profile.wantsStructuredOutput = true
         let prompt = OpportunityAssessor.modelAssessmentPrompt(f, knownFiles: known)
         profile.estimatedContextTokens = prompt.count / 4
-        let job = AgentJob(type: "OpportunityAssessor", title: "Assess · \(OutputSanitizer.sanitize(String(f.title.prefix(60))))", prompt: prompt, profile: profile, taskID: origin,
+        var job = AgentJob(type: "OpportunityAssessor", title: "Assess · \(OutputSanitizer.sanitize(String(f.title.prefix(60))))", prompt: prompt, profile: profile, taskID: origin,
                            validator: { OpportunityAssessor.parseModelAssessment($0) != nil ? BenchmarkSuite.Verdict(passed: true, detail: "") : BenchmarkSuite.Verdict(passed: false, detail: "reply with the JSON object") },
                            timeout: 240, policy: EscalationPolicy(maxRepairAttempts: 1, maxEscalations: 0, maxTotalAttempts: 2), preference: task.preference)
+        // V0.10: Project Memory is CONTEXT here, never authority — the policy decision never reads it, and a remembered suggestion or approval grants nothing.
+        var used: (packet: ContextPacket, project: ProjectIdentity)?
+        if let memory = tasks.memory, let u = await memory.contextFor(agentType: "OpportunityAssessor", goal: f.title, workspaceRoot: task.workspaceRoot, taskID: origin) {
+            used = u; job.prompt = ProjectContextBuilder.render(u.packet) + "\n\n---\n\n" + job.prompt
+        }
         let result = await tasks.agents.run(job)
+        if let u = used, case .completed(_, let runID, _, _) = result { tasks.memory?.recordUse(packet: u.packet, project: u.project, agentType: "OpportunityAssessor", taskID: origin, runID: runID) }
         guard case .completed(let text, _, let cand, _) = result, let m = OpportunityAssessor.parseModelAssessment(text) else { return nil }
         let reason = "the finding \"\(OutputSanitizer.sanitize(String(f.title.prefix(60))))\" had no structured assessment (category unknown) — one budgeted call"
         providerCalls.append("\(cand.label): \(reason)")

@@ -40,6 +40,9 @@ final class AppContext {
     /// V0.9: web research + acquisition (nil in stubbed automated runs: they never touch the network).
     let research: ResearchServices?
     let researchModel: ResearchViewModel
+    /// V0.10: derived, provenance-backed project knowledge (decisions, constraints, failures, research/asset decisions) with hybrid retrieval and a bounded agent context.
+    let memory: ProjectMemory
+    let memoryModel: MemoryViewModel
     // V0.5 proactive layer: decides (never executes) — approved/auto actions become normal V0.4 tasks
     let opportunities: OpportunityEngine
     let proposalService: ProposalService
@@ -121,6 +124,13 @@ final class AppContext {
             (webPrefs?.webBrowserTierEnabled ?? true) && ResearchResourcePolicy.allowsBrowser(memory: webResources?.pressure.memory ?? .normal, thermalSerious: webResources?.pressure.thermalSerious ?? false)
         }
         researchModel = ResearchViewModel(repository: repo, artifacts: artifacts, engine: taskEngine, preferences: preferences)
+        // V0.10 Project Memory (the embedding helper is only ever started on demand; in stubbed runs its runtime path does not exist)
+        let embeddingController = EmbeddingHostController(config: .standard(paths: runtimePaths))
+        // (if the real database could not be opened the app already reports it; memory then works on a throw-away database for this run instead of failing)
+        let memoryRepo = repo ?? JarvisRepository(database: try! JarvisDatabase(url: JarvisPaths.temporary("jarvis-memory-fallback").database))
+        memory = ProjectMemory(repository: memoryRepo, preferences: preferences, embedding: embeddingController)
+        memoryModel = MemoryViewModel(memory: memory, preferences: preferences)
+        taskEngine.memory = memory
         opportunities = OpportunityEngine(repository: repo, audit: audit, tasks: taskEngine)
         proposalService = ProposalService(repository: repo, engine: opportunities)
         whisper = WhisperRuntime(config: .standard(paths: runtimePaths, modelPath: stubIntelligence ? "/nonexistent/jarvis-stub-whisper" : preferences.whisperModelPath))
@@ -153,6 +163,18 @@ final class AppContext {
         conversationService = ConversationService(store: store, conversation: conversation, windows: windowManager, resolver: voiceRig != nil ? ScriptedAnswerResolver() : coordinator)
         // Autonomous work is only enabled for the real app: stubbed automated runs never start tasks (and never reach providers).
         if !stubIntelligence { conversationService.taskSubmitter = taskIntake; conversationService.researchSubmitter = taskIntake }
+        conversationService.memoryHandler = memory                         // V0.10: remember / correct / forget / "what did we decide…" — typed and spoken text alike
+        memory.onActivity = { [weak store] message, kind in store?.log(message, kind: kind, persist: false) }
+        memory.modelCall = { [weak self] task, prompt in
+            guard let self else { return nil }
+            var profile = TaskProfile(category: .summarization, complexity: .simple, privacy: task.privacy)
+            profile.wantsStructuredOutput = true; profile.estimatedContextTokens = prompt.count / 4
+            let job = AgentJob(type: "MemoryAgent", title: "Memory · lessons from “\(OutputSanitizer.sanitize(String(task.title.prefix(40))))”", prompt: prompt, profile: profile, taskID: task.id,
+                               validator: { text in PlanParser.extractJSONObject(text).flatMap { JSONValue.parse($0) }?["memories"]?.array != nil ? BenchmarkSuite.Verdict(passed: true, detail: "") : BenchmarkSuite.Verdict(passed: false, detail: "reply with the JSON object") },
+                               timeout: 180, policy: EscalationPolicy(maxRepairAttempts: 1, maxEscalations: 0, maxTotalAttempts: 2), preference: task.preference)
+            if case .completed(let text, _, let cand, _) = await self.taskEngine.agents.run(job) { return (text, cand.label) }
+            return nil
+        }
 
         // --- V0.7 voice: wiring (nothing starts here: no microphone, no helper process, no permission request) ---
         let voicePrefs = preferences
@@ -171,7 +193,7 @@ final class AppContext {
         conversationService.stopSpeech = { [weak self] in self?.voice.stopSpeaking() ?? false }
         voice.onEvent = { [weak store] message, kind in store?.log(message, kind: kind) }
         whisper.onEvent = { [weak store] message in store?.log(message, kind: .info) }
-        resources.observePressureRise { [weak self] _ in Task { @MainActor in await self?.whisper.unload(); await self?.neuralVoice.unload(); self?.research?.browser?.releaseUnderPressure() } }          // the small wake sentinel stays
+        resources.observePressureRise { [weak self] _ in Task { @MainActor in await self?.whisper.unload(); await self?.neuralVoice.unload(); self?.research?.browser?.releaseUnderPressure(); self?.memory.onMemoryPressure() } }          // the small wake sentinel stays
         handsFree.settings = { stubIntelligence ? VoiceSettings(enabled: false) : voicePrefs.voiceSettings }
         handsFree.onEvent = { [weak store] message, kind in store?.log(message, kind: kind) }
         sentinel.onEvent = { [weak store] message in store?.log(message, kind: .info) }
@@ -214,6 +236,8 @@ final class AppContext {
         taskEngine.onFinished = { [weak self] v in
             guard let self else { return }
             self.taskBridge.finished(v)
+            let finishedReport = self.taskEngine.report(for: v.id)
+            Task { @MainActor in await self.memory.taskFinished(v, report: finishedReport) }          // V0.10: only meaningful outcomes become memory
             Task { @MainActor in await self.opportunities.taskFinished(v) }          // event-driven post-task reflection (bounded; no polling)
             if let report = self.taskEngine.report(for: v.id) {
                 let text = self.taskEngine.researchSummary(for: v) ?? report.userSummary          // V0.9: a research task's message is its cited recommendation
@@ -242,7 +266,7 @@ final class AppContext {
     }
 
     /// Normal termination / SIGTERM: stop scheduling, persist the interrupted state + checkpoints, release leases (processes are killed by `ProcessRegistry`).
-    func prepareForTermination() { taskEngine.prepareForTermination(); research?.browser?.shutdown(); unity.forgetOwnedEditors(); handsFree.shutdown(); voice.shutdown() }
+    func prepareForTermination() { taskEngine.prepareForTermination(); research?.browser?.shutdown(); memory.shutdown(); unity.forgetOwnedEditors(); handsFree.shutdown(); voice.shutdown() }
 
     /// User-triggered runs (benchmark, local test) whose Task can be cancelled from the Observatory.
     @ObservationIgnored fileprivate var userTasks: [UUID: Task<Void, Never>] = [:]

@@ -133,10 +133,7 @@ private struct FullHUDBody: View {
             blurb: "Reports and visual explanations will appear here. Nothing is generated yet — this view only reserves the place."
         )
         case .system: SystemSectionView()
-        case .memory: PlaceholderSectionView(
-            section: .memory, plannedFor: "V0.8",
-            blurb: "Persistent project and task memory will live here."
-        )
+        case .memory: MemorySectionView()
         }
     }
 
