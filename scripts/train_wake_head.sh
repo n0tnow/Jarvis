@@ -14,19 +14,26 @@ VOICE_DIR="${JARVIS_SUPERTONIC_DIR:-$HOME/AI/models/supertonic-3}"
 EN=450; TR=260; SETS=(negB negC negD)
 [ "${1:-}" = "--quick" ] && { EN=200; TR=120; SETS=(negB negC); }
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jarvis-wake-train.XXXXXX")"
-trap 'rm -rf "$WORK"' EXIT
+FAILED=0
+trap '[ "$FAILED" = 1 ] && echo "Generator logs kept in $WORK (gen_*.log)" || rm -rf "$WORK"' EXIT
 export SUPERTONIC_CACHE_DIR="$VOICE_DIR" HF_HUB_OFFLINE=1 SUPERTONIC_INTRA_OP_THREADS=2 SUPERTONIC_INTER_OP_THREADS=1
 G="$ROOT/scripts/voice-ai/bench/gen_wake_train.py"
 echo "Synthesising training speech into $WORK (parallel, a few minutes per part) …"
-"$NPY" "$G" "$WORK" --part pos --seed 1 > "$WORK/gen_pos.log" 2>&1 &
-"$NPY" "$G" "$WORK" --part hard --seed 1 > "$WORK/gen_hard.log" 2>&1 &
-"$NPY" "$G" "$WORK" --part neg --seed 1 > "$WORK/gen_neg.log" 2>&1 &
+PIDS=()
+"$NPY" "$G" "$WORK" --part pos --seed 1 > "$WORK/gen_pos.log" 2>&1 & PIDS+=($!)
+"$NPY" "$G" "$WORK" --part hard --seed 1 > "$WORK/gen_hard.log" 2>&1 & PIDS+=($!)
+"$NPY" "$G" "$WORK" --part neg --seed 1 > "$WORK/gen_neg.log" 2>&1 & PIDS+=($!)
 seed=2
 for s in $SETS; do
-  "$NPY" "$G" "$WORK" --part neg --name $s --seed $seed --count-en $EN --count-tr $TR > "$WORK/gen_$s.log" 2>&1 &
+  "$NPY" "$G" "$WORK" --part neg --name $s --seed $seed --count-en $EN --count-tr $TR > "$WORK/gen_$s.log" 2>&1 & PIDS+=($!)
   seed=$((seed+1))
 done
-wait
+# `wait` alone ignores a failed generator (the trainer then dies on a missing pos.json): check every job and show why it failed.
+for pid in $PIDS; do wait $pid || FAILED=1; done
+if [ "$FAILED" = 1 ]; then
+  echo "A speech-synthesis job failed:"; for f in "$WORK"/gen_*.log; do echo "--- ${f:t}"; tail -n 8 "$f"; done
+  exit 1
+fi
 MINE="${(j:,:)SETS[2,-1]}"
 echo "Training the head (hard-negative rounds on: $MINE) …"
 "$NPY" "$ROOT/scripts/voice-ai/bench/train_wake.py" "$WORK" "$WORK/jarvis_head.npz" --models "$WAKE_DIR" --neg-sets neg,negB --mine-sets "$MINE" --epochs 25 --pos-weight 6
