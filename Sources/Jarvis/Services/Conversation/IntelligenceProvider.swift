@@ -9,6 +9,14 @@ import Foundation
 
 enum IntelligenceRequestKind: String, Sendable { case reasoning, worker }
 
+/// How the answer will be consumed. `voiceConversation` (V0.8) asks the EXISTING provider for a short, speakable answer — never a second model call to rewrite it.
+/// The text on screen and the speech are still ONE answer.
+enum ResponsePresentation: Sendable, Equatable { case text, voiceConversation }
+
+enum VoicePresentation {
+    static let preamble = "[Spoken conversation: the user is talking to you by voice and your answer will be read aloud. Reply in a few short, natural spoken sentences. No markdown, lists, tables, links or code unless the user asks for them; say numbers and names the way they are spoken.]"
+}
+
 struct IntelligenceRequest: Sendable {
     let id: UUID
     let kind: IntelligenceRequestKind
@@ -19,6 +27,10 @@ struct IntelligenceRequest: Sendable {
     let language: ReplyLanguage
     /// Provider-side conversation to continue (Claude `--resume`, Codex `exec resume`); nil = start a new one.
     var sessionID: String? = nil
+    var presentation: ResponsePresentation = .text
+
+    /// The prompt as the provider should see it: unchanged for typed requests, with the spoken-conversation preamble for voice turns.
+    var providerPrompt: String { presentation == .voiceConversation ? VoicePresentation.preamble + "\n\n" + prompt : prompt }
 }
 
 /// Streaming-shaped on purpose so replies need not be atomic; cancellation is cooperative via the surrounding Task.

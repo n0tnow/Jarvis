@@ -1,22 +1,12 @@
 import AVFoundation
 import Foundation
 
-/// macOS system voices through `AVSpeechSynthesizer`: free, on-device, no network, no API key, no JARVIS runtime process.
-/// Synthesis is per phrase (incremental sentence synthesis, NOT native streaming). The synthesizer is created on first use and released at shutdown.
+/// macOS system voices through `AVSpeechSynthesizer.write`: free, on-device, no network, no API key. The synthesiser only PRODUCES audio; JARVIS' own
+/// `SpeechPlayer` plays it (so the output is known and self-speech can be suppressed). Synthesis is per phrase — incremental sentence synthesis, NOT native
+/// streaming. The audio of a phrase arrives as the system produces it (first buffer ≈ 140–170 ms measured).
 @MainActor
-final class AppleSpeechSynthesizerProvider: NSObject, TextToSpeechProvider, AVSpeechSynthesizerDelegate {
-    let id = "apple-synthesizer"
-    let displayName = "Apple Speech (system voices)"
-    let capabilities = TTSCapabilities(languages: [.turkish, .english], streaming: .chunked, selectableVoices: true, costClass: .system,
-                                       needsNetwork: false, runtime: "macOS speech service (in-process API)")
-    private(set) var state: TTSState = .ready
-    var onEvent: ((TTSPlaybackEvent) -> Void)?
-    /// 1.0 normally. The live test sets 0 to exercise REAL playback timing (start/finish/stop) without making the Mac speak aloud.
-    var outputVolume: Float = 1.0
-
-    private var synthesizer: AVSpeechSynthesizer?
-    private var pending: [ObjectIdentifier: Int] = [:]          // utterance → chunk id
-    private var started: Set<Int> = []
+final class AppleSpeechEngine: PCMSynthesizing {
+    private var active: [Int: AVSpeechSynthesizer] = [:]
 
     func availability() -> TTSAvailability {
         voices().isEmpty ? .unavailable("no Turkish or English system voice is installed") : .ready
@@ -30,94 +20,65 @@ final class AppleSpeechSynthesizerProvider: NSObject, TextToSpeechProvider, AVSp
             .sorted { ($0.quality, $1.name) > ($1.quality, $0.name) }
     }
 
-    private func utterance(_ text: String, language: VoiceLanguage, voice: VoiceDescriptor?, rate: Double, volume: Float) -> AVSpeechUtterance {
+    private func utterance(_ text: String, language: VoiceLanguage, voice: VoiceDescriptor?, rate: Double) -> AVSpeechUtterance {
         let u = AVSpeechUtterance(string: text)
         let chosen = voice ?? VoiceSelection.resolve(language: language, chosenID: "", among: voices())
         if let chosen, let v = AVSpeechSynthesisVoice(identifier: chosen.id) { u.voice = v }
         else if let tag = language.tag { u.voice = AVSpeechSynthesisVoice(language: tag) }
         let clamped = max(0.5, min(rate, 1.6))
         u.rate = min(AVSpeechUtteranceMaximumSpeechRate, max(AVSpeechUtteranceMinimumSpeechRate, AVSpeechUtteranceDefaultSpeechRate * Float(clamped)))
-        u.preUtteranceDelay = 0; u.postUtteranceDelay = 0; u.volume = volume
+        u.preUtteranceDelay = 0; u.postUtteranceDelay = 0; u.volume = 1.0            // volume is applied by the player, never by muting synthesis
         return u
     }
 
-    func speak(_ chunk: SpeechChunk, voice: VoiceDescriptor?, rate: Double) {
-        let s: AVSpeechSynthesizer
-        if let synthesizer { s = synthesizer } else { s = AVSpeechSynthesizer(); s.delegate = self; synthesizer = s }
-        let u = utterance(chunk.text, language: chunk.language, voice: voice, rate: rate, volume: outputVolume)
-        pending[ObjectIdentifier(u)] = chunk.id
-        if state == .ready || state == .stopping { state = .synthesizing }
-        s.speak(u)
-    }
-
-    func stop() {
-        guard let synthesizer else { return }
-        if !pending.isEmpty { state = .stopping }
-        let dropped = pending
-        pending.removeAll(); started.removeAll()
-        synthesizer.stopSpeaking(at: .immediate)
-        for (_, id) in dropped { onEvent?(.cancelled(chunkID: id)) }
-        state = .ready
-    }
-
-    func shutdownNow() {
-        stop()
-        synthesizer?.delegate = nil
-        synthesizer = nil
-        onEvent = nil
-    }
-
-    // MARK: Rendering without playback
-
-    func render(_ text: String, language: VoiceLanguage, voice: VoiceDescriptor?, rate: Double) async throws -> RenderedSpeech {
-        let u = utterance(text, language: language, voice: voice, rate: rate, volume: 1.0)         // rendering is never muted
-        let s = AVSpeechSynthesizer()
-        let t0 = Date()
-        final class Box: @unchecked Sendable { var first: Double?; var rate = 0.0; var samples: [Float] = []; var done = false }
-        let box = Box()
-        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-            s.write(u) { buffer in
-                guard let pcm = buffer as? AVAudioPCMBuffer else { return }
-                if pcm.frameLength == 0 { if !box.done { box.done = true; c.resume() }; return }
-                if box.first == nil { box.first = Date().timeIntervalSince(t0) }
-                box.rate = pcm.format.sampleRate
-                if let ch = pcm.floatChannelData?[0] { box.samples.append(contentsOf: UnsafeBufferPointer(start: ch, count: Int(pcm.frameLength))) }
+    func synthesize(_ chunk: SpeechChunk, voice: VoiceDescriptor?, rate: Double) -> AsyncThrowingStream<PCMBlock, Error> {
+        let u = utterance(chunk.text, language: chunk.language, voice: voice, rate: rate)
+        let id = chunk.id
+        return AsyncThrowingStream { continuation in
+            let synthesizer = AVSpeechSynthesizer()
+            active[id] = synthesizer
+            final class Flag: @unchecked Sendable { var done = false }
+            let flag = Flag()
+            synthesizer.write(u) { buffer in
+                guard !flag.done, let pcm = buffer as? AVAudioPCMBuffer else { return }
+                if pcm.frameLength == 0 { flag.done = true; continuation.finish(); return }
+                let n = Int(pcm.frameLength)
+                var samples = [Float](repeating: 0, count: n)
+                if let ch = pcm.floatChannelData { samples = Array(UnsafeBufferPointer(start: ch[0], count: n)) }
+                else if let ch = pcm.int16ChannelData { for i in 0..<n { samples[i] = Float(ch[0][i]) / 32768.0 } }
+                else { return }
+                continuation.yield(PCMBlock(samples: samples, sampleRate: pcm.format.sampleRate))
+            }
+            final class Box: @unchecked Sendable { let s: AVSpeechSynthesizer; init(_ s: AVSpeechSynthesizer) { self.s = s } }
+            let box = Box(synthesizer)
+            continuation.onTermination = { [weak self] _ in
+                Task { @MainActor in
+                    box.s.stopSpeaking(at: .immediate)
+                    self?.active[id] = nil
+                }
             }
         }
-        withExtendedLifetime(s) {}
-        guard !box.samples.isEmpty else { throw VoiceError.ttsUnavailable("the synthesizer produced no audio") }
-        return RenderedSpeech(sampleRate: box.rate, frames: box.samples.count, firstBufferSeconds: box.first, totalSeconds: Date().timeIntervalSince(t0), samples: box.samples)
     }
 
-    // MARK: AVSpeechSynthesizerDelegate (called on the main thread)
-
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
-        let key = ObjectIdentifier(utterance)
-        MainActor.assumeIsolated {
-            guard let id = pending[key] else { return }
-            state = .speaking
-            started.insert(id)
-            onEvent?(.started(chunkID: id))
-        }
+    func cancelAll() {
+        let all = active; active = [:]
+        for (_, s) in all { s.stopSpeaking(at: .immediate) }
     }
 
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        let key = ObjectIdentifier(utterance)
-        MainActor.assumeIsolated {
-            guard let id = pending.removeValue(forKey: key) else { return }
-            started.remove(id)
-            if pending.isEmpty { state = .ready }
-            onEvent?(.finished(chunkID: id))
-        }
-    }
+    func shutdownNow() { cancelAll() }
+}
 
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        let key = ObjectIdentifier(utterance)
-        MainActor.assumeIsolated {
-            guard let id = pending.removeValue(forKey: key) else { return }          // `stop()` already reported it
-            started.remove(id)
-            if pending.isEmpty { state = .ready }
-            onEvent?(.cancelled(chunkID: id))
-        }
+/// The default JARVIS speech provider: Apple system voices behind the player. (V0.7's `speak`-based playback is replaced by `write` + `SpeechPlayer` so that
+/// JARVIS knows exactly what it plays — the basis of barge-in without an echo canceller.)
+@MainActor
+final class AppleSpeechSynthesizerProvider: PlayerBackedTTSProvider {
+    /// 1.0 normally; the live test sets 0 to exercise the REAL playback path (start/finish/stop timing, reference levels) without making the Mac speak aloud.
+    var outputVolume: Float = 1.0 { didSet { (player as? SpeechPlayer)?.volume = outputVolume } }
+
+    init(player: (any PCMPlayback)? = nil) {
+        super.init(id: "apple-synthesizer", displayName: "Apple Speech (system voices)",
+                   capabilities: TTSCapabilities(languages: [.turkish, .english], streaming: .chunked, selectableVoices: true, costClass: .system,
+                                                 needsNetwork: false, runtime: "macOS speech service (in-process API) + JARVIS audio player"),
+                   engine: AppleSpeechEngine(), player: player ?? SpeechPlayer())
     }
 }

@@ -14,6 +14,19 @@ import Observation
 ///  • One session owns the microphone: a press while listening/transcribing is ignored (no double submission, no stale transcript);
 ///    a press while JARVIS is speaking first stops the speech (explicit stop — NOT conversational barge-in, which is V0.8).
 ///  • Voice never approves anything: there is no code path from here to an approval.
+/// What the hands-free layer (`HandsFreeCoordinator`) needs to learn about the voice session. Content-free: never text, never audio.
+enum VoiceSignal: Equatable, Sendable {
+    case pttBegan, pttEnded
+    case transcriptEmpty            // nothing usable was heard (or too short / recognition failed softly)
+    case wakeOnly                   // the transcript contained only the wake word
+    case selfSpeech                 // the transcript was a quote of JARVIS' own speech and was dropped
+    case submitted                  // the final transcript entered the conversation
+    case playbackStarted            // JARVIS' answer became audible
+    case playbackEnded              // every phrase finished (or speech was stopped)
+    case turnEndedSilently          // the turn finished without any speech
+    case failed(String)
+}
+
 @MainActor
 @Observable
 final class VoiceCoordinator {
@@ -44,6 +57,16 @@ final class VoiceCoordinator {
     @ObservationIgnored var conversation: (() -> [ConversationMessage])?
     /// Activity feed hook: meaningful lifecycle events only (never audio, never transcript text).
     @ObservationIgnored var onEvent: ((String, ActivityKind) -> Void)?
+    /// Provisional transcript updates for the endpoint policy (V0.8): text only as a hint, never a message.
+    @ObservationIgnored var onPartial: ((String) -> Void)?
+    /// Session signals for the hands-free layer (V0.8).
+    @ObservationIgnored var onSignal: ((VoiceSignal) -> Void)?
+    /// Language of the current hands-free conversation (kept across turns inside one attentive session).
+    @ObservationIgnored var languageContinuity = LanguageContinuity()
+    private(set) var handsFreeUtterance = false
+    /// Settings → Voice previews a preset without changing the saved choice; cleared when the preview ends.
+    @ObservationIgnored let presetOverride: PresetOverride
+    final class PresetOverride { var value: JarvisVoicePreset? }
 
     // Limits
     static let minimumAudioSeconds = 0.35
@@ -73,7 +96,8 @@ final class VoiceCoordinator {
 
     init(sttProviders: [any SpeechToTextProvider], ttsProviders: [any TextToSpeechProvider], speaker: VoiceResponseSpeaker? = nil,
          permission: (any MicrophonePermissionProviding)? = nil, store: JarvisStore? = nil,
-         makeInput: (@MainActor () -> any AudioInput)? = nil) {
+         makeInput: (@MainActor () -> any AudioInput)? = nil, presetOverride: PresetOverride? = nil) {
+        self.presetOverride = presetOverride ?? PresetOverride()
         let speaker = speaker ?? VoiceResponseSpeaker()
         let permission = permission ?? SystemMicrophonePermission()
         self.sttProviders = sttProviders
@@ -95,7 +119,8 @@ final class VoiceCoordinator {
 
     var activeTTS: (any TextToSpeechProvider)? {
         let choice = VoiceProviderSelection.chooseTTS(preference: settings().ttsProvider,
-                                                       candidates: ttsProviders.map { ($0.id, $0.displayName, $0.availability(), $0.capabilities.costClass) })
+                                                       candidates: ttsProviders.map { ($0.id, $0.displayName, $0.availability(), $0.capabilities.costClass) },
+                                                       memoryPressureNormal: memoryPressureNormal(), preset: presetOverride.value ?? settings().voicePreset)
         return ttsProviders.first { $0.id == choice.id }
     }
 
@@ -111,11 +136,18 @@ final class VoiceCoordinator {
         }
         sttAvailability = avail
         sttChoice = VoiceProviderSelection.chooseSTT(preference: s.sttProvider, candidates: candidates, memoryPressureNormal: memoryPressureNormal())
-        ttsChoice = VoiceProviderSelection.chooseTTS(preference: s.ttsProvider, candidates: ttsProviders.map { ($0.id, $0.displayName, $0.availability(), $0.capabilities.costClass) })
+        ttsChoice = VoiceProviderSelection.chooseTTS(preference: s.ttsProvider, candidates: ttsProviders.map { ($0.id, $0.displayName, $0.availability(), $0.capabilities.costClass) },
+                                                     memoryPressureNormal: memoryPressureNormal(), preset: presetOverride.value ?? s.voicePreset)
         permission = permissionProvider.status
     }
 
     func refreshPermission() { permission = permissionProvider.status }
+
+    /// The user pressed "Allow microphone" in Settings (an explicit action — never called by launch, tests or wake mode on its own).
+    func requestMicrophoneFromSettings() async {
+        guard permission == .notDetermined else { return }
+        permission = await permissionProvider.request()
+    }
 
     // MARK: Push-to-Talk
 
@@ -129,6 +161,9 @@ final class VoiceCoordinator {
         }
         // Whatever JARVIS is saying stops BEFORE the microphone opens (explicit stop — not conversational barge-in, which is V0.8).
         if speaker.isActive || speaker.isSpeaking { speaker.stop(reason: "stopped by a new push-to-talk") }
+        // A hands-free utterance in progress yields to the explicit key (the capture is dropped, push-to-talk owns the turn).
+        if handsFreeUtterance { handsFreeUtterance = false; invalidate(); stopInput(); stopRecogniserSession(); partialTranscript = ""; setState(.idle); releaseListeningState() }
+        onSignal?(.pttBegan)
         beginSession(settings: s)
     }
 
@@ -148,6 +183,7 @@ final class VoiceCoordinator {
     func cancelAll(reason: String = "cancelled") {
         let wasBusy = state != .idle
         held = false
+        handsFreeUtterance = false
         invalidate()
         speaker.stop(reason: reason)
         stopInput()
@@ -173,13 +209,52 @@ final class VoiceCoordinator {
         if was {
             metrics.stopLatency = Date().timeIntervalSince(t0)
             if state == .speaking || state == .thinking { setState(.idle) }
+            onSignal?(.playbackEnded)
         }
         return was
     }
 
     // MARK: Session start
 
+    // MARK: Hands-free utterances (V0.8)
+
+    /// A hands-free utterance starts (the turn manager decided the user is speaking). `prefill` is the audio just BEFORE the decision, taken from the
+    /// bounded in-memory ring. Same session pipeline as Push-to-Talk: capture → recogniser → FINAL transcript → `submit`. Never requests permission.
+    func beginUtterance(prefill: [AudioFrame]) {
+        let s = settings()
+        guard s.enabled, s.wakeEnabled else { return }
+        switch state { case .listening, .requestingPermission, .transcribing: return; default: break }
+        permission = permissionProvider.status
+        guard permission == .granted else { onSignal?(.failed("microphone not allowed")); return }
+        invalidate()
+        token = UUID()
+        handsFreeUtterance = true
+        held = false
+        pressedAt = Date(); metrics = VoiceTurnMetrics(); partialTranscript = ""; lastNotice = nil
+        audioSeconds = prefill.reduce(0) { $0 + $1.seconds }; firstFrameAt = nil; firstPartialAt = nil
+        startCapture(token: token, settings: s, prefill: prefill)
+    }
+
+    /// The endpoint policy decided the turn is over: stop capturing and produce the final transcript.
+    func endUtterance() {
+        guard handsFreeUtterance, state == .listening else { return }
+        endListening(interrupted: false)
+    }
+
+    /// The user just went quiet: ask the recogniser for a fresh provisional transcript (the endpoint policy reads it as a "finished sentence?" hint).
+    func requestEndpointHint() { if handsFreeUtterance, state == .listening { stt?.requestPreview() } }
+
+    /// Drop the current hands-free utterance without a result (wake mode turned off, push-to-talk took over, a cough).
+    func discardUtterance() {
+        guard handsFreeUtterance else { return }
+        handsFreeUtterance = false
+        invalidate(); stopInput(); stopRecogniserSession(); partialTranscript = ""; level = 0
+        if state == .listening || state == .transcribing { setState(.idle) }
+        releaseListeningState()
+    }
+
     private func beginSession(settings s: VoiceSettings) {
+        handsFreeUtterance = false
         invalidate()
         token = UUID()
         let mine = token
@@ -206,7 +281,7 @@ final class VoiceCoordinator {
         }
     }
 
-    private func startCapture(token mine: UUID, settings s: VoiceSettings) {
+    private func startCapture(token mine: UUID, settings s: VoiceSettings, prefill: [AudioFrame] = []) {
         let device = makeInput()
         let (stream, sink) = AsyncStream<AudioFrame>.makeStream(bufferingPolicy: .bufferingNewest(Self.preBufferFrames))
         do {
@@ -219,7 +294,7 @@ final class VoiceCoordinator {
         }
         input = device
         frameSink = sink
-        preBuffer = []
+        preBuffer = prefill
         // LISTENING only now — capture is genuinely running.
         setState(.listening)
         claimListeningState()
@@ -277,6 +352,7 @@ final class VoiceCoordinator {
         guard token == mine, state == .listening || state == .transcribing, !event.isFinal else { return }
         if firstPartialAt == nil, let first = firstFrameAt { firstPartialAt = Date(); metrics.firstPartial = Date().timeIntervalSince(first) }
         partialTranscript = event.text                 // provisional: shown in the composer area, never a message
+        onPartial?(event.text)
     }
 
     // MARK: Release → final transcript → shared submission path
@@ -287,8 +363,9 @@ final class VoiceCoordinator {
         stopInput()
         level = 0
         releaseListeningState()
-        if interrupted { invalidate(); partialTranscript = ""; setState(.idle); onEvent?("Voice: recording discarded (shortcut interrupted)", .info); return }
+        if interrupted { invalidate(); partialTranscript = ""; setState(.idle); if !handsFreeUtterance { onSignal?(.pttEnded); onSignal?(.transcriptEmpty) }; onEvent?("Voice: recording discarded (shortcut interrupted)", .info); return }
         setState(.transcribing)
+        if !handsFreeUtterance { onSignal?(.pttEnded) }
         let mine = token
         Task { @MainActor [weak self] in await self?.finalize(token: mine) }
     }
@@ -301,6 +378,8 @@ final class VoiceCoordinator {
             invalidate(); partialTranscript = ""; setState(.idle)
             metrics.outcome = "tooShort"; lastMetrics = metrics
             lastNotice = VoiceError.tooShort.message()
+            handsFreeUtterance = false
+            onSignal?(.transcriptEmpty)
             return
         }
         metrics.audioSeconds = audioSeconds
@@ -311,15 +390,28 @@ final class VoiceCoordinator {
             guard token == mine else { return }
             metrics.sttFinalization = Date().timeIntervalSince(releasedAt)
             partials?.cancel()
-            let text = (event?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = TechnicalTerms.normalize((event?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines))          // canonical spelling of the product's own terms only
             guard text.contains(where: { $0.isLetter || $0.isNumber }) else {
                 partialTranscript = ""
                 metrics.outcome = "noSpeech"; lastMetrics = metrics
                 lastNotice = VoiceError.noSpeech.message()
-                finishSession(); return
+                handsFreeUtterance = false
+                finishSession()
+                onSignal?(.transcriptEmpty)
+                return
             }
             metrics.transcriptLength = text.count
             metrics.language = event?.language ?? metrics.language
+            if handsFreeUtterance {
+                if WakePhrase.isWakeOnly(text) {                              // "Jarvis." alone is an activation, not a message
+                    partialTranscript = ""; handsFreeUtterance = false; metrics.outcome = "wakeOnly"; finishSession(); onSignal?(.wakeOnly); return
+                }
+                if SelfSpeechFilter.isEcho(heard: text, spoken: speaker.recentSpoken) {         // JARVIS' own voice must never become a user turn
+                    partialTranscript = ""; handsFreeUtterance = false; metrics.outcome = "selfSpeech"; lastMetrics = metrics
+                    onEvent?("Voice: dropped a transcript that quoted JARVIS' own speech", .info)
+                    finishSession(); onSignal?(.selfSpeech); return
+                }
+            }
             deliver(text, language: event?.language)
         } catch {
             guard token == mine else { return }
@@ -329,7 +421,8 @@ final class VoiceCoordinator {
 
     /// The FINAL transcript enters the same pipeline as typed text.
     private func deliver(_ text: String, language: String?) {
-        let reply: VoiceLanguage = language.map { $0.hasPrefix("tr") ? .turkish : .english } ?? LanguageGuess.guess(text, fallback: lastReplyLanguage)
+        var reply: VoiceLanguage = language.map { $0.hasPrefix("tr") ? .turkish : .english } ?? LanguageGuess.guess(text, fallback: lastReplyLanguage)
+        if handsFreeUtterance { reply = languageContinuity.resolve(detected: reply, text: text, fallback: lastReplyLanguage) }        // one conversation, one language
         lastReplyLanguage = reply
         partialTranscript = ""
         turns += 1
@@ -337,9 +430,13 @@ final class VoiceCoordinator {
         let s = settings()
         let userMessage = submit?(text, reply)
         stopRecogniserSession()
+        handsFreeUtterance = false
+        if userMessage != nil { onSignal?(.submitted) }
         guard s.speakResponses, activeTTS != nil, let userMessage else {
             metrics.outcome = metrics.outcome ?? "ok"; lastMetrics = metrics
-            setState(.idle); return
+            setState(.idle)
+            onSignal?(userMessage == nil ? .transcriptEmpty : .turnEndedSilently)
+            return
         }
         setState(.thinking)
         speaker.beginTurn(afterUserMessage: userMessage, fallbackLanguage: reply, releasedAt: releasedAt, metrics: metrics)
@@ -359,6 +456,30 @@ final class VoiceCoordinator {
         speaker.speakStandalone(text, language: language)
     }
 
+    /// Settings → voice preview: a fixed, restrained phrase in the chosen preset (A/B between JARVIS Default, JARVIS Calm and the Apple fallback). Starts no
+    /// conversation and no microphone; the saved preset is untouched.
+    func previewVoice(_ preset: JarvisVoicePreset, language: VoiceLanguage) {
+        presetOverride.value = preset
+        guard activeTTS != nil else { presetOverride.value = nil; lastNotice = VoiceError.ttsUnavailable("no voice engine is available").message(); return }
+        let text = language == .turkish ? "Efendim? Sistemler hazır." : "Yes? All systems are ready."
+        speaker.speakStandalone(text, language: language)
+        Task { @MainActor [weak self] in            // the override lives exactly as long as the preview speech
+            while let self, self.speaker.isActive { try? await Task.sleep(for: .milliseconds(100)) }
+            self?.presetOverride.value = nil
+        }
+    }
+
+    /// The short sound that acknowledges the wake word (default): no speech, no added latency, nothing for the microphone to mistake for the user.
+    func playWakeCue() { (activeTTS as? PlayerBackedTTSProvider)?.playCue(WakeCue.block) }
+
+    /// Optional spoken acknowledgement ("Efendim?" / "Yes?") through the normal speech path.
+    func speakWakeAcknowledgement() {
+        guard activeTTS != nil else { return }
+        let s = settings()
+        let lang: VoiceLanguage = s.language != .auto ? s.language : (languageContinuity.current ?? (turns > 0 ? lastReplyLanguage : VoiceLanguage.systemDefault))
+        speaker.speakStandalone(lang == .turkish ? "Efendim?" : "Yes?", language: lang)
+    }
+
     /// A typed message while JARVIS is speaking: the speech is stopped (the text conversation keeps going).
     func typedInputArrived() {
         if speaker.isActive || speaker.isSpeaking { stopSpeaking() }
@@ -366,7 +487,10 @@ final class VoiceCoordinator {
 
     // MARK: Speaker callbacks
 
-    private func firstAudio() { if state == .thinking { setState(.speaking) } }
+    private func firstAudio() {
+        if state == .thinking { setState(.speaking) }
+        onSignal?(.playbackStarted)
+    }
 
     private func speakingChanged(_ speaking: Bool) {
         if speaking, state == .thinking { setState(.speaking) }
@@ -380,6 +504,7 @@ final class VoiceCoordinator {
         lastMetrics = metrics
         if let t = metrics.releaseToFirstAudio { onEvent?("Voice: first audio \(Int(t * 1000)) ms after release", .info) }
         if state == .thinking || state == .speaking { setState(.idle) }
+        onSignal?(m.releaseToFirstAudio != nil ? .playbackEnded : .turnEndedSilently)
     }
 
     // MARK: Failure / cleanup
@@ -391,6 +516,7 @@ final class VoiceCoordinator {
     }
 
     private func fail(_ error: VoiceError) {
+        handsFreeUtterance = false
         invalidate()
         stopInput()
         stopRecogniserSession()
@@ -402,6 +528,7 @@ final class VoiceCoordinator {
         lastNotice = message
         state = .error(message)
         onEvent?("Voice problem: \(Self.category(error))", .warning)
+        onSignal?(.failed(Self.category(error)))
         // An error is shown, then the session returns to idle (a failure never leaves a stuck state).
         let mine = token
         Task { @MainActor [weak self] in

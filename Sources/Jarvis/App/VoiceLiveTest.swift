@@ -59,7 +59,7 @@ enum VoiceLiveTest {
 
         info("data directory: \(context.paths.root.path) (isolated from your real JARVIS history)")
         guard let apple = voice.sttProviders.first(where: { $0.id == "apple-speech" }) as? AppleSpeechSTTProvider,
-              let tts = voice.ttsProviders.first as? AppleSpeechSynthesizerProvider else { check("The expected voice providers exist", false); finish() }
+              let tts = voice.ttsProviders.compactMap({ $0 as? AppleSpeechSynthesizerProvider }).first else { check("The expected voice providers exist", false); finish() }
         let whisperProvider = voice.sttProviders.first(where: { $0.id == "whisper-local" })
         tts.outputVolume = audible ? 1.0 : 0
         info(audible ? "AUDIBLE mode: JARVIS will speak aloud during the TTS checks." : "Silent mode: real playback runs at volume 0 (timing, events and stop are real; nothing is heard). Use --voice-audible to hear it.")
@@ -261,7 +261,7 @@ enum VoiceLiveTest {
 
         // incremental sentence synthesis while the answer is still streaming (real conversation store, real speaker, real TTS)
         let conv = context.conversation
-        voice.settings = { var s = VoiceSettings(enabled: true); s.speakResponses = true; return s }
+        voice.settings = { var s = VoiceSettings(enabled: true); s.voicePreset = .systemFallback; s.speakResponses = true; return s }
         let userMsg = conv.appendUser("explain the build please", source: .voice)
         let reply = conv.beginJarvisResponse(route: .reasoning)
         voice.speaker.beginTurn(afterUserMessage: userMsg.id, fallbackLanguage: .english)
@@ -285,7 +285,7 @@ enum VoiceLiveTest {
             conv.clear()
             let input = FixtureAudioInput(clip: f.clip)
             voice.makeInput = { input }
-            voice.settings = { var s = VoiceSettings(enabled: true); s.sttProvider = id; s.language = language; s.speakResponses = true; return s }
+            voice.settings = { var s = VoiceSettings(enabled: true); s.voicePreset = .systemFallback; s.sttProvider = id; s.language = language; s.speakResponses = true; return s }
             voice.pushToTalkPressed()
             _ = await waitUntil(5) { voice.state == .listening }
             await input.waitUntilDelivered()
@@ -368,7 +368,7 @@ enum VoiceLiveTest {
             let f = fixture("en_cmd")
             let input = FixtureAudioInput(clip: Array(f.clip.dropFirst(Int(0.3 * AudioFrame.sampleRate))))          // speech starts at once: every short hold contains words
             voice.makeInput = { input }
-            voice.settings = { var s = VoiceSettings(enabled: true); s.sttProvider = pid; s.language = pid == "whisper-local" ? .auto : .english; s.speakResponses = false; return s }
+            voice.settings = { var s = VoiceSettings(enabled: true); s.voicePreset = .systemFallback; s.sttProvider = pid; s.language = pid == "whisper-local" ? .auto : .english; s.speakResponses = false; return s }
             var maxOpen = 0
             for _ in 0..<4 {
                 voice.pushToTalkPressed()
@@ -384,7 +384,7 @@ enum VoiceLiveTest {
 
             // PTT during speech
             conv.clear(); windows.hideFullHUD()
-            voice.settings = { var s = VoiceSettings(enabled: true); s.sttProvider = pid; s.language = pid == "whisper-local" ? .auto : .english; s.speakResponses = true; return s }
+            voice.settings = { var s = VoiceSettings(enabled: true); s.voicePreset = .systemFallback; s.sttProvider = pid; s.language = pid == "whisper-local" ? .auto : .english; s.speakResponses = true; return s }
             voice.speaker.speakStandalone("Bu çok uzun bir yanıt. Konuşmaya devam ediyorum, ikinci cümle. Üçüncü cümle de burada, dördüncü cümle de geliyor. Beşinci cümle.", language: .turkish)
             _ = await waitUntil(8) { voice.speaker.isSpeaking }
             let wasSpeaking = voice.speaker.isSpeaking
@@ -417,7 +417,7 @@ enum VoiceLiveTest {
                 setup(); conv.clear(); try? await Task.sleep(for: .milliseconds(300))
                 let input = FixtureAudioInput(clip: fixture("en_cmd").clip)
                 voice.makeInput = { input }
-                voice.settings = { var s = VoiceSettings(enabled: true); s.sttProvider = pid; s.language = pid == "whisper-local" ? .auto : .english; s.speakResponses = false; return s }
+                voice.settings = { var s = VoiceSettings(enabled: true); s.voicePreset = .systemFallback; s.sttProvider = pid; s.language = pid == "whisper-local" ? .auto : .english; s.speakResponses = false; return s }
                 postRightOption(true)
                 let began = await waitUntil(3) { voice.state == .listening }
                 if !began { postRightOption(false); skip("Global Push-to-Talk hotkey (\(label))", "synthetic key events were not delivered to this session (Accessibility is not granted to the host process) — MANUAL TEST REQUIRED"); delivered = false; break }
@@ -519,7 +519,7 @@ enum VoiceLiveTest {
 
         voice.shutdown()                                                              // what the app does at quit
         let cleaned = await waitUntil(5) { ProcessRegistry.shared.count == 0 && context.whisper.workerPID == nil }
-        check("After shutdown no managed process (speech helper or one-shot tool) is left behind by the voice stack", cleaned, "registry: \(ProcessRegistry.shared.count)")
+        check("After shutdown no managed process (speech helper or one-shot tool) is left behind by the voice stack", cleaned, "registry: \(ProcessRegistry.shared.count) \(ProcessRegistry.shared.names)")
         finish()
     }
 

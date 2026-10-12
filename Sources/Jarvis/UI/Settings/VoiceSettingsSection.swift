@@ -74,6 +74,9 @@ struct VoiceSettingsSection: View {
                 Text("Both recognisers run on this Mac: no network, no API key, no cost. Whisper is more accurate (especially Turkish and technical words) but needs a one-time ≈460 MB download (scripts/setup_voice_ai.sh) and about 0.9 GB of memory while loaded (it unloads itself when idle or when memory is tight). Apple Speech needs no setup beyond its own language model.")
                     .font(.caption).foregroundStyle(.secondary)
 
+                wakeSection(prefs: prefs)
+                jarvisVoiceSection(prefs: prefs)
+
                 Toggle("Speak responses to voice requests", isOn: $prefs.voiceSpeakResponses)
                 Picker("Turkish voice", selection: $prefs.voiceTurkishVoice) {
                     Text("Automatic").tag("")
@@ -97,16 +100,96 @@ struct VoiceSettingsSection: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Text("Saying “approve” or “yes” never approves anything: approvals are HUD buttons only.").font(.caption).foregroundStyle(.secondary)
 
-                if prefs.showDeveloperControls {
-                    DisclosureGroup("Voice diagnostics") {
-                        mono("state \(voice.state.label) · turns \(voice.turns) · helper \(app.whisper.state.label)")
-                        if let rss = app.whisper.workerResidentBytes { mono("helper memory \(rss / 1_048_576) MB (not part of JARVIS' own memory)") }
-                        if let m = voice.lastMetrics { mono(Self.describe(m)) }
-                    }
-                }
+                if prefs.showDeveloperControls { diagnostics(prefs: prefs) }
             }
         }
         .task { await voice.refreshProviders() }
+    }
+
+    // MARK: Wake word (V0.8)
+
+    @ViewBuilder
+    private func wakeSection(prefs: Preferences) -> some View {
+        @Bindable var prefs = prefs
+        let hf = app.handsFree
+        Divider()
+        Toggle("Wake word “Jarvis” (hands-free)", isOn: $prefs.voiceWakeEnabled).accessibilityIdentifier("settings.wakeEnabled")
+        Text("OFF by default. When on, a small detector on this Mac listens for the word “Jarvis”; before it hears it nothing is transcribed, stored, or sent anywhere (audio stays in memory for a second or two and is overwritten). After the word JARVIS listens for you, then returns to wake-only listening. Wake detection is only an activation: it does not know who is speaking and gives voice no extra authority — approvals still need the HUD buttons. Push-to-Talk keeps working either way.")
+            .font(.caption).foregroundStyle(.secondary)
+        if prefs.voiceWakeEnabled {
+            LabeledContent("Wake mode") { mono(hf.wakeStatus.label, hf.wakeStatus == .listening ? .green : (hf.wakeStatus == .starting ? .secondary : .orange)) }
+            if case .unavailable(let why) = hf.wakeStatus {
+                Text("Wake mode is unavailable: \(why). Push-to-Talk still works.").font(.caption).foregroundStyle(.orange)
+                if app.voice.permission == .notDetermined {
+                    Button("Allow microphone…") { Task { await app.voice.requestMicrophoneFromSettings(); await app.handsFree.applySettings() } }
+                }
+                if case .notInstalled = app.sentinel.state {
+                    Text("Install the local wake-word helper once: run scripts/setup_voice_ai.sh --natural (≈ 0.2 GB runtime, models from pinned releases; JARVIS never downloads anything itself).")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            Picker("When I say “Jarvis”", selection: $prefs.voiceWakeAcknowledgement) {
+                ForEach(WakeAcknowledgement.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            Text("Sound is the default: a short soft tone, no speech, no delay. Voice says “Efendim?” / “Yes?” (adds a little latency and JARVIS’ own voice reaches the microphone). Off acknowledges only on screen.")
+                .font(.caption2).foregroundStyle(.secondary)
+            Toggle("Let me interrupt JARVIS by speaking", isOn: $prefs.voiceBargeIn)
+            Text("While JARVIS speaks, your voice (clearly louder than JARVIS’ own voice reaching the microphone) stops the speech and starts a new turn. There is no echo canceller: a very quiet voice or a very loud speaker volume may not interrupt; Push-to-Talk and Stop Speaking always work.")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: JARVIS voice (V0.8)
+
+    @ViewBuilder
+    private func jarvisVoiceSection(prefs: Preferences) -> some View {
+        @Bindable var prefs = prefs
+        let voice = app.voice
+        let neural = app.neuralVoice
+        Divider()
+        Picker("JARVIS voice", selection: $prefs.voicePreset) {
+            ForEach(JarvisVoicePreset.allCases, id: \.self) { Text($0.label).tag($0) }
+        }
+        Text(prefs.voicePreset.summary).font(.caption2).foregroundStyle(.secondary)
+        LabeledContent("Neural voice") { mono(neural.state.label, neural.state == .running || neural.state == .idle ? .green : .orange) }
+        if case .notInstalled = neural.state {
+            Text("Not installed — JARVIS speaks with the Apple system voice until you install it: run scripts/setup_voice_ai.sh --natural (≈ 0.4 GB model, local, no account, no API key, no cost).")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+        Text("Using: \(voice.ttsChoice.reason)").font(.caption).foregroundStyle(.secondary)
+        HStack {
+            Text("Hear it").font(.caption)
+            ForEach(JarvisVoicePreset.allCases, id: \.self) { preset in
+                Menu(preset.label) {
+                    Button("Turkish — “Efendim? Sistemler hazır.”") { voice.previewVoice(preset, language: .turkish) }
+                    Button("English — “Yes? All systems are ready.”") { voice.previewVoice(preset, language: .english) }
+                }.menuStyle(.borderlessButton).fixedSize()
+            }
+            Button("Stop") { voice.stopSpeaking() }
+        }
+        Text("The JARVIS voice is an original voice identity (calm, composed, medium-low, restrained) rendered by a local neural model — it does not imitate any actor, performer or person. How natural it sounds is your call: compare it with System Fallback and tell the project. The preview speaks a fixed phrase and starts no conversation.")
+            .font(.caption2).foregroundStyle(.secondary)
+    }
+
+    // MARK: Diagnostics / voice lab (developer controls only)
+
+    @ViewBuilder
+    private func diagnostics(prefs: Preferences) -> some View {
+        let voice = app.voice
+        let hf = app.handsFree
+        DisclosureGroup("Voice diagnostics · voice lab") {
+            mono("state \(voice.state.label) · turn manager \(hf.state.label) · wake \(hf.wakeStatus.label) · turns \(voice.turns) · wakes \(hf.wakeCount) · barge-ins \(hf.bargeInCount)")
+            mono("mic level \(String(format: "%.2f", hf.level)) · VAD \(app.sentinel.vadSpeech ? "SPEECH" : "quiet") · hub subscribers \(app.micHub.subscriberLabels.joined(separator: ","))")
+            mono("STT helper \(app.whisper.state.label)\(app.whisper.workerResidentBytes.map { " · \($0 / 1_048_576) MB" } ?? "") · wake helper \(app.sentinel.state.label)\(app.sentinel.host.residentBytes.map { " · \($0 / 1_048_576) MB" } ?? "") · neural \(app.neuralVoice.state.label)\(app.neuralVoice.host.residentBytes.map { " · \($0 / 1_048_576) MB" } ?? "")")
+            mono("(helper memory is not part of JARVIS' own memory)")
+            let sm = app.sentinel.metrics
+            mono("sentinel: \(String(format: "%.0f", sm.secondsSent)) s of audio sent · wake events \(sm.wakeEvents) · last score \(sm.lastWakeScore.map { String(format: "%.2f", $0) } ?? "–") · VAD transitions \(sm.vadTransitions)")
+            if let line = hf.latencySummary { mono("last natural turn: \(line)") }
+            let nm = app.neuralVoice.metrics
+            mono("neural: \(nm.phrases) phrases · first block \(nm.lastFirstBlockSeconds.map { "\(Int($0 * 1000)) ms" } ?? "–") · RTF \(nm.realTimeFactor.map { String(format: "%.2f", $0) } ?? "–") · load \(nm.loadSeconds.map { String(format: "%.1f s", $0) } ?? "–")")
+            if let m = voice.lastMetrics { mono(Self.describe(m)) }
+            if !voice.partialTranscript.isEmpty { mono("partial (provisional): “\(voice.partialTranscript)”") }
+        }
     }
 
     static func describe(_ m: VoiceTurnMetrics) -> String {

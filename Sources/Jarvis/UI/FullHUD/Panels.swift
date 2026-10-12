@@ -16,7 +16,7 @@ struct SystemPanel: View {
                 KeyValueRow(key: "Memory", value: app.resources.pressure.memory.rawValue.uppercased(),
                             valueTint: app.resources.pressure.memory == .normal ? Color.jarvisSecondary : Theme.Palette.amber)
                 KeyValueRow(key: "Voice", value: voiceSummary, valueTint: app.voice.state == .listening ? Theme.Palette.coral : (app.preferences.voiceEnabled ? Theme.Palette.mint : Color.jarvisSecondary))
-                KeyValueRow(key: "Permissions", value: app.preferences.voiceEnabled ? "MICROPHONE (WHILE HELD)" : "NONE REQUESTED")
+                KeyValueRow(key: "Permissions", value: app.preferences.voiceEnabled ? (app.handsFree.isWakeEnabled ? "MICROPHONE (WAKE MODE)" : "MICROPHONE (WHILE HELD)") : "NONE REQUESTED")
                 KeyValueRow(key: "Motion", value: app.preferences.effectiveReduceMotion ? "REDUCED" : "FULL")
             }
         }
@@ -26,7 +26,11 @@ struct SystemPanel: View {
 extension SystemPanel {
     fileprivate var voiceSummary: String {
         guard app.preferences.voiceEnabled else { return "OFF" }
-        return app.voice.state == .idle ? "READY · PUSH-TO-TALK" : app.voice.state.label
+        let presence = app.handsFree.presence
+        if presence != .off && presence != .wake { return presence.label }
+        if presence == .wake { return "WAKE · LOCAL DETECTOR" }
+        if case .unavailable = app.handsFree.wakeStatus, app.preferences.voiceWakeEnabled { return "WAKE UNAVAILABLE · PUSH-TO-TALK" }
+        return "READY · PUSH-TO-TALK"
     }
     fileprivate var providerSummary: String {
         let mode = app.preferences.providerPreference

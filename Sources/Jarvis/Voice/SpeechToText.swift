@@ -18,7 +18,12 @@ protocol STTSession: AnyObject {
     func finish() async throws -> SpeechTranscriptEvent?
     /// Abandons the utterance at once; nothing further is produced.
     func cancel()
+    /// Hands-free turn taking asks for a fresh provisional transcript right after the user went quiet, so the endpoint policy can tell a finished sentence from a
+    /// hesitation without waiting for the next periodic preview. Recognisers that stream natively already have one: the default does nothing.
+    func requestPreview()
 }
+
+extension STTSession { func requestPreview() {} }
 
 /// A speech recogniser behind a clean boundary. Providers report truthful availability, never download anything on their own,
 /// and clean up everything they own on `shutdownNow()`.

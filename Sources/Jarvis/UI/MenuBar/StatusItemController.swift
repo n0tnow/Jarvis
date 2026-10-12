@@ -100,6 +100,18 @@ final class StatusItemController: NSObject {
             menu.addItem(.separator())
             menu.addItem(withTitle: "Stop Speaking", action: #selector(stopSpeaking), keyEquivalent: "").target = self
         }
+        // V0.8: wake mode (opt-in) can be switched from here, even with no HUD open. Push-to-Talk is the right ⌥ key.
+        if context.preferences.voiceEnabled {
+            menu.addItem(.separator())
+            let on = context.preferences.voiceWakeEnabled
+            let item = menu.addItem(withTitle: on ? "Turn Wake Mode Off" : "Turn Wake Mode On", action: #selector(toggleWake), keyEquivalent: "")
+            item.target = self
+            if case .unavailable(let why) = context.handsFree.wakeStatus {
+                let note = menu.addItem(withTitle: "Wake mode unavailable: \(why)", action: nil, keyEquivalent: "")
+                note.isEnabled = false
+            }
+            menu.addItem(withTitle: "Push-to-Talk: hold right ⌥", action: nil, keyEquivalent: "").isEnabled = false
+        }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
@@ -115,5 +127,6 @@ final class StatusItemController: NSObject {
     @objc private func openCompactHUD() { context.windows.showCompactHUD() }
     @objc private func openSettings() { context.windows.showSettings() }
     @objc private func stopSpeaking() { context.voice.stopSpeaking() }
+    @objc private func toggleWake() { context.preferences.voiceWakeEnabled.toggle() }
     @objc private func quit() { NSApp.terminate(nil) }
 }

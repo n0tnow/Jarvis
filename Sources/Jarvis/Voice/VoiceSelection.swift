@@ -12,8 +12,19 @@ struct VoiceSettings: Equatable, Sendable {
     var speechRate = 1.0
     var turkishVoiceID = ""
     var englishVoiceID = ""
+    // V0.8 — natural voice. Wake mode is OPT-IN (off by default): nothing listens continuously unless the user turns it on.
+    var wakeEnabled = false
+    var wakeAcknowledgement: WakeAcknowledgement = .sound
+    var bargeInEnabled = true
+    var voicePreset: JarvisVoicePreset = .jarvisDefault
 
     var output: VoiceOutputSettings { VoiceOutputSettings(rate: speechRate, turkishVoiceID: turkishVoiceID, englishVoiceID: englishVoiceID) }
+}
+
+/// How JARVIS acknowledges the wake word. A short sound is the default: speaking would add latency and put JARVIS' own voice into the microphone.
+enum WakeAcknowledgement: String, CaseIterable, Codable, Sendable {
+    case sound, voice, off
+    var label: String { switch self { case .sound: "Sound"; case .voice: "Voice"; case .off: "Off" } }
 }
 
 /// The outcome of provider selection, with the reason (shown in Settings → Voice and recorded in diagnostics).
@@ -37,7 +48,9 @@ enum VoiceProviderSelection {
 
     /// Preferred order in Auto: measured accuracy first (docs/VOICE_IO.md), the zero-setup system recogniser last.
     static let sttOrder = ["whisper-local", "apple-speech"]
-    static let ttsOrder = ["apple-synthesizer"]
+    static let ttsOrder = ["neural-supertonic", "apple-synthesizer"]
+    /// Voices that load a model into memory (skipped in Auto under memory pressure; Apple system voices are the fallback).
+    static let heavyTTS: Set<String> = ["neural-supertonic"]
 
     static func chooseSTT(preference: String, candidates: [STTCandidate], memoryPressureNormal: Bool) -> VoiceProviderChoice {
         if preference != "auto" {
@@ -57,14 +70,25 @@ enum VoiceProviderSelection {
         return VoiceProviderChoice(id: nil, reason: skipped.isEmpty ? "No speech recogniser is installed." : skipped.joined(separator: "; "))
     }
 
-    static func chooseTTS(preference: String, candidates: [(id: String, name: String, availability: TTSAvailability, cost: VoiceCostClass)]) -> VoiceProviderChoice {
+    static func chooseTTS(preference: String, candidates: [(id: String, name: String, availability: TTSAvailability, cost: VoiceCostClass)],
+                          memoryPressureNormal: Bool = true, preset: JarvisVoicePreset = .jarvisDefault) -> VoiceProviderChoice {
         if preference != "auto" {
             guard let c = candidates.first(where: { $0.id == preference }) else { return VoiceProviderChoice(id: nil, reason: "The chosen voice engine is not available in this build.") }
             if case .unavailable(let why) = c.availability { return VoiceProviderChoice(id: nil, reason: "\(c.name): \(why).") }
             return VoiceProviderChoice(id: c.id, reason: "\(c.name) (your choice)")
         }
         let ranked = candidates.sorted { (ttsOrder.firstIndex(of: $0.id) ?? 99) < (ttsOrder.firstIndex(of: $1.id) ?? 99) }
-        for c in ranked where c.cost.autoSelectable && c.availability.isReady { return VoiceProviderChoice(id: c.id, reason: "\(c.name) (best available)") }
-        return VoiceProviderChoice(id: nil, reason: "No voice engine is available.")
+        var skipped: [String] = []
+        for c in ranked {
+            guard c.cost.autoSelectable else { skipped.append("\(c.name): cost \(c.cost.label)"); continue }
+            if heavyTTS.contains(c.id) {
+                if preset == .systemFallback { skipped.append("\(c.name): System Fallback is selected"); continue }
+                if !memoryPressureNormal { skipped.append("\(c.name): memory pressure"); continue }
+            }
+            if case .unavailable(let why) = c.availability { skipped.append("\(c.name): \(why)"); continue }
+            let fell = c.id != ranked.first?.id && !skipped.isEmpty
+            return VoiceProviderChoice(id: c.id, reason: fell ? "\(c.name) (fallback — \(skipped.joined(separator: "; ")))" : "\(c.name) (best available)", fellBack: fell)
+        }
+        return VoiceProviderChoice(id: nil, reason: skipped.isEmpty ? "No voice engine is available." : skipped.joined(separator: "; "))
     }
 }

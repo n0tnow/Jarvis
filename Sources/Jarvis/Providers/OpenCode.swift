@@ -96,10 +96,10 @@ struct OpenCodeSpec: CLIProviderSpec {
     }
 
     func stdinPrompt(for request: IntelligenceRequest) -> String {
-        guard request.sessionID == nil else { return request.prompt }
+        guard request.sessionID == nil else { return request.providerPrompt }
         var parts = ["[Instructions] " + JarvisInstruction.text]
         if let pre = ContextBuilder.preface(from: request.history, excluding: request.prompt) { parts.append(pre) }
-        parts.append("[Request]\n" + request.prompt)
+        parts.append("[Request]\n" + request.providerPrompt)
         return parts.joined(separator: "\n\n")
     }
 

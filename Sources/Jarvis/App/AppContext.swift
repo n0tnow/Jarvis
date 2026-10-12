@@ -43,6 +43,11 @@ final class AppContext {
     // V0.7 voice I/O: an input/output layer around the SAME conversation pipeline (never a second assistant)
     let whisper: WhisperRuntime
     let voice: VoiceCoordinator
+    // V0.8 natural voice: ONE microphone hub, the local wake/VAD sentinel, the local neural voice, and the hands-free turn manager.
+    let micHub: MicrophoneHub
+    let sentinel: SentinelRuntime
+    let neuralVoice: NeuralVoiceRuntime
+    let handsFree: HandsFreeCoordinator
     @ObservationIgnored private var sleepObservers: [NSObjectProtocol] = []
     private(set) var persistenceError: String?
     /// Automated runs (smoke/capture/--no-providers) use a throw-away data directory and NEVER touch real providers.
@@ -54,7 +59,8 @@ final class AppContext {
     /// Views and (later) the intent layer talk to windows only through this protocol.
     var windows: any JarvisWindowControlling { windowManager }
 
-    init(seedDemoData: Bool = true, stubIntelligence: Bool = false, dataDirectory: URL? = nil) {
+    /// `voiceRig`: only the natural-voice live test passes one (a scripted microphone + simulated speaker in a closed acoustic loop; no hardware).
+    init(seedDemoData: Bool = true, stubIntelligence: Bool = false, dataDirectory: URL? = nil, voiceRig: VoiceTestRig? = nil) {
         store = JarvisStore()
         hud = HUDState()
         preferences = Preferences()
@@ -106,7 +112,21 @@ final class AppContext {
         opportunities = OpportunityEngine(repository: repo, audit: audit, tasks: taskEngine)
         proposalService = ProposalService(repository: repo, engine: opportunities)
         whisper = WhisperRuntime(config: .standard(paths: runtimePaths, modelPath: stubIntelligence ? "/nonexistent/jarvis-stub-whisper" : preferences.whisperModelPath))
-        voice = VoiceCoordinator(sttProviders: [WhisperSTTProvider(runtime: whisper), AppleSpeechSTTProvider()], ttsProviders: [AppleSpeechSynthesizerProvider()], store: store)
+        let stubbedVoice = stubIntelligence
+        var sentinelConfig = SentinelRuntime.Config.standard(paths: runtimePaths)
+        if stubbedVoice { sentinelConfig.modelsDirectory = "/nonexistent/jarvis-stub-wake" }
+        sentinel = SentinelRuntime(config: sentinelConfig)
+        neuralVoice = NeuralVoiceRuntime(config: .standard(paths: runtimePaths, modelDirectory: stubbedVoice ? "/nonexistent/jarvis-stub-voice" : preferences.neuralVoiceModelPath))
+        let presetPrefs = preferences
+        let presetBox = VoiceCoordinator.PresetOverride()
+        let microphoneHub = MicrophoneHub(makeSource: { voiceRig.map { $0.microphone as any AudioInput } ?? MicrophoneInput() })
+        micHub = microphoneHub
+        let makePlayer: () -> any PCMPlayback = { voiceRig.map { $0.makePlayback() as any PCMPlayback } ?? SpeechPlayer() }
+        voice = VoiceCoordinator(sttProviders: [WhisperSTTProvider(runtime: whisper), AppleSpeechSTTProvider()],
+                                 ttsProviders: [NeuralSpeechProvider(runtime: neuralVoice, preset: { [weak presetPrefs] in presetBox.value ?? presetPrefs?.voicePreset ?? .jarvisDefault }, player: makePlayer()),
+                                                AppleSpeechSynthesizerProvider(player: makePlayer())],
+                                 permission: voiceRig.map { _ in RigMicrophonePermission() }, store: store, makeInput: { HubAudioInput(hub: microphoneHub) }, presetOverride: presetBox)
+        handsFree = HandsFreeCoordinator(hub: microphoneHub, sentinel: sentinel, voice: voice)
 
         if stubIntelligence {
             // Stub at construction (not on first refresh): nothing may reach a real provider, its service, or the network.
@@ -117,7 +137,8 @@ final class AppContext {
         if seedDemoData { DemoScenario.seed(store) }
         taskBridge = TaskBridge(engine: taskEngine, store: store, hub: hub)
         windowManager = WindowManager(context: self)
-        conversationService = ConversationService(store: store, conversation: conversation, windows: windowManager, resolver: coordinator)
+        // (The closed-loop natural voice test answers from a script: non-command turns must never reach a real model or spend quota.)
+        conversationService = ConversationService(store: store, conversation: conversation, windows: windowManager, resolver: voiceRig != nil ? ScriptedAnswerResolver() : coordinator)
         // Autonomous work is only enabled for the real app: stubbed automated runs never start tasks (and never reach providers).
         if !stubIntelligence { conversationService.taskSubmitter = taskIntake }
 
@@ -138,7 +159,20 @@ final class AppContext {
         conversationService.stopSpeech = { [weak self] in self?.voice.stopSpeaking() ?? false }
         voice.onEvent = { [weak store] message, kind in store?.log(message, kind: kind) }
         whisper.onEvent = { [weak store] message in store?.log(message, kind: .info) }
-        resources.observePressureRise { [weak self] _ in Task { @MainActor in await self?.whisper.unload() } }
+        resources.observePressureRise { [weak self] _ in Task { @MainActor in await self?.whisper.unload(); await self?.neuralVoice.unload() } }          // the small wake sentinel stays
+        handsFree.settings = { stubIntelligence ? VoiceSettings(enabled: false) : voicePrefs.voiceSettings }
+        handsFree.onEvent = { [weak store] message, kind in store?.log(message, kind: kind) }
+        sentinel.onEvent = { [weak store] message in store?.log(message, kind: .info) }
+        neuralVoice.onEvent = { [weak store] message in store?.log(message, kind: .info) }
+        neuralVoice.idleUnloadProvider = { [weak voicePrefs] in voicePrefs?.neuralIdleUnloadSeconds ?? 180 }
+        // JARVIS knows exactly what it plays: the level of every output slice is the reference that lets barge-in tell the user from JARVIS' own voice.
+        for case let provider as PlayerBackedTTSProvider in voice.ttsProviders {
+            provider.player.onReferenceLevel = { [weak hf = handsFree] db, t in Task { @MainActor in hf?.referenceLevel(db, at: t) } }
+        }
+        if !stubIntelligence {
+            observeContinuously(track: { _ = voicePrefs.voiceEnabled; _ = voicePrefs.voiceWakeEnabled }, onChange: { [weak self] in Task { @MainActor in await self?.handsFree.applySettings() } })
+            Task { @MainActor [weak self] in await self?.handsFree.applySettings() }          // wake mode returns after launch only if the user left it on (and the microphone is allowed)
+        }
         observeContinuously(track: { [weak self] in _ = self?.conversation.messages; _ = self?.conversationService.isAnswering },
                             onChange: { [weak self] in self?.voice.conversationChanged() })
 
@@ -191,7 +225,7 @@ final class AppContext {
     }
 
     /// Normal termination / SIGTERM: stop scheduling, persist the interrupted state + checkpoints, release leases (processes are killed by `ProcessRegistry`).
-    func prepareForTermination() { taskEngine.prepareForTermination(); unity.forgetOwnedEditors(); voice.shutdown() }
+    func prepareForTermination() { taskEngine.prepareForTermination(); unity.forgetOwnedEditors(); handsFree.shutdown(); voice.shutdown() }
 
     /// User-triggered runs (benchmark, local test) whose Task can be cancelled from the Observatory.
     @ObservationIgnored fileprivate var userTasks: [UUID: Task<Void, Never>] = [:]

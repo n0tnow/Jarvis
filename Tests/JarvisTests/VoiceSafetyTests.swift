@@ -160,13 +160,16 @@ struct VoiceAuthorityTests {
 
     @Test func theMicrophoneEngineAndPermissionAPIsLiveInExactlyOneFileEach() {
         for (path, text) in code("Sources/Jarvis") {
-            if text.contains("AVAudioEngine(") { #expect(path.hasSuffix("Voice/AudioInput.swift"), "\(path)") }
+            // (V0.8: JARVIS' own playback engine is OUTPUT only — it must never touch an input node; the microphone engine stays in AudioInput.swift.)
+            if text.contains("AVAudioEngine(") { #expect(path.hasSuffix("Voice/AudioInput.swift") || path.hasSuffix("Voice/SpeechPlayer.swift"), "\(path)") }
+            if text.contains("inputNode") { #expect(path.hasSuffix("Voice/AudioInput.swift"), "\(path): only the microphone input file may touch an input node") }
             if text.contains("AVCaptureDevice") { #expect(path.hasSuffix("Voice/MicrophoneAccess.swift"), "\(path)") }
             if text.contains("requestAccess") { #expect(path.hasSuffix("Voice/MicrophoneAccess.swift"), "\(path)") }
-            if text.contains("MicrophoneInput(") { #expect(path.hasSuffix("Voice/VoiceCoordinator.swift"), "\(path)") }
-            if text.contains(".start(onFrame") { #expect(path.hasSuffix("Voice/VoiceCoordinator.swift") || path.hasSuffix("App/VoiceLiveTest.swift"), "\(path)") }
+            // (AppContext names MicrophoneInput as the hub's source; the opt-in natural live test opens it ONLY with --natural-acoustic to measure levels.)
+            if text.contains("MicrophoneInput(") { #expect(path.hasSuffix("Voice/VoiceCoordinator.swift") || path.hasSuffix("Voice/Natural/AudioHub.swift") || path.hasSuffix("App/AppContext.swift") || path.hasSuffix("App/NaturalVoiceLiveTest.swift"), "\(path)") }
+            if text.contains(".start(onFrame") { #expect(path.hasSuffix("Voice/VoiceCoordinator.swift") || path.hasSuffix("Voice/Natural/AudioHub.swift") || path.hasSuffix("App/VoiceLiveTest.swift") || path.hasSuffix("App/NaturalVoiceLiveTest.swift"), "\(path)") }
             // (SmokeTest presses it ON PURPOSE to prove that an automated run never opens the microphone; the opt-in live test drives it with fixture audio — the only exemptions.)
-            if text.contains("pushToTalkPressed()") && !path.contains("/Voice/") { #expect(path.hasSuffix("AppDelegate.swift") || path.hasSuffix("App/SmokeTest.swift") || path.hasSuffix("App/VoiceLiveTest.swift"), "\(path)") }
+            if text.contains("pushToTalkPressed()") && !path.contains("/Voice/") { #expect(path.hasSuffix("AppDelegate.swift") || path.hasSuffix("App/SmokeTest.swift") || path.hasSuffix("App/VoiceLiveTest.swift") || path.hasSuffix("App/NaturalVoiceLiveTest.swift"), "\(path)") }
         }
     }
 

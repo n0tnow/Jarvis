@@ -23,6 +23,8 @@ final class FakeAudioInput: AudioInput {
         for _ in 0..<Int((seconds * 10).rounded()) { onFrame?(AudioFrame(samples: [Float](repeating: amplitude, count: 1600))) }
     }
     func interrupt(_ why: String = "the audio device changed") { onInterruption?(why) }
+    /// Delivers one prepared frame immediately.
+    func feedFrame(_ frame: AudioFrame) { onFrame?(frame) }
 }
 
 @MainActor
@@ -138,16 +140,16 @@ struct VoiceHarness {
     let voice: VoiceCoordinator
     var settings = VoiceSettings(enabled: true)
 
-    init(permission: MicrophonePermission = .granted, providers: IntelligenceProviderRegistry = IntelligenceProviderRegistry(), enabled: Bool = true) {
+    init(permission: MicrophonePermission = .granted, providers: IntelligenceProviderRegistry = IntelligenceProviderRegistry(), enabled: Bool = true, hub: MicrophoneHub? = nil, wake: Bool = false) {
         base = Harness(providers: providers)
         mic = FakeMicPermission(status: permission)
         stt = FakeSTT()
         let input = self.input
-        voice = VoiceCoordinator(sttProviders: [stt], ttsProviders: [tts], permission: mic, store: base.store, makeInput: { input })
+        voice = VoiceCoordinator(sttProviders: [stt], ttsProviders: [tts], permission: mic, store: base.store, makeInput: { hub.map { HubAudioInput(hub: $0) as any AudioInput } ?? input })
         let service = base.service, conversation = base.conversation, windows = base.windows
         _ = windows
-        let enabledNow = enabled
-        voice.settings = { VoiceSettings(enabled: enabledNow) }
+        let enabledNow = enabled, wakeNow = wake
+        voice.settings = { VoiceSettings(enabled: enabledNow, wakeEnabled: wakeNow) }
         voice.conversation = { conversation.messages }
         voice.conversationBusy = { service.isAnswering }
         voice.submit = { text, _ in

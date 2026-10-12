@@ -17,6 +17,11 @@ import Foundation
 ///   --voice-no-whisper      (with the above) skip the local Whisper helper
 ///   --voice-combined        (with the above) also load the local Qwen model and sample combined memory (run next to --unity-live-test to include a real Unity editor)
 ///   --voice-real-mic        (with the above) also open the REAL microphone for ~1.5 s to prove capture plumbing (needs the permission to be granted already; level only, nothing kept)
+///   --natural-voice-live-test  REAL test of the V0.8 natural voice stack with SYNTHETIC speech: wake word, VAD, endpointing, turn taking, barge-in, self-speech, neural voice (closed loop, no hardware); opt-in
+///   --natural-audible       (with the above) the neural/Apple voices play through the real speakers for the TTS checks (default: silent)
+///   --natural-acoustic      (with the above) also measure the REAL speaker→microphone loop for ~10 s (audible; needs the microphone permission already granted; levels only, nothing kept)
+///   --natural-combined      (with the above) also load the local Qwen model and sample combined memory with the whole voice stack resident (run next to --unity-live-test to include a real Unity editor)
+///   --natural-idle <min>    (with the above) also hold wake mode on a silent microphone for <min> minutes and measure CPU/memory (long idle test)
 ///   --benchmark-models      (with the above) also run the benchmark suite on verified-free OpenCode models and record results
 ///   --demo-agents           developer-only: simulate a few agent runs (never persisted, labelled SIMULATED)
 ///   --demo-stress           developer-only: simulate a high-rate console stream (performance measurement)
@@ -52,6 +57,12 @@ struct LaunchOptions {
     var voiceRealMic = false
     var voiceCombined = false
     var voiceQuitChild = false
+    var naturalVoiceLiveTest = false
+    var naturalAudible = false
+    var naturalAcoustic = false
+    var naturalCombined = false
+    var naturalIdleMinutes = 0.0
+    var naturalChild = false
     var benchmarkModels = false
     var liveDirectory: String?
 
@@ -80,6 +91,12 @@ struct LaunchOptions {
             case "--voice-real-mic": voiceRealMic = true
             case "--voice-combined": voiceCombined = true
             case "--voice-quit-child": voiceQuitChild = true
+            case "--natural-voice-live-test": naturalVoiceLiveTest = true
+            case "--natural-audible": naturalAudible = true
+            case "--natural-acoustic": naturalAcoustic = true
+            case "--natural-combined": naturalCombined = true
+            case "--natural-idle": naturalIdleMinutes = it.next().flatMap(Double.init) ?? 1
+            case "--natural-child": naturalChild = true
             case "--benchmark-models": benchmarkModels = true
             case "--live-dir": liveDirectory = it.next()
             case "--capture": captureDirectory = it.next()

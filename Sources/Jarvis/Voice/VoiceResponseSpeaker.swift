@@ -57,6 +57,12 @@ final class VoiceResponseSpeaker {
     @ObservationIgnored private var speakingSince: Date?
     @ObservationIgnored private var spokenTotal: TimeInterval = 0
     @ObservationIgnored private var attached: ObjectIdentifier?
+    /// The phrases JARVIS itself said in the last 25 seconds — used ONLY to recognise a transcript that merely quotes JARVIS' own voice.
+    @ObservationIgnored private var spokenLog: [(at: Date, text: String)] = []
+    var recentSpoken: [String] {
+        let cutoff = Date().addingTimeInterval(-25)
+        return spokenLog.filter { $0.at >= cutoff }.map(\.text)
+    }
 
     // MARK: Turn lifecycle
 
@@ -177,6 +183,8 @@ final class VoiceResponseSpeaker {
         guard queue.count < maxQueued else { return }                     // bounded: the policy normally stops us long before this
         if firstChunkAt == nil { firstChunkAt = .now }
         lastSpoken = language
+        spokenLog.append((.now, text))
+        if spokenLog.count > 16 { spokenLog.removeFirst(spokenLog.count - 16) }
         if counts { spokenCharacters += text.count; spokenChunks += 1 }
         queue.append(SpeechChunk(id: nextChunkID, text: text, language: language))
         nextChunkID += 1

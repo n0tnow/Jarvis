@@ -36,6 +36,7 @@ struct CompactHUDView: View {
 
     /// While listening: the provisional transcript replaces the placeholder (one tail-truncated line; the field never changes size).
     private var compactVoiceLine: String? {
+        if app.handsFree.presence == .attentive { return "Listening for you…" }
         guard app.voice.state == .listening || app.voice.state == .transcribing else { return nil }
         let p = app.voice.partialTranscript
         return p.isEmpty ? (app.voice.state == .listening ? "Listening…" : "Transcribing…") : "“\(p)”"

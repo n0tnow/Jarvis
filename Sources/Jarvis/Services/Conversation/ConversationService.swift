@@ -124,12 +124,12 @@ final class ConversationService {
             if let intent = GoalIntake.analysis(for: prompt), let submitter = taskSubmitter, submitter.hasProject {
                 handleTaskRequest(prompt, intent: intent, language: lang, channel: source)
             } else {
-                handleProviderRequest(.reasoning, prompt: prompt, language: lang, origin: origin)
+                handleProviderRequest(.reasoning, prompt: prompt, language: lang, origin: origin, presentation: source == .voice ? .voiceConversation : .text)
             }
 
         case .workerRequired(let prompt, let lang):
             if taskSubmitter != nil { handleTaskRequest(prompt, intent: GoalIntake.development(for: prompt), language: lang, channel: source) }
-            else { handleProviderRequest(.worker, prompt: prompt, language: lang, origin: origin) }
+            else { handleProviderRequest(.worker, prompt: prompt, language: lang, origin: origin, presentation: source == .voice ? .voiceConversation : .text) }
 
         case .unsupported(_, let lang):
             conversation.appendJarvis(Phrasebook.unsupported(lang), tone: .notice, route: .unsupported)
@@ -171,7 +171,7 @@ final class ConversationService {
 
     // MARK: Provider path
 
-    private func handleProviderRequest(_ kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, origin: InputOrigin) {
+    private func handleProviderRequest(_ kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, origin: InputOrigin, presentation: ResponsePresentation = .text) {
         // Anything needing more room than the Compact HUD continues in the Full HUD (WindowManager keeps Compact XOR Full).
         if origin == .compactHUD { windows.showFullHUD(section: .dashboard) }
 
@@ -190,7 +190,7 @@ final class ConversationService {
         isResponding = true
         if store.state == .idle || store.state == .completed { store.setState(.thinking); ownsThinking = true }
 
-        responseTask = Task { [weak self] in await self?.runProviderRequest(kind, prompt: prompt, language: language, messageID: messageID) }
+        responseTask = Task { [weak self] in await self?.runProviderRequest(kind, prompt: prompt, language: language, messageID: messageID, presentation: presentation) }
     }
 
     private struct Attempt {
@@ -199,7 +199,7 @@ final class ConversationService {
         var hasContent: Bool
     }
 
-    private func runProviderRequest(_ kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID) async {
+    private func runProviderRequest(_ kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID, presentation: ResponsePresentation = .text) async {
         let resolution = await resolver.resolve(kind, prompt: prompt)
         if Task.isCancelled {                                   // STOP pressed while the provider was still being resolved
             conversation.markCancelled(messageID)
@@ -217,7 +217,7 @@ final class ConversationService {
         // provider FAILURE that produced no output (never after a user cancel, never once text has streamed).
         var attempt: Attempt
         while true {
-            attempt = await runAttempt(resolved, kind: kind, prompt: prompt, language: language, messageID: messageID)
+            attempt = await runAttempt(resolved, kind: kind, prompt: prompt, language: language, messageID: messageID, presentation: presentation)
             resolver.runFinished(resolved, outcome: attempt.outcome, report: attempt.report)
             if case .failed(let error) = attempt.outcome, !attempt.hasContent, !Task.isCancelled,
                let next = await resolver.escalate(from: resolved, error: error, prompt: prompt) {
@@ -251,7 +251,7 @@ final class ConversationService {
     }
 
     /// One provider attempt: start → stream (coalesced) → wait until the provider is really gone → report.
-    private func runAttempt(_ resolved: ResolvedProvider, kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID) async -> Attempt {
+    private func runAttempt(_ resolved: ResolvedProvider, kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID, presentation: ResponsePresentation) async -> Attempt {
         respondingProvider = resolved.id
         respondingProviderName = resolved.name
         respondingRunID = resolved.runID
@@ -260,7 +260,7 @@ final class ConversationService {
         store.log("\(resolved.name) response started", kind: .info)
 
         let request = IntelligenceRequest(id: UUID(), kind: kind, prompt: prompt, history: conversation.messages, language: language,
-                                          sessionID: resolver.sessionID(for: resolved.id))
+                                          sessionID: resolver.sessionID(for: resolved.id), presentation: presentation)
         let coalescer = StreamCoalescer(conversation: conversation, id: messageID)
         var outcome = ProviderOutcome.completed
         var sawFinished = false

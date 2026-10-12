@@ -58,6 +58,8 @@ final class ProcessRegistry: @unchecked Sendable {
     func add(_ p: ManagedProcess) { lock.lock(); live[ObjectIdentifier(p)] = p; lock.unlock() }
     func remove(_ p: ManagedProcess) { lock.lock(); live[ObjectIdentifier(p)] = nil; lock.unlock() }
     var count: Int { lock.lock(); defer { lock.unlock() }; return live.count }
+    /// Executable names (no arguments, no paths) of the live processes — diagnostics for the live tests.
+    var names: [String] { lock.lock(); defer { lock.unlock() }; return live.values.map { $0.executableName } }
 
     /// Synchronous and final (SIGKILL tree): used when the app is quitting.
     func killAll() {
@@ -96,6 +98,7 @@ final class ManagedProcess: @unchecked Sendable {
         process.standardError = mergeStderr ? outPipe : errPipe
     }
 
+    var executableName: String { process.executableURL?.lastPathComponent ?? "?" }
     var processIdentifier: pid_t { process.processIdentifier }
     var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return started && exitCode == nil }
     /// Last bytes of stderr. DIAGNOSTICS ONLY — never shown as an answer.

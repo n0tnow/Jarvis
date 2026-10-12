@@ -30,6 +30,12 @@ final class Preferences {
         static let voiceRate = "prefs.voice.speechRate"
         static let voiceTrVoice = "prefs.voice.turkishVoice"
         static let voiceEnVoice = "prefs.voice.englishVoice"
+        static let neuralModelPath = "prefs.voice.neuralModelPath"
+        static let neuralIdle = "prefs.voice.neuralIdleUnloadSeconds"
+        static let wakeEnabled = "prefs.voice.wake.enabled"
+        static let wakeAck = "prefs.voice.wake.acknowledgement"
+        static let bargeIn = "prefs.voice.bargeIn"
+        static let voicePreset = "prefs.voice.preset"
         static let whisperModelPath = "prefs.voice.whisperModelPath"
         static let whisperIdle = "prefs.voice.whisperIdleUnloadSeconds"
     }
@@ -82,12 +88,21 @@ final class Preferences {
     var voiceSpeechRate: Double { didSet { defaults.set(voiceSpeechRate, forKey: Key.voiceRate) } }
     var voiceTurkishVoice: String { didSet { defaults.set(voiceTurkishVoice, forKey: Key.voiceTrVoice) } }
     var voiceEnglishVoice: String { didSet { defaults.set(voiceEnglishVoice, forKey: Key.voiceEnVoice) } }
+    // V0.8 natural voice. Wake mode is OPT-IN and OFF by default: the microphone is only ever open while the right Option key is held unless this is turned on.
+    var voiceWakeEnabled: Bool { didSet { defaults.set(voiceWakeEnabled, forKey: Key.wakeEnabled) } }
+    var voiceWakeAcknowledgement: WakeAcknowledgement { didSet { defaults.set(voiceWakeAcknowledgement.rawValue, forKey: Key.wakeAck) } }
+    var voiceBargeIn: Bool { didSet { defaults.set(voiceBargeIn, forKey: Key.bargeIn) } }
+    var voicePreset: JarvisVoicePreset { didSet { defaults.set(voicePreset.rawValue, forKey: Key.voicePreset) } }
+    /// Directory of the optional neural voice model (created by `scripts/setup_voice_ai.sh --natural`; never downloaded by JARVIS).
+    var neuralVoiceModelPath: String { didSet { defaults.set(neuralVoiceModelPath, forKey: Key.neuralModelPath) } }
+    var neuralIdleUnloadSeconds: TimeInterval { didSet { defaults.set(neuralIdleUnloadSeconds, forKey: Key.neuralIdle) } }
     /// Directory of the optional Whisper model (created by `scripts/setup_voice_ai.sh`; never downloaded by JARVIS).
     var whisperModelPath: String { didSet { defaults.set(whisperModelPath, forKey: Key.whisperModelPath) } }
     var whisperIdleUnloadSeconds: Double { didSet { defaults.set(whisperIdleUnloadSeconds, forKey: Key.whisperIdle) } }
     var voiceSettings: VoiceSettings {
         VoiceSettings(enabled: voiceEnabled, pushToTalkEnabled: voicePushToTalk, speakResponses: voiceSpeakResponses, language: voiceLanguage, sttProvider: voiceSTTProvider,
-                      ttsProvider: voiceTTSProvider, speechRate: voiceSpeechRate, turkishVoiceID: voiceTurkishVoice, englishVoiceID: voiceEnglishVoice)
+                      ttsProvider: voiceTTSProvider, speechRate: voiceSpeechRate, turkishVoiceID: voiceTurkishVoice, englishVoiceID: voiceEnglishVoice,
+                      wakeEnabled: voiceWakeEnabled, wakeAcknowledgement: voiceWakeAcknowledgement, bargeInEnabled: voiceBargeIn, voicePreset: voicePreset)
     }
 
     /// Seconds of inactivity before the local model is unloaded from memory.
@@ -127,6 +142,12 @@ final class Preferences {
         voiceSpeechRate = defaults.object(forKey: Key.voiceRate) as? Double ?? 1.0
         voiceTurkishVoice = defaults.string(forKey: Key.voiceTrVoice) ?? ""
         voiceEnglishVoice = defaults.string(forKey: Key.voiceEnVoice) ?? ""
+        voiceWakeEnabled = defaults.object(forKey: Key.wakeEnabled) as? Bool ?? false
+        voiceWakeAcknowledgement = defaults.string(forKey: Key.wakeAck).flatMap(WakeAcknowledgement.init(rawValue:)) ?? .sound
+        voiceBargeIn = defaults.object(forKey: Key.bargeIn) as? Bool ?? true
+        neuralVoiceModelPath = defaults.string(forKey: Key.neuralModelPath) ?? NeuralVoiceRuntime.Config.defaultModelDirectory
+        neuralIdleUnloadSeconds = defaults.object(forKey: Key.neuralIdle) as? Double ?? 180
+        voicePreset = defaults.string(forKey: Key.voicePreset).flatMap(JarvisVoicePreset.init(rawValue:)) ?? .jarvisDefault
         whisperModelPath = defaults.string(forKey: Key.whisperModelPath) ?? WhisperRuntimeConfig.defaultModelPath
         whisperIdleUnloadSeconds = defaults.object(forKey: Key.whisperIdle) as? Double ?? 120
         systemReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion

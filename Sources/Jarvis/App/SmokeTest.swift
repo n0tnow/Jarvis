@@ -540,6 +540,31 @@ enum SmokeTest {
             await resetWorld()
         }
 
+        // --- V0.8 Natural voice on the real app context: wake mode is OPT-IN, so an automated run has no microphone hub, no wake/neural helper and no listening state.
+        do {
+            let hf = context.handsFree
+            check("V0.8 wake mode is off at launch: no microphone engine, no wake or neural helper process, turn manager dormant",
+                  hf.state == .dormant && hf.wakeStatus == .off && !context.micHub.isCapturing && context.sentinel.host.pid == nil && context.neuralVoice.host.pid == nil && ProcessRegistry.shared.count == 0)
+            check("V0.8 the default wake setting is OFF and the saved preference is not changed by an automated run", VoiceSettings().wakeEnabled == false)
+            check("V0.8 the Compact HUD stays 392×448 in every hands-free presence (wake, attentive, listening, speaking, interrupted)", await {
+                w.hideFullHUD(); w.showCompactHUD(); _ = await waitUntil { w.isCompactHUDOpen }
+                var ok = true
+                for (st, wake) in [(HandsFreeState.wakeListening, WakeStatus.listening), (.attentive, .listening), (.userSpeaking, .listening), (.jarvisSpeaking, .listening), (.interrupting, .listening), (.dormant, .unavailable("the wake-word helper is not installed"))] {
+                    hf.simulate(state: st, wake: wake)
+                    await settle(150)
+                    ok = ok && compactWindow()?.frame.size == CompactHUDLayout.size
+                }
+                return ok
+            }())
+            hf.simulate(state: .wakeListening, wake: .listening)
+            w.hideCompactHUD(); w.showFullHUD(section: .dashboard); _ = await waitUntil { w.isFullHUDOpen }
+            await settle(250)
+            check("V0.8 the Full HUD shows the WAKE state and Compact/Full stay mutually exclusive", w.isFullHUDOpen && !w.isCompactHUDOpen && context.handsFree.presence == .wake)
+            hf.simulate(state: .dormant, wake: .off)
+            w.hideFullHUD(); w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
         print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")

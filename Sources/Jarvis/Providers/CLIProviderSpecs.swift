@@ -72,9 +72,9 @@ struct ClaudeCodeSpec: CLIProviderSpec {
 
     func stdinPrompt(for request: IntelligenceRequest) -> String {
         if request.sessionID == nil, let pre = ContextBuilder.preface(from: request.history, excluding: request.prompt) {
-            return pre + "\n\n---\n\n" + request.prompt
+            return pre + "\n\n---\n\n" + request.providerPrompt
         }
-        return request.prompt
+        return request.providerPrompt
     }
 
     func makeParser() -> ProviderLineParser { ClaudeStreamParser() }
@@ -105,10 +105,10 @@ struct CodexSpec: CLIProviderSpec {
         if request.sessionID == nil {
             var parts = ["[Instructions] " + JarvisInstruction.text]
             if let pre = ContextBuilder.preface(from: request.history, excluding: request.prompt) { parts.append(pre) }
-            parts.append("[Request]\n" + request.prompt)
+            parts.append("[Request]\n" + request.providerPrompt)
             return parts.joined(separator: "\n\n")
         }
-        return request.prompt
+        return request.providerPrompt
     }
 
     func makeParser() -> ProviderLineParser { CodexEventParser() }

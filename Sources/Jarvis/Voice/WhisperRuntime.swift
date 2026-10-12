@@ -410,6 +410,12 @@ final class WhisperSession: STTSession {
         return result.text.isEmpty ? nil : SpeechTranscriptEvent(text: result.text, isFinal: true, language: result.language, confidence: result.confidence)
     }
 
+    func requestPreview() {
+        guard !ended, audioSeconds >= 0.5 else { return }
+        lastPreviewAt = Date()
+        runtime.requestPreview(id: id)
+    }
+
     func cancel() {
         guard !ended else { return }
         ended = true

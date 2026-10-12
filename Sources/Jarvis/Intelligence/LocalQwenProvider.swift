@@ -17,7 +17,7 @@ struct LocalQwenProvider: IntelligenceProvider {
     static func prompt(for request: IntelligenceRequest) -> String {
         var parts = ["[Instructions] " + instruction]
         if let pre = ContextBuilder.preface(from: request.history, excluding: request.prompt) { parts.append(pre) }
-        parts.append("[Request]\n" + request.prompt)
+        parts.append("[Request]\n" + request.providerPrompt)
         return parts.joined(separator: "\n\n")
     }
 
