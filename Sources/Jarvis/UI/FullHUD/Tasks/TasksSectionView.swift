@@ -100,6 +100,7 @@ struct ProjectBar: View {
                             .font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary).lineLimit(2)
                     }
                     Text("Tasks may edit files inside this folder only. JARVIS never commits, pushes or runs arbitrary commands.").font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
+                    if let ws = guardOK, let d = UnityProjectDetector.describe(root: ws.root) { UnityProjectLine(descriptor: d) }
                 }
                 if let problem { Text(problem).font(Theme.Typography.caption).foregroundStyle(Theme.Palette.coral) }
             }
@@ -117,6 +118,46 @@ struct ProjectBar: View {
             do { _ = try WorkspaceGuard(rootPath: url.path); app.preferences.projectRoot = url.path; problem = nil }
             catch { problem = String(describing: error) }
         }
+    }
+}
+
+/// The Unity facts of the chosen project (deterministic detection + the truthful connection state). Never says CONNECTED from detection alone.
+struct UnityProjectLine: View {
+    @Environment(AppContext.self) private var app
+    let descriptor: UnityProjectDescriptor
+
+    var body: some View {
+        let conn = app.unity.existingConnection(for: descriptor.workspace)
+        let state = conn?.state ?? (app.unity.editors.contains(where: \.available) ? .available : .notConfigured)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: Theme.Spacing.s) {
+                Tag(text: "UNITY")
+                Text("Unity \(descriptor.declaredVersionRaw ?? "?") · \(descriptor.renderPipeline)").font(Theme.Typography.caption).foregroundStyle(Color.jarvisPrimary)
+                Spacer(minLength: 0)
+                Text(state.label).font(.system(size: 10.5, weight: .semibold, design: .monospaced)).foregroundStyle(tint(state))
+                    .accessibilityLabel("Unity editor: \(state.label.lowercased())")
+                if conn?.owned != nil {
+                    Button("CLOSE EDITOR") { Task { await app.unity.shutdownOwnedEditors() } }.buttonStyle(.hudSecondary).fixedSize()
+                        .accessibilityLabel("Close the Unity editor that JARVIS started")
+                }
+            }
+            Text(detail(conn)).font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary).lineLimit(2)
+        }
+        .accessibilityElement(children: .contain)
+        .onAppear { if app.unity.editors.isEmpty { app.unity.refreshEditors() } }
+    }
+
+    private func detail(_ c: UnityConnection?) -> String {
+        var parts: [String] = []
+        parts.append(descriptor.bridgeInstalled ? "JARVIS bridge installed" : "JARVIS bridge not installed (asked first)")
+        parts.append(descriptor.hasTestFramework ? "Test Framework present" : "no Unity Test Framework")
+        if let st = c?.status { parts.append(st.isPlaying ? "Play Mode" : (st.isCompiling ? "compiling" : "Edit Mode")); if st.scenes.contains(where: \.userDirty) { parts.append("unsaved scene changes (yours)") } }
+        else if let m = c?.message { parts.append(m) }
+        else { parts.append("editor not running") }
+        return parts.joined(separator: " · ")
+    }
+    private func tint(_ s: UnityConnectionState) -> Color {
+        switch s { case .connected: Theme.Palette.mint; case .busy, .playMode, .connecting, .discovering: Theme.Palette.accent; case .error: Theme.Palette.coral; case .disconnected: Theme.Palette.amber; default: Color.jarvisTertiary }
     }
 }
 
@@ -223,6 +264,21 @@ struct EngineTaskCard: View {
         withAnimation(app.preferences.effectiveReduceMotion ? nil : .easeOut(duration: Theme.Duration.fast)) { app.hud.section = .agents }
     }
 
+    // MARK: Unity facts (V0.6): the editor's own evidence per step; visual validation is never claimed
+
+    private var unitySection: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("UNITY").jarvisLabel(Theme.Opacity.textTertiary)
+            if let conn = view.task.workspaceRoot.flatMap({ app.unity.existingConnection(for: $0) }) {
+                Text("Editor: \(conn.state.label.lowercased())\(conn.status.map { " · Unity \($0.unityVersion) · scene \($0.activeScene.isEmpty ? "unsaved" : $0.activeScene)" } ?? "")")
+                    .font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary).lineLimit(2)
+            }
+            Text("Unity steps: \(view.steps.filter { $0.type.isUnity && $0.state == .passed }.count)/\(view.steps.filter { $0.type.isUnity }.count) validated by the editor\u{2019}s own state (see the steps above).").font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary)
+            Text("Visual validation: not performed (no Game/Scene View image is captured).").font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     // MARK: Plan details
 
     private var details: some View {
@@ -232,6 +288,7 @@ struct EngineTaskCard: View {
             Text("PLAN · \(view.steps.count) STEPS").jarvisLabel(Theme.Opacity.textTertiary)
             if view.steps.isEmpty { Text("No plan yet.").font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary) }
             ForEach(view.steps) { s in StepRow(step: s, all: view.steps) }
+            if view.steps.contains(where: { $0.type.isUnity }) { unitySection }
             if let ws = view.task.workspaceRoot { Text("Workspace: \((ws as NSString).abbreviatingWithTildeInPath)").font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary).lineLimit(1).truncationMode(.middle) }
             if let g = view.task.gitBaseline, g.isRepository {
                 Text("Git: \(g.branch ?? "detached") @ \(g.head.map { String($0.prefix(7)) } ?? "—") · \(g.dirtyPaths.count + g.untrackedPaths.count) uncommitted path(s) preserved")

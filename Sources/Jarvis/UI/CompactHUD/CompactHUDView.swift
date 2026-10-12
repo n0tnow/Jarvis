@@ -168,6 +168,7 @@ struct CompactHUDView: View {
         if let f = e.progressFraction { s += " · \(Int((f * 100).rounded())) %" }
         let agents = app.hub.activeRuns.filter { $0.taskID == task.id }.count          // live, not the projection's last snapshot
         if agents > 0 { s += " · \(agents) agent\(agents == 1 ? "" : "s")" }
+        if let u = app.taskEngine.view(task.id)?.currentStep?.type.unityActivity { s += " · " + u }      // V0.6: "Unity · Compiling" (one short phrase; no Unity UI in Compact)
         return s
     }
 
