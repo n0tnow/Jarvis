@@ -78,7 +78,7 @@ final class MemoryRetriever: @unchecked Sendable {
         "pencere": ["window"], "boyut": ["size"], "size": ["boyut"], "saklıyor": ["store"], "saklamiyor": ["store"], "anahtar": ["key"], "key": ["anahtar"],
         "dosya": ["file", "files", "artifact"], "dosyalari": ["file", "files", "artifact"], "dosyayi": ["file", "artifact"], "dosyalar": ["files", "artifact"], "dogrudan": ["directly", "direct"], "atmiyoruz": ["copy", "copied", "put", "import"], "atmak": ["copy", "put"],
         "kopyala": ["copy"], "kopyalanir": ["copied"], "kopyalamiyoruz": ["copy", "copied"], "aktarma": ["import"], "aktarim": ["import"], "icerik": ["content"], "guvenlik": ["security"], "guvenli": ["safe"], "guvenilir": ["trusted"], "yetki": ["authority", "permission"],
-        "izin": ["permission", "allow"], "saklanir": ["stored"], "saklamak": ["store"], "saklamiyoruz": ["store", "stored"], "depolama": ["storage"], "surum": ["version"], "kutuphane": ["library"], "ag": ["network"], "internet": ["web", "network"], "gizli": ["secret"], "sifre": ["password", "credential"],
+        "izin": ["permission", "permitted"], "saklanir": ["stored"], "saklamak": ["store"], "saklamiyoruz": ["store", "stored"], "depolama": ["storage"], "surum": ["version"], "kutuphane": ["library"], "ag": ["network"], "internet": ["online", "network"], "gizli": ["secret"], "sifre": ["password", "credential"],
         "reddedilen": ["rejected"], "reddettik": ["rejected", "rejected"], "kabul": ["accepted"], "oneri": ["proposal", "suggestion"], "plan": ["plan"], "test": ["test", "tests"], "derleme": ["compile", "build"], "sahne": ["scene"], "animasyon": ["animation"],
     ]
 
@@ -169,7 +169,11 @@ final class MemoryRetriever: @unchecked Sendable {
         func norm(_ v: [Double]) -> [Double] { let lo = v.min() ?? 0, hi = v.max() ?? 0; return hi > lo ? v.map { ($0 - lo) / (hi - lo) } : v.map { _ in 0 } }
         let lexN = norm(lex)
         // the question's SUBJECT (frame words like "decide / why / change" removed): rare words such as "Playwright" must outweigh generic similarity
-        let topicAlts: [[String]] = MemoryText.words(req.query).filter { !MemoryIntentParser.frameWords.contains($0) }.map { w in Array(Set([MemoryText.stem(w)] + (Self.bridge[w] ?? []).map(MemoryText.stem))) }
+        let topicAlts: [[String]] = MemoryText.words(req.query).filter { !MemoryIntentParser.frameWords.contains($0) }.map { w in
+            var alts = [MemoryText.stem(w)]                                   // the user's own word FIRST (excerpts and "subject match" use it); bridge words follow
+            for b in Self.bridge[w] ?? [] where !alts.contains(MemoryText.stem(b)) { alts.append(MemoryText.stem(b)) }
+            return alts
+        }
         var topicIDF: [Double] = []
         for alts in topicAlts {
             let dfw = docs.filter { d in alts.contains { d.contains($0) } }.count

@@ -585,6 +585,31 @@ enum SmokeTest {
             await resetWorld()
         }
 
+        // --- V0.10 Project Memory: the screen exists, nothing runs at idle, the embedding helper is not started, memory commands take the conversation path, and Compact stays 392×448.
+        do {
+            check("V0.10 Project Memory is wired (schema v8, on by default) and an automated run starts NO embedding helper and learns nothing by itself", (context.database?.schemaVersion ?? 0) >= 8 && context.memory.isEnabled && context.memory.embedding?.host.isRunning != true && context.taskEngine.activeCount == 0)
+            check("V0.10 Project Memory is a Full HUD destination", HUDSection.allCases.contains(.memory))
+            let before = context.conversation.messages.count
+            let savedRoot = context.preferences.projectRoot
+            context.preferences.projectRoot = ""
+            context.conversationService.submit("Remember that this project must remain URP.")
+            _ = await waitUntil { context.conversation.messages.count >= before + 2 }
+            check("V0.10 “remember that …” is handled by memory (typed and spoken alike) and, with no project chosen, asks for one instead of storing anything", (context.conversation.last?.content.lowercased().contains("project") ?? false) && context.conversation.last?.route == .local)
+            context.preferences.projectRoot = savedRoot
+            context.preferences.projectMemoryEnabled = false; context.memory.syncSwitches()
+            check("V0.10 with Project Memory off nothing is intercepted and no context is built", context.memory.recognizes("What did we decide about the camera?") == .none)
+            context.preferences.projectMemoryEnabled = true; context.memory.syncSwitches()
+            w.hideFullHUD(); w.showFullHUD(section: .memory); _ = await waitUntil { w.isFullHUDOpen && context.hud.section == .memory }
+            await settle(400)
+            check("V0.10 the Project Memory screen opens without starting a helper, a task or a network client", w.isFullHUDOpen && context.taskEngine.activeCount == 0 && context.memory.embedding?.host.isRunning != true)
+            w.hideFullHUD(); w.showCompactHUD(); _ = await waitUntil { w.isCompactHUDOpen }
+            context.store.log("Context · 3 memories for CodingAgent", kind: .info)
+            await settle(200)
+            check("V0.10 the Compact HUD stays 392×448 while memory activity is logged", compactWindow()?.frame.size == CompactHUDLayout.size)
+            w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
         print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")
