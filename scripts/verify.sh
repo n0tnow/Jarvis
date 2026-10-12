@@ -42,7 +42,7 @@ forbid "API-key / token variable names appear ONLY in the scrub list" "ANTHROPIC
 forbid "no dangerous provider flags or API-key-only modes" "\"--bare\"|dangerously|danger-full-access|bypassPermissions|--full-auto|--approve-for-me|\"--enable\"|workspace-write|--yolo|--allowedTools|--allow-dangerously|--add-dir|--mcp-config|\"--api-key|--with-api-key|\"--auto\"|\"--attach\"|\"--share\"|\"--password\"|\"--mdns\"|\"serve\"|\"web\""
 forbid "Process is created ONLY by ManagedProcess (one audited launch point)" "(^|[^[:alnum:]_.])Process\\(\\)|NSTask|posix_spawn|Foundation\\.Process" "^Sources/Jarvis/Providers/ManagedProcess\\.swift"
 # (TaskPlan.swift holds the plan validator's DENY-list of prohibited phrases — words it rejects, not code that uses them.)
-forbid "no generic launchers / downloaders / UI scripting" "/usr/bin/env|\"env\"|curl|wget|osascript|NSWorkspace\\.shared\\.(launchApplication|open\\(.*URL\\(string)" "^Sources/Jarvis/App/(SmokeTest|DevCapture)\\.swift|^Sources/Jarvis/Tasks/TaskPlan\\.swift"
+forbid "no generic launchers / downloaders / UI scripting" "/usr/bin/env|\"env\"|curl|wget|osascript|NSWorkspace\\.shared\\.(launchApplication|open\\(.*URL\\(string)" "^Sources/Jarvis/App/(SmokeTest|DevCapture)\\.swift|^Sources/Jarvis/Tasks/TaskPlan\\.swift|^Sources/Jarvis/Unity/UnityProtocol\\.swift"
 forbid "no shell is ever used to run a provider" "/bin/(ba|z)?sh|launchPath|\"sh\", *\"-c\"|popen\\(|[^.[:alnum:]_]system\\("
 forbid "OpenCode credential/integration API operations are never invoked (only the fixed model.list)" "credential\\.(list|get|remove|create|update)|integration\\.(list|get|connect)|connect/(key|external|oauth|command)"
 forbid "no URL literals in product code (JARVIS contacts no host itself; providers do their own networking)" "\"https?://|URL\\(string:"
@@ -105,6 +105,36 @@ pro_submit=$(grep -rn 'tasks\.submit(\|taskEngine\.submit(\|engine\.submit(' Sou
 [ "$(grep -c 'neverGranted' Sources/Jarvis/Proactive/OpportunityPolicy.swift)" -ge 1 ] && pass "the policy treats never-grantable capabilities as critical" || fail "policy no longer references neverGranted capabilities"
 pro_ext=$(grep -rnE 'StoreKit|SecItem|paidAPI|URLSession|openai\.com|anthropic\.com' Sources/Jarvis/Proactive | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
 [ -z "$pro_ext" ] && pass "no paid-API / purchase / credential execution code in the proactive layer" || { fail "external-effect code in the proactive layer"; echo "$pro_ext" | head -3; }
+
+# --- V0.6 Unity Project Agent: typed operations only, no code/menu/shell execution, no second engine, no raw Unity output at rest ---
+# (UnityProtocol.swift and TaskPlan.swift hold DENY-lists of words a provider may not use — detection keywords, not actions.)
+unity_files() { find Sources/Jarvis/Unity -name '*.swift' ! -name '*.generated.swift'; }
+uni_exec=$(unity_files | xargs grep -nE 'Process\(\)|NSTask|posix_spawn|/bin/(ba|z)?sh|osascript|-executeMethod|-runTests|ExecuteMenuItem' | grep -v 'Unity/UnityProtocol.swift' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$uni_exec" ] && pass "the Unity layer has no process/shell/scripting/menu execution (editor launch = ManagedProcess with a fixed argument list)" || { fail "Unity layer executes something"; echo "$uni_exec" | head -3; }
+uni_mp=$(grep -rln 'ManagedProcess(' Sources/Jarvis/Unity | grep -v 'Unity/UnityLauncher.swift' || true)
+[ -z "$uni_mp" ] && pass "only UnityLauncher starts a process, with a fixed argument list (no model-supplied argument, no -executeMethod)" || { fail "process started outside UnityLauncher: $uni_mp"; }
+grep -q '"-batchmode", "-nographics", "-projectPath", projectRoot' Sources/Jarvis/Unity/UnityLauncher.swift && ! grep -vE '^[[:space:]]*//' Sources/Jarvis/Unity/UnityLauncher.swift | grep -q 'executeMethod' && pass "the editor launch arguments are the fixed list" || fail "editor launch arguments changed"
+uni_net=$(unity_files | xargs grep -nE 'URLSession|URLRequest|NWConnection|WebSocket|CFNetwork|Data\(contentsOf|SecItem|StoreKit|git (push|commit)' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$uni_net" ] && pass "the Unity layer has no network, credential, purchase or Git code" || { fail "network/credential/Git code in the Unity layer"; echo "$uni_net" | head -3; }
+uni_w=$(unity_files | xargs grep -lE '\.write\(to:|\.write\(contentsOf|createFile\(|removeItem\(|moveItem\(|copyItem\(|createDirectory\(' | grep -vE 'Unity/(UnityTransport|UnityBridgeInstaller)\.swift' || true)
+[ -z "$uni_w" ] && pass "file writes in the Unity layer are confined to the request spool and the bridge package installer" || { fail "Unity file write outside spool/installer: $uni_w"; }
+! grep -q 'manifest.json' Sources/Jarvis/Unity/UnityBridgeInstaller.swift && pass "the bridge installer never edits the project's package manifest (no package installation capability)" || fail "installer touches manifest.json"
+uni_ops=$(grep -rnE 'transport\.send\(|\.perform\(.*session' Sources | grep -vE 'Sources/Jarvis/Unity/|Sources/Jarvis/Tasks/TaskEngine\+Unity\.swift|Sources/Jarvis/App/UnityLiveTest\.swift' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$uni_ops" ] && pass "editor operations are sent only by the Unity layer, the Unity task steps and the live test (providers and the UI never talk to the editor)" || { fail "editor operation sent from elsewhere"; echo "$uni_ops" | head -3; }
+uni_ui=$(grep -rnE 'UnityOperation|UnityToolSession|\.perform\(' Sources/Jarvis/UI Sources/Jarvis/Proactive | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$uni_ui" ] && pass "neither the UI nor the proactive decision layer can operate the Unity editor" || { fail "UI/proactive layer references Unity operations"; echo "$uni_ui" | head -3; }
+uni_enum=$(awk '/enum UnityOperation: Equatable, Sendable \{/,/var wireName/' Sources/Jarvis/Unity/UnityProtocol.swift | grep -iE 'case (code|script|menu|command|shell|eval|execute|csharp|invoke|method)' || true)
+[ -z "$uni_enum" ] && pass "UnityOperation has no case that carries code, a menu item, a command or a script" || { fail "UnityOperation carries free-form execution"; echo "$uni_enum"; }
+cs_bad=$(find UnityBridge/com.jarvis.bridge -name '*.cs' | xargs grep -nE 'ExecuteMenuItem|Process\.Start|ProcessStartInfo|UnityWebRequest|HttpClient|TcpListener|Socket\(|Assembly\.Load|CSharpCodeProvider|Roslyn|MethodInfo\.Invoke|System\.Net' || true)
+[ -z "$cs_bad" ] && pass "the Editor bridge has no menu execution, process start, network, assembly loading or reflection invoke" || { fail "Editor bridge contains forbidden API"; echo "$cs_bad" | head -3; }
+grep -q 'unknownOperation' UnityBridge/com.jarvis.bridge/Editor/JarvisBridge.cs && grep -q 'playModeMutationBlocked' UnityBridge/com.jarvis.bridge/Editor/JarvisBridge.cs && pass "the bridge rejects unknown operations and persistent mutations during Play Mode on its own" || fail "bridge safety checks missing"
+grep -q 'editorStateDenial' Sources/Jarvis/Unity/UnityPolicy.swift && grep -q 'isPersistentMutation' Sources/Jarvis/Unity/UnityPolicy.swift && pass "policy blocks persistent mutation during Play Mode / compilation" || fail "Play Mode mutation policy missing"
+grep -q 'needsUpgradeApproval' Sources/Jarvis/Unity/UnityService.swift && grep -q 'approvedUpgrade' Sources/Jarvis/Unity/UnityService.swift && pass "opening a project with a different Unity version requires an explicit approval (no silent upgrade)" || fail "project upgrade guard missing"
+grep -q 'UnityResponseSanitizer.sanitize' Sources/Jarvis/Unity/UnityService.swift && pass "every editor answer passes the sanitizer before any other code sees it" || fail "editor answers are not sanitized"
+uni_raw=$(grep -rnE 'result\["(message|stack)"\]' Sources | grep -vE 'Sources/Jarvis/Unity/UnityModels.swift' || true)
+[ -z "$uni_raw" ] && pass "raw Console message/stack fields are read only by the sanitizing UnityConsoleEntry initializer" || { fail "raw Unity console text read elsewhere"; echo "$uni_raw" | head -3; }
+tracked_unity=$(git ls-files 2>/dev/null | grep -E '(^|/)(Library|Temp|Logs|Obj|Build|Builds|UserSettings)/|\.(csproj|sln)$|\.unitypackage$' || true)
+[ -z "$tracked_unity" ] && pass "no generated Unity directory, solution file or package archive is tracked" || fail "tracked Unity output: $(echo $tracked_unity | head -c 200)"
 
 print "== Smoke test (real window manager, store, status item)"
 log=$(mktemp)

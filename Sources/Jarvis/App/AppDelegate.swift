@@ -11,10 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
-        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && (options.smokeTest || options.captureDirectory != nil))
+        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && (options.smokeTest || options.captureDirectory != nil))
         let liveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true)
             : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true)
-            : (options.proactiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-proactive", isDirectory: true) : nil))
+            : (options.proactiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-proactive", isDirectory: true)
+            : (options.unityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-unity", isDirectory: true) : nil)))
         context = AppContext(stubIntelligence: stubbed, dataDirectory: liveData)
         let ctx = context!
         Self.terminationHook = { MainActor.assumeIsolated { ctx.prepareForTermination() } }
@@ -58,6 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let context = context!, dir = options.liveDirectory ?? "captures"
             Task { await ProactiveLiveTest.run(context: context, captureDirectory: dir) }
         }
+        if options.unityLiveTest {
+            let context = context!, dir = options.liveDirectory ?? "captures", fixture = options.unityFixture, noProvider = options.unityNoProvider
+            Task { await UnityLiveTest.run(context: context, captureDirectory: dir, fixtureTemplate: fixture, withProvider: !noProvider) }
+        }
         if options.taskLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures"
             Task { await TaskLiveTest.run(context: context, captureDirectory: dir) }
@@ -77,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await DevCapture.run(directory: directory, context: context) }
         }
         // Find out which engines are actually usable (event-driven, once; no polling). Stubbed runs never touch real providers.
-        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest {
+        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest {
             let context = context!
             Task { await context.refreshIntelligence(includeOpenCode: false) }     // OpenCode is read lazily (may start its background service)
         }

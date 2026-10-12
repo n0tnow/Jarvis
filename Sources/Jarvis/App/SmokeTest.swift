@@ -494,6 +494,21 @@ enum SmokeTest {
             await resetWorld()
         }
 
+        // --- V0.6 Unity layer on the real app context (no editor is started; nothing leaves the process)
+        do {
+            check("V0.6 the Unity tool layer is wired into the task engine and reports no connection without an editor", context.taskEngine.unity === context.unity && context.unity.summary.state != .connected && context.unity.summary.state != .playMode)
+            let editors = UnityDiscovery.discover()
+            print("INFO  Unity editors discovered on this Mac (read-only scan of the standard folders): \(editors.map { $0.version.description }.joined(separator: ", ").isEmpty ? "none" : editors.map { $0.version.description }.joined(separator: ", "))")
+            let fixture = NSTemporaryDirectory() + "jarvis-smoke-unity-\(UUID().uuidString.prefix(6))"
+            for d in ["Assets", "ProjectSettings", "Packages"] { try? FileManager.default.createDirectory(atPath: fixture + "/" + d, withIntermediateDirectories: true) }
+            try? "m_EditorVersion: 6000.5.1f1\n".write(toFile: fixture + "/ProjectSettings/ProjectVersion.txt", atomically: true, encoding: .utf8)
+            defer { try? FileManager.default.removeItem(atPath: fixture) }
+            let d = UnityProjectDetector.describe(root: fixture)
+            check("V0.6 a Unity project is detected deterministically (version read, bridge not installed, nothing launched)", d?.declaredVersion?.description == "6000.5.1f1" && d?.bridgeInstalled == false && ProcessRegistry.shared.count == 0)
+            check("V0.6 capabilities: analysis tasks get Unity inspection only; deletion is never a capability", CapabilitySet.for(.readOnlyAnalysis, unityProject: true).allows(.inspectUnity) && !CapabilitySet.for(.readOnlyAnalysis, unityProject: true).allows(.modifyUnityScene) && !CapabilitySet.for(.development, unityProject: true).allows(.deleteUnityObject))
+            check("V0.6 provider-supplied Unity actions that ask for code or menu items are rejected", UnityActionParser.parse(#"{"actions":[{"op":"executeMenuItem","menu":"File/Quit"}]}"#).actions.isEmpty)
+        }
+
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
         print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")

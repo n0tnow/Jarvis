@@ -107,6 +107,17 @@ enum DevCapture {
             snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_suggestion", in: directory)
             w.hideCompactHUD()
             engine.cancelAll(); await engine.waitUntilIdle()
+            // V0.6: the Unity project line + a finished Unity task with its evidence (SIMULATED data in the throw-away database)
+            let savedRoot = context.preferences.projectRoot
+            for p in context.opportunities.pending { _ = context.proposalService.dismiss(p.id, source: .test) }       // keep the Unity card above the fold
+            await settle(300)
+            if let unityDir = TaskDemo.seedUnityTask(context: context) {
+                projects.append(unityDir)
+                context.hud.section = .tasks; w.showFullHUD(section: .tasks); await settle(500)
+                context.hud.selectedTaskID = engine.orderedViews.first(where: { $0.task.title.contains("BoxCollider") })?.id; await settle(700)
+                snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "tasks_unity", in: directory)
+            }
+            context.preferences.projectRoot = savedRoot
             context.hud.selectedTaskID = nil; context.hud.section = .dashboard
             for p in projects { try? FileManager.default.removeItem(atPath: p) }
             DemoScenario.resetDemoTask(store)

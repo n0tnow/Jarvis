@@ -95,4 +95,34 @@ enum TaskDemo {
                                                                originTaskID: id, projectRoot: root, eventKey: "demo:critical"))
         }
     }
+
+    /// DEMO ONLY (captures; stub-mode temp database): a finished Unity task with the evidence lines the real steps produce, in a Unity-shaped temp project.
+    @MainActor static func seedUnityTask(context: AppContext) -> String? {
+        let fm = FileManager.default
+        let dir = NSTemporaryDirectory() + "jarvis-unity-demo-\(UUID().uuidString.prefix(6))"
+        for d in ["Assets/Scenes", "ProjectSettings", "Packages"] { try? fm.createDirectory(atPath: dir + "/" + d, withIntermediateDirectories: true) }
+        try? "m_EditorVersion: 6000.5.1f1\n".write(toFile: dir + "/ProjectSettings/ProjectVersion.txt", atomically: true, encoding: .utf8)
+        try? "{\"dependencies\":{\"com.unity.test-framework\":\"1.7.0\"}}".write(toFile: dir + "/Packages/manifest.json", atomically: true, encoding: .utf8)
+        try? "scene".write(toFile: dir + "/Assets/Scenes/FixtureScene.unity", atomically: true, encoding: .utf8)
+        guard let repo = context.repository, let root = try? WorkspaceGuard(rootPath: dir).root else { return nil }
+        var t = TaskRecord(id: UUID(), title: "Add a BoxCollider to TestCube if it does not have one (SIMULATED)", goal: "Add a BoxCollider to TestCube if it does not have one", kind: .development)
+        t.state = .completed; t.workspaceRoot = root; t.finishedAt = Date(); t.startedAt = Date().addingTimeInterval(-42); t.accumulatedSeconds = 42; t.planVersion = 1
+        t.progressFraction = 1; t.progressSource = .structuredSteps; t.capabilities = .for(.development, unityProject: true); t.summary = "SIMULATED demo task — 4/4 steps validated."
+        try? repo.insert(t)
+        let defs: [(StepType, ValidationKind, String, String)] = [
+            (.unityInspect, .unityInspected, "Inspect TestCube", "Inspected the editor (Unity 6000.5.1f1 · Built-in · project Demo)"),
+            (.unityEdit, .unityState, "Add BoxCollider", "Unity edit: added BoxCollider to TestCube#0; saved Assets/Scenes/FixtureScene.unity — verified in the editor"),
+            (.unityCompile, .unityCompiled, "Compile in Unity", "Unity compile: PASS — Unity compilation OK (generation 3, 0 warnings) · domain reloaded"),
+            (.unityValidate, .unityState, "Validate", "Unity validation (structural): TestCube has 1 × BoxCollider ✓ · Unity compilation OK · new Console errors: 0")]
+        var steps: [TaskStepRecord] = []
+        for (i, d) in defs.enumerated() {
+            var st = TaskStepRecord(id: UUID(), taskID: t.id, index: i, key: "s\(i + 1)", title: d.2, type: d.0, dependsOn: i == 0 ? [] : ["s\(i)"], validation: d.1)
+            st.state = .passed; st.validationEvidence = d.3; st.attempts = 1
+            steps.append(st)
+        }
+        try? repo.insertSteps(steps)
+        context.taskEngine.refreshHistory()
+        context.preferences.projectRoot = root
+        return dir
+    }
 }

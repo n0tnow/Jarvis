@@ -38,6 +38,9 @@ struct LaunchOptions {
     var intelligenceLiveTest = false
     var taskLiveTest = false
     var proactiveLiveTest = false
+    var unityLiveTest = false
+    var unityNoProvider = false
+    var unityFixture: String?
     var benchmarkModels = false
     var liveDirectory: String?
 
@@ -57,6 +60,9 @@ struct LaunchOptions {
             case "--intelligence-live-test": intelligenceLiveTest = true
             case "--task-live-test": taskLiveTest = true
             case "--proactive-live-test": proactiveLiveTest = true
+            case "--unity-live-test": unityLiveTest = true
+            case "--unity-no-provider": unityNoProvider = true
+            case "--unity-fixture": unityFixture = it.next()
             case "--benchmark-models": benchmarkModels = true
             case "--live-dir": liveDirectory = it.next()
             case "--capture": captureDirectory = it.next()
