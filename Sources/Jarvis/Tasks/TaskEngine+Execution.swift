@@ -23,8 +23,15 @@ extension TaskEngine {
         case .build, .test: outcome = await runCommandStep(ctx, key)
         case .review: outcome = await runReview(ctx, key)
         case .delete: outcome = await runDelete(ctx, key)
+        case .unityInspect: outcome = await runUnityInspect(ctx, key)
+        case .unityEdit: outcome = await runUnityEdit(ctx, key)
+        case .unityCompile: outcome = await runUnityCompile(ctx, key)
+        case .unityTest: outcome = await runUnityTest(ctx, key)
+        case .unityPlayMode: outcome = await runUnityPlayMode(ctx, key)
+        case .unityValidate: outcome = await runUnityValidate(ctx, key)
         }
         leases.release(owner: Self.leaseOwner(step))
+        unity?.lock.release(owner: Self.leaseOwner(step))
         if ctx.terminating { return .cancelled }                              // quitting: the interrupted state is already recorded
         switch outcome {
         case .passed: break                                                    // runners already set `passed` with their evidence
@@ -109,6 +116,8 @@ extension TaskEngine {
             setStep(ctx, key, to: .passed, evidence: "Recovered after restart: \(mine.count) file(s) verified on disk (" + mine.map(\.path).joined(separator: ", ") + ")", result: "Changed: " + mine.map(\.path).joined(separator: ", "))
             return .passed
         }
+        // V0.6: in a Unity project a script edit waits for its turn with the other editor-affecting work, and never happens during Play Mode.
+        if let refusal = await unityGateForProjectEdit(ctx, step) { return refusal }
         var kinds: [AttemptKind] = [.primary]
         if canEscalate(ctx) { kinds.append(.escalation) }
         var lastWhy: (FailureCategory, String) = (.providerFailed, "the coding agent failed")
@@ -343,6 +352,13 @@ extension TaskEngine {
     /// Called when a build/test step with a required pass failed. Re-asks the coding agent with the REAL failure output; after each
     /// applied fix the same command runs again. Returns the passing result, or nil when the budget is spent.
     func repairLoop(_ ctx: TaskContext, failing: TaskStepRecord, profile: CommandProfile, first: CommandResult) async -> CommandResult? {
+        await repairLoop(ctx, failing: failing, first: first) { [self] label, kind in
+            await runCommand(ctx, ctx.step(failing.key) ?? failing, profile, label: label, attemptKind: kind)
+        }
+    }
+
+    /// The same bounded repair/escalation loop for any deterministic check: `rerun` runs the check again after a fix was applied.
+    func repairLoop(_ ctx: TaskContext, failing: TaskStepRecord, first: CommandResult, rerun: (String, AttemptKind) async -> CommandResult) async -> CommandResult? {
         guard let code = nearestCodeStep(ctx, before: failing) else { return nil }
         var kinds: [AttemptKind] = [.repair]
         if canEscalate(ctx) { kinds.append(.escalation) }
@@ -370,12 +386,12 @@ extension TaskEngine {
             }
             updateStep(ctx, code.key) { $0.agentRunID = r.runID; $0.resultSummary = "Changed: " + ctx.finals.keys.sorted().joined(separator: ", ") }
             setStep(ctx, failing.key, to: .running)                              // verifying → running (repair applied) → verifying again
-            let rerun = await runCommand(ctx, ctx.step(failing.key) ?? failing, profile, label: "\(failing.title) · after \(kind == .repair ? "repair" : "escalation")", attemptKind: .recheck)
+            let again = await rerun("\(failing.title) · after \(kind == .repair ? "repair" : "escalation")", .recheck)
             verifying(ctx, failing.key)
-            last = rerun
-            if rerun.cancelled { return nil }
-            if rerun.succeeded { return rerun }
-            ctx.lastFailureTail[failing.key] = rerun.tail
+            last = again
+            if again.cancelled { return nil }
+            if again.succeeded { return again }
+            ctx.lastFailureTail[failing.key] = again.tail
         }
         return nil
     }
@@ -414,13 +430,23 @@ extension TaskEngine {
                 if !suggestions.isEmpty { onReviewSuggestions?(ctx.record, step.id, runID, suggestions) }
                 let line = "Review: \(review.passed ? "pass" : "fail") — \(review.summary.isEmpty ? (review.issues.first ?? "no summary") : review.summary)"
                 ctx.evidence.append(line)
-                if review.passed {
+                // V0.6 (DEC-050): the reviewer's verdict is weighed against the deterministic validation record.
+                let decision = ReviewAuthority.decide(review: review, hardPassed: ReviewAuthority.hardValidationPassed(steps: ctx.steps), gate: ReviewAuthority.isGate(constraints: ctx.record.constraints),
+                                                      diff: diffText(ctx, limit: 14_000), evidence: ctx.evidence, changedPaths: Array(Set(ctx.changes.map(\.path))))
+                switch decision {
+                case .pass:
                     endAttempt(attempt, outcome: "passed", evidence: line, runID: runID, candidate: cand)
                     setStep(ctx, key, to: .passed, evidence: line, result: review.summary)
                     return .passed
+                case .advisory(let advice):
+                    endAttempt(attempt, outcome: "passed", evidence: advice, runID: runID, candidate: cand)
+                    note("Reviewer advice recorded (build/tests passed, so it did not fail the task): \(advice.prefix(160))", .warning, taskID: ctx.record.id)
+                    setStep(ctx, key, to: .passed, evidence: advice, result: review.summary)
+                    return .passed
+                case .fail(let why):
+                    endAttempt(attempt, outcome: "failed:\(FailureCategory.validationFailed.rawValue)", evidence: line + "\n" + review.issues.joined(separator: "\n"), runID: runID, candidate: cand)
+                    return .failed(.validationFailed, why)
                 }
-                endAttempt(attempt, outcome: "failed:\(FailureCategory.validationFailed.rawValue)", evidence: line + "\n" + review.issues.joined(separator: "\n"), runID: runID, candidate: cand)
-                return .failed(.validationFailed, "The review found problems: " + review.issues.prefix(3).joined(separator: "; "))
             }
             if case .cancelled = result { endAttempt(attempt, outcome: "cancelled", evidence: nil); return .cancelled }
             let (cat, why) = failure(from: result)

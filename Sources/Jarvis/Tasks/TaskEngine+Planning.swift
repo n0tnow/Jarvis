@@ -94,7 +94,8 @@ extension TaskEngine {
     func planPhase(_ ctx: TaskContext) async -> Bool {
         let tree = (try? ctx.tools.projectTree(maxEntries: 160)) ?? ""
         let prompt = PlannerPrompt.build(goal: ctx.record.goal, kind: ctx.record.kind, projectTree: tree, buildCommand: ctx.profiles.build?.display,
-                                         testCommand: ctx.profiles.test?.display, constraints: ctx.record.constraints, allowDelete: ctx.record.destructiveRequested, scopeNotes: ctx.record.scope?.promptNotes)
+                                         testCommand: ctx.profiles.test?.display, constraints: ctx.record.constraints, allowDelete: ctx.record.destructiveRequested, scopeNotes: ctx.record.scope?.promptNotes,
+                                         unity: unityPlanContext(ctx))
         var excluded: Set<RoutingCandidate> = []
         let kind = ctx.record.kind, caps = ctx.record.capabilities, allowDestructive = ctx.record.destructiveRequested, scope = ctx.record.scope
         for attempt in 0..<2 {
@@ -146,8 +147,10 @@ extension TaskEngine {
     func installPlan(_ ctx: TaskContext, _ plan: TaskPlan) {
         var steps: [TaskStepRecord] = []
         for (i, s) in plan.steps.enumerated() {
-            steps.append(TaskStepRecord(id: UUID(), taskID: ctx.record.id, index: i, key: s.id, title: s.title, details: s.description, type: s.type,
-                                        dependsOn: s.dependsOn, expected: s.expected, validation: s.validation, risk: max(s.risk, s.type.defaultRisk), weight: 1))
+            var rec = TaskStepRecord(id: UUID(), taskID: ctx.record.id, index: i, key: s.id, title: s.title, details: s.description, type: s.type,
+                                     dependsOn: s.dependsOn, expected: s.expected, validation: s.validation, risk: max(s.risk, s.type.defaultRisk), weight: 1)
+            rec.unity = s.unity
+            steps.append(rec)
         }
         try? repository?.insertSteps(steps)
         ctx.steps = steps

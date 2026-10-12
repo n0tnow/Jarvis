@@ -22,6 +22,12 @@ enum RiskClass: String, Codable, Sendable, Comparable {
 /// check before touching the project. `gitCommit`/`gitPush`/`purchase`/`useNetwork`/`useBrowser` can never be granted in V0.4.
 enum TaskCapability: String, Codable, Sendable, CaseIterable {
     case readProject, writeProject, runBuild, runTests, useNetwork, useBrowser, destructiveFileOperation, gitCommit, gitPush, purchase
+    // V0.6 Unity (DEC-048): typed editor operations. Granted per task kind; deletion stays approval-gated; package installation,
+    // project upgrades, arbitrary C# and menu items are NOT capabilities at all.
+    case inspectUnity, readUnityConsole, modifyUnityScene, saveUnityScene, createUnityPrefab, runUnityCompile, runUnityTests, controlUnityPlayMode, deleteUnityObject
+
+    static let unityInspection: Set<TaskCapability> = [.inspectUnity, .readUnityConsole]
+    static let unityDevelopment: Set<TaskCapability> = [.inspectUnity, .readUnityConsole, .modifyUnityScene, .saveUnityScene, .createUnityPrefab, .runUnityCompile, .runUnityTests, .controlUnityPlayMode]
 }
 
 struct CapabilitySet: Codable, Equatable, Sendable {
@@ -36,6 +42,12 @@ struct CapabilitySet: Codable, Equatable, Sendable {
     func allows(_ c: TaskCapability) -> Bool { granted.contains(c) }
     func allows(all cs: Set<TaskCapability>) -> Bool { cs.isSubset(of: granted) }
     static func `for`(_ kind: TaskKind) -> CapabilitySet { kind == .development ? .development : .readOnly }
+    /// A Unity project adds the typed Unity operations: inspection only for analysis tasks, bounded edit/compile/test/play for development.
+    static func `for`(_ kind: TaskKind, unityProject: Bool) -> CapabilitySet {
+        let base = Self.for(kind)
+        guard unityProject else { return base }
+        return CapabilitySet(granted: base.granted.union(kind == .development ? TaskCapability.unityDevelopment : TaskCapability.unityInspection))
+    }
 }
 
 // MARK: - Task state machine
@@ -122,6 +134,8 @@ enum FailureCategory: String, Codable, Sendable {
     case toolFailed, buildFailed, testFailed, validationFailed
     case workspaceViolation, capabilityDenied, approvalDenied, resourceUnavailable
     case cancelled, interrupted, malformedPlan, securityBlocked, workspaceChanged, scopeExceeded
+    // V0.6
+    case unityUnavailable, ambiguousTarget, unsafeEditorState, compileFailed, unityTimeout
 
     var label: String {
         switch self {
@@ -130,6 +144,8 @@ enum FailureCategory: String, Codable, Sendable {
         case .workspaceViolation: "workspace violation"; case .capabilityDenied: "capability denied"; case .approvalDenied: "approval denied"
         case .resourceUnavailable: "resources unavailable"; case .cancelled: "cancelled"; case .interrupted: "interrupted"
         case .malformedPlan: "malformed plan"; case .securityBlocked: "blocked by security policy"; case .workspaceChanged: "workspace changed unexpectedly"; case .scopeExceeded: "outside the approved scope"
+        case .unityUnavailable: "Unity unavailable"; case .ambiguousTarget: "ambiguous target"; case .unsafeEditorState: "unsafe editor state"
+        case .compileFailed: "Unity compilation failed"; case .unityTimeout: "Unity timed out"
         }
     }
 }
@@ -139,6 +155,18 @@ enum FailureCategory: String, Codable, Sendable {
 /// What a step does. Each type has ONE executor, a required capability set and a deterministic default validation.
 enum StepType: String, Codable, Sendable, CaseIterable {
     case analysis, codeChange, build, test, review, delete
+    // V0.6 Unity steps (DEC-048): typed, deterministic, executed by JARVIS' Unity tool layer (the provider only proposes edit actions).
+    case unityInspect, unityEdit, unityCompile, unityTest, unityPlayMode, unityValidate
+
+    /// Short phrase for the Compact HUD while a Unity step is the current one.
+    var unityActivity: String? {
+        switch self {
+        case .unityInspect, .unityValidate: "Unity · Inspecting"; case .unityEdit: "Unity · Editing"; case .unityCompile: "Unity · Compiling"
+        case .unityTest: "Unity · Testing"; case .unityPlayMode: "Unity · Play Mode"; default: nil
+        }
+    }
+
+    var isUnity: Bool { switch self { case .unityInspect, .unityEdit, .unityCompile, .unityTest, .unityPlayMode, .unityValidate: true; default: false } }
 
     var requiredCapabilities: Set<TaskCapability> {
         switch self {
@@ -147,6 +175,12 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .build: [.runBuild]
         case .test: [.runTests]
         case .delete: [.readProject, .writeProject, .destructiveFileOperation]
+        case .unityInspect: [.inspectUnity]
+        case .unityEdit: [.inspectUnity, .modifyUnityScene, .saveUnityScene]
+        case .unityCompile: [.runUnityCompile, .readUnityConsole]
+        case .unityTest: [.runUnityTests]
+        case .unityPlayMode: [.controlUnityPlayMode, .inspectUnity, .readUnityConsole]
+        case .unityValidate: [.inspectUnity, .readUnityConsole]
         }
     }
     /// Provider-executed (an agent run with a model) vs. deterministic JARVIS tool.
@@ -155,20 +189,24 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         switch self {
         case .analysis: "AnalysisAgent"; case .codeChange: "CodingAgent"; case .review: "ReviewAgent"
         case .build: "BuildTool"; case .test: "TestTool"; case .delete: "FileTool"
+        case .unityInspect, .unityEdit, .unityCompile, .unityTest, .unityPlayMode, .unityValidate: "UnityTool"
         }
     }
-    var defaultRisk: RiskClass { self == .delete ? .high : self == .codeChange ? .medium : .low }
+    var defaultRisk: RiskClass { self == .delete ? .high : (self == .codeChange || self == .unityEdit) ? .medium : .low }
     /// Safe to repeat after an interruption without inspecting the world first.
     var idempotency: Idempotency {
         switch self {
         case .analysis, .review, .build, .test: .retryable
-        case .codeChange: .inspectFirst
+        case .codeChange, .unityEdit: .inspectFirst
         case .delete: .manual
+        case .unityInspect, .unityCompile, .unityTest, .unityPlayMode, .unityValidate: .retryable
         }
     }
     var label: String {
         switch self {
         case .analysis: "Analysis"; case .codeChange: "Code change"; case .build: "Build"; case .test: "Test"; case .review: "Review"; case .delete: "Delete"
+        case .unityInspect: "Unity inspect"; case .unityEdit: "Unity edit"; case .unityCompile: "Unity compile"; case .unityTest: "Unity tests"
+        case .unityPlayMode: "Unity Play Mode"; case .unityValidate: "Unity validation"
         }
     }
 }
@@ -188,6 +226,12 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
     case testEvidence          // a test run happened and its outcome was recorded (reproduction); pass or fail
     case reviewPass            // the review verdict is pass
     case fileRemoved           // the file no longer exists inside the workspace
+    // V0.6: deterministic Unity facts (the editor's own state, never a model's opinion).
+    case unityInspected        // the requested objects/state were read from the editor
+    case unityState            // the required object/component/property state holds in the editor
+    case unityCompiled         // Unity's compiler state is clean (and no new compiler errors)
+    case unityTestsPass        // the requested Unity tests ran and all passed
+    case unityPlayObserved     // Play Mode was really entered, observed and left, with no new errors
 
     static func allowed(for type: StepType) -> Set<ValidationKind> {
         switch type {
@@ -197,12 +241,19 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
         case .test: [.testPass, .testEvidence]
         case .review: [.reviewPass]
         case .delete: [.fileRemoved]
+        case .unityInspect: [.unityInspected]
+        case .unityEdit, .unityValidate: [.unityState]
+        case .unityCompile: [.unityCompiled]
+        case .unityTest: [.unityTestsPass]
+        case .unityPlayMode: [.unityPlayObserved]
         }
     }
     static func `default`(for type: StepType) -> ValidationKind {
         switch type {
         case .analysis: .structuredResult; case .codeChange: .changedFiles; case .build: .buildPass
         case .test: .testPass; case .review: .reviewPass; case .delete: .fileRemoved
+        case .unityInspect: .unityInspected; case .unityEdit, .unityValidate: .unityState; case .unityCompile: .unityCompiled
+        case .unityTest: .unityTestsPass; case .unityPlayMode: .unityPlayObserved
         }
     }
     /// Plain-language aliases an LLM planner may use (the examples in the product spec) → the real validation.
@@ -300,6 +351,8 @@ struct TaskStepRecord: Equatable, Sendable, Identifiable {
     var startedAt: Date?
     var finishedAt: Date?
     var validationEvidence: String?
+    /// V0.6: typed parameters of a Unity step (nil for every other step type).
+    var unity: UnityStepParams?
     var idempotency: Idempotency { type.idempotency }
 }
 

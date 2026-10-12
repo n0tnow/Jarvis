@@ -13,6 +13,8 @@ struct PlanStep: Codable, Equatable, Sendable {
     var risk: RiskClass
     /// Only for `delete` steps: the workspace-relative paths to remove (each goes through the approval gate).
     var targets: [String] = []
+    /// Only for Unity steps: bounded, typed parameters (V0.6).
+    var unity: UnityStepParams?
 }
 
 struct TaskPlan: Codable, Equatable, Sendable {
@@ -40,6 +42,8 @@ enum PlanIssue: Equatable, Sendable, CustomStringConvertible {
     case paidProviderRequirement(step: String)
     case localModelForDevelopment(step: String)
     case textTooLong(step: String)
+    case invalidUnityParameters(step: String, why: String)
+    case unityOrderViolation(step: String, why: String)
 
     var description: String {
         switch self {
@@ -61,6 +65,8 @@ enum PlanIssue: Equatable, Sendable, CustomStringConvertible {
         case .paidProviderRequirement(let s): "step \(s): paid providers are never used"
         case .localModelForDevelopment(let s): "step \(s): the local model cannot do development work"
         case .textTooLong(let s): "step \(s): text too long"
+        case .invalidUnityParameters(let s, let why): "step \(s): invalid Unity parameters (\(why))"
+        case .unityOrderViolation(let s, let why): "step \(s): \(why)"
         }
     }
 
@@ -125,9 +131,14 @@ enum PlanParser {
             let deps = (raw["dependsOn"] as? [Any] ?? raw["depends_on"] as? [Any] ?? []).compactMap { ($0 as? String) ?? ($0 as? Int).map { "s\($0)" } }
             let risk = (raw["risk"] as? String).flatMap { RiskClass(rawValue: $0.lowercased()) } ?? type.defaultRisk
             let targets = (raw["targets"] as? [String] ?? (raw["target"] as? String).map { [$0] } ?? [])
+            var unity: UnityStepParams?
+            if type.isUnity {
+                unity = UnityStepParams.parse(raw["unity"]) ?? UnityStepParams()
+                if let bad = raw["unity"].flatMap({ UnityActionParser.forbiddenContent(in: $0) }) { issues.append(.prohibitedOperation(step: id, phrase: "Unity " + bad)); continue }
+            }
             steps.append(PlanStep(id: id, title: title, description: (raw["description"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                                   type: type, dependsOn: deps, expected: (raw["expected"] as? String ?? raw["expectedOutcome"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-                                  validation: validation, risk: risk, targets: targets))
+                                  validation: validation, risk: risk, targets: targets, unity: unity))
         }
         guard issues.isEmpty else { return (nil, issues, keys) }
         return (TaskPlan(summary: (root["summary"] as? String ?? root["goal"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines), steps: steps), [], keys)
@@ -141,6 +152,12 @@ enum PlanParser {
         case "tests", "verify": .test
         case "diffreview", "codereview": .review
         case "remove", "deletion": .delete
+        case "unity_inspect", "inspectunity", "unityinspection": .unityInspect
+        case "unity_edit", "editunity", "unitymutation": .unityEdit
+        case "unity_compile", "compileunity": .unityCompile
+        case "unity_test", "unitytests", "testunity": .unityTest
+        case "unity_play", "unityplay", "playmode": .unityPlayMode
+        case "unity_validate", "validateunity": .unityValidate
         default: nil
         }
     }
@@ -159,6 +176,9 @@ enum PlanValidator {
         "curl ", "wget ", "npm publish", "deploy to production", "production deploy", "api key", "api_key", "access token", "credential", "password",
         "keychain", "purchase", "buy ", "subscription", "git commit", "rewrite history", "filter-branch", "drop database", "format disk",
     ]
+    /// Unity operations that are not part of V0.6 at all (DEC-048/049): code execution, menu items, package/asset acquisition, upgrades.
+    private static let unityProhibitedPhrases = ["execute c#", "run c#", "executemenuitem", "menu item", "eval(", "applescript", "asset store", "assetstore", "install package", "add package",
+                                                 "package manager", "upgrade the project", "upgrade project", "reimport all", "player build", "build the player", "unity hub", "unity account", "license"]
     private static let recursiveKeys: Set<String> = ["subagents", "sub_agents", "spawn", "spawnagents", "children", "agents", "delegate", "delegates", "workers"]
     private static let paidPhrases = ["openai api", "anthropic api", "paid api", "paid model", "paid plan", "gpt-4 api", "billing", "metered"]
     private static let localPhrases = ["local model", "qwen", "local llm", "on-device model"]
@@ -189,6 +209,12 @@ enum PlanValidator {
                 }
                 if s.risk < .high { issues.append(.unsafeDestructiveStep(step: s.id, why: "must be declared high risk")) }
             }
+            if s.type.isUnity {
+                for why in (s.unity ?? UnityStepParams()).problems() { issues.append(.invalidUnityParameters(step: s.id, why: why)) }
+                let utext = (s.title + " " + s.description + " " + s.expected).lowercased()
+                for p in unityProhibitedPhrases where utext.contains(p) { issues.append(.prohibitedOperation(step: s.id, phrase: p.trimmingCharacters(in: .whitespaces))); break }
+                if s.type == .unityTest, s.unity?.testMode == nil { issues.append(.invalidUnityParameters(step: s.id, why: "testMode (editMode or playMode) is required")) }
+            }
             let text = (s.title + " " + s.description + " " + s.expected).lowercased()
             for p in prohibitedPhrases where text.contains(p) { issues.append(.prohibitedOperation(step: s.id, phrase: p.trimmingCharacters(in: .whitespaces))); break }
             if paidPhrases.contains(where: text.contains) { issues.append(.paidProviderRequirement(step: s.id)) }
@@ -196,7 +222,28 @@ enum PlanValidator {
         }
         if !rawKeys.isDisjoint(with: recursiveKeys) { issues.append(.recursiveAgentRequest(step: plan.steps.first?.id ?? "?")) }
         if let cyc = findCycle(plan.steps) { issues.append(.cycle(cyc)) }
+        issues += unityOrder(plan)
         return issues
+    }
+
+    /// Unity ordering rules that can be decided from the plan alone: Play Mode comes after a compile (or an edit that is itself followed by one),
+    /// tests come after the code they test has been compiled, and edits/script changes never depend on a Play Mode step still being active.
+    static func unityOrder(_ plan: TaskPlan) -> [PlanIssue] {
+        var out: [PlanIssue] = []
+        let byID = Dictionary(plan.steps.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        func ancestors(_ s: PlanStep) -> [PlanStep] {
+            var seen = Set<String>(), stack = s.dependsOn, found: [PlanStep] = []
+            while let k = stack.popLast() { guard seen.insert(k).inserted, let st = byID[k] else { continue }; found.append(st); stack += st.dependsOn }
+            return found
+        }
+        for s in plan.steps {
+            let before = ancestors(s)
+            let changedCode = before.contains { $0.type == .codeChange || $0.type == .unityEdit }
+            if (s.type == .unityPlayMode || s.type == .unityTest), changedCode, !before.contains(where: { $0.type == .unityCompile }) {
+                out.append(.unityOrderViolation(step: s.id, why: "code or scene changes must be followed by a Unity compile step before \(s.type == .unityTest ? "tests run" : "Play Mode is entered")"))
+            }
+        }
+        return out
     }
 
     /// Kahn-style detection; returns one cycle path when the graph is not a DAG.
@@ -228,9 +275,11 @@ enum PlanValidator {
 // MARK: - Planner prompt
 
 enum PlannerPrompt {
-    static func build(goal: String, kind: TaskKind, projectTree: String, buildCommand: String?, testCommand: String?, constraints: [String], allowDelete: Bool = false, scopeNotes: String? = nil) -> String {
+    static func build(goal: String, kind: TaskKind, projectTree: String, buildCommand: String?, testCommand: String?, constraints: [String], allowDelete: Bool = false, scopeNotes: String? = nil,
+                      unity: UnityPlanContext? = nil) -> String {
         var allowedTypes = ["analysis", "build", "test", "review"]
         if kind == .development { allowedTypes.insert("codeChange", at: 1) }
+        if let unity { allowedTypes += unity.stepTypes(kind: kind) }
         if kind == .development && allowDelete { allowedTypes.append("delete") }
         let cons = (constraints.isEmpty ? "" : "\nUser constraints:\n" + constraints.map { "- \($0)" }.joined(separator: "\n")) + (scopeNotes.map { "\n" + $0 } ?? "")
         return """
@@ -262,11 +311,47 @@ enum PlannerPrompt {
         - Do NOT plan: git operations, installing software, network access, credentials, deployments, \(allowDelete ? "deleting anything the goal did not explicitly ask to remove" : "deleting files"), creating agents or sub-agents, or using any paid service.
         \(allowDelete ? "- A \"delete\" step needs \"risk\": \"high\" and \"targets\": [explicit project-relative file paths, no wildcards]; the user must approve it before it runs." : "")
         - Do not invent files or commands that are not shown above.
+        \(unity?.promptSection(kind: kind, allowDelete: allowDelete) ?? "")
         """
     }
 
     /// Re-ask text after an invalid plan.
     static func repair(original: String, issues: [PlanIssue]) -> String {
         "Your previous plan was rejected: " + issues.map(\.description).joined(separator: "; ") + ".\nReply again with ONE corrected JSON object only.\n\n" + original
+    }
+}
+
+/// What the planner is told about a Unity project (V0.6). Only facts from the deterministic descriptor.
+struct UnityPlanContext: Equatable, Sendable {
+    var projectName: String
+    var unityVersion: String?
+    var scenes: [String]
+    var hasTestFramework: Bool
+    var renderPipeline: String
+
+    func stepTypes(kind: TaskKind) -> [String] {
+        kind == .development ? ["unityInspect", "unityEdit", "unityCompile", "unityTest", "unityPlayMode", "unityValidate"] : ["unityInspect", "unityValidate"]
+    }
+
+    func promptSection(kind: TaskKind, allowDelete: Bool) -> String {
+        var s = """
+
+        UNITY PROJECT (\(projectName), Unity \(unityVersion ?? "?"), \(renderPipeline)\(hasTestFramework ? ", Unity Test Framework installed" : ", no test framework")). Scenes: \(scenes.prefix(8).joined(separator: ", ")).
+        Extra step types for Unity (executed by JARVIS through typed editor operations; you never write C# for the editor, menu items or commands):
+        - unityInspect: read project/scene/GameObject/component state. {"unity": {"targets": ["ObjectName or Hierarchy/Path"], "scene": "Assets/Scenes/X.unity"}} validation unityInspected.
+        - unityValidate: check facts in the editor. {"unity": {"expectations": [{"kind": "componentPresent", "target": {"path": "TestCube"}, "componentType": "BoxCollider"}]}} kinds: objectExists, objectAbsent, componentPresent, componentAbsent, propertyEquals (+propertyPath, value), componentCount (+count). validation unityState.
+        """
+        if kind == .development {
+            s += """
+
+            - unityEdit: change the scene through typed operations (the edit is proposed and verified by JARVIS; saves only the scene it changed). {"unity": {"scene": "Assets/Scenes/X.unity"}} validation unityState. Operations available: createGameObject, addComponent, setSerializedProperty (with expectedOld), \(allowDelete ? "deleteGameObject (needs approval), " : "")createPrefab.
+            - unityCompile: make Unity compile the scripts and check its own compiler state. validation unityCompiled. Put it after every codeChange/unityEdit and before tests or Play Mode.
+            - unityTest: run Unity tests. {"unity": {"testMode": "editMode" or "playMode", "testNames": ["Class.Method"], "groupNames": []}} validation unityTestsPass. Prefer the smallest scope.
+            - unityPlayMode: enter Play Mode, observe for a few seconds, check state/Console, leave Play Mode. {"unity": {"observeSeconds": 5, "expectations": [...]}} validation unityPlayObserved.
+            - Script changes use codeChange (C# files); scene/prefab changes use unityEdit — never edit .unity/.prefab YAML.
+            - A typical Unity fix: unityInspect → analysis → codeChange → unityCompile → unityTest → unityValidate.
+            """
+        }
+        return s + "\n"
     }
 }

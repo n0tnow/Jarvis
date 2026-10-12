@@ -31,6 +31,8 @@ extension TaskEngine {
 
     private func finish(_ ctx: TaskContext, report: TaskReport, cleanup: String? = nil) {
         leases.release(taskID: ctx.record.id)
+        unity?.lock.release(taskID: ctx.record.id)
+        if ctx.unityProject { unity?.taskFinished(activeUnityTasks: contexts.values.filter { $0.unityProject && $0.record.id != ctx.record.id && $0.record.state.isActive }.count) }
         var final = report
         final.state = ctx.record.state.rawValue
         // The persisted report (artifact) and a one-paragraph summary on the task row.
@@ -82,9 +84,31 @@ extension TaskEngine {
         var pendingApprovals: [UUID]
         var failure: String?
         var diff: String
+        /// V0.6: bounded Unity evidence (never a hierarchy dump): the Console baseline, what the editor looked like, the facts gathered so far.
+        var unity: UnityCheckpoint?
+    }
+
+    struct UnityCheckpoint: Codable {
+        var baseline: UnityConsoleBaseline?
+        var editorVersion: String?
+        var connection: String?
+        var playMode: String?
+        var compileGeneration: Int?
+        var compileFailed: Bool?
+        var facts: [String]
+        var approvedDirtyScenes: [String]
     }
 
     func checkpoint(_ ctx: TaskContext, reason: String) async { writeCheckpoint(ctx, reason: reason) }
+
+    func unityCheckpoint(_ ctx: TaskContext) -> UnityCheckpoint? {
+        guard ctx.unityProject, ctx.steps.contains(where: { $0.type.isUnity }) else { return nil }
+        let conn = unity?.existingConnection(for: ctx.workspace.root)
+        let st = conn?.transport.currentStatus() ?? conn?.status
+        return UnityCheckpoint(baseline: ctx.unityBaseline, editorVersion: st?.unityVersion, connection: conn?.state.rawValue, playMode: st.map { $0.isPlaying ? "playing" : "edit" },
+                               compileGeneration: st?.compileGeneration, compileFailed: st?.compileFailed, facts: ctx.steps.filter { $0.type.isUnity && $0.state == .passed }.compactMap { $0.validationEvidence }.map { String($0.prefix(300)) },
+                               approvedDirtyScenes: ctx.unityApprovedDirty.sorted())
+    }
 
     /// Not a mere "status write": plan version, step states + evidence, changed files (hashes), git baseline, leases, approvals and the
     /// cumulative diff — enough to understand and safely continue the task after a restart. Stored as an artifact; the DB keeps the reference.
@@ -94,7 +118,7 @@ extension TaskEngine {
         let cp = Checkpoint(taskID: ctx.record.id, reason: reason, at: Date(), state: ctx.record.state.rawValue, planVersion: ctx.record.planVersion,
                             steps: ctx.steps.map { .init(key: $0.key, state: $0.state.rawValue, attempts: $0.attempts, evidence: $0.validationEvidence.map { OutputSanitizer.sanitize(String($0.prefix(400))) }) },
                             changes: ctx.changes, gitBaseline: ctx.record.gitBaseline, leases: leases.leases(forTask: ctx.record.id).map(\.path), pendingApprovals: pending,
-                            failure: ctx.record.failureReason.map { OutputSanitizer.sanitize($0) }, diff: diffText(ctx, limit: 20_000))
+                            failure: ctx.record.failureReason.map { OutputSanitizer.sanitize($0) }, diff: diffText(ctx, limit: 20_000), unity: unityCheckpoint(ctx))
         guard let data = try? JSONEncoder.pretty.encode(cp),
               let a = try? artifacts.store(data, type: "task-checkpoint", folder: .checkpoints, fileExtension: "json", taskID: ctx.record.id, meta: reason) else { return }
         ctx.record.checkpointArtifactID = a.id
@@ -145,6 +169,7 @@ extension TaskEngine {
         ctx.changes = (try? repository.taskFileChanges(taskID: t.id)) ?? []
         if let id = t.checkpointArtifactID, let art = try? artifacts?.artifact(id), let data = try? artifacts?.read(art), let cp = try? JSONDecoder.iso.decode(Checkpoint.self, from: data) {
             ctx.restoredDiff = cp.diff
+            if let u = cp.unity { ctx.unityBaseline = u.baseline; ctx.unityFacts = u.facts; ctx.unityApprovedDirty = Set(u.approvedDirtyScenes) }
         }
         ctx.evidence = steps.filter { $0.state == .passed }.compactMap { $0.validationEvidence }
         return ctx
@@ -213,6 +238,7 @@ extension TaskEngine {
                 _ = transition(ctx, to: .interrupted, activity: "Interrupted — JARVIS quit while this task was running")
             }
             leases.release(taskID: id)
+            unity?.lock.release(taskID: id)
         }
         for (_, cont) in decisions { cont.resume(returning: false) }
         decisions.removeAll()

@@ -23,6 +23,7 @@ enum GoalIntake {
         "code", "unity", "project", "bug", "bugs", "script", "scripts", "test", "tests", "repo", "repository", "multiplayer", "networking", "network",
         "class", "function", "app", "error", "errors", "issue", "problem", "synchronization", "sync", "feature", "codebase", "compiler", "implementation",
         "system", "module", "hata", "proje", "kod", "oyun",
+        "gameobject", "gameobjects", "collider", "prefab", "prefabs", "monobehaviour", "playmode", "editmode",
     ]
     private static let everydayNouns: Set<String> = ["email", "mail", "story", "poem", "essay", "letter", "calendar", "meeting", "song", "speech", "joke", "message"]
     /// "explain", "what is", "how does …" are knowledge questions even when they mention technical nouns.

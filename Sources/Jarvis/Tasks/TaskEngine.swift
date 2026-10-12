@@ -53,6 +53,8 @@ final class TaskEngine {
     let audit: AuditRecorder
     let leases: FileLeaseManager
     var agents: any StepAgentRunner
+    /// V0.6: the Unity tool layer (nil = Unity steps fail with `unityUnavailable`). Owns connections, the mutation lock and owned editors.
+    var unity: UnityService?
     var limits = Limits()
     /// Called after every persisted change (the store projection / HUD refresh).
     @ObservationIgnored var onChange: (() -> Void)?
@@ -108,9 +110,19 @@ final class TaskEngine {
         var recoveredApplied: Set<String> = []
         /// The application is quitting: nothing may be recorded as failed/cancelled because of it.
         var terminating = false
+        // V0.6 Unity state (in memory; the durable facts are the step evidence, the checkpoint and the report).
+        let unityProject: Bool
+        var unityBaseline: UnityConsoleBaseline?
+        var unityInstallApproved = false
+        var unityUpgradeApproved = false
+        var unityApprovedDirty: Set<String> = []
+        var unityFacts: [String] = []
+        var unityProposed: [String: [UnityEditAction]] = [:]
+        var unityProposalRuns: [String: UUID] = [:]
 
         init(record: TaskRecord, steps: [TaskStepRecord], workspace: WorkspaceGuard, tools: ProjectTools, profiles: ProjectProfiles) {
             self.record = record; self.steps = steps; self.workspace = workspace; self.tools = tools; self.profiles = profiles
+            self.unityProject = UnityProjectDetector.isUnityProject(root: workspace.root)
         }
         func step(_ key: String) -> TaskStepRecord? { steps.first { $0.key == key } }
         func index(_ key: String) -> Int? { steps.firstIndex { $0.key == key } }
@@ -148,7 +160,7 @@ final class TaskEngine {
         record.destructiveRequested = destructiveRequested && kind == .development
         record.privacy = profile.privacy
         record.workspaceRoot = ws.root
-        record.capabilities = .for(kind)
+        record.capabilities = .for(kind, unityProject: UnityProjectDetector.isUnityProject(root: ws.root))
         record.constraints = constraints
         record.preference = preference
         record.activity = "Created"
@@ -397,6 +409,7 @@ final class TaskEngine {
             for var a in pending { a.state = .cancelled; a.decidedAt = Date(); a.decidedBy = "cancel"; try? repository?.update(a); decisions.removeValue(forKey: a.id)?.resume(returning: false) }
         }
         for run in hub?.activeRuns.filter({ audit.record($0.id)?.taskID == taskID }) ?? [] { agents.cancel(runID: run.id) }
+        if let root = ctx.record.workspaceRoot { unity?.cancelPendingRequests(for: root) }      // V0.6: nothing waits for the editor after STOP
         runners[taskID]?.cancel()
         if runners[taskID] == nil { Task { @MainActor in await self.finalizeCancelled(ctx) } }          // never started / already idle
     }

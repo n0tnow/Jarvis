@@ -34,6 +34,7 @@ final class AppContext {
     // V0.4 autonomous task engine
     let leases: FileLeaseManager
     let taskEngine: TaskEngine
+    let unity: UnityService          // V0.6: typed Unity tool layer (discovery, connections, mutation lock, owned editors)
     let taskBridge: TaskBridge
     let taskIntake: TaskIntake
     // V0.5 proactive layer: decides (never executes) — approved/auto actions become normal V0.4 tasks
@@ -96,6 +97,8 @@ final class AppContext {
         observatory.demo = ObservatoryDemo(hub: hub)
         leases = FileLeaseManager(repository: repo)
         taskEngine = TaskEngine(repository: repo, artifacts: artifacts, audit: audit, leases: leases, agents: ManagerAgentRunner(manager: agents))
+        unity = UnityService()
+        taskEngine.unity = unity
         taskIntake = TaskIntake(engine: taskEngine, preferences: preferences)
         opportunities = OpportunityEngine(repository: repo, audit: audit, tasks: taskEngine)
         proposalService = ProposalService(repository: repo, engine: opportunities)
@@ -162,7 +165,7 @@ final class AppContext {
     }
 
     /// Normal termination / SIGTERM: stop scheduling, persist the interrupted state + checkpoints, release leases (processes are killed by `ProcessRegistry`).
-    func prepareForTermination() { taskEngine.prepareForTermination() }
+    func prepareForTermination() { taskEngine.prepareForTermination(); unity.forgetOwnedEditors() }
 
     /// User-triggered runs (benchmark, local test) whose Task can be cancelled from the Observatory.
     @ObservationIgnored fileprivate var userTasks: [UUID: Task<Void, Never>] = [:]

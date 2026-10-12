@@ -17,6 +17,7 @@ struct IntelligenceRouter: Sendable {
     private static let technicalNouns: Set<String> = [
         "code", "unity", "project", "bug", "bugs", "script", "scripts", "test", "tests", "repo", "repository", "multiplayer",
         "networking", "class", "function", "app", "error", "errors", "shader", "scene", "feature", "codebase", "compiler",
+        "gameobject", "gameobjects", "collider", "prefab", "prefabs", "monobehaviour", "playmode", "editmode",
     ]
     private static let everydayNouns: Set<String> = ["email", "mail", "story", "poem", "essay", "letter", "calendar", "meeting", "song", "speech", "joke", "message"]
     /// Turkish is heavily suffixed ("hatayı düzelt", "projeyi derle"): match by folded prefix.

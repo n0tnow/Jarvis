@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1, v2, v3, v4]
+    static let all: [Migration] = [v1, v2, v3, v4, v5]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -295,5 +295,11 @@ struct Migration: Sendable {
         "CREATE INDEX idx_proposals_opportunity ON proposals(opportunity_id)",
         "ALTER TABLE approvals ADD COLUMN proposal_id TEXT",
         "ALTER TABLE approvals ADD COLUMN scope_hash TEXT",
+    ])
+
+    /// V5 — Unity project agent (V0.6): the typed, bounded parameters of a Unity plan step (scene, targets, test scope, expectations).
+    /// Nothing else is stored: editor state is transient, console text is sanitized into step evidence, there is no table for raw Unity output.
+    static let v5 = Migration(version: 5, name: "unity project agent", statements: [
+        "ALTER TABLE task_steps ADD COLUMN unity_params TEXT",
     ])
 }

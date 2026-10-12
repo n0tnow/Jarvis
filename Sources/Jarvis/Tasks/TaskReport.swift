@@ -29,6 +29,9 @@ struct TaskReport: Codable, Equatable, Sendable {
     var failure: Failure?
     var stoppedAt: String?
     var cleanup: String?
+    /// V0.6: facts from the Unity steps (deterministic evidence only) and non-blocking reviewer advice. Optional so older reports still decode.
+    var unity: [String]?
+    var advisories: [String]?
 
     // MARK: Build
 
@@ -42,7 +45,9 @@ struct TaskReport: Codable, Equatable, Sendable {
             for a in ok {
                 let name = (a.engine?.displayName ?? "") + (a.model.map { " · " + ($0.split(separator: "/").last.map(String.init) ?? $0) } ?? "")
                 let role: String
-                switch s.type { case .analysis: role = "analysed"; case .codeChange: role = a.kind == .primary ? "implemented the change" : "repaired the change"; case .review: role = "reviewed the result"; default: role = s.type.rawValue }
+                switch s.type { case .analysis: role = "analysed"; case .codeChange: role = a.kind == .primary ? "implemented the change" : "repaired the change"; case .review: role = "reviewed the result"
+                case .unityEdit: role = "proposed the Unity edit"
+                default: role = s.type.rawValue }
                 if let i = providers.firstIndex(where: { $0.name == name && $0.role == role }) { providers[i].runs += 1 } else { providers.append(Provider(name: name, role: role, runs: 1)) }
             }
         }
@@ -58,6 +63,15 @@ struct TaskReport: Codable, Equatable, Sendable {
         if task.kind == .development, !steps.contains(where: { $0.type == .test && $0.state == .passed && $0.validation == .testPass }) {
             warnings.append("No test run was validated as passing for this task.")
         }
+        // V0.6: Unity facts come from the steps' own deterministic evidence; visual validation is never claimed (nothing captures or inspects an image).
+        let unitySteps = steps.filter { $0.type.isUnity && ($0.state == .passed || $0.state == .failed) }
+        var unity = unitySteps.compactMap { st -> String? in
+            guard let e = st.validationEvidence, !e.isEmpty else { return nil }
+            return "\(st.type.label): \(st.state == .passed ? "PASS" : "FAIL") — " + String(e.replacingOccurrences(of: "\n", with: " ").prefix(260))
+        }
+        if !unitySteps.isEmpty { unity.append("Visual validation: NOT PERFORMED (no Game/Scene View image was captured or inspected).") }
+        let advisories = steps.filter { $0.type == .review && $0.state == .passed && ($0.validationEvidence ?? "").hasPrefix(ReviewAuthority.advisoryPrefix) }
+            .compactMap { $0.validationEvidence.map { String($0.prefix(400)) } }
         let end = task.finishedAt ?? Date()
         let duration = task.accumulatedSeconds > 0 ? task.accumulatedSeconds : max(0, end.timeIntervalSince(task.startedAt ?? task.createdAt))
         return TaskReport(
@@ -66,11 +80,11 @@ struct TaskReport: Codable, Equatable, Sendable {
             steps: steps.map { Step(key: $0.key, title: $0.title, type: $0.type.rawValue, state: $0.state.rawValue, attempts: $0.attempts, validation: $0.validation.rawValue, evidence: $0.validationEvidence) },
             providers: providers, filesChanged: Array(Set(changes.map(\.path))).sorted(),
             userChangesPreserved: (task.gitBaseline?.dirtyPaths ?? []) + (task.gitBaseline?.untrackedPaths ?? []),
-            validations: steps.filter { $0.state == .passed && [.buildPass, .testPass, .reviewPass, .fileRemoved].contains($0.validation) }.compactMap { $0.validationEvidence }.filter { !$0.isEmpty },
+            validations: steps.filter { $0.state == .passed && [.buildPass, .testPass, .reviewPass, .fileRemoved, .unityCompiled, .unityTestsPass, .unityState, .unityPlayObserved, .unityInspected].contains($0.validation) }.compactMap { $0.validationEvidence }.filter { !$0.isEmpty },
             repairAttempts: attempts.filter { $0.kind == .repair }.count, escalations: attempts.filter { $0.kind == .escalation }.count,
             approvals: approvals.map { "\($0.action) — \($0.state.rawValue)" }, warnings: warnings, failure: failure,
             stoppedAt: task.state == .cancelled ? (steps.first { $0.state == .cancelled }?.title ?? steps.first { $0.state == .pending }?.title ?? "before the first step") : nil,
-            cleanup: cleanup)
+            cleanup: cleanup, unity: unity.isEmpty ? nil : unity, advisories: advisories.isEmpty ? nil : advisories)
     }
 
     static func suggestion(_ c: FailureCategory) -> String {
@@ -86,6 +100,11 @@ struct TaskReport: Codable, Equatable, Sendable {
         case .toolFailed: "Check the project's build/test configuration (.jarvis/project.json) and run the task again."
         case .scopeExceeded: "The work needed more than you approved. Review the proposal and approve a larger scope if you want it."
         case .cancelled, .interrupted: "Resume or run the task again."
+        case .unityUnavailable: "Open the project in a Unity editor that has the JARVIS bridge (see docs/UNITY_PROJECT_AGENT.md), then run the task again."
+        case .ambiguousTarget: "Name the exact object (its hierarchy path or Global ID) and run the task again."
+        case .unsafeEditorState: "Leave Play Mode and save or discard your unsaved Unity changes, then run the task again."
+        case .compileFailed: "Open the Unity Console, fix the compiler errors (or adjust the goal) and run the task again."
+        case .unityTimeout: "Check that the Unity Editor is responsive (it may be importing or showing a dialog), then run the task again."
         }
     }
 
@@ -120,6 +139,8 @@ struct TaskReport: Codable, Equatable, Sendable {
         if !userChangesPreserved.isEmpty { l += ["", "## Your uncommitted changes at the start (left intact)"] + userChangesPreserved.map { "- \($0)" } }
         if !approvals.isEmpty { l += ["", "## Approvals"] + approvals.map { "- \($0)" } }
         if repairAttempts + escalations > 0 { l += ["", "Repairs: \(repairAttempts) · Escalations: \(escalations)"] }
+        if let u = unity, !u.isEmpty { l += ["", "## Unity"] + u.map { "- \($0)" } }
+        if let a = advisories, !a.isEmpty { l += ["", "## Reviewer advice (did not change the validated result)"] + a.map { "- \($0)" } }
         if !warnings.isEmpty { l += ["", "## Warnings"] + warnings.map { "- \($0)" } }
         if let f = failure { l += ["", "## Failure", "- \(f.category): \(f.reason)", f.failedStep.map { "- Failed step: \($0)" } ?? "", "- Next: \(f.suggestedNext)"] }
         if let s = stoppedAt { l += ["", "## Stopped", "- Stopped at: \(s)", "- Cleanup: \(cleanup ?? "—")"] }

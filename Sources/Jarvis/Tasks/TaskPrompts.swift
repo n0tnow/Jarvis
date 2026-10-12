@@ -31,6 +31,8 @@ struct ReviewResult: Equatable, Sendable {
     var passed: Bool
     var summary: String
     var issues: [String]
+    /// Structured issues (severity + evidence). A plain string issue is advice: it names nothing JARVIS can verify.
+    var detailed: [ReviewIssue] = []
 
     static func parse(_ text: String) -> ReviewResult? {
         guard let json = PlanParser.extractJSONObject(text), let d = json.data(using: .utf8),
@@ -38,8 +40,16 @@ struct ReviewResult: Equatable, Sendable {
               let verdict = (o["verdict"] as? String)?.lowercased() else { return nil }
         let passed: Bool
         switch verdict { case "pass", "approve", "approved", "ok": passed = true; case "fail", "reject", "rejected", "changes_requested": passed = false; default: return nil }
-        return ReviewResult(passed: passed, summary: (o["summary"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-                            issues: (o["issues"] as? [Any] ?? []).compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        var texts: [String] = [], detailed: [ReviewIssue] = []
+        for raw in (o["issues"] as? [Any] ?? []) {
+            if let s = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+                texts.append(s); detailed.append(ReviewIssue(text: s, severity: .advice, evidence: ""))
+            } else if let m = raw as? [String: Any], let t = (m["text"] as? String ?? m["issue"] as? String ?? m["description"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
+                let sev = IssueSeverity(rawValue: (m["severity"] as? String ?? "").lowercased()) ?? .advice
+                texts.append(t); detailed.append(ReviewIssue(text: t, severity: sev, evidence: (m["evidence"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)))
+            }
+        }
+        return ReviewResult(passed: passed, summary: (o["summary"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines), issues: texts, detailed: detailed)
     }
 }
 
@@ -185,10 +195,11 @@ enum TaskPrompts {
         \(diff.isEmpty ? "(no files were changed)" : diff)
 
         Reply with ONE JSON object and nothing else:
-        {"verdict": "pass" or "fail", "summary": "one or two sentences", "issues": ["only real defects relative to the goal; empty if verdict is pass"],
+        {"verdict": "pass" or "fail", "summary": "one or two sentences",
+         "issues": [{"text": "a defect or an improvement", "severity": "blocking" or "advice", "evidence": "an exact quote from the diff or a changed file path that proves it"}],
          "suggestions": [{"title": "optional follow-up that is NOT part of this goal", "summary": "why", "files": ["project-relative paths shown above"], "category": "testCoverage|bug|maintenance|documentation|refactor|performance|design", "designImpact": false}]}
         "suggestions" is optional and at most 2 entries; leave it out unless you noticed something concrete.
-        Use "fail" only for a concrete defect that means the goal is not achieved or something is broken. Do not fail for style.
+        Use "fail" only for a concrete defect that means the goal is not achieved or something is broken, mark it "blocking" and quote the evidence from the diff. Style, naming, test wording and possible improvements are "advice": they never fail the task. JARVIS' own checks (build, tests, Unity compilation/state) are facts you cannot overrule.
         """
     }
 }

@@ -101,8 +101,8 @@ extension JarvisRepository {
             for s in steps {
                 try ctx.execute("""
                     INSERT INTO task_steps(id, task_id, idx, title, status, started_at, finished_at, step_key, type, description, depends_on, expected,
-                        validation, risk, weight, attempts, agent_run_id, result_summary, failure_category, failure_reason, validation_evidence)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        validation, risk, weight, attempts, agent_run_id, result_summary, failure_category, failure_reason, validation_evidence, unity_params)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """, Self.stepParams(s))
             }
         }
@@ -113,7 +113,7 @@ extension JarvisRepository {
             try ctx.execute("""
                 UPDATE task_steps SET task_id=?2, idx=?3, title=?4, status=?5, started_at=?6, finished_at=?7, step_key=?8, type=?9, description=?10,
                     depends_on=?11, expected=?12, validation=?13, risk=?14, weight=?15, attempts=?16, agent_run_id=?17, result_summary=?18,
-                    failure_category=?19, failure_reason=?20, validation_evidence=?21 WHERE id = ?1
+                    failure_category=?19, failure_reason=?20, validation_evidence=?21, unity_params=?22 WHERE id = ?1
                 """, Self.stepParams(s))
         }
     }
@@ -126,7 +126,8 @@ extension JarvisRepository {
         [.text(s.id.uuidString), .text(s.taskID.uuidString), .int(Int64(s.index)), .text(Self.clean(s.title, 160) ?? ""), .text(s.state.rawValue), .opt(s.startedAt), .opt(s.finishedAt),
          .text(s.key), .text(s.type.rawValue), .opt(Self.clean(s.details, 700)), .text(Self.js(s.dependsOn)), .opt(Self.clean(s.expected, 400)), .text(s.validation.rawValue),
          .text(s.risk.rawValue), .double(s.weight), .int(Int64(s.attempts)), .opt(s.agentRunID?.uuidString), .opt(Self.clean(s.resultSummary, 1500)),
-         .opt(s.failureCategory?.rawValue), .opt(Self.clean(s.failureReason, 1000)), .opt(Self.clean(s.validationEvidence, 4000))]
+         .opt(s.failureCategory?.rawValue), .opt(Self.clean(s.failureReason, 1000)), .opt(Self.clean(s.validationEvidence, 4000)),
+         .opt(s.unity.flatMap { try? JSONEncoder().encode($0) }.map { String(decoding: $0, as: UTF8.self) })]
     }
 
     private static func step(_ r: SQLRow) -> TaskStepRecord? {
@@ -140,6 +141,7 @@ extension JarvisRepository {
         s.agentRunID = Self.uid(r.string("agent_run_id")); s.resultSummary = r.string("result_summary")
         s.failureCategory = r.string("failure_category").flatMap(FailureCategory.init(rawValue:)); s.failureReason = r.string("failure_reason")
         s.startedAt = r.date("started_at"); s.finishedAt = r.date("finished_at"); s.validationEvidence = r.string("validation_evidence")
+        s.unity = r.string("unity_params").flatMap { $0.data(using: .utf8) }.flatMap { try? JSONDecoder().decode(UnityStepParams.self, from: $0) }
         return s
     }
 

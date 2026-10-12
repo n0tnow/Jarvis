@@ -13,9 +13,11 @@ enum OpportunityAssessor {
     // MARK: Keyword safety nets (deterministic; applied regardless of what a model says)
 
     private static let designWords = ["redesign", "new flow", "navigation flow", "new screen", "new ui", "user interface flow", "gameplay", "mechanic", "waiting room", "lobby", "visual style",
-                                      "art style", "layout", "theme", "new feature", "new level", "balance", "character", "ux ", "user experience", "branding", "color scheme", "animation style"]
+                                      "art style", "layout", "theme", "new feature", "new level", "balance", "character", "ux ", "user experience", "branding", "color scheme", "animation style",
+                                      // Unity content decisions (V0.6): these are design/product choices, never automatic.
+                                      "lighting", "skybox", "post-processing", "post processing", "color grading", "scene layout", "level layout", "ui flow", "art direction", "shader look", "material look", "camera angle", "playable character"]
     private static let effectWords: [(ExternalEffect, [String])] = [
-        (.purchase, ["purchase", "buy ", "paid asset", "pay for", "subscription", "license fee", "checkout", "buy the"]),
+        (.purchase, ["purchase", "buy ", "paid asset", "pay for", "subscription", "license fee", "checkout", "buy the", "asset store"]),
         (.paidProvider, ["paid api", "paid model", "paid plan", "billing", "metered"]),
         (.credentialChange, ["credential", "api key", "api_key", "password", "access token", "secret key", "rotate key", "keychain", "private key"]),
         (.accountChange, ["account", "sign up", "sign in", "login flow for the account", "oauth app"]),
