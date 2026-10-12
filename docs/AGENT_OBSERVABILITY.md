@@ -149,3 +149,7 @@ Voice reuses the existing activity feed (`JarvisStore.log` → sanitized, capped
 
 ## Natural voice events (V0.8)
 Same feed, content-free and capped: "Wake mode on/off/unavailable: <reason>", "Voice: Wake word heard", "Voice: turn ended (N ms after the last speech)", "Voice: Barge-in", "Voice: Returned to wake mode", "Wake helper stopped unexpectedly / did not answer — restarting it", "Neural voice helper started (N s) / stopped". Never audio, never a wake probability trace, never VAD frames, never partial transcripts, never the rolling buffer. Latencies of the last natural turn (endpoint, final, first audio, barge-in) are held in memory (`NaturalTurnMetrics`) and shown in the Full HUD voice strip / Settings → Voice diagnostics (developer controls). The helpers' own text is never read (only numbers, flags and audio).
+
+## V0.9 — research in the Observatory
+
+Research and acquisition are ordinary tasks: the Tasks list, activity ("Searching · query 3", "Reading · 5 sources", "Comparing · 4 candidates"), step list, approvals and Stop work unchanged. Each model call is an `agent_run` (`ResearchAgent`) with the sanitized prompt/answer under the usual limits; tool-like work (fetch, download, inspect) is reported as step evidence, not as raw bodies. Page text, URLs with tokens and response headers are sanitized at the existing choke points (`OutputSanitizer`, `HeaderRedactor`, `CanonicalURL.forStorage`); raw pages are never stored or shown in consoles.

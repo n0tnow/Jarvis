@@ -322,3 +322,33 @@ DEC-069 … DEC-087.
 
 ### Remaining Work
 User manual test (README 224–343): a human saying «Jarvis», recognition of a human voice, false wakes from real conversation and media, real-room barge-in, voice naturalness (A/B of the JARVIS presets), VoiceOver, Reduce Motion, battery. V0.9 only with approval. No tag.
+
+
+## 2026-10-12 — V0.9 Web Research & Asset Acquisition
+
+### Goal
+General-purpose, evidence-backed web research (Unity assets first) with source quality, licence/price verification, safe quarantined downloads, artifact inspection and an approval-gated import — as ordinary V0.4 tasks, with account actions and purchases left out entirely.
+
+### Changes
+`Sources/Jarvis/Research/**` (URL policy/gate, transport, client, HTML extraction, classifier, licence/price/compatibility analyzers, untrusted-content fencing, providers, browser tier, query builder/intake, pipeline, ranker, report builder, planner, services, view model) · `Research/Acquisition/**` (sniffer, archive inspector, downloader, acquisition service, importer) · schema v7 + `ResearchRepository` · `TaskEngine+Research` + engine/intake/model integration · Research screen + Settings section · V0.5 web-authority rule and research proposals · fixture web with virtual public hosts · `--research-live-test` · verify.sh guards · docs (`WEB_RESEARCH.md`, `ASSET_ACQUISITION.md`, DEC-088…102, README 344–463).
+
+### Research and decisions (details in the docs)
+Search sources checked against robots/terms/keys (DuckDuckGo HTML yes; Brave needs a key; Asset Store account-bound). Real Poly Haven and Kenney page structures inspected before writing providers. Playwright evaluated and not adopted.
+
+### Real findings (found by tests and the live run; all fixed)
+* Foundation percent-decodes/IDNA-decodes hosts → raw-authority checks, NFKC fold, `%` rejected.
+* Turkish dotless ı broke the glossary → `ResearchText.fold`; bare «ücretsiz» is not a research cue.
+* Exclusivity crash: reading `ctx.record` inside `mutate(ctx)`.
+* `/var` vs `/private/var` broke relative import paths.
+* **Live run 1 (6 failures → product defects):** GitHub returned 0 results for sentence queries (it ANDs every word) → `SearchTerms.core`; Stack Overflow pages answer 403 → public API route (no evasion); failed/cancelled tasks left the research row on "searching/reading" → `markEnded`; **ranking had no relevance** — a plunger, a drain cleaner and a flower tied with a bucket → topical-relevance factor + hard rule; filler words crowded the nouns out of the structured query and one popular asset crowded out another → noun-first base query and per-word round-robin; GitHub removed from prop searches.
+* Test expectations corrected, not product: a lying zip header is caught at extraction (listing passes); local-model/other registered helpers are not research leaks.
+* Two structural guards caught real violations: UI reading the repository (moved into the view model) and a new `source: .voice` caller (developer live test listed beside `VoiceLiveTest`).
+
+### Results
+Unit 1043 (142 suites) · verify PASSED · smoke 119/0/2 · idle 0.02 CPU-s/8 s, 72 MB · `--research-live-test` 37/0 (≈ 3 min).
+
+### Also in this session
+`scripts/train_wake_head.sh` now checks every generator job and keeps/prints the logs on failure (JARVIS-V08-15; root cause on the user's Mac not reproduced).
+
+### Remaining Work
+User manual test (README 344–463). V0.10 only with approval. No tag.

@@ -1,6 +1,6 @@
 # Architecture (V0.1)
 
-Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.8 (natural voice & presence: wake word, VAD, hands-free turns, barge-in, neural voice — an I/O layer, no authority) on V0.7 (voice I/O around the conversation pipeline; V0.6 Unity agent, V0.5 proactive layer, V0.4 task engine below). Decisions behind it: `DECISIONS.md`.
+Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.9 (web research & asset acquisition: cited research, quarantine downloads, approval-gated import — all ordinary V0.4 tasks) on V0.8 (natural voice & presence: wake word, VAD, hands-free turns, barge-in, neural voice — an I/O layer, no authority) on V0.7 (voice I/O around the conversation pipeline; V0.6 Unity agent, V0.5 proactive layer, V0.4 task engine below). Decisions behind it: `DECISIONS.md`.
 
 ## Shape
 
@@ -160,7 +160,7 @@ Seams for V0.8: `AudioInput` (any capture source), `VoiceCoordinator.pushToTalkP
 ## Extension points for later milestones (not implemented)
 
 - V0.2: replace `LocalCommandHandler` with a command router (needs a response channel; today it only writes to the activity log).
-- V0.4–V0.7 are implemented (see above). Later (DEC-068): V0.8 natural voice session, V0.9 web research + asset acquisition, V0.10 project memory, V0.11 computer use, V0.12 advanced multi-agent — all through `TaskEngine.submit` and the V0.5 policy.
+- V0.4–V0.9 are implemented (see above). Later (DEC-068/086): V0.10 project memory, V0.11 computer use, V0.12 advanced multi-agent — all through `TaskEngine.submit` and the V0.5 policy.
 - Voice (V0.7 done): `VoiceCoordinator` owns the voice lifecycle and only claims `JarvisState.listening` while capture runs (never clobbering another owner).
 - Self-controlled UI (V0.10, with project memory): protocol may need `currentSection`, `hideSettings`, and a "don't steal focus" open variant.
 
@@ -172,3 +172,16 @@ SentinelRuntime events ─► HandsFreeCoordinator ─► TurnMachine (pure) ─
 VoiceResponseSpeaker ─► PlayerBackedTTSProvider(NeuralSpeechEngine | AppleSpeechEngine) ─► SpeechPlayer (own AVAudioEngine, OUTPUT only) ─► reference levels ─► BargeInDetector
 ```
 `Sources/Jarvis/Voice/Natural/`: `EndpointPolicy`, `TurnMachine` (+ `WakeContextGate`), `BargeInDetector`, `HandsFreeCoordinator` (+ `VoicePresence`), `AudioHub` (`MicrophoneHub`, `HubAudioInput`, `AudioRing`, `EnergyGate`), `HelperHost` (+ `RestartBudget`), `SentinelRuntime`, `NeuralVoice` (runtime, engine, provider), `VoiceIdentity`, `TranscriptGuards` (`WakePhrase`, `SelfSpeechFilter`, `LanguageContinuity`), `TechnicalTerms`, `WakeCue`; `Voice/SpeechPlayer.swift`, `Voice/PlayerBackedTTS.swift`. Helpers (`scripts/voice-ai/`): `jarvis_sentinel_worker.py`, `jarvis_tts_worker.py`, `jarvis_wake_head.py`, `jarvis_audio_features.py`; bench/training tooling in `scripts/voice-ai/bench/`. Test/live-test only: `Services/Demo/VoiceTestRig.swift` (scripted microphone, simulated speaker, scripted answers), `App/NaturalVoiceLiveTest.swift`.
+
+## Web research & asset acquisition (V0.9 — DEC-088…102; details `WEB_RESEARCH.md`, `ASSET_ACQUISITION.md`)
+```
+Conversation (typed|voice) ─► GoalIntake/ResearchIntake ─► TaskEngine.submitResearch ─► V0.5 policy ─► TaskKind.research (fixed plan, budgets)
+   steps: researchSearch ─► researchRead ─► researchExtract ─► [researchVerify] ─► researchReport          (typed step runners in TaskEngine+Research)
+           │ providers (QueryBuilder)  │ WebClient ◄─ URLGate/URLPolicy (every hop) ◄─ HTTPTransport (the only URLSession)   │ RenderedPageProvider (the only WKWebView, read-only)
+           ▼                           ▼ HTMLExtractor · SourceClassifier · UntrustedContent (fence+scan) · Grounding
+   ResearchPipeline (actor) ─► PriceAnalyzer · LicenseAnalyzer · UnityCompatibilityAssessor · CandidateRanker ─► ResearchReport (artifact) ─► Research screen
+Candidate ─► AcquisitionPolicy ─► [HUD approval] ─► TaskKind.acquisition ─► Downloader ─► quarantine (acquisitions/<id>/, provenance.json) ─► ArchiveInspector ─► readyForImport
+readyForImport ─► (user) ─► submitImport = .development task + importIntoProject ─► approval ─► AssetImporter ─► Assets/ThirdParty/<slug>-<id6> ─► [V0.6 compile]
+```
+`Sources/Jarvis/Research/`: `ResearchModel`, `URLPolicy` (+ `URLGate`, `CanonicalURL`), `HTTPTransport`, `WebClient`, `HTMLExtraction`, `SourceClassifier`, `LicenseAnalyzer`, `PriceAnalyzer`, `UnityCompatibility`, `UntrustedContent`, `SearchProviders` (+ `SearchTerms`), `RenderedPageProvider`, `QueryBuilder` (+ `ResearchIntake`), `ResearchPipeline` (+ Candidates), `CandidateRanker`, `ResearchReportBuilder`, `ResearchPlanner`, `ResearchServices`, `ResearchViewModel`; `Research/Acquisition/`: `ArtifactSniffer`, `ArchiveInspector`, `Downloader`, `AcquisitionService`, `AssetImporter`. Persistence: `ResearchRepository` (schema v7). UI: `UI/FullHUD/Research/ResearchSectionView`, `UI/Settings/WebResearchSettingsSection`. Test/live-test only: `Services/Demo/ResearchFixtures.swift` (fixture site, virtual public hosts), `Services/Demo/ResearchDemo.swift`, `App/ResearchLiveTest.swift`.
+Rules: research never writes files or runs processes; only `AssetImporter` writes into a project; no purchase/account code path exists; web text is data.

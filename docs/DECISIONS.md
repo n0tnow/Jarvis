@@ -418,3 +418,79 @@ Status: Accepted (V0.8; refines DEC-078/079, supersedes nothing)
 Decision: the barge-in level is taken from the microphone after a 250 Hz second-order high-pass (`SpeechBandFilter`) and fed to `BargeInDetector` in 20 ms slices, so the ≥ 65 % duty rule works per slice (a dense click train or a door thud no longer looks like speech while the VAD is saturated by JARVIS' own echo). `TurnMachine` re-checks the VAD (`.deaf` timer) when speech began inside the acknowledgement/post-speech deaf window and is still going after it (a «Jarvis, … open the Tasks screen» comma pause used to lose the rest of the sentence). A diagnostics-only, text-free event trace (`HandsFreeCoordinator.eventTrace`, 80 entries, memory only) records names and times of turn events.
 Why: found by the closed-loop live test (clicks at +6 dB and a thud interrupted the answer; the one-breath English command was lost); both failures were reproduced and fixed with unit tests. Limits: JARVIS-V08-5 (a quiet voice under a loud echo may not interrupt).
 
+
+
+## DEC-088 — Five authority levels, kept apart; V0.9 implements three
+Status: Accepted (V0.9)
+Decision: RESEARCH · ACQUISITION · IMPORT/PROJECT WRITE · ACCOUNT ACTION · COMMERCIAL are different authorities (`AuthorityLevel`). V0.9 implements the first three, each with its own typed capability (`researchWeb`, `downloadToQuarantine`, `importIntoProject`). Account actions (sign in, accept terms, claim, OAuth) and commercial actions (purchase, subscription, paid trial, paid API) have **no code path**; they are always "open it yourself". `useNetwork`/`useBrowser` stay ungrantable; the typed web capabilities are the only door.
+Why: "find me a free asset" must never drift into "I signed up and paid for it".
+
+## DEC-089 — Research is an ordinary V0.4 task with a fixed plan
+Status: Accepted (V0.9)
+Decision: `TaskKind.research` / `.acquisition` (an import is a `.development` task). Plans are deterministic (`ResearchPlanner`: search → read → extract → [verify → compare] → report), every step has a validation and a budget; models are called only inside steps for validated JSON (≤3, deep ≤5). No autonomous browse-until-satisfied loop, no new agent runtime. Voice and the V0.5 proposal path reach it through the same `TaskIntake`.
+Why: reuse approvals, cancellation, checkpoints, restart reconciliation and observability instead of a second engine.
+
+## DEC-090 — Web content is untrusted data, never instructions
+Status: Accepted (V0.9)
+Decision: page/search/API text is fenced (`UntrustedContent.fence` + preamble, invisible characters stripped), scanned for instruction patterns (reported, ignored), and cannot create steps, approvals, downloads or tool calls. A model-extracted claim is accepted only if its quoted excerpt is verbatim in the cited page (`Grounding.isGrounded`); a model-invented URL is replaced by the page that mentioned it.
+Why: the web is where prompt injection lives.
+
+## DEC-091 — Evidence honesty: snippets are not evidence; UNKNOWN is never good news
+Status: Accepted (V0.9)
+Decision: search snippets are discovery only; price, licence, compatibility, availability, security and API behaviour are decided only by an official/first-party non-snippet source (`SourceClassifier.mayDecide`). UNKNOWN price is never free, unknown licence is never safe, a promotion is not free, stale (> 24 h) price evidence must be re-verified before an automatic download. Fact / assessment / recommendation are separate in the report; contradictions are listed, not resolved silently.
+Why: this is what makes the answer usable for a decision.
+
+## DEC-092 — HTTP/structured first; one read-only browser tier; no computer use
+Status: Accepted (V0.9)
+Decision: order of access: structured API / plain HTTP → system WebKit in a non-persistent store (read-only, constant extraction script, private ranges blocked, torn down when idle) → stop and report "interaction required". No Safari/Chrome cookies or passwords, no Keychain web credentials, no CAPTCHA bypass, no clicking/typing in pages (that is V0.11). Playwright/Node was evaluated and not adopted (adds a runtime and a browser download, gives nothing the system WebKit lacks for reading).
+Why: zero new dependencies; smallest possible capability.
+
+## DEC-093 — Search sources: keyless, honest, no evasion
+Status: Accepted (V0.9)
+Decision: DuckDuckGo HTML (robots `Allow: /`; a challenge page stops the provider), GitHub, Hacker News, Stack Exchange (public API; the HTML pages answer 403 and are not scraped around), Poly Haven, Kenney, a deterministic Unity ScriptReference resolver. Excluded: Brave (key), any paid search API, the Unity Asset Store (account-bound, no public API). Queries sent to AND-matching engines are shortened (`SearchTerms.core`).
+Why: no key, no cost, no terms violations.
+
+## DEC-094 — One URL policy, production-grade everywhere
+Status: Accepted (V0.9)
+Decision: `URLPolicy`/`URLGate` refuse loopback, private, link-local/metadata, CGNAT, multicast, numeric-IP spellings, `file:`/`ftp:`/custom schemes, credentialed URLs and `%` in the authority; DNS is checked before connecting, every redirect hop is revalidated, the connected address is checked again; sessions are ephemeral (no cookies/credentials/cache); per-host rate limits. Tests use the SAME policy with *virtual public hosts* — there is no loopback exemption.
+Why: an SSRF fix that tests bypass is not tested.
+
+## DEC-095 — Downloads go to a quarantine and are not trusted
+Status: Accepted (V0.9)
+Decision: https only, bounded (250 MB/file, 600 MB/session, time, redirects, disk), incremental SHA-256+MD5, published checksums compared (never invented), `.part` deleted unless complete and verified, content sniffed (HTML-as-zip, MIME lies, executables refused), `com.apple.quarantine` set, files only under `acquisitions/`. Archives are listed before extraction (traversal, absolute paths, symlinks, special files, bombs, ratio, depth, lying size headers, CRC); tar.gz/`.unitypackage` are listed only; rar/7z are rejected. DOWNLOADED ≠ INSPECTED ≠ VALIDATED_FOR_IMPORT.
+Why: a download is untrusted input to a machine that builds games.
+
+## DEC-096 — Acquisition policy matrix
+Status: Accepted (V0.9)
+Decision: purchase/paid → rejected; free-but-login/claim → rejected as account action; no verified route → rejected; automatic only for a public direct download with FREE_VERIFIED ≤ 24 h, a licence that allows commercial use and modification from an official source, origin trust ≥ 3 and ≤ 100 MB; everything else needs a HUD approval listing the exact reasons. The candidate is re-verified immediately before downloading. Approval grants no capability; voice cannot approve.
+Why: the cheap, safe case is frictionless; every doubt is a human decision.
+
+## DEC-097 — Import belongs to V0.4/V0.6, not to research
+Status: Accepted (V0.9)
+Decision: import is a separate development task with the capability `importIntoProject`, a plan the user approves (destination `Assets/ThirdParty/<slug>-<id6>`, files, skipped scripts/native/executables, bytes, source, licence), `AssetImporter` (workspace-guarded, hash-verified, never overwrites, only from a READY artifact, provenance file) and, in Unity projects, a V0.6 compile step. Code-bearing content is skipped unless explicitly approved. Automated tests import only into disposable fixtures; the user's real game is never an automated target.
+Why: V0.6 already owns project writes and Unity state.
+
+## DEC-098 — Explainable ranking with topical relevance
+Status: Accepted (V0.9, corrected by the first live run)
+Decision: weights: licence 0.20, price 0.15, compatibility 0.13, friction 0.09, trust 0.08, style fit 0.08 (model assessment, text only, labelled), maintenance 0.04, **topical relevance 0.23**. Hard violations (not free when free-only, no commercial use, account needed, incompatible, **matches none of the requested subject words**) mark a candidate *not recommended* regardless of score. Relevance compares stemmed non-generic subject words with the candidate's name/description/link.
+Why: the first live run ranked a plunger, a drain cleaner and a flower equally with a bucket for "bucket and sink".
+
+## DEC-099 — Research persistence: URLs and hashes, not pages
+Status: Accepted (V0.9)
+Decision: schema v7 stores sessions, queries, sources (URL, final URL, hash, bounded excerpt, method, trust), claims (evidence refs), candidates and acquisitions; reports are artifacts; **no page bodies, HTML or binaries in SQLite**. A restart marks in-flight research/downloads *interrupted*; only an explicit user Resume continues; a failed/cancelled task ends its research row.
+Why: privacy, size, and a database that stays small.
+
+## DEC-100 — Bounded research, nothing in the background
+Status: Accepted (V0.9)
+Decision: fixed budgets (standard: 6 queries, 12 sources, 14 MB, 4 rendered pages, 300 s; deep ≈ 2.5×), per-host politeness, exhaustion is reported. No timers, polling, crawling or re-verification while idle; the browser tier and connections are released.
+Why: research is a user-initiated act, not a service.
+
+## DEC-101 — Research via voice and via proposals
+Status: Accepted (V0.9)
+Decision: a spoken research request enters `ConversationService.submit(source: .voice)` like any text (short acknowledgement only; the report stays on the Research screen). V0.5 may *propose* research (web-authority policy rule: research is `propose`, never automatic; acquisition/import is `requireApproval` as its own decision); a proposal is never an automatic download, and an automatic task still has depth ≤ 1.
+Why: voice and the proactive layer stay I/O and decision layers.
+
+## DEC-102 — Verification guards for the web
+Status: Accepted (V0.9)
+Decision: `verify.sh` allows `URLSession`/`WKWebView` only in `HTTPTransport.swift`/`RenderedPageProvider.swift`/`WebClient.swift` (+ the fixture server), URL literals only in the research layer and the two policy tests, file writes outside the app folders only in Downloader/ArchiveInspector, and adds guards: no CAPTCHA/anti-bot evasion, no paid search API/key, UNKNOWN never free, only `AssetImporter` writes into a project, archive names validated before extraction, https-only bounded downloads, budgets exist, no unbounded polling, browser torn down, no page bodies/binaries in the schema or git.
+Why: the rules above are only real if a future change cannot silently undo them.

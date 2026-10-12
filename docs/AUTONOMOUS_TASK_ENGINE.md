@@ -193,3 +193,7 @@ A spoken goal ("Jarvis, analyze the test project") goes through `ConversationSer
 
 ## Hands-free tasks (V0.8)
 A hands-free request ("Jarvis, … analyze the multiplayer issue") is the same `submit(source: .voice)` → `GoalIntake` → `TaskEngine.submit` path with `input_channel = voice`; wake detection grants no capability and no approval. The voice turn ends with the spoken acknowledgement and the follow-up window (≤ 8 s) — it never stays open for the task, and task completion is never spoken spontaneously (DEC-083). Wake mode and the sentinel are independent of the task engine: a running task, OpenCode or a loaded Qwen do not block wake detection (measured next to Qwen; Unity/OpenCode: README 285–290).
+
+## V0.9 — web tasks (DEC-089)
+
+`TaskKind.research` and `.acquisition` with typed capabilities `researchWeb` / `downloadToQuarantine` (an import is a `.development` task that additionally holds `importIntoProject`). Plans bypass the LLM planner (`ResearchPlanner`); step types `researchSearch/Read/Extract/Verify/Report`, `acquire`, `importAsset` carry their own capabilities, risk and idempotency; validation kinds `artifactAcquired`, `assetImported`. Web tasks get a `WorkspaceGuard(researchRoot:)` (a private scratch folder, never a project). Cancellation is checked between and inside fetches (`CancelFlag`); restart reconciliation marks them interrupted; a failed/cancelled task ends its research row. `useNetwork`/`useBrowser` remain ungrantable.

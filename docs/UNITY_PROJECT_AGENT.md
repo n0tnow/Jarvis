@@ -125,3 +125,7 @@ V0.6 operates *existing* project content through typed editor operations. V0.7 t
 
 ## Natural voice (V0.8)
 Voice still adds no Unity capability: "Jarvis, Unity'deki son testler ne durumda?" is an ordinary request through the typed pipeline (deterministic state answers where the router has them, otherwise a model or a V0.4 task). The Unity bridge, policy and mutation lock are untouched; the heavy-state measurement (real headless editor + Qwen + Whisper + neural voice + wake sentinel) is in `NATURAL_VOICE.md` §11.
+
+## V0.9 — assets for Unity projects
+
+Research reads the connected project's facts read-only (Unity version, render pipeline, test framework from the V0.6 descriptor) to judge compatibility (`UnityCompatibilityAssessor`: compatible / likely / unknown / incompatible). Importing a researched asset is a separate V0.4 development task: `AssetImporter` copies the inspected quarantine copy to `Assets/ThirdParty/<slug>-<id6>` with `JARVIS-PROVENANCE.json` (never overwriting, scripts/native/executables skipped unless approved); V0.6 then runs the compile step through the Editor bridge and its Play-Mode / dirty-scene protection applies unchanged. Automated tests import into disposable fixtures only.

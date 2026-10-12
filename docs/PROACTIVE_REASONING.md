@@ -95,3 +95,7 @@ The proactive layer is unchanged and has no voice code: proposals are approved o
 
 ## Natural voice (V0.8)
 Still no voice code in the proactive layer. Proposals are approved only with HUD buttons; "approve"/"evet onayla" said after the wake word is answered with the HUD-only notice (live-tested through the wake path with an isolated pending approval); nothing proactive is spoken spontaneously.
+
+## V0.9 — research proposals (DEC-101)
+
+The proactive layer may *propose* a research ("the task failed with an unknown API error — research it?"): `OpportunityAssessor` rebuilds the action deterministically (no project-read capability), `OpportunityPolicy` has a web-authority rule (web research may only ever be *proposed* — decision `propose`, never automatic; an action that needs `downloadToQuarantine` or `importIntoProject` is `requireApproval` as its own separate decision), and `OpportunityEngine.proposeResearch/startTask` start it through `TaskEngine.submitResearch` with `originTaskID`/`autonomyDepth`. Policy still outranks confidence.

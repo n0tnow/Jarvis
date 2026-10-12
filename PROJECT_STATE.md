@@ -4,20 +4,22 @@
 
 ## Current Version
 
-V0.8 — Natural Voice & Presence (opt-in local wake word + VAD, hands-free turn taking, barge-in, local neural JARVIS voice; still an I/O layer on the SAME conversation pipeline); builds on V0.7 — Voice I/O Foundation (Push-to-Talk, streaming/incremental STT, incremental TTS, voice session state), V0.6 — Unity Project Agent & Editor Bridge (Unity as a controlled execution environment inside the V0.4 engine), V0.5 — proactive reasoning, opportunity engine & approval policy (a decision layer above the V0.4 task engine) and on V0.4 — autonomous task engine (user-initiated goals; on top of V0.3.2 observatory, V0.3.1 intelligence infrastructure, V0.3 Claude Code / Codex and V0.2.1). App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3, V0.3.1, V0.3.2, V0.4 and later are not**.
+V0.9 — Web Research & Asset Acquisition (cited, evidence-backed research of the public web as an ordinary V0.4 task; free-price/licence verification; quarantined, inspected downloads; approval-gated import; no account actions or purchases); builds on V0.8 — Natural Voice & Presence (opt-in local wake word + VAD, hands-free turn taking, barge-in, local neural JARVIS voice; still an I/O layer on the SAME conversation pipeline); builds on V0.7 — Voice I/O Foundation (Push-to-Talk, streaming/incremental STT, incremental TTS, voice session state), V0.6 — Unity Project Agent & Editor Bridge (Unity as a controlled execution environment inside the V0.4 engine), V0.5 — proactive reasoning, opportunity engine & approval policy (a decision layer above the V0.4 task engine) and on V0.4 — autonomous task engine (user-initiated goals; on top of V0.3.2 observatory, V0.3.1 intelligence infrastructure, V0.3 Claude Code / Codex and V0.2.1). App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3, V0.3.1, V0.3.2, V0.4 and later are not**.
 
 ## Current Milestone
 
-V0.8: Natural Voice & Presence (opt-in wake word "Jarvis" → VAD → natural endpointing → the typed pipeline → local neural JARVIS voice; follow-up window; barge-in). NOT V0.9 (web research & asset acquisition), no spoken approvals, no voice biometrics, no stored audio, no cloud/paid speech.
+V0.9: Web Research & Asset Acquisition (research → evidence → report; quarantine download + inspection; separate approval-gated import). NOT V0.10 (project memory), no computer use (V0.11), no purchases/sign-ins/CAPTCHA bypass, no paid search API.
+
+Previous milestone V0.8: Natural Voice & Presence (opt-in wake word "Jarvis" → VAD → natural endpointing → the typed pipeline → local neural JARVIS voice; follow-up window; barge-in). NOT V0.9 (web research & asset acquisition), no spoken approvals, no voice biometrics, no stored audio, no cloud/paid speech.
 
 ## Status
 
-**V0.8 — READY FOR MANUAL TEST** (V0.7 and earlier: READY FOR MANUAL TEST as before)
-(Automated + REAL verification passed on this Mac with SYNTHETIC speech in a closed acoustic loop; no human has spoken to it. Not user-verified. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.9.)
+**V0.9 — READY FOR MANUAL TEST** (V0.8 and earlier: READY FOR MANUAL TEST as before)
+(Automated + REAL verification passed on this Mac against the live public web; no human has used the Research screen. Not user-verified. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.10.)
 
 ## Current Objective
 
-User manual test of `build/Jarvis.app` (README items 224–343 for V0.8 — install first: `scripts/setup_voice_ai.sh --natural` + `scripts/train_wake_head.sh`, then Settings → Voice → Wake word; 154–223 for V0.7 — enable Settings → Voice first; optional better recogniser: `scripts/setup_voice_ai.sh`; 126–153 for V0.6 — on the disposable fixture first, 92–125 for V0.5, 67–91 for V0.4, 40–66 for V0.3.2, 33–39 for V0.3.1, 26–32 for V0.3). Use a throw-away project for the V0.4 items. Optional local-model setup: `scripts/setup_local_ai.sh`.
+User manual test of `build/Jarvis.app` (README items 344–463 for V0.9 — Settings → Web research is on by default; import only on a COPY of a project; 224–343 for V0.8 — install first: `scripts/setup_voice_ai.sh --natural` + `scripts/train_wake_head.sh`, then Settings → Voice → Wake word; 154–223 for V0.7 — enable Settings → Voice first; optional better recogniser: `scripts/setup_voice_ai.sh`; 126–153 for V0.6 — on the disposable fixture first, 92–125 for V0.5, 67–91 for V0.4, 40–66 for V0.3.2, 33–39 for V0.3.1, 26–32 for V0.3). Use a throw-away project for the V0.4 items. Optional local-model setup: `scripts/setup_local_ai.sh`.
 
 ## Completed (IMPLEMENTED)
 
@@ -35,6 +37,19 @@ User manual test of `build/Jarvis.app` (README items 224–343 for V0.8 — inst
 - Settings: Reduce Motion, Show Developer Controls, Launch at Login (disabled placeholder, NOT implemented).
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
+
+## V0.9 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED on the live public web · report quality / real use / real import MANUAL TEST REQUIRED)
+
+* **Research** = an ordinary V0.4 task (`TaskKind.research`) with a fixed, budgeted plan: search → read → extract → [verify → compare] → report; typed step runners; web text is untrusted data (fenced, injection-scanned, never an instruction); model claims are accepted only with verbatim evidence; snippets are never evidence; UNKNOWN price is never free, unknown licence is never safe; fact / assessment / recommendation kept apart; contradictions listed. Details `docs/WEB_RESEARCH.md`.
+* **Network safety:** one production URL policy (SSRF: loopback/private/metadata/CGNAT/multicast/numeric spellings/file/ftp/credentials), DNS + per-hop + post-connection address checks, no cookies/credentials, per-host rate limit; read-only system-WebKit browser tier in a non-persistent store, torn down when idle.
+* **Providers (keyless):** Unity ScriptReference resolver, DuckDuckGo HTML, GitHub, Hacker News, Stack Exchange (API), Poly Haven, Kenney. Unity Asset Store: not automated (account-bound).
+* **Acquisition** (`docs/ASSET_ACQUISITION.md`): policy matrix, https-only bounded streaming download, SHA-256/MD5, published-checksum compare, content sniffing, `com.apple.quarantine`, archive inspection before extraction, provenance, interrupted-on-restart. **Import** = a separate approval-gated development task (`importIntoProject`, `AssetImporter`, V0.6 compile). Account actions / purchases: no code path.
+* **UI:** Full HUD → Research (sessions, sources, claims, candidates with factor bars, report, acquisitions), Settings → Web research; Compact HUD unchanged (392×448). Spoken requests use the same ConversationService path; V0.5 may propose research (never automatic).
+* Persistence: schema v7 (URLs/hashes/excerpts only). Observability: ordinary tasks + `ResearchAgent` runs.
+* Real findings fixed during the live runs: see `docs/DEVELOPMENT_LOG.md`. Honest limits: `docs/KNOWN_ISSUES.md` JARVIS-V09-1…12; V0.8 follow-up JARVIS-V08-15 (`train_wake_head.sh` failure detection).
+
+### Remaining Work
+User manual test (README 344–463). V0.10 (Project Memory) only with approval. No tag.
 
 ## V0.8 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED with SYNTHETIC speech in a closed acoustic loop · human speech / voice naturalness / real room / VoiceOver / battery MANUAL TEST REQUIRED)
 
@@ -150,6 +165,8 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Tested
 
+**V0.9 (2026-10-12) — `scripts/verify.sh` → VERIFY PASSED (119 smoke PASS / 0 FAIL / 2 SKIP, idle 0.02 CPU-s per 8 s, RSS 72 MB):** 1043 unit tests (142 suites; ≈146 new over V0.8's 897: URL policy/SSRF incl. IDN and numeric spellings, redirects, analyzers (price/licence/compatibility), grounding, injection fixtures, providers/parsers, query building/Turkish intake, ranking incl. relevance, downloader limits/hash/sniffing, archive attacks (traversal/absolute/symlink/bomb/lying header/CRC), acquisition state machine and policy, import plan/apply, the whole research/acquisition/import engine flows on a fixture web under the PRODUCTION URL policy (cancel, restart, approvals, budgets), V0.5 proposals, structural guards). Mutation check of the analyzers: all but one deliberately exempt case caught. V0.9 verify.sh guards (URLSession/WKWebView/URL literals/file writes confined, no CAPTCHA evasion, no key, UNKNOWN never free, only AssetImporter writes into a project, archive validation, https-only bounded downloads, budgets, no polling, browser torn down, no bodies/binaries in schema or git). Smoke: 6 V0.9 checks (Research tab fits the minimum width, Compact stays 392×448, research disabled by switch, etc.).
+**REAL TESTED — `Jarvis --research-live-test` (37 PASS / 0 FAIL, ≈ 3 min, live public web, own data dir):** URL-policy refusals (10/10) and an unreachable host · typed official-docs research (docs.unity3d.com read, classified OFFICIAL, cited 6.7 KB report, 20–24 s) · open-source library research (GitHub, SPDX licences, 6/8 with a licence) · community research (Stack Exchange API) · **spoken** Turkish asset request through the same ConversationService path (Poly Haven: Wooden Bucket 02 preferred, off-topic CC0 items not recommended; Claude Code + local Qwen) · **real acquisition** of that CC0 file into the quarantine: md5 matched the publisher, SHA-256 recorded, `com.apple.quarantine` set, provenance written, READY FOR IMPORT, nothing imported · cancellation (stops at once, no further queries) · browser tier (real page rendered, loopback refused, view released) · offline security fixtures under the production policy (injection flagged, bad redirects refused, executables/HTML-as-zip/MIME lies/scripts refused, traversal/absolute/symlink/bomb archives rejected, lying header aborts at extraction) · idle: no research task, no research-owned process, 0 connections. **Not done:** no human use; real-game import (fixtures only); WebKit helper processes not counted system-wide; Unity Asset Store not automated.
 **V0.8 (2026-10-12) — `scripts/verify.sh` → VERIFY PASSED (113 PASS / 0 FAIL / 2 SKIP, idle CPU 0.02 CPU-s per 8 s, RSS 72 MB):** 897 unit tests (118 suites; ≈ 124 new over V0.7's 773: endpoint policy, turn machine incl. the deaf-window re-check, barge-in detector + speech-band filter, hands-free coordinator with a fake helper and fake microphone, helper host/restart budget, wake/neural runtimes with fake helpers, transcript guards, voice identity/presets, authority and structural guards). Smoke test PASSED (V0.8 checks included; no microphone, helper or dialog in automated runs).
 **REAL TESTED — `Jarvis --natural-voice-live-test`:** SYNTHETIC speech (Apple system voices; never a person) through a closed acoustic loop (scripted microphone + simulated speaker with this Mac's measured coupling) into the REAL sentinel (wake head + Silero VAD), REAL Whisper, the REAL ConversationService and the REAL neural/Apple voice: final runs 55/55 (loop simulated), 58/58 with `--natural-acoustic --natural-idle 6` (REAL speaker→microphone loop, levels only; 6 min idle hold), 56/56 (+1 skipped) with `--natural-combined` next to a real `--unity-live-test` (59/59). V0.7 `--voice-live-test` regression 36/36. Numbers: `docs/NATURAL_VOICE.md` §11. (Earlier runs found and fixed the real defects listed in `docs/DEVELOPMENT_LOG.md`.)
 **NOT done / MANUAL TEST REQUIRED:** a human saying «Jarvis» (accent, distance, quiet voice), false wakes from real conversation/media, recognition of human speech, real-room barge-in and speaker volume, neural voice naturalness (A/B of the JARVIS presets), mixed-language quality, VoiceOver, Reduce Motion, battery over a day, headphones.
@@ -216,7 +233,7 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Important Decisions
 
-See `docs/DECISIONS.md` (DEC-001…DEC-087). Key ones:
+See `docs/DECISIONS.md` (DEC-001…DEC-102). Key ones:
 - Native Swift/SwiftUI/AppKit only (no Electron/React/Tauri/web UI).
 - UI/window state (`HUDState`) separated from application/task state (`JarvisStore`); closing HUDs never touches tasks.
 - All window control goes through `JarvisWindowControlling`.
@@ -233,7 +250,7 @@ See `docs/DECISIONS.md` (DEC-001…DEC-087). Key ones:
 
 ## Files Changed In Current Milestone
 
-Everything (baseline commit `feat(v0.1): establish native macOS Jarvis foundation`). Key areas: `Package.swift`, `Sources/Jarvis/{App,Core,Models,Services,UI}`, `Tests/JarvisTests`, `Resources/Info.plist`, `scripts/`, `docs/`, root `*.md`.
+V0.9: `Sources/Jarvis/Research/**` (new), `Persistence/ResearchRepository.swift` + schema v7, `Tasks/TaskEngine+Research.swift` and engine/intake/task-model integration, `UI/FullHUD/Research`, `UI/Settings/WebResearchSettingsSection`, `Services/Demo/Research*`, `App/ResearchLiveTest.swift`, `scripts/verify.sh` (V0.9 guards), `scripts/train_wake_head.sh` (failure detection), docs. Earlier: everything (baseline commit `feat(v0.1): establish native macOS Jarvis foundation`). Key areas: `Package.swift`, `Sources/Jarvis/{App,Core,Models,Services,UI}`, `Tests/JarvisTests`, `Resources/Info.plist`, `scripts/`, `docs/`, root `*.md`.
 
 ## Current Blocker
 
@@ -241,7 +258,7 @@ None.
 
 ## Next Action
 
-**Wait for the user's manual V0.3 … V0.8 test** (V0.8: README 224–343 — install `scripts/setup_voice_ai.sh --natural` + `scripts/train_wake_head.sh`, enable Settings → Voice → Wake word; V0.7: README 154–223 — enable Settings → Voice; V0.6: 126–153, on the fixture first) (`README.md` items 26–32, 33–39, 40–66, 67–91, 92–125, 126–153, 154–223 and 224–343). Do not start V0.9 (Web Research & Asset Acquisition) without explicit approval.
+**Wait for the user's manual V0.3 … V0.9 test** (V0.9: README 344–463 — Settings → Web research; try an import only on a COPY of a project; V0.8: README 224–343 — install `scripts/setup_voice_ai.sh --natural` + `scripts/train_wake_head.sh`, enable Settings → Voice → Wake word; V0.7: README 154–223 — enable Settings → Voice; V0.6: 126–153, on the fixture first) (`README.md` items 26–32, 33–39, 40–66, 67–91, 92–125, 126–153, 154–223 and 224–343). Do not start V0.9 (Web Research & Asset Acquisition) without explicit approval.
 
 ## Git
 
@@ -249,4 +266,4 @@ None.
 
 ## Last Updated
 
-2026-10-12 — V0.8 implemented, AUTOMATED TESTED, REAL TESTED with synthetic speech (real sentinel/VAD, real Whisper, real neural + Apple voices, real speaker→microphone loop levels), verified. READY FOR MANUAL TEST.
+2026-10-12 — V0.9 implemented, AUTOMATED TESTED, REAL TESTED on the live public web (research, a real CC0 download into the quarantine, security fixtures, cancellation, idle), verified. READY FOR MANUAL TEST.

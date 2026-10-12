@@ -192,3 +192,7 @@ Extension points that exist: `AudioInput` (any capture source), `VoiceCoordinato
 
 ## 16. V0.8 (natural voice & presence)
 V0.8 builds on everything above and changes three things: wake mode (opt-in) adds a continuous, local, bounded listening path before Push-to-Talk is needed; speech is now played by JARVIS' own output engine (the Apple synthesiser renders with `write`, the neural voice returns PCM) so barge-in can tell the user from JARVIS; and the preferred voice is a local neural voice with the Apple voices as fallback. §1 "does not have a wake word …" and §15 are superseded for those items; everything else (privacy of raw audio, PTT rules, providers, sanitization, authority, stop semantics) is unchanged. See `NATURAL_VOICE.md`.
+
+## V0.9 — spoken research
+
+A spoken research request ("Hamam oyunum için ücretsiz bir kova modeli araştır") is a normal final transcript: `ConversationService.submit(source: .voice)` → `ResearchIntake` → `TaskEngine.submitResearch`. JARVIS answers with the usual short opening line; the cited report stays on the Research screen (`SpeechRenderer` never reads a long report aloud, task completion is not announced — DEC-083). A spoken "yes"/"approve" can never approve a download or import (voice has no authority).

@@ -1,21 +1,20 @@
 # Current Task
 
 Version:
-V0.8 — Natural Voice & Presence — **READY FOR MANUAL TEST** (AUTOMATED TESTED · REAL TESTED with SYNTHETIC speech; not user-verified). Base: V0.7 (e5014bf), V0.6, V0.5, V0.4, V0.3.2, V0.3.1, V0.3, V0.2.1.
+V0.9 — Web Research & Asset Acquisition — **READY FOR MANUAL TEST** (committed on `main`). Base: V0.8 (7339edc), V0.7, V0.6, V0.5, V0.4, V0.3.2, V0.3.1, V0.3, V0.2.1.
 
 Task:
-Natural voice presence on the SAME conversation pipeline: opt-in local wake word "Jarvis", local VAD, natural endpointing, hands-free turn taking with a bounded follow-up window, barge-in with self-speech suppression, local neural JARVIS voice (Apple voices stay the fallback), original voice identity, low-latency flow. No spoken approvals, no tag, not COMPLETE, NOT V0.9.
+Structured, evidence-backed web research (any topic; Unity assets first) + safe download acquisition into a quarantine + a separate approval-gated import. Research / acquisition / project import / account action / purchase are different authority levels (DEC-088): V0.9 implements the first three and never the last two. Everything runs as ordinary V0.4 tasks. NOT V0.10 (project memory). No tag, no COMPLETE.
 
-Done (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED with synthetic speech):
-Research + benchmarks (wake, VAD, echo, neural TTS) · `Sources/Jarvis/Voice/Natural/*`, `Voice/SpeechPlayer.swift`, `Voice/PlayerBackedTTS.swift` · helpers `scripts/voice-ai/jarvis_sentinel_worker.py`, `jarvis_tts_worker.py`, `scripts/setup_voice_ai.sh --natural`, `scripts/train_wake_head.sh` · Settings / Full HUD / Compact HUD / menu bar · 897 unit tests · `--natural-voice-live-test` (55/55; 58/58 with the real speaker→microphone loop and a 6 min idle; combined sample next to a real Unity editor) · `scripts/verify.sh` → VERIFY PASSED · docs (`docs/NATURAL_VOICE.md`, DEC-069…087, JARVIS-V08-1…14, README checklist 224–343).
+State:
+IMPLEMENTED · AUTOMATED TESTED (1043 unit tests, `scripts/verify.sh` PASSED, smoke 119/0/2) · REAL TESTED (`--research-live-test` 37/0 on the live public web, a real md5-verified CC0 file in the quarantine) · **MANUAL TEST REQUIRED** (README 344–463). Docs: `docs/WEB_RESEARCH.md`, `docs/ASSET_ACQUISITION.md`, DEC-088…102, KNOWN_ISSUES JARVIS-V09-1…12 and JARVIS-V08-15.
 
 Next Step:
-USER manual test (README 224–343; install the voice stack first: `scripts/setup_voice_ai.sh --natural`, then `scripts/train_wake_head.sh`, then Settings → Voice → Wake word). Do NOT start V0.9 (Web Research & Asset Acquisition) without explicit approval. No tag until the user approves.
+Wait for the user's manual test. Do NOT start V0.10 without explicit approval. V0.8 follow-up still open: rerun `scripts/train_wake_head.sh --quick` on the user's Mac — it now prints the generator log tail on failure (JARVIS-V08-15).
 
 Blocked By:
 Nothing.
 
 Notes:
-- Wake mode is OFF by default. Models/runtimes are installed ONLY by the explicit scripts; JARVIS never downloads anything.
-- Automated runs never open the microphone, a helper or a permission dialog; `--natural-voice-live-test` uses a scripted microphone and a simulated speaker (silent); `--natural-acoustic` is the only part that touches the real microphone/speaker (audible, levels only).
-- Git: main only, no tags, no AI trailers (user rule).
+- Git: main only, no tags, no AI co-author trailers (the user's brief overrides the harness attribution reminder).
+- Research never runs while JARVIS is idle; no background crawling; no paid search API; no API key; no cookie/password access; no CAPTCHA bypass; the user's real game was never touched by automated tests.

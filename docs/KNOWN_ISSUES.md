@@ -363,3 +363,58 @@ Description: `setup_voice_ai.sh --natural` needs `uv` and network once (≈ 190 
 ### JARVIS-V08-14 — Occasional timing flakes in two automated checks (open, not a product defect as far as known)
 Seen once each: the V0.7 `--voice-live-test` check "no managed process left after shutdown" (registry count 1 right after `voice.shutdown()`, passed on every rerun; the failing check now prints the executable names) and the smoke test "Exclusivity: Full visible → Compact hotkey → only Compact" inside one `verify.sh` run (passed on rerun and in the next full verify). Both are timing-sensitive checks under load; neither reproduced after.
 
+
+
+## V0.9 — Web Research & Asset Acquisition
+
+### JARVIS-V09-1 — Not validated by a human
+Status: Open · MANUAL TEST REQUIRED
+Description: Everything was verified by unit tests (1043), fixtures under the production URL policy, `verify.sh` and `--research-live-test` on this Mac (real public web, real Poly Haven download). Nobody has used the Research screen, judged report quality, or tried real tasks of their own (README 344–463).
+
+### JARVIS-V09-2 — Unity Asset Store is not automated
+Status: Open · by design
+Description: the store has no public API and "free" assets need a signed-in account (account authority, not implemented). Research can read public listing pages when reachable and classify them `ACCOUNT ACTION REQUIRED`; JARVIS never signs in, accepts terms or claims an asset.
+
+### JARVIS-V09-3 — Discovery depends on a keyless HTML endpoint
+Status: Open · NON-BLOCKING
+Description: general web discovery uses DuckDuckGo's HTML endpoint (robots allow it). It can change or answer with a challenge; JARVIS then stops that provider (no evasion) and uses the structured providers (docs resolver, GitHub, Stack Exchange, Hacker News, Poly Haven, Kenney). Open-web questions are weaker in that case.
+
+### JARVIS-V09-4 — Relevance is word-based
+Status: Open · NON-BLOCKING
+Description: topical relevance compares stemmed subject words (glossary for common Turkish terms, model-translated English queries). Synonyms and unglossed Turkish words can miss a good candidate; the live run found no Poly Haven sink at all. A candidate that matches none of the request words is "not recommended", which is conservative. Image content is never judged (style fit is a text-only model assessment, labelled).
+
+### JARVIS-V09-5 — Stack Overflow pages are read through the API
+Status: Open · by design
+Description: the HTML pages answer 403 to automated requests; JARVIS uses the documented public API (≈ 300 requests/day without a key) for the question and top answers instead of trying to get around the block. Heavy use in one day can exhaust it.
+
+### JARVIS-V09-6 — Archive formats
+Status: Open · NON-BLOCKING
+Description: ZIP (extractable) and tar.gz/`.unitypackage` (listed, not extracted or imported) only; rar/7z/dmg/pkg are rejected as uninspectable; executables and installers are refused outright.
+
+### JARVIS-V09-7 — JavaScript-heavy and login-walled pages
+Status: Open · by design
+Description: the rendered tier is read-only (no clicks/typing, no sign-in, no CAPTCHA). A page that needs interaction is reported as "interaction required" and the user opens it in their own browser. Interactive browsing is V0.11.
+
+### JARVIS-V09-8 — Freshness is a moment, not a subscription
+Status: Open · by design
+Description: price and licence are verified when the research runs and again just before a download; there is no background re-verification. Evidence older than 24 h is flagged and requires approval for an automatic download.
+
+### JARVIS-V09-9 — Extraction quality depends on the routed model
+Status: Open · NON-BLOCKING
+Description: candidates from structured providers (Poly Haven, Kenney, GitHub) need no model; candidates and claims from arbitrary pages are extracted by the routed model (≤3 calls) and kept only when their quoted evidence is in the page. With no model available the report is thinner but never invented. The live runs used Claude Code and the local Qwen model (subscription/local, no paid API).
+
+### JARVIS-V09-10 — Browser-tier helper processes are not independently measured
+Status: Open · NON-BLOCKING
+Description: WebKit's content/network helpers are system-launched (XPC), not children of JARVIS. The live test verifies that the web view is released after use and shutdown and that no descendant process remains; it does not count WebKit helper processes system-wide.
+
+### JARVIS-V09-11 — Import is exercised on fixtures only
+Status: Open · MANUAL TEST REQUIRED
+Description: the importer, its approval and the Unity compile step are tested on disposable fixtures; importing a researched asset into your real game is for you to try (README 344–463), ideally on a copy.
+
+### JARVIS-V09-12 — Pre-existing Swift 6 warnings
+Status: Open · NON-BLOCKING
+Description: a few `lock()` in async contexts remain in the V0.8 natural-voice live test (warnings only, not errors in Swift 5 mode).
+
+### JARVIS-V08-15 — `train_wake_head.sh` did not notice failed generator jobs (found while V0.9 was in progress)
+Status: Mitigated (V0.9 session) · MANUAL TEST REQUIRED
+Description: on the user's Mac the script failed with `FileNotFoundError: …/pos.json`: the background speech-generation jobs were joined with a bare `wait` (which ignores failures) and their logs were deleted by the exit trap, so the real cause was invisible. The installed head is intact. Fix: every job's exit status is checked, the failing logs are printed (tail) and kept (`$WORK/gen_*.log`). The root cause of the generator failure on that Mac is still unknown (not reproduced: running it was interrupted) — rerun `scripts/train_wake_head.sh --quick` and send the printed log tail.
