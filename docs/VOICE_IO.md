@@ -196,3 +196,7 @@ V0.8 builds on everything above and changes three things: wake mode (opt-in) add
 ## V0.9 — spoken research
 
 A spoken research request ("Hamam oyunum için ücretsiz bir kova modeli araştır") is a normal final transcript: `ConversationService.submit(source: .voice)` → `ResearchIntake` → `TaskEngine.submitResearch`. JARVIS answers with the usual short opening line; the cited report stays on the Research screen (`SpeechRenderer` never reads a long report aloud, task completion is not announced — DEC-083). A spoken "yes"/"approve" can never approve a download or import (voice has no authority).
+
+## V0.10 — spoken memory questions
+
+A spoken "Playwright hakkında ne karar vermiştik?" is a normal final transcript: `ConversationService.submit(source: .voice)` → `ProjectMemory.recognizes/reply`. The answer is the same as typed; its final `Sources:`/`Kaynaklar:` line is **never read aloud** (`SpeechRenderer` drops it); there is no voice-specific memory path and spoken "yes/approve" still approves nothing.

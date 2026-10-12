@@ -59,3 +59,7 @@ Automated tests use disposable fixtures only; **the user's real game is never an
 ## 6. Not done (honest)
 
 Unity Asset Store and any login-bound "free" asset (account authority); `.unitypackage`/tar extraction and import (listed only); rar/7z; image/preview download (preview links are shown, never fetched); automatic update checks; purchases of any kind.
+
+## V0.10 — asset memory
+
+Acquisitions that reached READY_FOR_IMPORT, and imports, become asset-decision memories linked to the acquisition / import task and the destination (`modifies file:…`). They record what happened and why, not a permission: a later download or import still goes through the full V0.9 policy and approvals.

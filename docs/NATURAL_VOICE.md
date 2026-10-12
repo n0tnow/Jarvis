@@ -198,3 +198,7 @@ V0.8 ends at hearing and speaking. Web research, asset acquisition, memory and c
 ## V0.9 note
 
 Wake mode and hands-free turns are unchanged. A research started by voice behaves exactly like a typed one; no voice code path reaches the research, acquisition or approval layer (the V0.7/V0.8 voice-authority guards in `verify.sh` still pass, with the research live test listed as a developer tool beside `VoiceLiveTest`).
+
+## V0.10 note
+
+Hands-free turns and barge-in are unchanged; a memory question asked after the wake word takes the same path as a typed one. Voice code has no memory API (`verify.sh` voice-authority guards still pass).

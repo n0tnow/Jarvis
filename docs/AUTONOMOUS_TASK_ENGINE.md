@@ -197,3 +197,7 @@ A hands-free request ("Jarvis, … analyze the multiplayer issue") is the same `
 ## V0.9 — web tasks (DEC-089)
 
 `TaskKind.research` and `.acquisition` with typed capabilities `researchWeb` / `downloadToQuarantine` (an import is a `.development` task that additionally holds `importIntoProject`). Plans bypass the LLM planner (`ResearchPlanner`); step types `researchSearch/Read/Extract/Verify/Report`, `acquire`, `importAsset` carry their own capabilities, risk and idempotency; validation kinds `artifactAcquired`, `assetImported`. Web tasks get a `WorkspaceGuard(researchRoot:)` (a private scratch folder, never a project). Cancellation is checked between and inside fetches (`CancelFlag`); restart reconciliation marks them interrupted; a failed/cancelled task ends its research row. `useNetwork`/`useBrowser` remain ungrantable.
+
+## V0.10 — memory in the task engine
+
+`TaskEngine.runJob` is the single job path: for planner/analysis/coding/review/Unity/research agents it asks `ProjectMemory.contextFor(...)`, puts the bounded packet in front of the prompt, runs the job, and records the ids against the run. `onFinished` calls `ProjectMemory.taskFinished`: a completed task that changed files becomes an episode, a real failure (build/test/validation/compile) a failure memory; read-only, cancelled, infrastructure-failed and web tasks write nothing. Memory cannot start, approve or alter a task; with Project Memory off the engine behaves exactly as before.

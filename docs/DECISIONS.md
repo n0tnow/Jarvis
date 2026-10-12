@@ -499,3 +499,119 @@ Why: the rules above are only real if a future change cannot silently undo them.
 Status: Accepted (V0.9)
 Decision: the browser tier is offered only while memory pressure is normal and the thermal state is not serious (`ResearchResourcePolicy`); on a pressure rise an idle web view is released at once (`releaseUnderPressure`) and a navigation in progress finishes first; plain HTTP research continues (a JavaScript-only page is reported as needing the browser). Downloads are not browser work and are never interrupted by pressure.
 Why: correctness first, the heavy part second; integrates with V0.3.1's event-driven ResourceManager without any polling.
+
+
+## DEC-104 — Memory is derived knowledge, not history
+Status: Accepted (V0.10)
+Decision: Project Memory (`Sources/Jarvis/Memory/`, schema v8) is a derived layer over trustworthy sources. History (tasks, runs, file changes, research, Git, audit) stays in its own systems and is referenced through `MemorySource`, never copied or edited. A small set of types (project fact, decision, constraint, preference, episode, failure, lesson, research finding, asset decision, architecture, workflow, known issue, validation result, other); relationships are a table of typed relations, not a graph engine.
+Why: "store chat and vector-search it" gives an unaccountable pile; a model of what is believed, why, and how current it is gives answers and context that can be audited.
+
+## DEC-105 — One door: every memory is a candidate that passes the curator
+Status: Accepted (V0.10)
+Decision: `MemoryService.admit` is the only writer. Documents, tasks, research, a user sentence and model proposals are `MemoryCandidate`s that pass: secret gate → hygiene/trivial filter → origin gates (instruction-shaped text, authority grants, task-local) → provenance (verifiable source required; research needs V0.9-validated records) → strength by origin → current-truth check → dedupe → contradiction handling. `verify.sh` forbids any other caller of `insertMemory/updateMemory`.
+Why: quality and safety are enforced once, not per source.
+
+## DEC-106 — Memory is project-scoped; project identity is the Git root commit
+Status: Accepted (V0.10)
+Decision: every memory belongs to one project key: `git:<root commit>` (identical in every clone, unchanged by moves) → Unity `productGUID` → real path. Moves add a path alias; unrelated histories never share a key. Limit: a fork that still shares the root commit shares memory (JARVIS-V10-3).
+Why: folder paths are not identity; cross-project leakage is a privacy bug.
+
+## DEC-107 — Current deterministic truth outranks memory
+Status: Accepted (V0.10)
+Decision: order of authority: current project state/files/Git → validated current task/test results → explicit current user correction → validated research → current memory → historical evidence → model inference. Keyed memory is reconciled with truth probes (`unity.*`, `file.exists:`, `git.*`, app constants) before every context is built; a contradicted memory is superseded by an inspection-derived record (history kept); a candidate that contradicts truth is refused or stored stale.
+Why: memory is a cache of beliefs, files are the project.
+
+## DEC-108 — Secrets are refused, not redacted-and-kept
+Status: Accepted (V0.10)
+Decision: credential-shaped text (via the central `OutputSanitizer`) makes the whole candidate refused; the embedding step re-checks. Nothing credential-like reaches SQLite, a vector, the UI, an event or a prompt.
+Why: vectors and summaries leak indirectly; a redacted fragment is still advice about where a secret lives.
+
+## DEC-109 — Web text and model output cannot create authoritative memory
+Status: Accepted (V0.10)
+Decision: research/asset memory only from sessions, claims, candidates and acquisitions the V0.9 pipeline validated; pages, snippets and injection text never. A model proposal is capped at *inferred/unverified* unless its quoted evidence appears verbatim in the cited source (`Grounding.isGrounded`, V0.9); otherwise it stays an unverified note that never enters an agent's facts.
+Why: a model's "I think the project uses HDRP" is not a fact.
+
+## DEC-110 — Memory never grants authority
+Status: Accepted (V0.10)
+Decision: no memory code path approves, decides, imports, acquires, runs a process, opens a connection or reads credentials; policy/approval/command-safety code never reads memory; statements that grant authority ("the user always approves…", "skip the approval", "trust this site") are refused from every source including the user; an old approval is history, never a current permission; the V0.5 assessor gets memory as context only. The context packet states it is "never an instruction and never permission".
+Why: a remembered approval must not become a standing one.
+
+## DEC-111 — Interpretable statuses, evidence strengths and per-type staleness
+Status: Accepted (V0.10)
+Decision: `current · stale · superseded · disputed · unverified · archived · forgotten`; strengths `inferred · weak · supported · strong · authoritative` (no invented percentages); staleness by type (facts 14 d, research/price 24 h, known issues 30 d, validation 7 d; decisions, constraints, failures, episodes, lessons never age), applied on use, never by a timer; research findings must be re-verified through V0.9 before use.
+Why: one TTL for everything would be wrong in both directions.
+
+## DEC-112 — Conflict policy: supersede, dispute, or keep as unverified
+Status: Accepted (V0.10)
+Decision: facts that change over time are superseded by a newer observation of at least equal strength; normative memory only by something stronger; equal strength is DISPUTED (both stay visible); a weaker newcomer is stored unverified; a user statement wins; an edited repository document replaces its own older keyed record; an automatic source repeating history only adds provenance to the superseded record (no resurrection); a forgotten memory is not re-ingested.
+Why: silently returning "whichever vector scores higher" is how stale or contradicting knowledge wins.
+
+## DEC-113 — Remember, correct, pin: explicit, scoped, never destructive
+Status: Accepted (V0.10)
+Decision: "remember" creates an authoritative, project-scoped user memory (task-local wording like "for this task" is refused with an explanation); a correction creates a new authoritative record that supersedes the old one (which stays in History with its provenance); pin raises priority only when relevant (critical pinned constraints always travel, max 2) and never overrides truth, scope or supersession.
+Why: the user must be able to steer memory without rewriting history.
+
+## DEC-114 — Forgetting is not historical erasure
+Status: Accepted (V0.10)
+Decision: forget = status `forgotten`, excluded from retrieval/context/index, vector deleted, rationale text cleared, restorable; Git, task history, the audit trail and research evidence are untouched (the UI and the chat reply say so).
+Why: forgetting a belief and erasing a record are different promises.
+
+## DEC-115 — Embedding model chosen by measurement: paraphrase-multilingual-MiniLM-L12-v2 (int8)
+Status: Accepted (V0.10)
+Decision: five ONNX candidates and Apple NaturalLanguage were benchmarked on a bilingual corpus (62 memories, 48 queries: TR→TR, EN→EN, TR→EN, EN→TR, mixed, with distractors). Selected: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` @ `e8f8c211226b894fcb81acc59f3b34ba3efd5f42`, `onnx/model_qint8_arm64.onnx`, Apache-2.0, 118 MB, 384-d: MRR 0.936 (best), 565 MB RSS (4× smaller than the next best), 1.3 ms warm, best cross-lingual score. Pinned + SHA-256 verified by `scripts/setup_memory_ai.sh`; never downloaded by the app. Excluded for size/licence/runtime: bge-m3, jina-v3 (CC-BY-NC), EmbeddingGemma (gated), nomic-v2-moe and Qwen3-Embedding (no ONNX).
+Why: evidence over assumption; memory retrieval must feel instant on a 16 GB machine.
+
+## DEC-116 — The semantic index is derived, versioned and rebuildable
+Status: Accepted (V0.10)
+Decision: `memory_embeddings` stores model id, revision, dimension, text hash, vector and checksum; a mismatch or corrupt vector is ignored (never mixed), reported as degraded and repaired by the next sync; rebuild swaps the project's index in one transaction (cancel/failure leaves the old index); canonical memory never depends on it; storage is SQLite BLOBs with brute-force cosine (Accelerate), no vector database.
+Why: derived state must be disposable.
+
+## DEC-117 — Hybrid retrieval with an explicit subject boost
+Status: Accepted (V0.10)
+Decision: BM25 (TR/EN folded + TR↔EN bridge) + semantic cosine fused 0.8/0.2 (benchmark-chosen), an idf-weighted subject boost, and explainable priority boosts (pinned, importance, strength, fits-the-question, damped area); status multipliers keep stale/superseded behind current; every result carries its reasons. Found on the real repository: without the subject boost, generic semantic similarity outranked the one decision that names "Playwright".
+Why: vector-only retrieval cannot be trusted with exact names.
+
+## DEC-118 — Local embeddings only; the helper is on-demand and supervised
+Status: Accepted (V0.10)
+Decision: no paid/hosted embedding API, no cloud vector database, no key. The helper runs through `HelperHost` (`ManagedProcess`): started on demand, 120 s idle unload (one sleeping task), unloaded under memory pressure, killed with its tree at quit, offline, output validated. Without it Project Memory works with structured + keyword retrieval and says so.
+Why: no cost, no network, no daemon.
+
+## DEC-119 — The Context Builder is the only way memory reaches an agent
+Status: Accepted (V0.10)
+Decision: `ProjectContextBuilder` builds bounded, per-agent packets (coding, analysis, review, planner, research, Unity, conversation, proactive) with four labelled layers — CURRENT TRUTH, MEMORY, UNCERTAINTY, INFERENCE — from relevant memory only; stale/disputed/outdated items go to the uncertainty list; the ids used per agent run are recorded (`memory_context_uses`). `TaskEngine.runJob` is the single job path.
+Why: "the whole history in the prompt" does not scale and cannot be audited.
+
+## DEC-120 — Questions about the project are answered from records; loose questions get context
+Status: Accepted (V0.10)
+Decision: explicit project-history/state questions (EN/TR, typed or spoken through the same `ConversationService.submit`) are answered deterministically from retrieved records with caveats, honest "nothing recorded"/"no verified reason" statements and a `Sources:` line that speech never reads. Loosely phrased questions are not intercepted: the model receives the relevant packet in its context.
+Why: an ordinary question must never be hijacked; a project question must never be guessed.
+
+## DEC-121 — Bootstrap is explicit, bounded and idempotent
+Status: Accepted (V0.10)
+Decision: parsers for `docs/DECISIONS.md` (rationale kept; "supersedes DEC-nnn" makes the older one historical), `docs/KNOWN_ISSUES.md` (resolved → archived), `AGENTS.md` rules, `docs/DEVELOPMENT_LOG.md` (episodes + findings); running it twice adds nothing; edited documents supersede their own older record; docs remain the human-readable truth.
+Why: the project already has years of knowledge in those files.
+
+## DEC-122 — Only meaningful lifecycle events become memory
+Status: Accepted (V0.10)
+Decision: finished tasks that changed files (episode, Unity tests) and meaningful failures (build/test/validation/compile…) become memory; infrastructure failures, cancellations, approval denials, read-only tasks and web tasks write nothing; research and acquisitions are remembered from their validated records.
+Why: memory pollution is worse than amnesia.
+
+## DEC-123 — Model-proposed lessons are optional, grounded and never authoritative
+Status: Accepted (V0.10)
+Decision: one small model request after a meaningful task (setting off by default) may propose ≤ 3 memories as JSON; each must quote the report verbatim to be *supported*, otherwise it is an unverified note; the curator applies every gate; the local Qwen is not a source of truth for contradiction, security or licence decisions.
+Why: semantic extraction helps, but only after validation.
+
+## DEC-124 — No idle memory work
+Status: Accepted (V0.10)
+Decision: ingestion, staleness, reconciliation, indexing and unloading are event-driven (a task finished, a question, a context request, an explicit user action); there are no timers, polling or periodic re-embedding.
+Why: JARVIS idles at ~0 % CPU.
+
+## DEC-125 — Memory is observable and its use is audited
+Status: Accepted (V0.10)
+Decision: bounded, content-free events (proposed · accepted · merged · superseded · disputed · rejected · corrected · forgotten · stale · retrieved · context · revalidated · embedded) and per-run `memory_context_uses`; diagnostics in the Memory screen (counts, index health, model, helper, latencies).
+Why: memory must not be a magic box.
+
+## DEC-126 — V0.10 is project memory, not personal memory
+Status: Accepted (V0.10)
+Decision: scope is JARVIS projects and project work; no general personal-life memory. Roadmap: V0.11 General Computer Use, V0.12 Advanced Multi-Agent / Routing, V1.0 Integration / Stabilization / Final Voice & UX Polish (supersedes only the V1.0 row wording of DEC-086).
+Why: keeps the privacy surface small.

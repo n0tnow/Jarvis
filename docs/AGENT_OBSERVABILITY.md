@@ -153,3 +153,7 @@ Same feed, content-free and capped: "Wake mode on/off/unavailable: <reason>", "V
 ## V0.9 — research in the Observatory
 
 Research and acquisition are ordinary tasks: the Tasks list, activity ("Searching · query 3", "Reading · 5 sources", "Comparing · 4 candidates"), step list, approvals and Stop work unchanged. Each model call is an `agent_run` (`ResearchAgent`) with the sanitized prompt/answer under the usual limits; tool-like work (fetch, download, inspect) is reported as step evidence, not as raw bodies. Page text, URLs with tokens and response headers are sanitized at the existing choke points (`OutputSanitizer`, `HeaderRedactor`, `CanonicalURL.forStorage`); raw pages are never stored or shown in consoles.
+
+## V0.10 — memory in the Observatory
+
+Memory is not a hidden process: bounded, content-free events (proposed · accepted · merged · superseded · disputed · rejected · corrected · forgotten · stale · retrieved · context · revalidated · embedded) go to `memory_events` and short "Project memory · …" lines to the activity feed; a task that receives context logs "Context · N memories for CodingAgent". `memory_context_uses` answers "which memories did this agent run see?" (run id, task id, memory ids, truth keys, sizes). The Memory screen's Diagnostics shows counts by type/status, index health, embedding model/revision, helper state and RSS, last ingestion, last retrieval latency and the last agent context.

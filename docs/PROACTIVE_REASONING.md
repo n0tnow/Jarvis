@@ -99,3 +99,7 @@ Still no voice code in the proactive layer. Proposals are approved only with HUD
 ## V0.9 — research proposals (DEC-101)
 
 The proactive layer may *propose* a research ("the task failed with an unknown API error — research it?"): `OpportunityAssessor` rebuilds the action deterministically (no project-read capability), `OpportunityPolicy` has a web-authority rule (web research may only ever be *proposed* — decision `propose`, never automatic; an action that needs `downloadToQuarantine` or `importIntoProject` is `requireApproval` as its own separate decision), and `OpportunityEngine.proposeResearch/startTask` start it through `TaskEngine.submitResearch` with `originTaskID`/`autonomyDepth`. Policy still outranks confidence.
+
+## V0.10 — memory as context only
+
+`OpportunityEngine.modelAssess` may prepend a proactive-kind packet (constraints and decisions, ≤ 1,500 characters) to its assessment prompt. `OpportunityPolicy` never reads memory (guarded by `verify.sh` and a test): a remembered suggestion grants nothing, a remembered approval approves nothing, and confidence still never outranks policy.

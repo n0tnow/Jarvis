@@ -100,3 +100,7 @@ Variation is mostly the model call and DuckDuckGo pacing (≥2 s per query).
 ## 14. Honest limits
 
 See `KNOWN_ISSUES.md` JARVIS-V09-1…12: no human validation; Unity Asset Store not automated; discovery depends on a keyless HTML endpoint; word-based relevance (synonyms only via glossary/model queries); style fit is text-only; JavaScript-heavy or login-walled pages are reported as such, never bypassed.
+
+## V0.10 — research memory
+
+Completed, validated research sessions become ONE research finding plus asset decisions (recommended / alternative / rejected **with the recorded reason**) that point at the V0.9 records; nothing from a page, a snippet or an injected instruction is ever copied. Price/licence findings are `currentSensitive` (stale after 24 h) and must be re-verified through this pipeline before they are used for an action.

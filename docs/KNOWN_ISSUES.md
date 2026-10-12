@@ -418,3 +418,46 @@ Description: a few `lock()` in async contexts remain in the V0.8 natural-voice l
 ### JARVIS-V08-15 — `train_wake_head.sh` did not notice failed generator jobs (found while V0.9 was in progress)
 Status: Mitigated (V0.9 session) · MANUAL TEST REQUIRED
 Description: on the user's Mac the script failed with `FileNotFoundError: …/pos.json`: the background speech-generation jobs were joined with a bare `wait` (which ignores failures) and their logs were deleted by the exit trap, so the real cause was invisible. The installed head is intact. Fix: every job's exit status is checked, the failing logs are printed (tail) and kept (`$WORK/gen_*.log`). The root cause of the generator failure on that Mac is still unknown (not reproduced: running it was interrupted) — rerun `scripts/train_wake_head.sh --quick` and send the printed log tail.
+
+
+## V0.10 — Project Memory
+
+### JARVIS-V10-1 — Not validated by a human
+Status: Open · MANUAL TEST REQUIRED
+Description: verified by unit tests, `scripts/verify.sh` and `--memory-live-test` (real helper, the actual JARVIS repository as corpus). Nobody has used the Memory screen, judged answer quality on their own questions, or corrected/forgot real memories (README 464–583).
+
+### JARVIS-V10-2 — The retrieval benchmark is small and synthetic
+Status: Open · NON-BLOCKING
+Description: the model and fusion weights were chosen on 62 memories / 48 queries (2 English→Turkish queries only). Differences of a few points are noise. The real-repository checks (12 queries) are more representative but also few. One compound Turkish question ("İndirilen dosyaları neden doğrudan Unity projesine atmıyoruz?") ranks its decision 5th–7th (it moved as the repository's own docs grew), never in the 3 records the answer shows.
+
+### JARVIS-V10-3 — Forks that share a Git root commit share memory
+Status: Open · by design
+Description: project identity is the root commit (clones and moves keep memory); a fork or copy of a repository that still shares it also shares memory until its history diverges at the root. A folder that is not a Git repository and has no Unity `productGUID` is identified by its real path (a move creates a new project).
+
+### JARVIS-V10-4 — Loosely phrased questions are answered by the model, not by records
+Status: Open · by design
+Description: only questions that explicitly ask about this project's history/state ("what did we decide…") are answered deterministically; others reach the normal conversation with the relevant packet in context. If no provider is available, they get no answer. The packet is marked "use only if relevant" and can attach loosely related records to general questions.
+
+### JARVIS-V10-5 — Answers are composed, not written
+Status: Open · NON-BLOCKING
+Description: memory answers are accurate, cited and a little stiff (record sentences, short intros, Turkish intros around English records). A model-polished answer would read better but would need the packet plus a request per question.
+
+### JARVIS-V10-6 — Model-proposed lessons are off by default and lightly exercised
+Status: Open · NON-BLOCKING
+Description: the grounded extraction path (prompt, schema, verbatim-evidence check, curator) is unit-tested with fake answers; it has not been run against a real model on real task reports.
+
+### JARVIS-V10-7 — Keyword matching for Turkish is approximate
+Status: Open · NON-BLOCKING
+Description: 6-character prefix stemming plus a hand-written TR↔EN bridge; unusual inflections and unlisted vocabulary rely on the semantic signal (which needs the optional helper).
+
+### JARVIS-V10-8 — The embedding helper is optional and heavy-ish
+Status: Open · by design
+Description: `scripts/setup_memory_ai.sh` needs `uv` and network once (≈ 128 MB runtime + 118 MB model); the helper then holds ≈ 565 MB RSS while loaded (unloaded after 2 minutes idle / under pressure). Without it Project Memory works with structured + keyword retrieval, and the Memory screen says semantic search is unavailable.
+
+### JARVIS-V10-9 — Bootstrap reads only the documents it knows
+Status: Open · NON-BLOCKING
+Description: DECISIONS, KNOWN_ISSUES, AGENTS, DEVELOPMENT_LOG (+ Unity inspection, V0.9 database). Other docs (architecture, README, per-feature docs) and source code are not ingested; Git history is used as an identity/truth source, not mined. Task and conversation history from before V0.10 are not back-filled.
+
+### JARVIS-V10-10 — Pre-existing Swift 6 warnings
+Status: Open · NON-BLOCKING
+Description: a few `lock()`-in-async warnings remain in older live-test code (warnings only in Swift 5 mode).

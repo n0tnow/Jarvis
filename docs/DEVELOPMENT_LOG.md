@@ -352,3 +352,35 @@ Unit 1044 (143 suites) · verify PASSED · smoke 119/0/2 · idle 0.02 CPU-s/8 s,
 
 ### Remaining Work
 User manual test (README 344–463). V0.10 only with approval. No tag.
+
+
+## 2026-10-13 — V0.10 Project Memory
+
+### Goal
+Make JARVIS understand a project's history and current state without one giant prompt: a trustworthy, provenance-backed, queryable model of what is known, why, how current it is and when it should influence work — memory as a derived layer over history, never authority.
+
+### Changes
+`Sources/Jarvis/Memory/` (model, text + gates, curator `MemoryService`, truth probes, project identity, intent parser, ingestion + parsers + grounded model extractor, hybrid retrieval, derived semantic index, embedding helper controller, `ProjectContextBuilder`, cited answers, `ProjectMemory` facade, view model) · schema v8 + `MemoryRepository` · `TaskEngine.runJob` context injection with per-run audit · conversation (remember / correct / forget / questions, provider context) · Full HUD Memory screen + Settings · `scripts/setup_memory_ai.sh`, `scripts/memory-ai/` (worker + benchmark) · `--memory-live-test` · `verify.sh` V0.10 guards · docs (`PROJECT_MEMORY.md`, DEC-104…126, README 464–583).
+
+### Research (details in `docs/PROJECT_MEMORY.md` §7)
+Five ONNX embedding candidates (MiniLM-L12 int8, granite-107m, arctic-embed-m-v2 int8, e5-base, e5-small) and Apple NaturalLanguage on a 62-memory / 48-query bilingual corpus: MiniLM-L12 int8 best (MRR 0.936, 118 MB, 565 MB RSS, 1.3 ms); Apple NL 0.521 with no cross-lingual ability. Fusion weights from the same benchmark (0.8 semantic / 0.2 keyword → MRR 0.964).
+
+### Real findings (found by tests and the live run on the actual repository; all fixed)
+* Rare subject words lost to generic semantic similarity ("Playwright" ranked #8) → idf-weighted subject boost; "nothing recorded" was not detected (semantic floor 0.30 too low) → answerability; answers quoted the first sentence of a long decision instead of the one that answers → relevant-sentence excerpts.
+* Resolved issues were not parsed (`### JARVIS-R16` entries have an unlabeled body under `## Resolved`) and "supersedes DEC-nnn" was ignored → section-aware parsing and document-declared supersession.
+* Intercepting loosely phrased questions ("How do I install Unity?") hijacked ordinary chat → only explicit project-history questions are answered from records; the rest get the packet as model context.
+* Frame detection missed "Why did we choose…", "…atmıyoruz", "…seçtik", "constraint" → strong cues + first-person-plural verbs.
+* Pinned items bypassed the relevance gate in the Context Builder and filled packets → relevance first, only pinned CRITICAL constraints always travel.
+* `MainActor.assumeIsolated` inside service closures trapped off the main actor → lock-protected preference mirror; a `Set` literal with a duplicate element and a duplicate-key dictionary literal crash at run time → built from arrays, checked by a test; `String.hashValue` is randomised per process (flaky fake embedder) → FNV-1a; authority regex flagged restrictions ("never approves") as grants → restrictions are not grants.
+* Name collisions (`EvidenceStrength`, `ContextBuilder`) → `MemoryStrength`, `ProjectContextBuilder`.
+* The corpus is the repository itself, so live results move as the docs grow (the compound Turkish download question went from #5 to #7) → that query is reported as a known limit, not tuned away.
+* Structural guards caught: UI reading the repository (V0.9), a new `source: .voice` caller, "WebKit"/"allow"/"web" words in strings, README fake key shape.
+
+### Results
+Unit 1138 (159 suites) · verify PASSED · smoke 125/0/2 · idle 0.02 CPU-s/8 s, 73 MB · `--memory-live-test` 73/73 (≈ 2 min).
+
+### Decisions
+DEC-104 … DEC-126.
+
+### Remaining Work
+User manual test (README 464–583). V0.11 only with approval. No tag.

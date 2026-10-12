@@ -1,6 +1,6 @@
 # Architecture (V0.1)
 
-Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.9 (web research & asset acquisition: cited research, quarantine downloads, approval-gated import — all ordinary V0.4 tasks) on V0.8 (natural voice & presence: wake word, VAD, hands-free turns, barge-in, neural voice — an I/O layer, no authority) on V0.7 (voice I/O around the conversation pipeline; V0.6 Unity agent, V0.5 proactive layer, V0.4 task engine below). Decisions behind it: `DECISIONS.md`.
+Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.10 (project memory: derived, provenance-backed knowledge, hybrid retrieval, bounded agent context) on V0.9 (web research & asset acquisition: cited research, quarantine downloads, approval-gated import — all ordinary V0.4 tasks) on V0.8 (natural voice & presence: wake word, VAD, hands-free turns, barge-in, neural voice — an I/O layer, no authority) on V0.7 (voice I/O around the conversation pipeline; V0.6 Unity agent, V0.5 proactive layer, V0.4 task engine below). Decisions behind it: `DECISIONS.md`.
 
 ## Shape
 
@@ -160,7 +160,7 @@ Seams for V0.8: `AudioInput` (any capture source), `VoiceCoordinator.pushToTalkP
 ## Extension points for later milestones (not implemented)
 
 - V0.2: replace `LocalCommandHandler` with a command router (needs a response channel; today it only writes to the activity log).
-- V0.4–V0.9 are implemented (see above). Later (DEC-068/086): V0.10 project memory, V0.11 computer use, V0.12 advanced multi-agent — all through `TaskEngine.submit` and the V0.5 policy.
+- V0.4–V0.10 are implemented (see above). Later (DEC-068/086/126): V0.11 project memory, V0.11 computer use, V0.12 advanced multi-agent — all through `TaskEngine.submit` and the V0.5 policy.
 - Voice (V0.7 done): `VoiceCoordinator` owns the voice lifecycle and only claims `JarvisState.listening` while capture runs (never clobbering another owner).
 - Self-controlled UI (V0.10, with project memory): protocol may need `currentSection`, `hideSettings`, and a "don't steal focus" open variant.
 
@@ -185,3 +185,16 @@ readyForImport ─► (user) ─► submitImport = .development task + importInt
 ```
 `Sources/Jarvis/Research/`: `ResearchModel`, `URLPolicy` (+ `URLGate`, `CanonicalURL`), `HTTPTransport`, `WebClient`, `HTMLExtraction`, `SourceClassifier`, `LicenseAnalyzer`, `PriceAnalyzer`, `UnityCompatibility`, `UntrustedContent`, `SearchProviders` (+ `SearchTerms`), `RenderedPageProvider`, `QueryBuilder` (+ `ResearchIntake`), `ResearchPipeline` (+ Candidates), `CandidateRanker`, `ResearchReportBuilder`, `ResearchPlanner`, `ResearchServices`, `ResearchViewModel`; `Research/Acquisition/`: `ArtifactSniffer`, `ArchiveInspector`, `Downloader`, `AcquisitionService`, `AssetImporter`. Persistence: `ResearchRepository` (schema v7). UI: `UI/FullHUD/Research/ResearchSectionView`, `UI/Settings/WebResearchSettingsSection`. Test/live-test only: `Services/Demo/ResearchFixtures.swift` (fixture site, virtual public hosts), `Services/Demo/ResearchDemo.swift`, `App/ResearchLiveTest.swift`.
 Rules: research never writes files or runs processes; only `AssetImporter` writes into a project; no purchase/account code path exists; web text is data.
+
+## Project memory (V0.10 — DEC-104…126; details `PROJECT_MEMORY.md`)
+```
+sources (docs · finished tasks · validated research · Unity/Git inspection · user sentences · optional grounded model proposals)
+   └─► MemoryCandidate ─► MemoryService.admit  [secret · trivial · instruction/authority · provenance · current truth · dedupe · contradiction] ─► memory_items/sources/relations (schema v8)
+                                                  └─ supersede / dispute / stale / forgotten · reconcileWithTruth (TruthProbing: Unity, files, Git, app constants)
+retrieval: structured filters + BM25 (TR/EN fold + bridge) + cosine on the DERIVED index (memory_embeddings; MemoryIndex ◄─ EmbeddingHostController ◄─ HelperHost ◄─ jarvis_embed_worker.py, offline, on demand)
+   └─► MemoryRetriever (0.8 semantic / 0.2 keyword + idf subject boost + explainable boosts) ─► MemoryAnswerer (cited answers) · ProjectContextBuilder (bounded packets per agent kind)
+TaskEngine.runJob ─► packet in front of the job prompt ─► memory_context_uses(run id, memory ids) · ConversationService ─► ProjectMemory.recognizes/reply (remember · correct · forget · "what did we decide…") or the packet in the provider request
+Full HUD ▸ MEMORY (MemoryViewModel) · Settings ▸ Project memory
+```
+`Sources/Jarvis/Memory/`: `MemoryModel`, `MemoryText` (+ `MemoryGate`), `MemoryService`, `MemoryTruth`, `ProjectIdentity`, `MemoryIntent`, `MemoryIngest` (parsers · `MemoryIngestor` · `ModelMemoryExtractor`), `MemoryRetrieval`, `MemoryIndex`, `EmbeddingRuntime`, `ProjectContextBuilder`, `MemoryAnswer`, `ProjectMemory` (facade), `MemoryViewModel`; `Persistence/MemoryRepository`; `UI/FullHUD/Memory/MemorySectionView`, `UI/Settings/MemorySettingsSection`; helper `scripts/memory-ai/jarvis_embed_worker.py` + `scripts/setup_memory_ai.sh`; benchmark `scripts/memory-ai/bench/`; live test `App/MemoryLiveTest.swift`.
+Rules: memory is context, never authority; current project truth outranks it; the index is derived; nothing runs while idle.
