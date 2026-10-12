@@ -1,0 +1,9 @@
+# Pinned runtime for the V0.8 natural-voice helpers (wake word + VAD sentinel, neural voice). Installed by `scripts/setup_voice_ai.sh --natural`.
+# openwakeword is installed separately with --no-deps (its pip metadata would pull tflite/sklearn/requests we do not use).
+onnxruntime==1.31.0
+numpy==2.5.4
+scipy==1.18.1
+supertonic==1.3.1
+soundfile==0.14.0
+huggingface-hub==2.2.0
+tqdm==4.70.1
