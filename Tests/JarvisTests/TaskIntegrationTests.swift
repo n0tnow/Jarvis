@@ -59,7 +59,7 @@ private final class FakeSubmitter: TaskSubmitting {
     var projectName: String? { hasProject ? "fixture" : nil }
     var result: TaskSubmission = .started(title: "Fix the multiplayer sync")
     private(set) var submitted: [(String, GoalIntake.Intent)] = []
-    func submitTask(goal: String, intent: GoalIntake.Intent) async -> TaskSubmission {
+    func submitTask(goal: String, intent: GoalIntake.Intent, channel: InputSource) async -> TaskSubmission {
         submitted.append((goal, intent))
         return hasProject ? result : .needsProject
     }

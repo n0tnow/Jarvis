@@ -10,6 +10,12 @@ struct ModifierSample: Equatable {
     /// Seconds since the last real keyDown / mouse-down anywhere in the session. Lets us tell a pure
     /// modifier chord from ⌥⌘+<key> or ⌥⌘+click without any Accessibility / Input Monitoring permission.
     var secondsSinceOtherInput: TimeInterval
+    /// Which Option key(s) are down (device-dependent flag bits). `option` stays "either"; Push-to-Talk needs the RIGHT one alone.
+    var rightOption = false
+    var leftOption = false
+    /// Control or Shift individually (`other` is their union); Push-to-Talk treats any extra modifier as "not me".
+    var shift = false
+    var control = false
 }
 
 /// Modifier-only chord recogniser.

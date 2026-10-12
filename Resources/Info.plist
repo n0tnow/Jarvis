@@ -31,6 +31,8 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<!-- V0.1 requests NO privacy permissions: no NS*UsageDescription keys on purpose. -->
+	<!-- V0.7: the ONLY privacy key. The microphone is used solely while the user holds Push-to-Talk; audio is never stored. verify.sh and a unit test pin this. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>JARVIS listens only while you hold the Push-to-Talk key, to turn your speech into text. Audio is processed on this Mac and is never saved.</string>
 </dict>
 </plist>

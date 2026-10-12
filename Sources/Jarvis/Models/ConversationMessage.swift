@@ -12,6 +12,10 @@ enum MessageTone: String, Codable, Sendable { case normal, notice }
 /// Which path produced a JARVIS reply (see `IntelligenceRouter`).
 enum RouteKind: String, Codable, Sendable { case command, local, reasoning, worker, unsupported }
 
+/// How a user message reached JARVIS. Voice and typed text share ONE submission path; this only records where the text came from
+/// (a small mic mark in the UI, a "voice" tag on a task). It carries no privilege.
+enum InputSource: String, Codable, Sendable { case typed, voice }
+
 /// One entry in the conversation. Plain Codable value type so persistence can be added later without UI changes.
 struct ConversationMessage: Identifiable, Codable, Hashable, Sendable {
     var id = UUID()
@@ -23,4 +27,6 @@ struct ConversationMessage: Identifiable, Codable, Hashable, Sendable {
     var route: RouteKind?
     /// Display name of the provider that produced a reasoning reply ("Claude Code", "Codex"); nil for local replies.
     var provider: String?
+    /// For user messages: nil = typed. A voice message is the FINAL transcript of a push-to-talk utterance (partials are never messages).
+    var source: InputSource?
 }

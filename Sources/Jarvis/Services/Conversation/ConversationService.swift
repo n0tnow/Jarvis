@@ -53,6 +53,10 @@ final class ConversationService {
     /// True only if THIS service moved JARVIS into Thinking (so it never clobbers a state someone else set).
     @ObservationIgnored private var ownsThinking = false
     private(set) var isResponding = false
+    /// Task submissions whose acknowledgement has not been appended yet (the answer to a task request arrives after the task is persisted).
+    private(set) var pendingTaskAcks = 0
+    /// True while the answer to the latest submission is still being produced (provider streaming or a task being created).
+    var isAnswering: Bool { isResponding || pendingTaskAcks > 0 }
     private(set) var respondingProvider: ProviderID?
     private(set) var respondingProviderName: String?
     /// Audit/observatory id of the run currently being answered (so Stop can be addressed by run id).
@@ -60,6 +64,10 @@ final class ConversationService {
     var hasProviders: Bool { resolver.hasProviders }
     /// V0.4: the autonomous task layer. nil (tests, stubbed runs) keeps the V0.3 behaviour: worker requests start nothing.
     @ObservationIgnored weak var taskSubmitter: (any TaskSubmitting)?
+    /// Called at the start of every accepted submission (V0.7: a typed message silences speech that is still playing).
+    @ObservationIgnored var onSubmit: ((InputSource) -> Void)?
+    /// "stop talking" also silences speech that is playing (V0.7): returns true when something was being spoken.
+    @ObservationIgnored var stopSpeech: (() -> Bool)?
 
     init(store: JarvisStore, conversation: ConversationStore, windows: any JarvisWindowControlling,
          router: IntelligenceRouter = IntelligenceRouter(), resolver: (any IntelligenceProviderResolving)? = nil) {
@@ -75,18 +83,29 @@ final class ConversationService {
                 self?.conversation.clear()
                 self?.resolver.resetSessions()
             },
-            cancelGeneration: { [weak self] in self?.cancelCurrentResponse() ?? false })
+            cancelGeneration: { [weak self] in
+                let stoppedGeneration = self?.cancelCurrentResponse() ?? false
+                let stoppedSpeech = self?.stopSpeech?() ?? false
+                return stoppedGeneration || stoppedSpeech
+            })
     }
 
     /// Returns the routing decision taken (nil for blank input, which does nothing).
     @discardableResult
-    func submit(_ raw: String, origin: InputOrigin = .fullHUD) -> RouteDecision? {
+    func submit(_ raw: String, origin: InputOrigin = .fullHUD, source: InputSource = .typed) -> RouteDecision? {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
 
-        conversation.appendUser(text)
-        let decision = router.route(text)
+        onSubmit?(source)
+        conversation.appendUser(text, source: source)
         defer { announceLatestReply() }
+        // "yes" / "approve" never approves anything — typed or spoken. Approvals are HUD buttons only (V0.7, DEC-066).
+        if store.pendingApproval != nil, ApprovalGuard.isApprovalUtterance(text) {
+            let lang = InputNormalizer.normalize(text).language
+            conversation.appendJarvis(ApprovalGuard.notice(lang), tone: .notice, route: .local)
+            return .localResponse(.approvalNeedsHUD, lang)
+        }
+        let decision = router.route(text)
 
         switch decision {
         case .command(let intent, let lang):
@@ -94,18 +113,22 @@ final class ConversationService {
             conversation.appendJarvis(result.message, tone: result.tone, route: .command)
 
         case .localResponse(let reply, let lang):
-            conversation.appendJarvis(reply == .greeting ? Phrasebook.greeting(lang) : Phrasebook.thanks(lang), route: .local)
+            switch reply {
+            case .greeting: conversation.appendJarvis(Phrasebook.greeting(lang), route: .local)
+            case .thanks: conversation.appendJarvis(Phrasebook.thanks(lang), route: .local)
+            case .approvalNeedsHUD: conversation.appendJarvis(ApprovalGuard.notice(lang), tone: .notice, route: .local)
+            }
 
         case .reasoningRequired(let prompt, let lang):
             // "Analyze the multiplayer issue" with a project chosen is a bounded read-only TASK; without a project it stays a conversation.
             if let intent = GoalIntake.analysis(for: prompt), let submitter = taskSubmitter, submitter.hasProject {
-                handleTaskRequest(prompt, intent: intent, language: lang)
+                handleTaskRequest(prompt, intent: intent, language: lang, channel: source)
             } else {
                 handleProviderRequest(.reasoning, prompt: prompt, language: lang, origin: origin)
             }
 
         case .workerRequired(let prompt, let lang):
-            if taskSubmitter != nil { handleTaskRequest(prompt, intent: GoalIntake.development(for: prompt), language: lang) }
+            if taskSubmitter != nil { handleTaskRequest(prompt, intent: GoalIntake.development(for: prompt), language: lang, channel: source) }
             else { handleProviderRequest(.worker, prompt: prompt, language: lang, origin: origin) }
 
         case .unsupported(_, let lang):
@@ -131,11 +154,13 @@ final class ConversationService {
     // MARK: Task path (V0.4)
 
     /// A durable task is created BEFORE any work starts; the reply only confirms what really happened.
-    private func handleTaskRequest(_ prompt: String, intent: GoalIntake.Intent, language: ReplyLanguage) {
+    private func handleTaskRequest(_ prompt: String, intent: GoalIntake.Intent, language: ReplyLanguage, channel: InputSource) {
         guard let submitter = taskSubmitter else { return }
+        pendingTaskAcks += 1
         Task { @MainActor [weak self] in
             guard let self else { return }
-            switch await submitter.submitTask(goal: prompt, intent: intent) {
+            defer { self.pendingTaskAcks -= 1 }
+            switch await submitter.submitTask(goal: prompt, intent: intent, channel: channel) {
             case .started(let title): self.conversation.appendJarvis(Phrasebook.taskStarted(title, readOnly: intent.kind == .readOnlyAnalysis, language), route: .worker)
             case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
             case .rejected(let why): self.conversation.appendJarvis(why, tone: .notice, route: .worker)

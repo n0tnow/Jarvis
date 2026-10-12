@@ -17,8 +17,8 @@ extension JarvisRepository {
                     goal, kind, risk, workspace_root, started_at, current_step, activity, progress_fraction, progress_source, constraints,
                     failure_category, failure_reason, cancel_requested, recovery, plan_version, capabilities, git_baseline,
                     report_artifact_id, checkpoint_artifact_id, accumulated_seconds, preference, destructive_requested,
-                    origin, origin_task_id, origin_opportunity_id, autonomy_depth, scope)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    origin, origin_task_id, origin_opportunity_id, autonomy_depth, scope, input_channel)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, Self.taskParams(t))
         }
     }
@@ -31,7 +31,7 @@ extension JarvisRepository {
                     progress_fraction=?18, progress_source=?19, constraints=?20, failure_category=?21, failure_reason=?22, cancel_requested=?23,
                     recovery=?24, plan_version=?25, capabilities=?26, git_baseline=?27, report_artifact_id=?28, checkpoint_artifact_id=?29,
                     accumulated_seconds=?30, preference=?31, destructive_requested=?32,
-                    origin=?33, origin_task_id=?34, origin_opportunity_id=?35, autonomy_depth=?36, scope=?37
+                    origin=?33, origin_task_id=?34, origin_opportunity_id=?35, autonomy_depth=?36, scope=?37, input_channel=?38
                 WHERE id = ?1
                 """, Self.taskParams(t))
         }
@@ -45,7 +45,7 @@ extension JarvisRepository {
          .opt(t.failureCategory?.rawValue), .opt(Self.clean(t.failureReason, 1000)), .int(t.cancelRequested ? 1 : 0), .opt(Self.clean(t.recovery, 400)),
          .int(Int64(t.planVersion)), .text(Self.js(t.capabilities)), .opt(t.gitBaseline.map { Self.js($0) }), .opt(t.reportArtifactID?.uuidString),
          .opt(t.checkpointArtifactID?.uuidString), .double(t.accumulatedSeconds), .opt(t.preference?.rawValue), .int(t.destructiveRequested ? 1 : 0),
-         .text(t.origin.rawValue), .opt(t.originTaskID?.uuidString), .opt(t.originOpportunityID?.uuidString), .int(Int64(t.autonomyDepth)), .opt(t.scope.map { js($0) })]
+         .text(t.origin.rawValue), .opt(t.originTaskID?.uuidString), .opt(t.originOpportunityID?.uuidString), .int(Int64(t.autonomyDepth)), .opt(t.scope.map { js($0) }), .text(t.inputChannel.rawValue)]
     }
 
     private static func task(_ r: SQLRow) -> TaskRecord? {
@@ -79,6 +79,7 @@ extension JarvisRepository {
         t.originTaskID = uid(r.string("origin_task_id")); t.originOpportunityID = uid(r.string("origin_opportunity_id"))
         t.autonomyDepth = r.int("autonomy_depth") ?? 0
         t.scope = unjs(r.string("scope"), as: TaskScope.self)
+        t.inputChannel = r.string("input_channel").flatMap(InputSource.init(rawValue:)) ?? .typed
         return t
     }
 

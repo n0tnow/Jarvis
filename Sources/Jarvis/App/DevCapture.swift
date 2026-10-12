@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// `Jarvis --capture <dir>`: renders JARVIS's OWN windows to PNG files for visual inspection, then exits.
 /// Uses the window server's per-window image of this process's windows — no Screen Recording permission involved.
@@ -170,6 +171,44 @@ enum DevCapture {
         snapshot(of: NSApp.windows.first { $0 is SettingsWindow }, name: "settings", in: directory)
         NSApp.windows.first { $0 is SettingsWindow }?.orderOut(nil)
         w.showFullHUD(section: .dashboard); await settle(500)
+
+        // V0.7 voice states (simulated through the developer hook: no microphone, no recogniser, no speaker)
+        do {
+            let voice = context.voice
+            w.hideFullHUD(); w.showCompactHUD(); await settle(600)
+            DemoScenario.apply(.listening, to: store)
+            voice.simulate(state: .listening, partial: "Jarvis, Unity'deki son task'ın durumunu gös", level: 0.55); await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "voice_compact_listening", in: directory)
+            DemoScenario.apply(.idle, to: store)
+            voice.simulate(state: .speaking); await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "voice_compact_speaking", in: directory)
+            voice.simulate(state: .error("Microphone access was not allowed. You can allow it in System Settings; typing still works.")); await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "voice_compact_denied", in: directory)
+            voice.simulate(state: .idle)
+            w.hideCompactHUD(); w.showFullHUD(section: .dashboard); await settle(600)
+            context.conversation.clear()
+            context.conversation.appendUser("Jarvis, görevler ekranını aç", source: .voice)
+            context.conversation.appendJarvis("Görevleri açıyorum.", route: .command)
+            DemoScenario.apply(.listening, to: store)
+            voice.simulate(state: .listening, partial: "show me the latest task re", level: 0.6); await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "voice_full_listening", in: directory)
+            DemoScenario.apply(.idle, to: store)
+            voice.simulate(state: .speaking); await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "voice_full_speaking", in: directory)
+            voice.simulate(state: .idle); context.conversation.clear()
+
+            let saved = context.preferences.voiceEnabled
+            context.preferences.voiceEnabled = true
+            await voice.refreshProviders()
+            let host = NSHostingView(rootView: Form { VoiceSettingsSection() }.formStyle(.grouped).environment(context).frame(width: 480, height: 900))
+            let win = NSWindow(contentRect: NSRect(x: 60, y: 60, width: 480, height: 900), styleMask: [.titled], backing: .buffered, defer: false)
+            win.contentView = host
+            win.orderFrontRegardless(); await settle(900)
+            snapshot(of: win, name: "settings_voice", in: directory)
+            win.orderOut(nil)
+            context.preferences.voiceEnabled = saved
+            UserDefaults.standard.removeObject(forKey: "prefs.voice.enabled"); if saved { context.preferences.voiceEnabled = true }
+        }
 
         // Minimum window size (layout stress test)
         context.hud.section = .dashboard

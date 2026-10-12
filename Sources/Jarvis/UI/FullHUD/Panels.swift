@@ -15,7 +15,8 @@ struct SystemPanel: View {
                 KeyValueRow(key: "OpenCode", value: openCodeSummary, valueTint: app.openCode.state == .ready ? Theme.Palette.mint : Color.jarvisSecondary)
                 KeyValueRow(key: "Memory", value: app.resources.pressure.memory.rawValue.uppercased(),
                             valueTint: app.resources.pressure.memory == .normal ? Color.jarvisSecondary : Theme.Palette.amber)
-                KeyValueRow(key: "Permissions", value: "NONE REQUESTED")
+                KeyValueRow(key: "Voice", value: voiceSummary, valueTint: app.voice.state == .listening ? Theme.Palette.coral : (app.preferences.voiceEnabled ? Theme.Palette.mint : Color.jarvisSecondary))
+                KeyValueRow(key: "Permissions", value: app.preferences.voiceEnabled ? "MICROPHONE (WHILE HELD)" : "NONE REQUESTED")
                 KeyValueRow(key: "Motion", value: app.preferences.effectiveReduceMotion ? "REDUCED" : "FULL")
             }
         }
@@ -23,6 +24,10 @@ struct SystemPanel: View {
 }
 
 extension SystemPanel {
+    fileprivate var voiceSummary: String {
+        guard app.preferences.voiceEnabled else { return "OFF" }
+        return app.voice.state == .idle ? "READY · PUSH-TO-TALK" : app.voice.state.label
+    }
     fileprivate var providerSummary: String {
         let mode = app.preferences.providerPreference
         if let d = app.coordinator.lastDecision, let c = d.selected { return "\(mode == .auto ? "AUTO → " : "")\(c.engine.shortName)" }

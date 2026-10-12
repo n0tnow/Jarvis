@@ -10,6 +10,8 @@ struct CommandField: View {
     /// Shown in place of the placeholder while the field is empty: the latest JARVIS reply, one line,
     /// tail-truncated with "…" (full text on hover). Never changes the field's size.
     var feedback: String? = nil
+    /// V0.7: while Push-to-Talk is active, the (provisional) transcript or "Listening…" is shown here instead of the placeholder.
+    var voiceLine: String? = nil
     /// Becomes true when the surface appears → focus the composer so typing/pasting works immediately.
     var focusTrigger = false
     /// 1 = fixed single line with internal scrolling (Compact HUD, which must never resize); more = grows to that many lines.
@@ -60,7 +62,14 @@ struct CommandField: View {
     @ViewBuilder
     private var overlayText: some View {
         if text.isEmpty {
-            if let feedback {
+            if let voiceLine {
+                HStack(spacing: 4) {
+                    Image(systemName: "mic.fill").font(.system(size: 10)).foregroundStyle(Theme.Palette.coral).accessibilityHidden(true)
+                    Text(voiceLine).font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary).lineLimit(1).truncationMode(.head)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .allowsHitTesting(false).accessibilityHidden(true)
+            } else if let feedback {
                 Text("Jarvis: \(feedback)")
                     .font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary)
                     .lineLimit(1).truncationMode(.tail)

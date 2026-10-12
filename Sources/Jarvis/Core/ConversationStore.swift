@@ -21,8 +21,10 @@ final class ConversationStore {
     init() {}
 
     @discardableResult
-    func appendUser(_ text: String) -> ConversationMessage {
-        append(ConversationMessage(role: .user, content: String(text.prefix(Self.maxMessageLength))))
+    func appendUser(_ text: String, source: InputSource = .typed) -> ConversationMessage {
+        var m = ConversationMessage(role: .user, content: String(text.prefix(Self.maxMessageLength)))
+        if source == .voice { m.source = .voice }
+        return append(m)
     }
 
     @discardableResult

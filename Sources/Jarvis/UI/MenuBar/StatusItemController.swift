@@ -95,6 +95,11 @@ final class StatusItemController: NSObject {
         let menu = NSMenu()
         menu.addItem(withTitle: "Open JARVIS", action: #selector(openFullHUD), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Show Compact HUD", action: #selector(openCompactHUD), keyEquivalent: "").target = self
+        // V0.7: with the HUDs closed this is the way to silence JARVIS (the other ways: hold Push-to-Talk, type "stop talking").
+        if context.voice.speaker.isActive || context.voice.speaker.isSpeaking {
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "Stop Speaking", action: #selector(stopSpeaking), keyEquivalent: "").target = self
+        }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
@@ -109,5 +114,6 @@ final class StatusItemController: NSObject {
     @objc private func openFullHUD() { context.windows.showFullHUD(section: .dashboard) }
     @objc private func openCompactHUD() { context.windows.showCompactHUD() }
     @objc private func openSettings() { context.windows.showSettings() }
+    @objc private func stopSpeaking() { context.voice.stopSpeaking() }
     @objc private func quit() { NSApp.terminate(nil) }
 }

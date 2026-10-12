@@ -509,6 +509,37 @@ enum SmokeTest {
             check("V0.6 provider-supplied Unity actions that ask for code or menu items are rejected", UnityActionParser.parse(#"{"actions":[{"op":"executeMenuItem","menu":"File/Quit"}]}"#).actions.isEmpty)
         }
 
+        // --- V0.7 Voice on the real app context: automated runs never use the microphone, a recogniser helper, a permission request or the speaker.
+        do {
+            let voice = context.voice
+            check("V0.7 voice starts idle with the microphone closed, no helper process and no permission request", voice.state == .idle && !voice.isMicrophoneOpen && !context.whisper.hasActiveUtterance
+                  && context.whisper.workerPID == nil && ProcessRegistry.shared.count == 0)
+            voice.pushToTalkPressed()
+            check("V0.7 Push-to-Talk does nothing in an automated run (voice is disabled for stubbed runs: no microphone, no dialog)", voice.state == .idle && !voice.isMicrophoneOpen)
+            check("V0.7 the Compact HUD stays 392×448 while a voice state is shown", await {
+                w.hideFullHUD(); w.showCompactHUD(); _ = await waitUntil { w.isCompactHUDOpen }
+                var ok = true
+                for (st, partial) in [(VoiceSessionState.listening, "open the tasks sc"), (.transcribing, ""), (.thinking, ""), (.speaking, ""), (.error("The microphone is unavailable"), "")] {
+                    voice.simulate(state: st, partial: partial, level: 0.4)
+                    await settle(150)
+                    ok = ok && compactWindow()?.frame.size == CompactHUDLayout.size
+                }
+                return ok
+            }())
+            voice.simulate(state: .idle)
+            w.hideCompactHUD(); w.showFullHUD(section: .dashboard); _ = await waitUntil { w.isFullHUDOpen }
+            voice.simulate(state: .listening, partial: "show me the latest task report", level: 0.5)
+            await settle(250)
+            check("V0.7 Compact and Full stay mutually exclusive while the voice strip is visible", w.isFullHUDOpen && !w.isCompactHUDOpen)
+            voice.simulate(state: .idle)
+            w.hideFullHUD()
+            check("V0.7 a typed command still works while voice is idle (text is never blocked by voice)", { svc.submit("open the report", origin: .other); return true }())
+            await settle(200)
+            check("V0.7 the typed command ran through the same pipeline", context.hud.section == .report || w.isFullHUDOpen)
+            w.hideFullHUD(); w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
         print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")

@@ -321,6 +321,8 @@ struct TaskRecord: Equatable, Sendable, Identifiable {
     var destructiveRequested = false
     /// V0.5: who started this task and under which scope (nil scope = a user task: the user's goal is the scope).
     var origin: TaskOrigin = .userTask
+    /// Where the goal text came from (typed or a voice transcript). Informational: it changes no policy, capability or approval (V0.7).
+    var inputChannel: InputSource = .typed
     var originTaskID: UUID?
     var originOpportunityID: UUID?
     var autonomyDepth = 0

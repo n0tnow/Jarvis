@@ -11,11 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
-        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && (options.smokeTest || options.captureDirectory != nil))
+        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.voiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
         let liveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true)
             : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true)
             : (options.proactiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-proactive", isDirectory: true)
-            : (options.unityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-unity", isDirectory: true) : nil)))
+            : (options.unityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-unity", isDirectory: true)
+            : (options.voiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.voiceQuitChild ? "live-test-voice-child" : "live-test-voice", isDirectory: true) : nil))))
         context = AppContext(stubIntelligence: stubbed, dataDirectory: liveData)
         let ctx = context!
         Self.terminationHook = { MainActor.assumeIsolated { ctx.prepareForTermination() } }
@@ -31,9 +32,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let prefs = context.preferences
         let service = hotkeys!
-        observeContinuously(track: { _ = prefs.globalShortcutsEnabled },
-                            onChange: { prefs.globalShortcutsEnabled ? service.start() : service.stop() })
-        if prefs.globalShortcutsEnabled { service.start() }
+        // One sampling service for the HUD chords AND Push-to-Talk (V0.7): same permission-free modifier polling, no second hotkey system.
+        // It runs when either feature is on; the microphone is only ever touched by an explicit, held Push-to-Talk.
+        let voice = context.voice, stubbedRun = context.intelligenceIsStubbed, forceVoice = options.voiceLiveTest && !options.voiceQuitChild
+        let applyShortcuts: @MainActor () -> Void = {
+            let talk = !stubbedRun && (prefs.voiceEnabled || forceVoice) && prefs.voicePushToTalk
+            service.chordsEnabled = prefs.globalShortcutsEnabled
+            let handler: @MainActor (PushToTalkMachine.Action) -> Void = { action in
+                switch action {
+                case .press: voice.pushToTalkPressed()
+                case .release(let interrupted): voice.pushToTalkReleased(interrupted: interrupted)
+                }
+            }
+            service.performTalk = talk ? handler : nil
+            if !prefs.voiceEnabled { voice.cancelAll(reason: "turned off") }
+            if prefs.globalShortcutsEnabled || talk { service.start() } else { service.stop() }
+        }
+        observeContinuously(track: { _ = prefs.globalShortcutsEnabled; _ = prefs.voiceEnabled; _ = prefs.voicePushToTalk }, onChange: { applyShortcuts() })
+        applyShortcuts()
 
         if options.demoAgents { context.observatory.demo?.startShowcase(); context.observatory.selectedRunID = context.hub.activeRuns.first { $0.agentType == "PlannerAgent" }?.id }
         if options.demoStress { context.observatory.selectedRunID = context.observatory.demo?.startStress(linesPerSecond: 400) }
@@ -63,6 +79,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let context = context!, dir = options.liveDirectory ?? "captures", fixture = options.unityFixture, noProvider = options.unityNoProvider
             Task { await UnityLiveTest.run(context: context, captureDirectory: dir, fixtureTemplate: fixture, withProvider: !noProvider) }
         }
+        if options.voiceLiveTest {
+            let context = context!, dir = options.liveDirectory ?? "captures", audible = options.voiceAudible, noWhisper = options.voiceNoWhisper, realMic = options.voiceRealMic, combined = options.voiceCombined
+            if options.voiceQuitChild { Task { await VoiceLiveTest.runQuitChild(context: context) } }
+            else { Task { await VoiceLiveTest.run(context: context, captureDirectory: dir, audible: audible, skipWhisper: noWhisper, realMicrophone: realMic, combined: combined) } }
+        }
         if options.taskLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures"
             Task { await TaskLiveTest.run(context: context, captureDirectory: dir) }
@@ -82,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await DevCapture.run(directory: directory, context: context) }
         }
         // Find out which engines are actually usable (event-driven, once; no polling). Stubbed runs never touch real providers.
-        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest {
+        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.voiceLiveTest {
             let context = context!
             Task { await context.refreshIntelligence(includeOpenCode: false) }     // OpenCode is read lazily (may start its background service)
         }

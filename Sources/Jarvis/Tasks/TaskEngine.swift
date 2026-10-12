@@ -142,7 +142,8 @@ final class TaskEngine {
     @discardableResult
     func submit(goal rawGoal: String, kind: TaskKind, workspacePath: String, constraints: [String] = [], preference: ProviderPreference? = nil,
                 title: String? = nil, destructiveRequested: Bool = false, id: UUID? = nil, origin: TaskOrigin = .userTask,
-                originTaskID: UUID? = nil, originOpportunityID: UUID? = nil, autonomyDepth: Int = 0, scope: TaskScope? = nil) async -> Result<UUID, TaskSubmitError> {
+                originTaskID: UUID? = nil, originOpportunityID: UUID? = nil, autonomyDepth: Int = 0, scope: TaskScope? = nil,
+                inputChannel: InputSource = .typed) async -> Result<UUID, TaskSubmitError> {
         let goal = rawGoal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !goal.isEmpty else { return .failure(.empty) }
         guard let repository else { return .failure(.persistenceUnavailable) }
@@ -155,6 +156,7 @@ final class TaskEngine {
         let profile = TaskClassifier.profile(for: goal)
         var record = TaskRecord(id: id ?? UUID(), title: Self.makeTitle(title ?? goal), goal: String(goal.prefix(1500)), kind: kind)
         record.origin = origin; record.originTaskID = originTaskID; record.originOpportunityID = originOpportunityID; record.autonomyDepth = autonomyDepth; record.scope = scope
+        record.inputChannel = inputChannel
         record.category = kind == .development ? .repositoryModification : .research
         record.risk = destructiveRequested ? .high : (kind == .development ? .medium : .low)
         record.destructiveRequested = destructiveRequested && kind == .development

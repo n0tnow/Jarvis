@@ -40,6 +40,9 @@ final class AppContext {
     // V0.5 proactive layer: decides (never executes) — approved/auto actions become normal V0.4 tasks
     let opportunities: OpportunityEngine
     let proposalService: ProposalService
+    // V0.7 voice I/O: an input/output layer around the SAME conversation pipeline (never a second assistant)
+    let whisper: WhisperRuntime
+    let voice: VoiceCoordinator
     @ObservationIgnored private var sleepObservers: [NSObjectProtocol] = []
     private(set) var persistenceError: String?
     /// Automated runs (smoke/capture/--no-providers) use a throw-away data directory and NEVER touch real providers.
@@ -102,6 +105,8 @@ final class AppContext {
         taskIntake = TaskIntake(engine: taskEngine, preferences: preferences)
         opportunities = OpportunityEngine(repository: repo, audit: audit, tasks: taskEngine)
         proposalService = ProposalService(repository: repo, engine: opportunities)
+        whisper = WhisperRuntime(config: .standard(paths: runtimePaths, modelPath: stubIntelligence ? "/nonexistent/jarvis-stub-whisper" : preferences.whisperModelPath))
+        voice = VoiceCoordinator(sttProviders: [WhisperSTTProvider(runtime: whisper), AppleSpeechSTTProvider()], ttsProviders: [AppleSpeechSynthesizerProvider()], store: store)
 
         if stubIntelligence {
             // Stub at construction (not on first refresh): nothing may reach a real provider, its service, or the network.
@@ -115,6 +120,27 @@ final class AppContext {
         conversationService = ConversationService(store: store, conversation: conversation, windows: windowManager, resolver: coordinator)
         // Autonomous work is only enabled for the real app: stubbed automated runs never start tasks (and never reach providers).
         if !stubIntelligence { conversationService.taskSubmitter = taskIntake }
+
+        // --- V0.7 voice: wiring (nothing starts here: no microphone, no helper process, no permission request) ---
+        let voicePrefs = preferences
+        voice.settings = { stubIntelligence ? VoiceSettings(enabled: false) : voicePrefs.voiceSettings }          // automated runs never use voice
+        whisper.idleUnloadProvider = { [weak voicePrefs] in voicePrefs?.whisperIdleUnloadSeconds ?? 120 }
+        voice.memoryPressureNormal = { [weak self] in self?.resources.pressure.memory == .normal }
+        voice.conversation = { [weak self] in self?.conversation.messages ?? [] }
+        voice.conversationBusy = { [weak self] in self?.conversationService.isAnswering ?? false }
+        voice.submit = { [weak self] text, _ in
+            guard let self else { return nil }
+            // Same entry point as typed text; only the origin surface differs (Compact open → Compact behaviour, exactly like typing there).
+            self.conversationService.submit(text, origin: self.hud.isCompactVisible ? .compactHUD : .other, source: .voice)
+            return self.conversation.messages.last(where: { $0.role == .user })?.id
+        }
+        conversationService.onSubmit = { [weak self] source in if source == .typed { self?.voice.typedInputArrived() } }
+        conversationService.stopSpeech = { [weak self] in self?.voice.stopSpeaking() ?? false }
+        voice.onEvent = { [weak store] message, kind in store?.log(message, kind: kind) }
+        whisper.onEvent = { [weak store] message in store?.log(message, kind: .info) }
+        resources.observePressureRise { [weak self] _ in Task { @MainActor in await self?.whisper.unload() } }
+        observeContinuously(track: { [weak self] in _ = self?.conversation.messages; _ = self?.conversationService.isAnswering },
+                            onChange: { [weak self] in self?.voice.conversationChanged() })
 
         // Activity: meaningful events only (lifecycle, escalation, cooldown) — never tokens or health checks.
         let sink: (String) -> Void = { [weak store] in store?.log($0, kind: .info) }
@@ -155,7 +181,7 @@ final class AppContext {
             if r.leases > 0 { Log.app.info("released \(r.leases) stale file lease(s)") }
             taskEngine.restoreWaitingTasks()
             let nc = NSWorkspace.shared.notificationCenter
-            sleepObservers.append(nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak engine] _ in MainActor.assumeIsolated { engine?.willSleep() } })
+            sleepObservers.append(nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak engine, weak self] _ in MainActor.assumeIsolated { engine?.willSleep(); self?.voice.cancelAll(reason: "stopped for sleep") } })
             sleepObservers.append(nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak engine] _ in MainActor.assumeIsolated { engine?.didWake() } })
         }
         taskEngine.refreshHistory()
@@ -165,7 +191,7 @@ final class AppContext {
     }
 
     /// Normal termination / SIGTERM: stop scheduling, persist the interrupted state + checkpoints, release leases (processes are killed by `ProcessRegistry`).
-    func prepareForTermination() { taskEngine.prepareForTermination(); unity.forgetOwnedEditors() }
+    func prepareForTermination() { taskEngine.prepareForTermination(); unity.forgetOwnedEditors(); voice.shutdown() }
 
     /// User-triggered runs (benchmark, local test) whose Task can be cancelled from the Observatory.
     @ObservationIgnored fileprivate var userTasks: [UUID: Task<Void, Never>] = [:]

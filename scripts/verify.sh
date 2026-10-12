@@ -21,9 +21,12 @@ check "signature valid (strict, deep)" codesign --verify --strict --deep $APP
 check "arm64 binary" sh -c "lipo -archs $APP/Contents/MacOS/Jarvis | grep -q arm64"
 
 print "== Permission audit"
-! plutil -p $APP/Contents/Info.plist | grep -qi "UsageDescription" && pass "no NS*UsageDescription keys" || fail "no NS*UsageDescription keys"
+# V0.7 (DEC-057): the ONLY allowed privacy key is the microphone usage description (Push-to-Talk). Any other NS*UsageDescription still fails.
+other_usage=$(plutil -p $APP/Contents/Info.plist | grep -i "UsageDescription" | grep -v "NSMicrophoneUsageDescription" || true)
+[ -z "$other_usage" ] && pass "no NS*UsageDescription keys except the microphone (Push-to-Talk)" || fail "unexpected NS*UsageDescription key: $other_usage"
 [ -z "$(codesign -d --entitlements - $APP 2>/dev/null | grep -v -E '^Executable=')" ] && pass "no entitlements" || fail "no entitlements"
-! grep -rEl "AVCaptureDevice|CGRequestScreenCapture|CGPreflightScreenCapture|AXIsProcessTrusted|NSAppleScript|SFSpeechRecognizer|addGlobalMonitorForEvents|CGEventTapCreate|RegisterEventHotKey|IOHIDManager|CNContactStore|CLLocationManager|UNUserNotificationCenter" Sources \
+# (Exemption, V0.7: AVCaptureDevice may appear in Voice/MicrophoneAccess.swift ONLY — the single place that reads/requests the microphone permission.)
+! grep -rEl "AVCaptureDevice|CGRequestScreenCapture|CGPreflightScreenCapture|AXIsProcessTrusted|NSAppleScript|SFSpeechRecognizer|addGlobalMonitorForEvents|CGEventTapCreate|RegisterEventHotKey|IOHIDManager|CNContactStore|CLLocationManager|UNUserNotificationCenter" Sources | grep -v "^Sources/Jarvis/Voice/MicrophoneAccess.swift$" | grep -q . \
   && pass "no permission-gated API usage in sources" || fail "permission-gated API usage found in sources"
 
 # --- V0.3 provider policy (replaces the V0.2 blanket "no provider code" rule; docs/DECISIONS.md DEC-020) ---
@@ -49,7 +52,7 @@ forbid "no URL literals in product code (JARVIS contacts no host itself; provide
 forbid "the product never reads the pasteboard (only native paste; the dev smoke test is excluded)" "NSPasteboard|generalPasteboard" "App/SmokeTest\\.swift"
 
 # --- V0.3.1: persistence, models and secrets must never be committed; the local worker must stay offline ---
-tracked_bad=$(git ls-files 2>/dev/null | grep -E '\.(sqlite|sqlite3|sqlite-wal|sqlite-shm|db|safetensors|gguf|mlx|npz|pt|pth|onnx)$' || true)
+tracked_bad=$(git ls-files 2>/dev/null | grep -E '\.(sqlite|sqlite3|sqlite-wal|sqlite-shm|db|safetensors|gguf|mlx|npz|pt|pth|onnx|wav|caf|aiff|aif|m4a|mp3|flac|ogg|opus)$' || true)
 [ -z "$tracked_bad" ] && pass "no runtime database or model file is tracked by git" || { fail "runtime database / model file tracked: $tracked_bad"; }
 big=$(git ls-files 2>/dev/null | while read -r f; do [ -f "$f" ] && [ "$(stat -f%z "$f")" -gt 5242880 ] && echo "$f"; done)
 [ -z "$big" ] && pass "no tracked file larger than 5 MB" || fail "large tracked files: $big"
@@ -135,6 +138,38 @@ uni_raw=$(grep -rnE 'result\["(message|stack)"\]' Sources | grep -vE 'Sources/Ja
 [ -z "$uni_raw" ] && pass "raw Console message/stack fields are read only by the sanitizing UnityConsoleEntry initializer" || { fail "raw Unity console text read elsewhere"; echo "$uni_raw" | head -3; }
 tracked_unity=$(git ls-files 2>/dev/null | grep -E '(^|/)(Library|Temp|Logs|Obj|Build|Builds|UserSettings)/|\.(csproj|sln)$|\.unitypackage$' || true)
 [ -z "$tracked_unity" ] && pass "no generated Unity directory, solution file or package archive is tracked" || fail "tracked Unity output: $(echo $tracked_unity | head -c 200)"
+
+# --- V0.7 Voice I/O: an input/output layer around the SAME conversation pipeline — no authority, no always-on microphone, no stored audio ---
+# (Exemptions: App/SmokeTest.swift calls pushToTalkPressed() ON PURPOSE to prove an automated run never opens the microphone; App/VoiceLiveTest.swift
+#  opens the real microphone only with the explicit --voice-real-mic flag, to prove capture plumbing, and replays fixture audio through the coordinator.)
+voice_src() { find Sources/Jarvis/Voice -name '*.swift'; }
+voi_auth=$(voice_src | xargs grep -nE 'decideApproval|\.decide\(|approve|ProposalService|EngineTaskControlling|TaskEngine|ApprovedExecutables|ProjectTools|ConversationService|appendUser|appendJarvis|JarvisRepository' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$voi_auth" ] && pass "the voice layer cannot approve, edit, run or route anything itself (no approval/task/file/repository/conversation access)" || { fail "voice layer reaches an authority"; echo "$voi_auth" | head -3; }
+voi_entry=$(grep -rln 'source: \.voice' Sources | grep -v 'Sources/Jarvis/App/AppContext.swift' | grep -v 'Sources/Jarvis/Services/Conversation/ConversationService.swift' | grep -v 'Sources/Jarvis/Core/ConversationStore.swift' | grep -v 'Sources/Jarvis/Tasks/GoalIntake.swift' | grep -v 'Sources/Jarvis/App/DevCapture.swift' | grep -v 'Sources/Jarvis/App/VoiceLiveTest.swift' || true)
+[ -z "$voi_entry" ] && pass "a spoken transcript enters the conversation only through ConversationService.submit (the typed path) wired in AppContext" || { fail "voice input path outside AppContext/ConversationService: $voi_entry"; }
+voi_mic=$(grep -rnE 'AVAudioEngine\(|installTap|AVAudioInputNode|inputNode' Sources | grep -v 'Sources/Jarvis/Voice/AudioInput.swift' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$voi_mic" ] && pass "microphone capture exists in exactly one file (Voice/AudioInput.swift)" || { fail "audio capture outside AudioInput.swift"; echo "$voi_mic" | head -3; }
+voi_perm=$(grep -rnE 'AVCaptureDevice|requestAccess' Sources | grep -v 'Sources/Jarvis/Voice/MicrophoneAccess.swift' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$voi_perm" ] && pass "the microphone permission is read/requested in exactly one file (Voice/MicrophoneAccess.swift)" || { fail "permission API outside MicrophoneAccess.swift"; echo "$voi_perm" | head -3; }
+voi_launch=$(grep -rnE 'MicrophoneInput\(|pushToTalkPressed\(\)|\.start\(onFrame' Sources | grep -vE 'Sources/Jarvis/Voice/(VoiceCoordinator|AudioInput)\.swift|Sources/Jarvis/App/(AppDelegate|SmokeTest|VoiceLiveTest)\.swift' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$voi_launch" ] && pass "the microphone starts only from the Push-to-Talk handler (never at launch, from a timer, or from the UI)" || { fail "microphone start outside the PTT path"; echo "$voi_launch" | head -3; }
+voi_audio=$(grep -rnE 'forWriting|AVAudioRecorder|AVAssetWriter|\.(wav|caf|aiff|m4a)\"|writeFrames|ExtAudioFileCreate' Sources | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$voi_audio" ] && pass "no code can write an audio file (raw microphone audio is never persisted)" || { fail "audio file writing code"; echo "$voi_audio" | head -3; }
+voi_db=$(grep -nEi 'pcm|wav|audio_|waveform|partial_transcript|transcript_history|recording' Sources/Jarvis/Persistence/Migrations.swift | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$voi_db" ] && pass "the database schema has no audio, waveform, recording or partial-transcript storage" || { fail "audio-like storage in the schema"; echo "$voi_db" | head -3; }
+voi_paid=$(grep -rnEi 'speech\.googleapis\.com|texttospeech\.googleapis|deepgram|assemblyai|elevenlabs|polly\.[a-z0-9-]+\.amazonaws|cognitiveservices|openai.*(whisper-1|audio/(speech|transcriptions))|api\.speechmatics|rev\.ai|(ELEVENLABS|DEEPGRAM|ASSEMBLYAI|AZURE_SPEECH)[A-Z_]*' Sources scripts/voice-ai scripts/setup_voice_ai.sh | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|#)' || true)
+[ -z "$voi_paid" ] && pass "no paid or cloud speech API, endpoint or key variable exists (default voice path is local/system)" || { fail "paid/cloud speech reference"; echo "$voi_paid" | head -3; }
+voi_py=$(grep -nE '^[[:space:]]*(import|from)[[:space:]]+(requests|urllib|socket|http|httpx|aiohttp|websocket|subprocess|tempfile|soundfile|wave|pyaudio|sounddevice)' scripts/voice-ai/*.py || true)
+[ -z "$voi_py" ] && grep -q 'HF_HUB_OFFLINE' scripts/voice-ai/jarvis_stt_worker.py && pass "the speech helper imports no network/process/audio-file library and forces offline mode" || { fail "speech helper imports a forbidden library or is not offline"; echo "$voi_py" | head -3; }
+grep -q 'TranscriptText.clean' Sources/Jarvis/Voice/WhisperRuntime.swift && grep -q 'TranscriptText.clean' Sources/Jarvis/Voice/AppleSpeechSTT.swift && pass "recogniser/helper text passes the sanitizer before any other code sees it" || fail "recogniser output is not sanitized"
+grep -q 'maximumAudioSeconds' Sources/Jarvis/Voice/VoiceCoordinator.swift && grep -q 'bufferingNewest' Sources/Jarvis/Voice/VoiceCoordinator.swift && grep -q 'MAX_SECONDS' scripts/voice-ai/jarvis_stt_worker.py && pass "audio buffers are bounded (60 s hold limit, bounded frame queue, bounded helper buffer)" || fail "an audio buffer is no longer bounded"
+voi_poll=$(voice_src | xargs grep -nE 'Timer\.|scheduledTimer|CADisplayLink|DispatchSource' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$voi_poll" ] && pass "the voice layer has no timers or polling (event-driven; idle voice costs nothing)" || { fail "timer/polling in the voice layer"; echo "$voi_poll" | head -3; }
+voi_net=$(voice_src | xargs grep -nE 'URLSession|URLRequest|Data\(contentsOf|NWConnection|WebSocket|Process\(\)|NSTask|/bin/(ba|z)?sh|osascript|curl|wget' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+[ -z "$voi_net" ] && pass "the voice layer has no network, shell or scripting code" || { fail "network/shell code in the voice layer"; echo "$voi_net" | head -3; }
+[ "$(grep -c 'NSMicrophoneUsageDescription' Resources/Info.plist)" = "1" ] && pass "Info.plist declares exactly the microphone usage description" || fail "Info.plist microphone description missing or duplicated"
+tracked_voice=$(git ls-files 2>/dev/null | grep -E '(^|/)(voice-venv|whisper[^/]*|piper[^/]*)/|\.(wav|caf|aiff|m4a|mp3|flac|ogg|npz)$' || true)
+[ -z "$tracked_voice" ] && pass "no audio file, voice model or voice runtime is tracked by git" || fail "tracked voice artefact: $tracked_voice"
 
 print "== Smoke test (real window manager, store, status item)"
 log=$(mktemp)

@@ -15,7 +15,7 @@ struct CompactHUDView: View {
             AgentsSummaryStrip()
             actions(store)
             CommandField(text: $command, placeholder: "Command", origin: .compactHUD,
-                         feedback: app.conversation.feedbackLine, focusTrigger: app.hud.isCompactVisible,
+                         feedback: app.conversation.feedbackLine, voiceLine: compactVoiceLine, focusTrigger: app.hud.isCompactVisible,
                          onCancel: { app.windows.hideCompactHUD() })
             if app.preferences.showDeveloperControls && AgentsSummaryStrip.shown(app.hub) == nil {      // the dev strip yields while agent activity is shown
                 DevStateStrip(compact: true)
@@ -32,6 +32,13 @@ struct CompactHUDView: View {
                    value: app.store.activeTask?.status)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("JARVIS compact HUD")
+    }
+
+    /// While listening: the provisional transcript replaces the placeholder (one tail-truncated line; the field never changes size).
+    private var compactVoiceLine: String? {
+        guard app.voice.state == .listening || app.voice.state == .transcribing else { return nil }
+        let p = app.voice.partialTranscript
+        return p.isEmpty ? (app.voice.state == .listening ? "Listening…" : "Transcribing…") : "“\(p)”"
     }
 
     // MARK: Header
@@ -86,7 +93,10 @@ struct CompactHUDView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text("SYSTEM STATE").jarvisLabel(Theme.Opacity.textTertiary)
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    StateChip(state: store.state)
+                    HStack(spacing: Theme.Spacing.xs) {
+                        StateChip(state: store.state)
+                        CompactVoiceIndicator()
+                    }
                     Text(store.state.summary)
                         .font(Theme.Typography.body)
                         .foregroundStyle(Color.jarvisSecondary)

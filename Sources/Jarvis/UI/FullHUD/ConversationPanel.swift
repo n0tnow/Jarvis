@@ -9,6 +9,7 @@ struct ConversationPanel: View {
     var body: some View {
         let messages = Array(app.conversation.messages.suffix(Self.visibleLimit))
         HUDCard("Conversation", trailing: { ProviderBadge() }) {
+            VoiceStrip()
             if messages.isEmpty {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text("Type below. Try “open the report”, “what are you doing?” or “pause the task”.")
@@ -71,14 +72,19 @@ struct ConversationRow: View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.s) {
             Text(message.timestamp, format: .dateTime.hour().minute().second())
                 .font(Theme.Typography.mono).foregroundStyle(Color.jarvisTertiary).monospacedDigit()
-            Text(roleLabel)
-                .font(.system(size: 10.5, weight: .bold, design: .monospaced)).tracking(0.6)
-                .foregroundStyle(roleTint)
-                .frame(width: 52, alignment: .leading)
+            HStack(spacing: 3) {
+                Text(roleLabel)
+                    .font(.system(size: 10.5, weight: .bold, design: .monospaced)).tracking(0.6)
+                    .foregroundStyle(roleTint)
+                if message.role == .user && message.source == .voice {
+                    Image(systemName: "mic.fill").font(.system(size: 8.5)).foregroundStyle(Color.jarvisTertiary).accessibilityHidden(true)
+                }
+            }
+            .frame(width: 52, alignment: .leading)
             content
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(message.role == .user ? "You" : message.role == .jarvis ? "Jarvis" : "System"): \(message.content)")
+        .accessibilityLabel("\(message.role == .user ? (message.source == .voice ? "You, by voice" : "You") : message.role == .jarvis ? "Jarvis" : "System"): \(message.content)")
         .accessibilityValue(message.status == .complete ? "" : message.status.rawValue)
     }
 

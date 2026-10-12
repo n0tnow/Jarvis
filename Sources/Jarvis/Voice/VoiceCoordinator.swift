@@ -1,0 +1,478 @@
+import Foundation
+import Observation
+
+/// The ONE authority over the voice lifecycle (V0.7, DEC-057…): microphone → streaming recogniser → FINAL transcript → the existing
+/// conversation pipeline → the answer spoken by `VoiceResponseSpeaker`.
+///
+/// Voice is an I/O layer, not an intelligence engine. This class coordinates; it never routes, plans, approves, edits or runs anything:
+/// the final transcript goes through `submit` — the same `ConversationService.submit` a typed message uses.
+///
+///   IDLE ─press→ [REQUESTING PERMISSION] → LISTENING ─release→ TRANSCRIBING ─final→ THINKING ─first audio→ SPEAKING ─done→ IDLE
+///
+///  • LISTENING means microphone capture is actually running; it ends the instant the key is released (before any recognition work).
+///  • Only the FINAL transcript is submitted; partials are provisional and never become messages.
+///  • One session owns the microphone: a press while listening/transcribing is ignored (no double submission, no stale transcript);
+///    a press while JARVIS is speaking first stops the speech (explicit stop — NOT conversational barge-in, which is V0.8).
+///  • Voice never approves anything: there is no code path from here to an approval.
+@MainActor
+@Observable
+final class VoiceCoordinator {
+    // Observable state (UI)
+    private(set) var state: VoiceSessionState = .idle
+    private(set) var partialTranscript = ""
+    private(set) var permission: MicrophonePermission
+    private(set) var lastNotice: String?
+    private(set) var lastMetrics: VoiceTurnMetrics?
+    private(set) var level: Float = 0
+    private(set) var sttChoice = VoiceProviderChoice(id: nil, reason: "Not checked yet")
+    private(set) var ttsChoice = VoiceProviderChoice(id: nil, reason: "Not checked yet")
+    private(set) var sttAvailability: [String: STTAvailability] = [:]
+    private(set) var turns = 0
+
+    // Collaborators
+    @ObservationIgnored let sttProviders: [any SpeechToTextProvider]
+    @ObservationIgnored let ttsProviders: [any TextToSpeechProvider]
+    @ObservationIgnored let speaker: VoiceResponseSpeaker
+    @ObservationIgnored private let permissionProvider: any MicrophonePermissionProviding
+    @ObservationIgnored var makeInput: @MainActor () -> any AudioInput          // replaced only by the live test (fixture audio)
+    @ObservationIgnored private weak var store: JarvisStore?
+    @ObservationIgnored var settings: () -> VoiceSettings = { VoiceSettings() }
+    @ObservationIgnored var memoryPressureNormal: () -> Bool = { true }
+    /// Hands a FINAL transcript to the conversation pipeline; returns the id of the user message it created (nil = nothing was submitted).
+    @ObservationIgnored var submit: ((String, VoiceLanguage) -> UUID?)?
+    @ObservationIgnored var conversationBusy: () -> Bool = { false }
+    @ObservationIgnored var conversation: (() -> [ConversationMessage])?
+    /// Activity feed hook: meaningful lifecycle events only (never audio, never transcript text).
+    @ObservationIgnored var onEvent: ((String, ActivityKind) -> Void)?
+
+    // Limits
+    static let minimumAudioSeconds = 0.35
+    static let maximumAudioSeconds = 60.0
+    static let preBufferFrames = 700                  // ≈ 70 s: frames captured while the recogniser is still starting
+
+    // Session
+    @ObservationIgnored private var token = UUID()
+    @ObservationIgnored private var held = false
+    @ObservationIgnored private var input: (any AudioInput)?
+    @ObservationIgnored private var stt: (any STTSession)?
+    @ObservationIgnored private var sttProvider: (any SpeechToTextProvider)?
+    @ObservationIgnored private var sessionStart: Task<Void, Never>?
+    @ObservationIgnored private var pump: Task<Void, Never>?
+    @ObservationIgnored private var partials: Task<Void, Never>?
+    @ObservationIgnored private var frameSink: AsyncStream<AudioFrame>.Continuation?
+    @ObservationIgnored private var preBuffer: [AudioFrame] = []
+    @ObservationIgnored private var audioSeconds = 0.0
+    @ObservationIgnored private var metrics = VoiceTurnMetrics()
+    @ObservationIgnored private var pressedAt = Date()
+    @ObservationIgnored private var firstFrameAt: Date?
+    @ObservationIgnored private var firstPartialAt: Date?
+    @ObservationIgnored private var releasedAt = Date()
+    @ObservationIgnored private var ownsListeningState = false
+    @ObservationIgnored private var levelStamp = Date.distantPast
+    @ObservationIgnored private var lastReplyLanguage: VoiceLanguage = .english
+
+    init(sttProviders: [any SpeechToTextProvider], ttsProviders: [any TextToSpeechProvider], speaker: VoiceResponseSpeaker? = nil,
+         permission: (any MicrophonePermissionProviding)? = nil, store: JarvisStore? = nil,
+         makeInput: (@MainActor () -> any AudioInput)? = nil) {
+        let speaker = speaker ?? VoiceResponseSpeaker()
+        let permission = permission ?? SystemMicrophonePermission()
+        self.sttProviders = sttProviders
+        self.ttsProviders = ttsProviders
+        self.speaker = speaker
+        self.permissionProvider = permission
+        self.permission = permission.status          // a read, never a request
+        self.store = store
+        self.makeInput = makeInput ?? { MicrophoneInput() }
+        speaker.provider = { [weak self] in self?.activeTTS }
+        speaker.settings = { [weak self] in self?.settings().output ?? VoiceOutputSettings() }
+        speaker.onSpeakingChange = { [weak self] speaking in self?.speakingChanged(speaking) }
+        speaker.onFirstAudio = { [weak self] in self?.firstAudio() }
+        speaker.onTurnFinished = { [weak self] m in self?.turnFinished(m) }
+        speaker.onEvent = { [weak self] text in self?.onEvent?(text, .info) }
+    }
+
+    // MARK: Providers
+
+    var activeTTS: (any TextToSpeechProvider)? {
+        let choice = VoiceProviderSelection.chooseTTS(preference: settings().ttsProvider,
+                                                       candidates: ttsProviders.map { ($0.id, $0.displayName, $0.availability(), $0.capabilities.costClass) })
+        return ttsProviders.first { $0.id == choice.id }
+    }
+
+    /// Re-evaluates provider availability and selection (Settings opened, language changed, setup finished). Starts nothing.
+    func refreshProviders() async {
+        let s = settings()
+        var avail: [String: STTAvailability] = [:]
+        var candidates: [VoiceProviderSelection.STTCandidate] = []
+        for p in sttProviders {
+            let a = await p.availability(for: s.language)
+            avail[p.id] = a
+            candidates.append(.init(id: p.id, name: p.displayName, availability: a, capabilities: p.capabilities, loadsModel: p.id != "apple-speech"))
+        }
+        sttAvailability = avail
+        sttChoice = VoiceProviderSelection.chooseSTT(preference: s.sttProvider, candidates: candidates, memoryPressureNormal: memoryPressureNormal())
+        ttsChoice = VoiceProviderSelection.chooseTTS(preference: s.ttsProvider, candidates: ttsProviders.map { ($0.id, $0.displayName, $0.availability(), $0.capabilities.costClass) })
+        permission = permissionProvider.status
+    }
+
+    func refreshPermission() { permission = permissionProvider.status }
+
+    // MARK: Push-to-Talk
+
+    /// The key went down (and stayed down past the hold threshold).
+    func pushToTalkPressed() {
+        let s = settings()
+        guard s.enabled else { return }
+        switch state {
+        case .listening, .requestingPermission, .transcribing: return                 // one session owns the microphone
+        case .speaking, .idle, .thinking, .error: break
+        }
+        // Whatever JARVIS is saying stops BEFORE the microphone opens (explicit stop — not conversational barge-in, which is V0.8).
+        if speaker.isActive || speaker.isSpeaking { speaker.stop(reason: "stopped by a new push-to-talk") }
+        beginSession(settings: s)
+    }
+
+    /// The key went up (or a chord interrupted it: the audio is then discarded).
+    func pushToTalkReleased(interrupted: Bool = false) {
+        held = false
+        switch state {
+        case .requestingPermission:
+            invalidate(); setState(.idle)
+        case .listening:
+            endListening(interrupted: interrupted)
+        default: break
+        }
+    }
+
+    /// Hard stop of everything voice-related (settings turned voice off, app quit, device loss …). Idempotent.
+    func cancelAll(reason: String = "cancelled") {
+        let wasBusy = state != .idle
+        held = false
+        invalidate()
+        speaker.stop(reason: reason)
+        stopInput()
+        partialTranscript = ""
+        setState(.idle)
+        releaseListeningState()
+        if wasBusy { onEvent?("Voice \(reason)", .warning) }
+    }
+
+    /// Application termination: nothing may keep recording, speaking or running.
+    func shutdown() {
+        cancelAll(reason: "stopped at quit")
+        for p in sttProviders { p.shutdownNow() }
+        for p in ttsProviders { p.shutdownNow() }
+    }
+
+    /// The explicit "Stop speaking" control and the typed-message rule. Returns true if something was being spoken.
+    @discardableResult
+    func stopSpeaking() -> Bool {
+        let was = speaker.isSpeaking || speaker.isActive
+        let t0 = Date()
+        speaker.stop(reason: "stopped by you")
+        if was {
+            metrics.stopLatency = Date().timeIntervalSince(t0)
+            if state == .speaking || state == .thinking { setState(.idle) }
+        }
+        return was
+    }
+
+    // MARK: Session start
+
+    private func beginSession(settings s: VoiceSettings) {
+        invalidate()
+        token = UUID()
+        let mine = token
+        held = true
+        pressedAt = Date()
+        metrics = VoiceTurnMetrics()
+        partialTranscript = ""
+        lastNotice = nil
+        audioSeconds = 0; firstFrameAt = nil; firstPartialAt = nil
+        permission = permissionProvider.status
+        switch permission {
+        case .granted: startCapture(token: mine, settings: s)
+        case .notDetermined:
+            setState(.requestingPermission)
+            Task { @MainActor in
+                let result = await permissionProvider.request()
+                permission = result
+                guard token == mine else { return }
+                guard result.allowsCapture else { fail(.microphoneDenied(result)); return }
+                guard held else { setState(.idle); return }                              // released while the system dialog was open
+                startCapture(token: mine, settings: s)
+            }
+        case .denied, .restricted: fail(.microphoneDenied(permission))
+        }
+    }
+
+    private func startCapture(token mine: UUID, settings s: VoiceSettings) {
+        let device = makeInput()
+        let (stream, sink) = AsyncStream<AudioFrame>.makeStream(bufferingPolicy: .bufferingNewest(Self.preBufferFrames))
+        do {
+            try device.start(onFrame: { sink.yield($0) },
+                             onInterruption: { [weak self] why in Task { @MainActor in self?.deviceInterrupted(token: mine, why: why) } })
+        } catch {
+            sink.finish()
+            fail((error as? VoiceError) ?? .microphoneUnavailable("\(error)"))
+            return
+        }
+        input = device
+        frameSink = sink
+        preBuffer = []
+        // LISTENING only now — capture is genuinely running.
+        setState(.listening)
+        claimListeningState()
+        onEvent?("Voice: listening", .info)
+        pump = Task { @MainActor [weak self] in
+            for await frame in stream { self?.receive(frame, token: mine) }
+        }
+        sessionStart = Task { @MainActor [weak self] in await self?.openRecogniser(token: mine, settings: s) }
+    }
+
+    /// Chooses the recogniser and opens its session while audio is already being captured (frames wait in `preBuffer`).
+    private func openRecogniser(token mine: UUID, settings s: VoiceSettings) async {
+        await refreshProviders()
+        guard token == mine else { return }
+        guard let id = sttChoice.id, let provider = sttProviders.first(where: { $0.id == id }) else {
+            fail(.sttUnavailable(sttChoice.reason)); return
+        }
+        let language = provider.capabilities.autoDetectsLanguage ? s.language : (s.language == .auto ? .systemDefault : s.language)
+        do {
+            let session = try await provider.makeSession(language: language)
+            guard token == mine else { session.cancel(); return }
+            stt = session; sttProvider = provider
+            metrics.sttProvider = provider.id
+            metrics.language = language == .auto ? "auto" : language.rawValue
+            metrics.sttStartup = Date().timeIntervalSince(pressedAt)
+            partials = Task { @MainActor [weak self] in
+                for await event in session.events { self?.receivePartial(event, token: mine) }
+            }
+            for f in preBuffer { session.append(f) }
+            preBuffer = []
+        } catch {
+            guard token == mine else { return }
+            fail((error as? VoiceError) ?? .sttFailed("\(error)"))
+        }
+    }
+
+    private func receive(_ frame: AudioFrame, token mine: UUID) {
+        guard token == mine, state == .listening || state == .transcribing else { return }
+        if firstFrameAt == nil { firstFrameAt = Date() }
+        audioSeconds += frame.seconds
+        if let stt { stt.append(frame) } else if preBuffer.count < Self.preBufferFrames { preBuffer.append(frame) }
+        // Level indicator: at most 10 updates per second, only while listening.
+        if state == .listening, Date().timeIntervalSince(levelStamp) > 0.1 {
+            levelStamp = Date()
+            let rms = (frame.samples.reduce(Float(0)) { $0 + $1 * $1 } / Float(max(frame.samples.count, 1))).squareRoot()
+            level = min(1, rms * 8)
+        }
+        if audioSeconds >= Self.maximumAudioSeconds, state == .listening {
+            lastNotice = "Reached the \(Int(Self.maximumAudioSeconds)) second limit."
+            endListening(interrupted: false)
+        }
+    }
+
+    private func receivePartial(_ event: SpeechTranscriptEvent, token mine: UUID) {
+        guard token == mine, state == .listening || state == .transcribing, !event.isFinal else { return }
+        if firstPartialAt == nil, let first = firstFrameAt { firstPartialAt = Date(); metrics.firstPartial = Date().timeIntervalSince(first) }
+        partialTranscript = event.text                 // provisional: shown in the composer area, never a message
+    }
+
+    // MARK: Release → final transcript → shared submission path
+
+    private func endListening(interrupted: Bool) {
+        releasedAt = Date()
+        // 1. The microphone stops FIRST, before any recognition work.
+        stopInput()
+        level = 0
+        releaseListeningState()
+        if interrupted { invalidate(); partialTranscript = ""; setState(.idle); onEvent?("Voice: recording discarded (shortcut interrupted)", .info); return }
+        setState(.transcribing)
+        let mine = token
+        Task { @MainActor [weak self] in await self?.finalize(token: mine) }
+    }
+
+    private func finalize(token mine: UUID) async {
+        // Wait until every captured frame has been forwarded and the recogniser session exists.
+        await pump?.value
+        guard token == mine else { return }
+        if audioSeconds < Self.minimumAudioSeconds {                    // judged AFTER the last captured frame was counted
+            invalidate(); partialTranscript = ""; setState(.idle)
+            metrics.outcome = "tooShort"; lastMetrics = metrics
+            lastNotice = VoiceError.tooShort.message()
+            return
+        }
+        metrics.audioSeconds = audioSeconds
+        await sessionStart?.value
+        guard token == mine, let session = stt else { return }
+        do {
+            let event = try await session.finish()
+            guard token == mine else { return }
+            metrics.sttFinalization = Date().timeIntervalSince(releasedAt)
+            partials?.cancel()
+            let text = (event?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard text.contains(where: { $0.isLetter || $0.isNumber }) else {
+                partialTranscript = ""
+                metrics.outcome = "noSpeech"; lastMetrics = metrics
+                lastNotice = VoiceError.noSpeech.message()
+                finishSession(); return
+            }
+            metrics.transcriptLength = text.count
+            metrics.language = event?.language ?? metrics.language
+            deliver(text, language: event?.language)
+        } catch {
+            guard token == mine else { return }
+            fail((error as? VoiceError) ?? .sttFailed("\(error)"))
+        }
+    }
+
+    /// The FINAL transcript enters the same pipeline as typed text.
+    private func deliver(_ text: String, language: String?) {
+        let reply: VoiceLanguage = language.map { $0.hasPrefix("tr") ? .turkish : .english } ?? LanguageGuess.guess(text, fallback: lastReplyLanguage)
+        lastReplyLanguage = reply
+        partialTranscript = ""
+        turns += 1
+        onEvent?("Voice: transcript submitted (\(text.count) characters, \(reply.rawValue))", .info)
+        let s = settings()
+        let userMessage = submit?(text, reply)
+        stopRecogniserSession()
+        guard s.speakResponses, activeTTS != nil, let userMessage else {
+            metrics.outcome = metrics.outcome ?? "ok"; lastMetrics = metrics
+            setState(.idle); return
+        }
+        setState(.thinking)
+        speaker.beginTurn(afterUserMessage: userMessage, fallbackLanguage: reply, releasedAt: releasedAt, metrics: metrics)
+        speaker.update(messages: conversation?() ?? [], turnInProgress: conversationBusy())
+    }
+
+    /// Called by the conversation observer whenever messages change; cheap and idempotent.
+    func conversationChanged() {
+        guard speaker.isActive else { return }
+        speaker.update(messages: conversation?() ?? [], turnInProgress: conversationBusy())
+    }
+
+    /// Settings → "Test Turkish / English": speaks a short fixed phrase with the chosen voice (an explicit user click; no microphone, no conversation).
+    func speakSample(_ language: VoiceLanguage) {
+        guard activeTTS != nil else { lastNotice = VoiceError.ttsUnavailable("no voice engine is available").message(); return }
+        let text = language == .turkish ? "Merhaba, ben Jarvis. Sesim böyle." : "Hello, I am Jarvis. This is how I sound."
+        speaker.speakStandalone(text, language: language)
+    }
+
+    /// A typed message while JARVIS is speaking: the speech is stopped (the text conversation keeps going).
+    func typedInputArrived() {
+        if speaker.isActive || speaker.isSpeaking { stopSpeaking() }
+    }
+
+    // MARK: Speaker callbacks
+
+    private func firstAudio() { if state == .thinking { setState(.speaking) } }
+
+    private func speakingChanged(_ speaking: Bool) {
+        if speaking, state == .thinking { setState(.speaking) }
+        else if !speaking, state == .speaking { setState(.thinking) }                 // between phrases / waiting for more text
+    }
+
+    private func turnFinished(_ m: VoiceTurnMetrics) {
+        metrics.firstTextToSynthesis = m.firstTextToSynthesis; metrics.synthesisToFirstAudio = m.synthesisToFirstAudio
+        metrics.releaseToFirstAudio = m.releaseToFirstAudio; metrics.routingToFirstText = m.routingToFirstText
+        metrics.spokenSeconds = m.spokenSeconds; metrics.ttsProvider = m.ttsProvider; metrics.outcome = m.outcome
+        lastMetrics = metrics
+        if let t = metrics.releaseToFirstAudio { onEvent?("Voice: first audio \(Int(t * 1000)) ms after release", .info) }
+        if state == .thinking || state == .speaking { setState(.idle) }
+    }
+
+    // MARK: Failure / cleanup
+
+    private func deviceInterrupted(token mine: UUID, why: String) {
+        guard token == mine, state == .listening else { return }
+        stopInput()
+        fail(.microphoneUnavailable(why))
+    }
+
+    private func fail(_ error: VoiceError) {
+        invalidate()
+        stopInput()
+        stopRecogniserSession()
+        releaseListeningState()
+        partialTranscript = ""
+        level = 0
+        metrics.outcome = "error"; lastMetrics = metrics
+        let message = error.message(lastReplyLanguage == .turkish ? .tr : .en)
+        lastNotice = message
+        state = .error(message)
+        onEvent?("Voice problem: \(Self.category(error))", .warning)
+        // An error is shown, then the session returns to idle (a failure never leaves a stuck state).
+        let mine = token
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            guard let self, self.token == mine, case .error = self.state else { return }
+            self.state = .idle
+        }
+    }
+
+    private static func category(_ e: VoiceError) -> String {
+        switch e {
+        case .microphoneDenied: "microphone not allowed"; case .microphoneUnavailable: "microphone unavailable"
+        case .sttUnavailable: "recogniser unavailable"; case .sttFailed: "recognition failed"; case .ttsUnavailable: "speech unavailable"
+        default: "error"
+        }
+    }
+
+    private func finishSession() {
+        stopRecogniserSession()
+        setState(.idle)
+    }
+
+    /// Retires the current session token so every late callback of the old session is ignored.
+    private func invalidate() {
+        token = UUID()
+        sessionStart?.cancel(); sessionStart = nil
+        pump?.cancel(); pump = nil
+        partials?.cancel(); partials = nil
+        stt?.cancel(); stt = nil
+        preBuffer = []
+    }
+
+    private func stopRecogniserSession() {
+        partials?.cancel(); partials = nil
+        stt = nil; sttProvider = nil
+    }
+
+    private func stopInput() {
+        input?.stop()
+        input = nil
+        frameSink?.finish(); frameSink = nil
+    }
+
+    private func setState(_ new: VoiceSessionState) {
+        guard state != new else { return }
+        state = new
+        if new == .idle { level = 0 }
+        switch new {
+        case .listening: Announcer.announce("Listening", high: false)
+        case .error(let m): Announcer.announce(m, high: true)
+        default: break
+        }
+    }
+
+    // MARK: JarvisState ownership (never clobber a state someone else set)
+
+    private func claimListeningState() {
+        guard let store, store.state == .idle || store.state == .completed else { return }
+        store.setState(.listening)
+        ownsListeningState = true
+    }
+
+    private func releaseListeningState() {
+        guard ownsListeningState else { return }
+        ownsListeningState = false
+        if let store, store.state == .listening { store.setState(.idle) }
+    }
+
+    /// Developer / smoke-test / capture hook: shows a voice state in the HUD without touching the microphone or any provider. Never persisted.
+    func simulate(state new: VoiceSessionState, partial: String = "", level: Float = 0) { state = new; partialTranscript = partial; self.level = level }
+
+    /// True while the microphone engine exists — used by tests and the idle-microphone guard.
+    var isMicrophoneOpen: Bool { input?.isCapturing ?? false }
+}

@@ -23,7 +23,7 @@ enum CommandRouter {
         "ac", "goster", "git", "gec", "getir", "ver", "gor",
         "get", "check", "list", "pull", "return", "back", "all",
     ]
-    private static let tolerated: Set<String> = ["to", "tab", "page", "view", "screen", "section", "up", "on", "for", "ekrani", "sayfasi", "bolumu"]
+    private static let tolerated: Set<String> = ["to", "tab", "page", "view", "screen", "section", "up", "on", "for", "ekrani", "sayfasi", "bolumu", "ekranini", "sayfasini", "bolumunu"]
     /// Ambiguous single words that only count as a target together with a navigation verb ("go home", never bare "home").
     private static let needsVerb: Set<String> = ["home", "panel", "paneli", "task", "options", "setting", "ayar", "overview", "dashboardu"]
 

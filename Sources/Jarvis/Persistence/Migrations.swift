@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1, v2, v3, v4, v5]
+    static let all: [Migration] = [v1, v2, v3, v4, v5, v6]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -301,5 +301,11 @@ struct Migration: Sendable {
     /// Nothing else is stored: editor state is transient, console text is sanitized into step evidence, there is no table for raw Unity output.
     static let v5 = Migration(version: 5, name: "unity project agent", statements: [
         "ALTER TABLE task_steps ADD COLUMN unity_params TEXT",
+    ])
+
+    /// V6 — voice (V0.7): where a task's goal text came from ('typed' or 'voice'). Informational only. There is NO audio, transcript-history or
+    /// partial-transcript storage anywhere in the schema: raw microphone audio is never persisted.
+    static let v6 = Migration(version: 6, name: "voice input channel", statements: [
+        "ALTER TABLE tasks ADD COLUMN input_channel TEXT NOT NULL DEFAULT 'typed'",
     ])
 }

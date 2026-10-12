@@ -27,6 +27,9 @@ final class ResourceManager {
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     /// Called when memory pressure rises (the supervisor unloads the local model).
     @ObservationIgnored var onPressureRise: ((MemoryPressureLevel) -> Void)?
+    /// Additional listeners (V0.7: the voice layer unloads its speech helper). Same event, no polling.
+    @ObservationIgnored private var pressureObservers: [(MemoryPressureLevel) -> Void] = []
+    func observePressureRise(_ f: @escaping (MemoryPressureLevel) -> Void) { pressureObservers.append(f) }
 
     init() { refreshStatic() }
 
@@ -57,7 +60,7 @@ final class ResourceManager {
     func setMemory(_ level: MemoryPressureLevel) {
         let rose = (level == .warning && pressure.memory == .normal) || (level == .critical && pressure.memory != .critical)
         pressure.memory = level
-        if rose { onPressureRise?(level) }
+        if rose { onPressureRise?(level); pressureObservers.forEach { $0(level) } }
     }
 
     func refreshStatic() {

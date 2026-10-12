@@ -95,9 +95,10 @@ struct SettingsView: View {
                 Text("Needs no macOS permission. Chords that include another key, a click, Shift or Control are ignored.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            VoiceSettingsSection()
             Section {
                 LabeledContent("Version", value: "\(AppInfo.version) (\(AppInfo.milestone))")
-                LabeledContent("Permissions", value: "None requested")
+                LabeledContent("Permissions", value: app.preferences.voiceEnabled ? "Microphone (only while you hold Push-to-Talk)" : "None requested")
                 LabeledContent("Data", value: app.database == nil ? "persistence unavailable" : "SQLite · Application Support/JARVIS")
             }
         }

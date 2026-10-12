@@ -56,7 +56,11 @@ enum TaskSubmission: Equatable, Sendable {
 protocol TaskSubmitting: AnyObject {
     var hasProject: Bool { get }
     var projectName: String? { get }
-    func submitTask(goal: String, intent: GoalIntake.Intent) async -> TaskSubmission
+    func submitTask(goal: String, intent: GoalIntake.Intent, channel: InputSource) async -> TaskSubmission
+}
+
+extension TaskSubmitting {
+    func submitTask(goal: String, intent: GoalIntake.Intent) async -> TaskSubmission { await submitTask(goal: goal, intent: intent, channel: .typed) }
 }
 
 @MainActor
@@ -82,11 +86,11 @@ final class TaskIntake: TaskSubmitting {
     var hasProject: Bool { !preferences.projectRoot.isEmpty && (try? WorkspaceGuard(rootPath: preferences.projectRoot)) != nil }
     var projectName: String? { hasProject ? (preferences.projectRoot as NSString).lastPathComponent : nil }
 
-    func submitTask(goal: String, intent: GoalIntake.Intent) async -> TaskSubmission {
+    func submitTask(goal: String, intent: GoalIntake.Intent, channel: InputSource) async -> TaskSubmission {
         guard hasProject else { return .needsProject }
         let preference = preferences.providerPreference
         switch await engine.submit(goal: goal, kind: intent.kind, workspacePath: preferences.projectRoot, preference: preference == .auto ? nil : preference,
-                                   destructiveRequested: intent.destructive) {
+                                   destructiveRequested: intent.destructive, inputChannel: channel) {
         case .success(let id): return .started(title: engine.view(id)?.task.title ?? goal)
         case .failure(let e): return .rejected(e.description)
         }

@@ -21,6 +21,17 @@ final class Preferences {
         static let autonomyMode = "prefs.autonomy.mode"
         static let proactiveEnabled = "prefs.autonomy.proactiveEnabled"
         static let showProposals = "prefs.autonomy.showProposals"
+        static let voiceEnabled = "prefs.voice.enabled"
+        static let voicePTT = "prefs.voice.pushToTalk"
+        static let voiceSpeak = "prefs.voice.speakResponses"
+        static let voiceLanguage = "prefs.voice.language"
+        static let voiceSTT = "prefs.voice.sttProvider"
+        static let voiceTTS = "prefs.voice.ttsProvider"
+        static let voiceRate = "prefs.voice.speechRate"
+        static let voiceTrVoice = "prefs.voice.turkishVoice"
+        static let voiceEnVoice = "prefs.voice.englishVoice"
+        static let whisperModelPath = "prefs.voice.whisperModelPath"
+        static let whisperIdle = "prefs.voice.whisperIdleUnloadSeconds"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -61,6 +72,24 @@ final class Preferences {
     var proactiveReasoningEnabled: Bool { didSet { defaults.set(proactiveReasoningEnabled, forKey: Key.proactiveEnabled) } }
     var showProposals: Bool { didSet { defaults.set(showProposals, forKey: Key.showProposals) } }
     var autonomySettings: AutonomySettings { AutonomySettings(mode: autonomyMode, proactiveEnabled: proactiveReasoningEnabled, showProposals: showProposals) }
+    // V0.7 voice. The microphone is OFF unless the user turns Voice on here AND holds the Push-to-Talk key.
+    var voiceEnabled: Bool { didSet { defaults.set(voiceEnabled, forKey: Key.voiceEnabled) } }
+    var voicePushToTalk: Bool { didSet { defaults.set(voicePushToTalk, forKey: Key.voicePTT) } }
+    var voiceSpeakResponses: Bool { didSet { defaults.set(voiceSpeakResponses, forKey: Key.voiceSpeak) } }
+    var voiceLanguage: VoiceLanguage { didSet { defaults.set(voiceLanguage.rawValue, forKey: Key.voiceLanguage) } }
+    var voiceSTTProvider: String { didSet { defaults.set(voiceSTTProvider, forKey: Key.voiceSTT) } }
+    var voiceTTSProvider: String { didSet { defaults.set(voiceTTSProvider, forKey: Key.voiceTTS) } }
+    var voiceSpeechRate: Double { didSet { defaults.set(voiceSpeechRate, forKey: Key.voiceRate) } }
+    var voiceTurkishVoice: String { didSet { defaults.set(voiceTurkishVoice, forKey: Key.voiceTrVoice) } }
+    var voiceEnglishVoice: String { didSet { defaults.set(voiceEnglishVoice, forKey: Key.voiceEnVoice) } }
+    /// Directory of the optional Whisper model (created by `scripts/setup_voice_ai.sh`; never downloaded by JARVIS).
+    var whisperModelPath: String { didSet { defaults.set(whisperModelPath, forKey: Key.whisperModelPath) } }
+    var whisperIdleUnloadSeconds: Double { didSet { defaults.set(whisperIdleUnloadSeconds, forKey: Key.whisperIdle) } }
+    var voiceSettings: VoiceSettings {
+        VoiceSettings(enabled: voiceEnabled, pushToTalkEnabled: voicePushToTalk, speakResponses: voiceSpeakResponses, language: voiceLanguage, sttProvider: voiceSTTProvider,
+                      ttsProvider: voiceTTSProvider, speechRate: voiceSpeechRate, turkishVoiceID: voiceTurkishVoice, englishVoiceID: voiceEnglishVoice)
+    }
+
     /// Seconds of inactivity before the local model is unloaded from memory.
     var localIdleUnloadSeconds: Double { didSet { defaults.set(localIdleUnloadSeconds, forKey: Key.localIdleUnload) } }
 
@@ -89,6 +118,17 @@ final class Preferences {
         autonomyMode = defaults.string(forKey: Key.autonomyMode).flatMap(AutonomyMode.init(rawValue:)) ?? .askBeforeActing
         proactiveReasoningEnabled = defaults.object(forKey: Key.proactiveEnabled) as? Bool ?? true
         showProposals = defaults.object(forKey: Key.showProposals) as? Bool ?? true
+        voiceEnabled = defaults.object(forKey: Key.voiceEnabled) as? Bool ?? false
+        voicePushToTalk = defaults.object(forKey: Key.voicePTT) as? Bool ?? true
+        voiceSpeakResponses = defaults.object(forKey: Key.voiceSpeak) as? Bool ?? true
+        voiceLanguage = defaults.string(forKey: Key.voiceLanguage).flatMap(VoiceLanguage.init(rawValue:)) ?? .auto
+        voiceSTTProvider = defaults.string(forKey: Key.voiceSTT) ?? "auto"
+        voiceTTSProvider = defaults.string(forKey: Key.voiceTTS) ?? "auto"
+        voiceSpeechRate = defaults.object(forKey: Key.voiceRate) as? Double ?? 1.0
+        voiceTurkishVoice = defaults.string(forKey: Key.voiceTrVoice) ?? ""
+        voiceEnglishVoice = defaults.string(forKey: Key.voiceEnVoice) ?? ""
+        whisperModelPath = defaults.string(forKey: Key.whisperModelPath) ?? WhisperRuntimeConfig.defaultModelPath
+        whisperIdleUnloadSeconds = defaults.object(forKey: Key.whisperIdle) as? Double ?? 120
         systemReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         motionObserver = NSWorkspace.shared.notificationCenter.addObserver(
