@@ -179,6 +179,30 @@ enum ResearchLiveTest {
                         check("The artifact was hash-verified, inspected, and is DOWNLOADED/INSPECTED — not blindly trusted", rec.trust == .inspected || rec.trust == .validatedForImport, rec.trust.rawValue)
                         check("A provenance record exists beside the artifact", rec.quarantinePath.map { FileManager.default.fileExists(atPath: context.paths.acquisitions.appendingPathComponent(($0 as NSString).deletingLastPathComponent).appendingPathComponent("provenance.json").path) } ?? false)
                         check("Nothing was imported anywhere (only an explicit import task can do that)", rec.importedTo == nil)
+
+                        // The REAL artifact, imported into a DISPOSABLE folder project (a throw-away Git fixture; no Unity editor, never your game): the import task, its approval, the workspace guard, hashes and provenance.
+                        let project = TaskDemo.makeProject()
+                        defer { try? FileManager.default.removeItem(atPath: project) }
+                        func git(_ args: [String]) async { _ = await ManagedProcess.runOnce(executable: "/usr/bin/git", arguments: ["-c", "user.name=JARVIS Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false"] + args, environment: ProviderEnvironment.make(), workingDirectory: project, timeout: 20) }
+                        await git(["init", "-q", "-b", "main"]); await git(["add", "-A"]); await git(["commit", "-q", "-m", "initial"])
+                        let before = Set(((try? FileManager.default.subpathsOfDirectory(atPath: project)) ?? []).filter { !$0.hasPrefix(".git") })
+                        if case .success(let importID) = await tasks.submitImport(rec, projectRoot: project) {
+                            Task { await approveWhenAsked(importID) }
+                            await tasks.waitUntilFinished(importID)
+                            let done = (try? repo.engineTask(importID)) ?? nil
+                            let after = ((try? FileManager.default.subpathsOfDirectory(atPath: project)) ?? []).filter { !$0.hasPrefix(".git") }
+                            let added = after.filter { !before.contains($0) }
+                            var isDir: ObjCBool = false
+                            let imported = added.filter { $0.contains("ThirdParty/") && !$0.hasSuffix("JARVIS-PROVENANCE.json") && FileManager.default.fileExists(atPath: project + "/" + $0, isDirectory: &isDir) && !isDir.boolValue }
+                            check("The import ran as an approved V0.4 task and completed", done?.state == .completed, done?.state.rawValue ?? "?")
+                            check("Only a new ThirdParty/<name>-xxxxxx folder was added (Assets/ThirdParty in a Unity project); nothing else in the project changed", !added.isEmpty && added.allSatisfy { $0 == "ThirdParty" || $0 == "Assets" || $0.hasPrefix("ThirdParty/") || $0.hasPrefix("Assets/") }, "\(added.count) new path(s)")
+                            let storedSHA = rec.sha256 ?? ""
+                            let match = imported.contains { path in (FileManager.default.contents(atPath: project + "/" + path)).map { Redactor.sha256($0) == storedSHA } ?? false }
+                            check("The imported file is byte-identical to the quarantine copy (SHA-256)", match)
+                            check("A JARVIS-PROVENANCE.json was written beside the imported files", added.contains { $0.hasSuffix("JARVIS-PROVENANCE.json") })
+                            let updated = (try? repo.acquisition(aid)) ?? nil
+                            check("The acquisition record knows where and by which task it was imported", updated?.importedTo != nil && updated?.importTaskID == importID, updated?.importedTo ?? "")
+                        } else { check("The import task was accepted", false) }
                     }
                 }
             } else { check("Acquisition task was accepted", false) }
@@ -272,6 +296,41 @@ enum ResearchLiveTest {
             } else { check("Fixture environment started", false) }
         }
 
+        // ------------------------------------------------------------ 8b. REAL quit + relaunch: an in-flight research becomes INTERRUPTED and nothing resumes by itself
+        do {
+            let childDir = JarvisPaths.standard().root.appendingPathComponent("live-test-research-child", isDirectory: true)
+            try? FileManager.default.removeItem(at: childDir)
+            let exe = Bundle.main.executablePath ?? CommandLine.arguments[0]
+            func launch(_ mode: String) -> (ManagedProcess, AsyncStream<Data>)? {
+                let child = ManagedProcess(executable: exe, arguments: ["--research-live-test", "--research-child", mode], environment: ProcessInfo.processInfo.environment, workingDirectory: "/")
+                guard let lines = try? child.start(stdin: nil, keepStdinOpen: true) else { return nil }
+                return (child, lines)
+            }
+            if let (child, lines) = launch("start") {
+                var ready = false
+                let reader = Task { @MainActor in for await l in lines { let t = String(decoding: l, as: UTF8.self); if t == "CHILD_READY" { ready = true; break } } }
+                let up = await waitUntil(120) { ready }
+                reader.cancel()
+                kill(child.processIdentifier, SIGTERM)                                                  // what quitting / logging out does
+                let exited = await waitUntil(15) { !child.isRunning }
+                if !exited { await child.cancel() }
+                check("Quitting JARVIS (SIGTERM) in the middle of a real research ends the process cleanly", up && exited, "ready \(up), exited \(exited)")
+                if let (checker, out) = launch("check") {
+                    var results: [String] = []
+                    let collect = Task { @MainActor in for await l in out { let t = String(decoding: l, as: UTF8.self); if t.hasPrefix("CHILD_RESULT ") { results.append(String(t.dropFirst(13))) } } }
+                    _ = await waitUntil(90) { results.contains { $0.hasPrefix("done") } || !checker.isRunning }
+                    collect.cancel()
+                    if checker.isRunning { await checker.cancel() }
+                    for r in results where !r.hasPrefix("done") {
+                        let parts = r.split(separator: "|", maxSplits: 2).map(String.init)
+                        if parts.count >= 2 { check("Relaunch: " + parts[1], parts[0] == "ok", parts.count > 2 ? parts[2] : "") }
+                    }
+                    check("The relaunch check ran to completion", results.contains { $0.hasPrefix("done") })
+                } else { check("The relaunch child could be started", false) }
+            } else { check("The quit child could be started", false) }
+            try? FileManager.default.removeItem(at: childDir)
+        }
+
         // ------------------------------------------------------------ 9. idle: nothing keeps running
         try? await Task.sleep(for: .seconds(3))
         // The local-model worker is a long-lived, idle-timed helper of the V0.3 stack (not of research): it may legitimately still be registered; anything else would be a leak.
@@ -283,5 +342,45 @@ enum ResearchLiveTest {
         let open = sockets.split(separator: "\n").dropFirst().filter { $0.contains("ESTABLISHED") || $0.contains("SYN_SENT") }
         check("Idle: no open network connection remains", open.isEmpty, "\(open.count) connection(s)")
         finish()
+    }
+
+    /// Child mode 1 (`--research-child start`): begins a REAL research, reports once it is reading, then idles so the parent can SIGTERM it.
+    static func runChildStart(context: AppContext) async {
+        guard let repo = context.repository else { exit(3) }
+        let r = ResearchIntake.parse(goal: "Find free stylized 3D hamam bath props, CC0, for Unity", id: UUID())
+        guard case .success(let id) = await context.taskEngine.submitResearch(r) else { print("CHILD_FAILED submit"); fflush(stdout); exit(4) }
+        let end = Date().addingTimeInterval(90)
+        while Date() < end {
+            if let v = context.taskEngine.view(id), v.steps.contains(where: { $0.type == .researchRead && $0.state == .running }) { break }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        _ = repo
+        print("CHILD_RESEARCH_ID=\(id.uuidString)"); print("CHILD_READY"); fflush(stdout)
+        try? await Task.sleep(for: .seconds(300))
+        exit(0)
+    }
+
+    /// Child mode 2 (`--research-child check`): a fresh process on the same data directory. Prints `CHILD_RESULT ok|fail|name|detail` lines, then `CHILD_RESULT done`.
+    static func runChildCheck(context: AppContext) async {
+        func result(_ ok: Bool, _ name: String, _ detail: String = "") { print("CHILD_RESULT \(ok ? "ok" : "fail")|\(name)|\(detail)"); fflush(stdout) }
+        guard let repo = context.repository else { exit(3) }
+        try? await Task.sleep(for: .seconds(2))                                                           // launch reconciliation runs asynchronously
+        let sessions = (try? repo.researchSessions(limit: 5)) ?? []
+        guard let row = sessions.first else { result(false, "the interrupted research is in the database"); print("CHILD_RESULT done"); fflush(stdout); exit(0) }
+        let task = (try? repo.engineTask(row.id)) ?? nil
+        result(task?.state == .interrupted, "the task is INTERRUPTED (not running, not completed, not silently resumed)", task?.state.rawValue ?? "?")
+        result(row.status == .interrupted, "the research session row is INTERRUPTED", row.status.rawValue)
+        result(context.taskEngine.activeCount == 0, "nothing was resumed by itself", "active \(context.taskEngine.activeCount)")
+        try? await Task.sleep(for: .seconds(3))
+        let sockets = await ManagedProcess.runOnce(executable: "/usr/sbin/lsof", arguments: ["-a", "-i", "-n", "-P", "-p", "\(getpid())"], environment: ProviderEnvironment.make(), workingDirectory: "/", timeout: 10)?.output ?? ""
+        let open = sockets.split(separator: "\n").dropFirst().filter { $0.contains("ESTABLISHED") || $0.contains("SYN_SENT") }
+        result(open.isEmpty, "no network activity after the relaunch (nothing continues in the background)", "\(open.count) connection(s)")
+        let explicit = context.taskEngine.resume(row.id)
+        try? await Task.sleep(for: .milliseconds(800))
+        result(explicit, "an explicit Resume continues the research (only on the user's action)")
+        context.taskEngine.cancel(row.id)
+        await context.taskEngine.waitUntilFinished(row.id)
+        print("CHILD_RESULT done"); fflush(stdout)
+        exit(0)
     }
 }

@@ -16,7 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true)
             : (options.proactiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-proactive", isDirectory: true)
             : (options.unityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-unity", isDirectory: true)
-            : (options.researchLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-research", isDirectory: true)
+            : (options.researchLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.researchChild != nil ? "live-test-research-child" : "live-test-research", isDirectory: true)
             : (options.voiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.voiceQuitChild ? "live-test-voice-child" : "live-test-voice", isDirectory: true)
             : (options.naturalVoiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.naturalChild ? "live-test-natural-child" : "live-test-natural", isDirectory: true) : nil))))))
         // The natural-voice live test runs the real stack in a closed acoustic loop (scripted microphone + simulated speaker); nothing else ever gets a rig.
@@ -84,8 +84,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await UnityLiveTest.run(context: context, captureDirectory: dir, fixtureTemplate: fixture, withProvider: !noProvider) }
         }
         if options.researchLiveTest {
-            let context = context!, dir = options.liveDirectory ?? "captures"
-            Task { await ResearchLiveTest.run(context: context, captureDirectory: dir) }
+            let context = context!, dir = options.liveDirectory ?? "captures", child = options.researchChild
+            if child == "start" { Task { await ResearchLiveTest.runChildStart(context: context) } }
+            else if child == "check" { Task { await ResearchLiveTest.runChildCheck(context: context) } }
+            else { Task { await ResearchLiveTest.run(context: context, captureDirectory: dir) } }
         }
         if options.voiceLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures", audible = options.voiceAudible, noWhisper = options.voiceNoWhisper, realMic = options.voiceRealMic, combined = options.voiceCombined

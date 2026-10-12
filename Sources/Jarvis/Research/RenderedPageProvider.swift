@@ -129,6 +129,9 @@ final class RenderedPageProvider: NSObject {
         }
     }
 
+    /// Memory pressure (ResourceManager, V0.9): an IDLE browser is released at once; one that is navigating finishes its page first (its idle teardown follows).
+    func releaseUnderPressure() { if activeNavigations == 0 { shutdown() } }
+
     /// Stops loading, closes the throw-away window and releases the web view (its WebContent process exits with it).
     func shutdown() {
         teardown?.cancel(); teardown = nil
@@ -169,4 +172,11 @@ extension RenderedPageProvider: WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo) async {}
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo) async -> Bool { false }
     func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo) async -> String? { nil }
+}
+
+
+/// How research reacts to system pressure (DEC-103): under memory pressure plain HTTP is preferred over the heavier browser tier — the task stays correct, a
+/// JavaScript-only page is then reported as "needs the browser" instead of being rendered. Pure so it is testable.
+enum ResearchResourcePolicy {
+    static func allowsBrowser(memory: MemoryPressureLevel, thermalSerious: Bool = false) -> Bool { memory == .normal && !thermalSerious }
 }

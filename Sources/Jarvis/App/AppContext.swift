@@ -116,7 +116,10 @@ final class AppContext {
         taskEngine.web = research
         let webPrefs = preferences
         taskEngine.webAllowed = { [weak webPrefs] in webPrefs?.webResearchEnabled ?? true }
-        taskEngine.browserTierAllowed = { [weak webPrefs] in webPrefs?.webBrowserTierEnabled ?? true }
+        let webResources = resources
+        taskEngine.browserTierAllowed = { [weak webPrefs, weak webResources] in
+            (webPrefs?.webBrowserTierEnabled ?? true) && ResearchResourcePolicy.allowsBrowser(memory: webResources?.pressure.memory ?? .normal, thermalSerious: webResources?.pressure.thermalSerious ?? false)
+        }
         researchModel = ResearchViewModel(repository: repo, artifacts: artifacts, engine: taskEngine, preferences: preferences)
         opportunities = OpportunityEngine(repository: repo, audit: audit, tasks: taskEngine)
         proposalService = ProposalService(repository: repo, engine: opportunities)
@@ -168,7 +171,7 @@ final class AppContext {
         conversationService.stopSpeech = { [weak self] in self?.voice.stopSpeaking() ?? false }
         voice.onEvent = { [weak store] message, kind in store?.log(message, kind: kind) }
         whisper.onEvent = { [weak store] message in store?.log(message, kind: .info) }
-        resources.observePressureRise { [weak self] _ in Task { @MainActor in await self?.whisper.unload(); await self?.neuralVoice.unload() } }          // the small wake sentinel stays
+        resources.observePressureRise { [weak self] _ in Task { @MainActor in await self?.whisper.unload(); await self?.neuralVoice.unload(); self?.research?.browser?.releaseUnderPressure() } }          // the small wake sentinel stays
         handsFree.settings = { stubIntelligence ? VoiceSettings(enabled: false) : voicePrefs.voiceSettings }
         handsFree.onEvent = { [weak store] message, kind in store?.log(message, kind: kind) }
         sentinel.onEvent = { [weak store] message in store?.log(message, kind: .info) }

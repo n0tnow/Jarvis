@@ -52,6 +52,7 @@ struct LaunchOptions {
     var unityNoProvider = false
     var unityFixture: String?
     var researchLiveTest = false
+    var researchChild: String?           // internal: "start" | "check" (restart test)
     var voiceLiveTest = false
     var voiceAudible = false
     var voiceNoWhisper = false
@@ -87,6 +88,7 @@ struct LaunchOptions {
             case "--unity-no-provider": unityNoProvider = true
             case "--unity-fixture": unityFixture = it.next()
             case "--research-live-test": researchLiveTest = true
+            case "--research-child": researchChild = it.next()
             case "--voice-live-test": voiceLiveTest = true
             case "--voice-audible": voiceAudible = true
             case "--voice-no-whisper": voiceNoWhisper = true

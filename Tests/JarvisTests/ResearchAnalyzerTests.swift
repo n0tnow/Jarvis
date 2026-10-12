@@ -445,3 +445,12 @@ struct TurkishAssetQueryTests {
         #expect(QueryBuilder.plan(for: r, maxQueries: 8).contains { $0.providers.contains("github-repositories") })
     }
 }
+
+
+struct ResearchResourcePolicyTests {
+    @Test func theBrowserTierIsOnlyUsedWhenTheSystemIsComfortable() {
+        #expect(ResearchResourcePolicy.allowsBrowser(memory: .normal))
+        #expect(!ResearchResourcePolicy.allowsBrowser(memory: .warning) && !ResearchResourcePolicy.allowsBrowser(memory: .critical))
+        #expect(!ResearchResourcePolicy.allowsBrowser(memory: .normal, thermalSerious: true))
+    }
+}
