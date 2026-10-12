@@ -255,7 +255,7 @@ Description: Deletion supports GameObjects only (approval per action); component
 
 ### JARVIS-V06-4 — First import and a headless editor
 Status: Open · NON-BLOCKING
-Description: JARVIS' own editor is headless (no window): first open of a large project can take many minutes (connect timeout 10 min), and a person cannot watch it. A user's windowed editor works the same way once the bridge package is installed (needs approval and triggers a domain reload in that editor). Unity's own CPU/RAM (≈400–600 MB for the fixture) is Unity's.
+Description: JARVIS' own editor is headless (no window): first open of a large project can take many minutes (connect timeout 10 min), and a person cannot watch it. A user's windowed editor works the same way once the bridge package is installed (needs approval and triggers a domain reload in that editor). Unity's own CPU/RAM (≈0.4 GB editor process, ≈2.1 GB including compiler/package helpers for the tiny fixture; plan for it on a 16 GB machine) is Unity's, not JARVIS'.
 
 ### JARVIS-V06-5 — A crash cannot clean up
 Status: Open · NON-BLOCKING

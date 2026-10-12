@@ -179,7 +179,7 @@ Optional set-up for the local model: `scripts/setup_local_ai.sh` (needs `uv`; th
 149. Agents screen: each Unity step is a **tool run** `UnityTool` (task-grouped, console events like "Applied: add BoxCollider to TestCube"), provider runs (planner, analysis, coding, UnityAgent) show their real engine/model; no fake provider cards for tools.
 150. **Compact HUD stays 392×448** during a Unity task and shows only a short phrase (`… · Unity · Compiling` / `Testing` / `Play Mode`); no hierarchy or Console in Compact; Compact ⇄ Full exclusivity unchanged.
 151. **VoiceOver**: the UNITY line reads "Unity editor: connected"; CLOSE EDITOR announces its target; approvals read their action. **Reduce Motion**: nothing new animates.
-152. Resources: Activity Monitor — JARVIS ≈0 % CPU with Unity connected and idle (JARVIS has no polling loop); Unity's own CPU/RAM (≈400–600 MB headless) is Unity's, not JARVIS'; provider processes appear only while a provider step runs.
+152. Resources: Activity Monitor — JARVIS ≈0 % CPU with Unity connected and idle (JARVIS has no polling loop); Unity's own CPU/RAM (≈0.4 GB for the editor process, ≈2 GB including its compiler/package helper processes, headless fixture) is Unity's, not JARVIS'; provider processes appear only while a provider step runs.
 153. Report anything odd (I add it to `docs/KNOWN_ISSUES.md`). **Only after the fixture behaves** connect your real game **read-only** first (choose its folder, run `Inspect …`); do **not** let JARVIS mutate it until you submit a scoped task intentionally.
 
 ### V0.5 additions (proactive reasoning & approval policy) — MANUAL TEST REQUIRED

@@ -126,13 +126,15 @@ enum UnityLiveTest {
         func why(_ v: TaskView?) -> String { v?.task.state == .completed ? "" : "\(v?.task.state.rawValue ?? "?"): \(v?.task.failureCategory?.rawValue ?? "?") — \(v?.task.failureReason?.prefix(260) ?? "")" }
 
         /// CPU of JARVIS and of the Unity editor (separately) around a block — Unity's own work is never attributed to JARVIS.
+        /// CPU seconds of child processes that have already exited and were reaped (provider CLIs, git…); the running editor is not included.
+        func finishedChildrenCPU() -> Double { var ru = rusage(); getrusage(RUSAGE_CHILDREN, &ru); return Double(ru.ru_utime.tv_sec + ru.ru_stime.tv_sec) + Double(ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) / 1_000_000 }
         func measure<T>(_ label: String, _ body: () async -> T) async -> T {
             let editorPid = conn().transport.currentStatus()?.pid ?? 0
-            let j0 = ProcessTree.cpuSeconds(of: me) ?? 0, u0 = unityCPU(editorPid), t0 = Date()
+            let j0 = ProcessTree.cpuSeconds(of: me) ?? 0, u0 = unityCPU(editorPid), c0 = finishedChildrenCPU(), t0 = Date()
             let r = await body()
             let wall = Date().timeIntervalSince(t0)
-            let j1 = ProcessTree.cpuSeconds(of: me) ?? 0, u1 = unityCPU(editorPid)
-            info("PERFORMANCE \(label): \(fmt(wall)) s wall · JARVIS \(fmt(j1 - j0, "%.2f")) CPU-s (\(fmt((j1 - j0) / max(wall, 0.001) * 100, "%.1f")) %) · Unity Editor \(fmt(u1 - u0, "%.2f")) CPU-s (\(fmt((u1 - u0) / max(wall, 0.001) * 100, "%.1f")) %)")
+            let j1 = ProcessTree.cpuSeconds(of: me) ?? 0, u1 = unityCPU(editorPid), c1 = finishedChildrenCPU()
+            info("PERFORMANCE \(label): \(fmt(wall)) s wall · JARVIS \(fmt(j1 - j0, "%.2f")) CPU-s (\(fmt((j1 - j0) / max(wall, 0.001) * 100, "%.1f")) %) · Unity Editor + helpers \(fmt(u1 - u0, "%.2f")) CPU-s (\(fmt((u1 - u0) / max(wall, 0.001) * 100, "%.1f")) %) · finished provider/tool child processes \(fmt(c1 - c0, "%.2f")) CPU-s")
             return r
         }
 
@@ -458,7 +460,7 @@ enum UnityLiveTest {
                                         step("s4", "Compile in Unity", "unityCompile", deps: ["s3"], validation: "unityCompiled", unity: "{\"requireNoNewErrors\":false}")])
                 let engineD = hybridEngine { compilePlan }
                 let t1 = Date()
-                let d = await runTask(engineD, "Fix the Unity compile error in Greeter.cs", timeout: 1200)
+                let d = await measure("REAL provider: fix a Unity compile error") { await runTask(engineD, "Fix the Unity compile error in Greeter.cs", timeout: 1200) }
                 let runsD = ((try? repo.agentRuns(taskID: d?.id ?? UUID())) ?? []).filter { $0.engine != .tool }
                 info("scenario D (REAL provider): \(fmt(Date().timeIntervalSince(t1))) s · \(stepsSummary(d)) · providers: \(Set(runsD.map { $0.engine.displayName + ($0.model.map { " · " + $0 } ?? "") }).sorted().joined(separator: ", "))")
                 let compileNow = await ask(.getCompilationState)
@@ -475,7 +477,7 @@ enum UnityLiveTest {
                                      step("s6", "Review the change", "review", deps: ["s5"], validation: "reviewPass")])
                 let engineE = hybridEngine { testPlan }
                 let t2 = Date()
-                let e = await runTask(engineE, "Fix the failing Unity test in CalculatorTests", timeout: 1200)
+                let e = await measure("REAL provider: fix a failing Unity test") { await runTask(engineE, "Fix the failing Unity test in CalculatorTests", timeout: 1200) }
                 let runsE = ((try? repo.agentRuns(taskID: e?.id ?? UUID())) ?? []).filter { $0.engine != .tool }
                 info("scenario E (REAL provider): \(fmt(Date().timeIntervalSince(t2))) s · \(stepsSummary(e)) · providers: \(Set(runsE.map { $0.engine.displayName + ($0.model.map { " · " + $0 } ?? "") }).sorted().joined(separator: ", "))")
                 let rerun = e?.steps.first { $0.type == .unityTest }
