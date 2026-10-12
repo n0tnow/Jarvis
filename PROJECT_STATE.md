@@ -4,20 +4,20 @@
 
 ## Current Version
 
-V0.5 — proactive reasoning, opportunity engine & approval policy (a decision layer above the V0.4 task engine); builds on V0.4 — autonomous task engine (user-initiated goals; on top of V0.3.2 observatory, V0.3.1 intelligence infrastructure, V0.3 Claude Code / Codex and V0.2.1). App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3, V0.3.1, V0.3.2 and V0.4 are not**.
+V0.6 — Unity Project Agent & Editor Bridge (Unity as a controlled execution environment inside the V0.4 engine); builds on V0.5 — proactive reasoning, opportunity engine & approval policy (a decision layer above the V0.4 task engine) and on V0.4 — autonomous task engine (user-initiated goals; on top of V0.3.2 observatory, V0.3.1 intelligence infrastructure, V0.3 Claude Code / Codex and V0.2.1). App version string still `0.1.1`. V0.1–V0.2.1 were manually tested by the user; **V0.3, V0.3.1, V0.3.2 and V0.4 are not**.
 
 ## Current Milestone
 
-V0.5: Proactive Reasoning, Opportunity Engine & Approval Policy (decides; V0.4 executes). NOT V0.6 Unity, V0.7 web/assets, V0.8 memory, voice.
+V0.6: Unity Project Agent & Editor Bridge (typed, capability-controlled, observable Unity operations inside the V0.4 engine). NOT V0.7 (voice / web / assets), no real-game mutation, no visual validation.
 
 ## Status
 
-**V0.5 — READY FOR MANUAL TEST** (V0.4 and earlier: READY FOR MANUAL TEST as before)
+**V0.6 — READY FOR MANUAL TEST** (V0.5 and earlier: READY FOR MANUAL TEST as before)
 (Automated + REAL verification passed on this Mac: OpenCode 2.0.26 FREE end to end on an isolated fixture. Not user-verified. Do NOT mark COMPLETE, do NOT tag, do NOT start V0.5.)
 
 ## Current Objective
 
-User manual test of `build/Jarvis.app` (README items 92–125 for V0.5, 67–91 for V0.4, 40–66 for V0.3.2, 33–39 for V0.3.1, 26–32 for V0.3). Use a throw-away project for the V0.4 items. Optional local-model setup: `scripts/setup_local_ai.sh`.
+User manual test of `build/Jarvis.app` (README items 126–153 for V0.6 — on the disposable fixture first, 92–125 for V0.5, 67–91 for V0.4, 40–66 for V0.3.2, 33–39 for V0.3.1, 26–32 for V0.3). Use a throw-away project for the V0.4 items. Optional local-model setup: `scripts/setup_local_ai.sh`.
 
 ## Completed (IMPLEMENTED)
 
@@ -35,6 +35,16 @@ User manual test of `build/Jarvis.app` (README items 92–125 for V0.5, 67–91 
 - Settings: Reduce Motion, Show Developer Controls, Launch at Login (disabled placeholder, NOT implemented).
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
+
+## V0.6 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED · UI/windowed-editor/real-game MANUAL TEST REQUIRED)
+
+Reference: `docs/UNITY_PROJECT_AGENT.md`, DEC-047…056. Code: `Sources/Jarvis/Unity/`, `Tasks/TaskEngine+Unity.swift`, `Tasks/ReviewAuthority.swift`, `UnityBridge/` (C# Editor package + fixture), schema v5.
+- **Bridge:** JARVIS-owned Editor package, embedded, installed only after approval; local file spool (no socket/network/MCP/permission); event-driven (no polling when idle). No third-party Unity MCP was installed.
+- **Typed surface only:** closed `UnityOperation` enum; no C#/menu/shell/AppleScript/package/Asset Store/upgrade operation; the bridge rejects unknown operations itself; new Unity capabilities (deletion is approval-only, not a capability).
+- **Engine:** Unity step types inside V0.4 (plan validation, capability gate, bounded repair with Unity's real error text, mutation lock, cancellation cleanup, checkpoint/report/observatory); the provider only proposes typed actions; scripts stay on the V0.4 file path; scenes via Editor APIs, never YAML.
+- **Safety:** identity (never name-only), idempotent edits, scoped saves, user-dirty scenes + Git-dirty scene files need approval, Play Mode blocks persistent mutation (policy + bridge), version mismatch never upgrades silently, sanitization at choke points, Console baseline/delta, owned-editor-only shutdown.
+- **Validation authority:** compile/tests/state/Console facts outrank reviews (DEC-049/050, generic `ReviewAuthority`); reports never claim visual validation.
+- **UI:** project line (truthful state, CLOSE EDITOR), task Unity section, Compact phrase "Unity · Compiling…" (392×448 unchanged).
 
 ## V0.5 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED · UI/real-use MANUAL TEST REQUIRED)
 
@@ -111,6 +121,11 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Tested
 
+**V0.6 (2026-10-12):** unit tests incl. ≈105 new V0.6 tests — foundation (versions, discovery, detection, protocol, parsing, plan validation), policy, spool transport against a scripted file-protocol editor, the whole engine against a **simulated editor (MOCK TESTED)** (scenarios A–N, install/upgrade approvals, lock, cancellation, restart, security, report), review authority (generic), V0.5 interplay, structural guards; `verify.sh` extended with V0.6 guards.
+**REAL TESTED — `Jarvis --unity-live-test` (59 PASS / 0 FAIL, Unity 6000.5.1f1, headless editor started by JARVIS, disposable fixture in a temp folder, own data dir):** discovery, detection, bridge install by approval, connect, inspect, component/property edits + saves (verified in editor AND scene file), idempotent retries, compile + domain reload + reconnect, EditMode + PlayMode tests, Play Mode, Console delta + sanitization, dirty-scene approval (deny/approve), Play Mode mutation block (policy and bridge), ambiguity, path escape + unknown operation rejection, destructive approval (deny/approve/not-requested), V0.5 design proposal, cancellation, relaunch recovery, **OpenCode FREE fixing a real compile error and a real failing test**, no secret in the data directory, graceful owned-editor shutdown. Planner/Unity agent were scripted in the scene scenarios (the editor was under test); provider scenarios used the real router.
+**NOT done:** visual validation, a windowed editor, any real game (never touched), Claude/Codex as Unity coders (no escalation was needed), multi-editor orchestration, real SIGKILL crash.
+**MANUAL TEST REQUIRED:** README 126–153.
+
 **V0.5 (2026-10-12) — `scripts/verify.sh` → VERIFY PASSED:** 536 unit tests (75 suites; +54 for policy, normaliser/dedup, assessor, scope, end-to-end Ask/Observe/Low-Risk flows on isolated temp Git fixtures, self-approval/tamper/scope-expansion, restart/idempotency, obsolete, budget, sanitization, structural guards), V0.5 policy greps, smoke 99 PASS / 0 FAIL / 2 SKIP, idle 0.02 CPU-s in 8 s / 71 MB RSS.
 **REAL TESTED — `Jarvis --proactive-live-test` (final run 26 PASS / 0 FAIL, OpenCode FREE `opencode/space-bunny-free`, isolated temp Git fixtures, own data dir):** user task → proposal from recorded facts (0 provider calls) → real HUD-path approval → normal V0.4 task (planned, validated, test-only scope) ; Low-Risk Autonomous: one auto task, no second auto task; real denial + anti-nagging; real relaunch (one task after approval, second approval a no-op); one budgeted model assessment with recorded reason. Honest variance: earlier runs showed (a) real reviewer suggestions competing with the recorded-fact finding and (b) the V0.4 AI reviewer rejecting an otherwise in-scope, passing test — both are model behaviour; the test now selects the recorded-fact finding and treats a reviewer-only rejection as "stayed in scope" (reported as INFO).
 **MANUAL TEST REQUIRED:** README 92–125.
@@ -165,7 +180,7 @@ See `docs/KNOWN_ISSUES.md`. Headline: VoiceOver labels on custom buttons — MAN
 
 ## Important Decisions
 
-See `docs/DECISIONS.md` (DEC-001…DEC-046). Key ones:
+See `docs/DECISIONS.md` (DEC-001…DEC-056). Key ones:
 - Native Swift/SwiftUI/AppKit only (no Electron/React/Tauri/web UI).
 - UI/window state (`HUDState`) separated from application/task state (`JarvisStore`); closing HUDs never touches tasks.
 - All window control goes through `JarvisWindowControlling`.
@@ -190,12 +205,12 @@ None.
 
 ## Next Action
 
-**Wait for the user's manual V0.3 … V0.5 test** (V0.5: README 92–125) (`README.md` items 26–32, 33–39, 40–66 and 67–91). Do not start V0.6 (Unity Project Agent) without approval. Do not start V0.4 (persistent task engine / workers) without approval.
+**Wait for the user's manual V0.3 … V0.6 test** (V0.6: README 126–153, on the fixture first) (`README.md` items 26–32, 33–39, 40–66, 67–91, 92–125 and 126–153). Do not start V0.7 without approval.
 
 ## Git
 
-`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; V0.3 commits start at `58c6948`; V0.3.1 at `f2665a5`; V0.3.2 at `e445f3f`; V0.4 at `41fd038`; V0.5 commits follow `7f6b3d5`; **no tag**; no AI co-author trailers (user rule). Policy: `AGENTS.md` → Git Workflow, DEC-011.
+`main` only; `origin` = https://github.com/n0tnow/Jarvis.git; V0.3 commits start at `58c6948`; V0.3.1 at `f2665a5`; V0.3.2 at `e445f3f`; V0.4 at `41fd038`; V0.5 commits follow `7f6b3d5` (… `962c432`); V0.6 commits follow `962c432`; **no tag**; no AI co-author trailers (user rule). Policy: `AGENTS.md` → Git Workflow, DEC-011.
 
 ## Last Updated
 
-2026-10-12 — V0.5 implemented, AUTOMATED TESTED, REAL TESTED (OpenCode FREE), verified. READY FOR MANUAL TEST.
+2026-10-12 — V0.6 implemented, AUTOMATED TESTED, REAL TESTED (real headless Unity editor + OpenCode FREE on a disposable fixture), verified. READY FOR MANUAL TEST.

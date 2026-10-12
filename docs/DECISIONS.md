@@ -234,3 +234,43 @@ Decision: Proposal approval reuses the V0.4 `approvals` table (kind `proposal`, 
 ## DEC-046 — Deduplication, coalescing, cooldown and idempotency
 Status: Accepted
 Decision: Identifier/synonym-folded token keys + similarity per project/scope; same event ⇒ one record; related easy-to-merge findings coalesce into one card; deny = 14-day, dismiss = 3-day cooldown (persisted), ignored proposals expire after 7 days; reworded asks about the same file are suppressed during a cooldown unless materially new deterministic evidence appears. Ids are deterministic (opportunity ← event key, proposal ← opportunity, task ← proposal/opportunity) and launch reconciliation completes half-finished decisions exactly once.
+
+## DEC-047 — Unity is reached through a JARVIS-owned Editor bridge over a local file spool (no third-party MCP, no socket)
+Status: Accepted (V0.6)
+Decision: The bridge is a small C# Editor package (`UnityBridge/com.jarvis.bridge`, embedded in the app, installed as `Packages/com.jarvis.bridge` only after an approval, no manifest edit). Requests/responses/status are files under `<project>/Library/JarvisBridge` written with atomic renames; JARVIS watches them with vnode sources and a process-exit source (event-driven, nothing polls while idle). No third-party Unity MCP was installed or used. Rationale: the requirement is typed, capability-controlled, observable operations, not "MCP"; a file spool needs no socket/network/permission, survives domain reloads, and keeps the JARVIS binary free of network code. See `docs/UNITY_PROJECT_AGENT.md`.
+
+## DEC-048 — Unity capability layer lives inside V0.4; only typed operations exist
+Status: Accepted
+Decision: `UnityOperation` is a closed enum; there is no operation (and no provider-facing tool) that carries C#, a menu item, a command, a shell line or AppleScript, and the bridge rejects unknown operations itself. Unity work is expressed as V0.4 steps (`unityInspect/Edit/Compile/Test/PlayMode/Validate`) with new task capabilities (`inspectUnity`, `readUnityConsole`, `modifyUnityScene`, `saveUnityScene`, `createUnityPrefab`, `runUnityCompile`, `runUnityTests`, `controlUnityPlayMode`, `deleteUnityObject`). Analysis tasks get inspection only; development tasks the bounded set; deletion is not a task capability (goal must ask + per-action approval); package installation, project upgrade, Asset Store and downloads are not capabilities at all. A Unity agent only PROPOSES typed actions; JARVIS validates, applies and verifies them; no parallel task engine, approval system or log viewer.
+
+## DEC-049 — Deterministic Unity evidence outranks subjective review; no fake visual validation
+Status: Accepted
+Decision: Compile state, test results, expected object/component/property state and new-Console-error deltas are facts produced by the editor through JARVIS' tools; a model cannot contradict them. They prove compilation/structure/tests — not architecture, gameplay or visual quality, which stay review/proposal matters. Unity reports always state "Visual validation: NOT PERFORMED" (nothing captures or inspects an image in V0.6).
+
+## DEC-050 — Review authority (generic; supersedes "a failing review always fails the task")
+Status: Accepted
+Decision: `ReviewAuthority` decides what a review verdict means for every task: a passing review passes; a failing review fails the task only if (a) no hard validator (build/test/Unity compile/tests/state/Play) has passed, or (b) it names a *blocking* issue whose quoted evidence JARVIS finds in the recorded diff/evidence/changed paths, or (c) the user's constraints require a review gate. Otherwise the step passes with the review kept as advice in the report. A failing hard validator is never rescued by a review. Reason: the V0.5 live test showed a free reviewer rejecting an in-scope, test-passing change on a judgement call.
+
+## DEC-051 — Script edits stay on the V0.4 file path; scenes/prefabs only through Editor APIs
+Status: Accepted
+Decision: C# changes use `codeChange` (workspace guard, hashes, leases, Git baseline, rollback info); scene/prefab/serialized changes use Editor APIs (Undo-recorded `SerializedObject`/`AddComponent`/…) through the bridge. Scene YAML is never rewritten by JARVIS or a model.
+
+## DEC-052 — All Unity output is untrusted and sanitized at single choke points
+Status: Accepted
+Decision: Editor answers pass `UnityResponseSanitizer` in `UnityConnection.perform` (identity strings validated by shape); Console entries and compiler errors are sanitized in their initializers; the launched editor's stdout is drained through the stream sanitizer into a bounded in-memory tail. Raw Unity output is never written to SQLite, artifacts, events, reports or provider context. A Console baseline is captured per Unity task so existing errors are never attributed to it.
+
+## DEC-053 — Play Mode policy
+Status: Accepted
+Decision: Persistent project mutation (scene operations and script edits) is refused while Play Mode is active, in the Swift policy and independently in the bridge. A Play step waits for the editor to *report* each transition, observes for a bounded time, and always leaves Play Mode again; it never takes over a Play Mode it did not start, except one left in an editor JARVIS itself owns.
+
+## DEC-054 — User-owned unsaved state and project versions are protected
+Status: Accepted
+Decision: Scenes dirtied by anything other than JARVIS are *user-dirty*: a mutation/save touching them needs an approval (deny ⇒ nothing changes); opening scenes or running tests with dirty scenes is refused. Scene files with uncommitted Git changes need the V0.4 approval too. A project declaring another Unity version is never opened/migrated without an explicit approval; the editor is started with `-disable-assembly-updater`.
+
+## DEC-055 — Serialised editor access; per-project connections; JARVIS closes only editors it owns
+Status: Accepted
+Decision: One mutating Unity step (edit, compile, test, Play Mode, script change) per project at a time (`UnityMutationLock`). Handles are re-resolved every step and invalidated when the editor session changes. Each project has its own connection (spool, pid, session), editors are matched to projects by `-projectPath` — never "the first Unity process" — which also leaves room for several editors / Multiplayer Play Mode later. Only editors started by JARVIS are closed (graceful `shutdown`, idle one-shot, app quit).
+
+## DEC-056 — Fixtures only; no acquisition; the real game is never an automated target
+Status: Accepted
+Decision: Automated V0.6 acceptance runs on a disposable fixture copied to a temp folder and a headless editor started and owned by the test. The user's real project is never opened or modified by automated tests. No Asset Store, downloads, licence handling, package installation or purchases exist in V0.6 (V0.7+).

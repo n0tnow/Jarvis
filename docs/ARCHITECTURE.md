@@ -114,6 +114,15 @@ TaskEngine.onFinished / onReviewSuggestions ─► OpportunityEngine ─► Find
 ```
 `Sources/Jarvis/Proactive/`: `OpportunityModel` · `OpportunityPolicy` · `OpportunityNormalizer` · `OpportunityAssessor` · `FindingExtractor` · `EvidenceRevalidator` · `OpportunityEngine` · `ProposalService`; `Tasks/TaskScope.swift` (origin + scope enforcement); `Persistence/OpportunityRepository.swift` (schema v4); UI: `ProposalsView` (Tasks screen), Settings → Autonomy, Dashboard summary, Compact "N SUGGESTIONS" tag.
 
+## Unity Project Agent (V0.6 — DEC-047…056; details `UNITY_PROJECT_AGENT.md`)
+```
+V0.4 task (Unity project ⇒ unity capabilities) ─► plan (unityInspect/Edit/Compile/Test/PlayMode/Validate) ─► TaskEngine+Unity step
+   ─► UnityConnection.perform: UnityPolicy (capability · Play Mode · dirty scenes · identity · paths) ─► typed UnityOperation ─► UnityFileSpoolTransport
+   ─► <project>/Library/JarvisBridge/{requests,responses,status.json} ─► Editor package com.jarvis.bridge (fixed handler table) ─► Unity Editor
+   ◄─ sanitized answer ◄─ deterministic validation (compile state · tests · expected state · Console delta) ─► evidence/report/checkpoint ─► V0.3.2 Observatory
+```
+`Sources/Jarvis/Unity/` (discovery, detector, protocol, transport, policy, service, lock, launcher, installer, generated package) · `Tasks/TaskEngine+Unity.swift` · `Tasks/ReviewAuthority.swift` · `UnityBridge/` (C# package + disposable fixture) · `Persistence` v5.
+
 ## Windows
 
 - **Invariant (DEC-015):** Compact XOR Full visible, enforced only in `WindowManager`.

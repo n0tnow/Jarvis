@@ -2,7 +2,7 @@
 
 A native macOS menu-bar AI operating layer (long-term). V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.4 autonomous task engine** (you give a bounded goal; JARVIS plans, executes with agents/tools, validates with real builds/tests, repairs within bounds, reports — user-initiated only) · **V0.3.2 agent observatory** (live sanitized consoles, truthful progress, history, Stop) · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. Autonomous project work is not enabled yet (V0.4).
 
-- **Version:** V0.5 — **READY FOR MANUAL TEST** (decision layer above the V0.4 task engine: `docs/PROACTIVE_REASONING.md`). V0.4 — READY FOR MANUAL TEST (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3, V0.3.1, V0.3.2 and V0.4 are not yet). Details: `docs/AUTONOMOUS_TASK_ENGINE.md`, `docs/AGENT_OBSERVABILITY.md`, `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
+- **Version:** V0.6 — **READY FOR MANUAL TEST** (Unity Project Agent & Editor Bridge inside the V0.4 engine: `docs/UNITY_PROJECT_AGENT.md`). V0.5 — READY FOR MANUAL TEST (decision layer above the V0.4 task engine: `docs/PROACTIVE_REASONING.md`). V0.4 — READY FOR MANUAL TEST (app version string `0.1.1`; V0.1–V0.2.1 were manually tested by the user; V0.3, V0.3.1, V0.3.2 and V0.4 are not yet). Details: `docs/AUTONOMOUS_TASK_ENGINE.md`, `docs/AGENT_OBSERVABILITY.md`, `docs/PROVIDER_RESEARCH.md`, `docs/OPENCODE_RESEARCH.md`, `docs/MODEL_ROUTING.md`, `docs/PERSISTENCE.md`.
 - Handoff for agents: `PROJECT_STATE.md`, `AGENTS.md` (includes the Git workflow: `main` only, linear history)
 
 ## Requirements
@@ -21,7 +21,7 @@ scripts/setup_local_ai.sh     # optional, once: isolated MLX runtime (605 MB, 57
 ```
 
 **Opt-in REAL tests** (spend only free/local engines plus two tiny Claude Code requests; never part of `verify.sh`):
-`build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1/V0.3.2 stack, own data directory), `--proactive-live-test` (V0.5: real proposal → approval → V0.4 task, low-risk auto action, denial, relaunch — OpenCode FREE, isolated fixtures, own data directory), `--demo-proposals` (labelled simulated suggestions for the UI), `--task-live-test` (V0.4: the real task engine on isolated temporary fixture projects — OpenCode FREE preferred, own data directory, never the JARVIS repository) and `--provider-live-test` (V0.3 Claude Code / Codex).
+`build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1/V0.3.2 stack, own data directory), `--unity-live-test [--unity-no-provider]` (V0.6: a REAL headless Unity editor started by JARVIS on a disposable fixture copied to a temp folder — typed scene/component/property edits, compile/domain reload, EditMode+PlayMode tests, Play Mode, Console delta, dirty-scene and Play-Mode protection, cancellation, relaunch, and real OpenCode-FREE-routed fixes of a compile error and a failing test; own data directory, never your game), `--proactive-live-test` (V0.5: real proposal → approval → V0.4 task, low-risk auto action, denial, relaunch — OpenCode FREE, isolated fixtures, own data directory), `--demo-proposals` (labelled simulated suggestions for the UI), `--task-live-test` (V0.4: the real task engine on isolated temporary fixture projects — OpenCode FREE preferred, own data directory, never the JARVIS repository) and `--provider-live-test` (V0.3 Claude Code / Codex).
 
 **Global shortcuts** (work while any app is focused; no permission): hold **Option** and press **Command** → toggle Compact HUD (fires ~0.3 s later unless it turns out to be a double press). Hold **Option** and press **Command twice quickly** (within 0.3 s) → toggle Full HUD. Either Command key. Ignored if you add another key, a click, Shift or Control (so ⌥⌘D, ⌥⌘-click etc. are untouched). Turn off in Settings → Enable global shortcuts.
 
@@ -59,6 +59,7 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | Global shortcuts ⌥⌘ (Compact) and ⌥⌘⌘ (Full), no permission needed | IMPLEMENTED · AUTOMATED TESTED (logic + scripted integration) · **MANUAL TEST REQUIRED** (physical keys from another app) |
 | **V0.4 autonomous task engine:** goal intake → durable task → validated structured plan → event-driven scheduler → analysis/coding/review agents + build/test tools → deterministic validation → bounded repair (1) + escalation (1) → checkpoints, report; workspace sandbox, write leases, Git baseline + user-change protection, approvals for destructive actions, cancellation, restart recovery (explicit resume) | IMPLEMENTED · AUTOMATED TESTED (≈105 task tests on isolated Git fixtures) · **REAL TESTED** (`--task-live-test`: OpenCode FREE fixed a failing test end to end; cancel, interrupt/resume) · MANUAL TEST REQUIRED |
 | **V0.5 proactive reasoning & approval policy:** after a task, JARVIS derives findings from recorded facts, deduplicates them and a deterministic policy decides ignore / record / propose / require approval / (opt-in) auto low-risk action; approved or automatic work becomes a normal V0.4 task with a bound scope; JARVIS never approves its own proposal; event-driven, no polling | IMPLEMENTED · AUTOMATED TESTED (≈54 tests, isolated Git fixtures) · **REAL TESTED** (`--proactive-live-test` 26/26, OpenCode FREE) · MANUAL TEST REQUIRED |
+| **V0.6 Unity Project Agent:** JARVIS-owned typed Editor bridge (embedded package, local file spool — no MCP, no socket, no network, no arbitrary C#/menu/shell), Unity step types inside the V0.4 engine, truthful connection state, identity-safe scene/component/property edits, saved only for what JARVIS changed, unsaved user work + Play Mode protected, Unity's own compiler/test/Console state as validation, review cannot overrule hard facts | IMPLEMENTED · AUTOMATED TESTED (≈105 new tests; simulated editor = MOCK) · **REAL TESTED** (`--unity-live-test` 59/59 on Unity 6000.5.1f1, incl. OpenCode FREE fixing a real compile error and a real failing test) · MANUAL TEST REQUIRED |
 | Full HUD (Dashboard, Tasks, Agents, System; Report/Memory placeholders) | IMPLEMENTED · MANUAL TEST REQUIRED |
 | JARVIS Core visualization for all 7 states | IMPLEMENTED · VISUALLY VERIFIED (screenshots) |
 | Window-management layer for future UI self-control | IMPLEMENTED · AUTOMATED TESTED |
@@ -67,7 +68,7 @@ Quit: right-click the menu bar icon → Quit JARVIS (or ⋯ menu in the Compact 
 | Settings (Reduce Motion, Developer Controls) | IMPLEMENTED |
 | Launch at Login | PLANNED (disabled placeholder) |
 | Report view, Memory view | PLANNED (V0.8) |
-| Proactive reasoning + approval policy (V0.5), voice, Unity MCP, browser/computer control | PLANNED — see `docs/ROADMAP.md` |
+| Voice (V0.7+), memory, browser/computer control, web/asset acquisition, visual validation of Unity | PLANNED — see `docs/ROADMAP.md` |
 
 ## Architecture overview
 
@@ -88,6 +89,7 @@ Sources/Jarvis/
   Intelligence/ V0.3.1: router, classifier, local runtime, OpenCode service, supervisor, resources, agents, benchmark, coordinator
   Persistence/ V0.3.1: SQLite engine, migrations, repository, artifacts, redaction (+ V0.4 TaskRepository)
   Observability/ V0.3.2: sanitizer, execution hub, SafeProvider/SafeToolOutput, Agent Observatory
+  Unity/      V0.6: Unity discovery/detection, typed protocol, file-spool transport, policy, service/connection, mutation lock, launcher, bridge installer (+ UnityBridge/ = the C# Editor package and the fixture)
   Proactive/  V0.5: opportunity model, deterministic policy, normaliser/dedup, assessor, finding extractor, revalidator, OpportunityEngine, ProposalService
   Tasks/      V0.4: task model/state machines, plans, workspace guard, project tools, command profiles, leases, engine, reports, intake
 Tests/JarvisTests/            unit tests (Swift Testing)
@@ -102,7 +104,7 @@ See `docs/KNOWN_ISSUES.md`. Notably: conversation history is in-memory (the audi
 
 ## Next milestone
 
-V0.6 — Unity Project Agent (Unity MCP). V0.7 web research + asset acquisition, V0.8 project memory follow. **Do not start V0.6 until the user approves V0.5.**
+V0.7 — to be confirmed by the user (voice I/O is next in `docs/ROADMAP.md`; web research / asset acquisition are separate). **Do not start V0.7 until the user approves V0.6.**
 
 ## Manual test checklist (V0.1)
 
@@ -148,6 +150,37 @@ Optional set-up for the local model: `scripts/setup_local_ai.sh` (needs `uv`; th
 37. **STOP GENERATION** while an OpenCode or local answer is running: it stops within a second; no `opencode` / worker process remains.
 38. Quit JARVIS while the local model is loaded → no `jarvis_local_worker.py` process remains. After a force-quit (`kill -9`) the worker also exits by itself.
 39. Data check: `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select agent_type, engine, model, status from agent_runs order by started_at desc limit 5"` shows your requests (engine/model/status/reason; no prompt text, no secrets).
+
+### V0.6 additions (Unity Project Agent) — MANUAL TEST REQUIRED
+**Prepare:** `docs/UNITY_PROJECT_AGENT.md`. Unity 6000.5.1f1 (or the version your fixture declares) must be installed via Unity Hub and signed in. **Use the disposable fixture, never your real game first:** `cp -R UnityBridge/Fixture ~/Desktop/JarvisFixture` (+ optionally `git init` and commit there). JARVIS starts its own headless editor for it (first open imports the project: allow a minute or two); you may also open the folder in Unity yourself first — JARVIS then connects to YOUR editor after you approve the bridge install.
+126. Full HUD → TASKS → **CHOOSE FOLDER…** → the fixture folder. A **UNITY** line appears with `Unity 6000.5.1f1 · Built-in`, "JARVIS bridge not installed (asked first)" and the state **AVAILABLE** (not CONNECTED: only discovery happened).
+127. Confirm the declared version matches the editor Unity Hub shows for the project; set the folder's `ProjectSettings/ProjectVersion.txt` to an uninstalled version (on a copy!) and run any Unity task → JARVIS asks *"Open this project with Unity X (it declares Y)…"* and does nothing until you approve (deny ⇒ task fails, nothing launched).
+128. Type `Inspect why TestCube has no collider` → JARVIS asks to **install the JARVIS Unity Editor bridge** (approve). The task plans (unityInspect → …), the UNITY line turns **CONNECTING** then **CONNECTED**, the task completes. In Finder: `Packages/com.jarvis.bridge/` exists and `Packages/manifest.json` is unchanged.
+129. In the finished task card (expand it) read the Unity steps' evidence: scenes, TestCube found once, components, CounterObject `startValue=1`, compile OK, Play Mode edit. Nothing changed in the project (`git status` clean apart from Unity's own `.meta`/lock files).
+130. Run `Add a BoxCollider to TestCube if it does not have one` → completes; open the scene in Unity (or `grep BoxCollider Assets/Scenes/FixtureScene.unity`): exactly **one** BoxCollider; the scene was saved; nothing else changed.
+131. Run the same request again → completes, still **one** BoxCollider (idempotent). In Unity: Edit → Undo history shows JARVIS' operation if the editor has a window (headless editors have none).
+132. Run `Set CounterObject startValue from 1 to 5` → `Counter.startValue` is 5 in the scene file; running it again is a no-op; asking for a change "from 1 to 7" now fails (the old value is not 1) and changes nothing.
+133. Break a script (add a syntax error to `Assets/Scripts/Calculator.cs` and commit) → `Fix the Unity compile error` → JARVIS reads Unity's compiler error, a **real provider** (Agents → engine/model named, never Local Qwen) edits the script through the normal file path, **Unity compiles** and the step says `Unity compile: PASS`.
+134. Make `Calculator.Add` return `a - b` (commit) → `Fix the failing Unity test` → provider fix, Unity recompiles, **the exact EditMode tests run again** and pass (`EditMode 2/2 passed · scope: …`); a review that merely dislikes the code does not fail the task (report shows "Reviewer advice").
+135. `Run the Unity tests and tell me what failed` on a project with a failing test → failure text names the failing test and its message (sanitized); no invented counts.
+136. `Enter Play Mode and verify CounterObject starts correctly` → the UNITY line shows **PLAY MODE** only while the editor is really playing, then back to **CONNECTED**; the step evidence says entered (confirmed) … left (confirmed).
+137. While Play Mode is active (start it yourself in a windowed editor, or during a long task) ask JARVIS to change the scene or a script → refused ("not allowed while Play Mode is active"), nothing changed; after leaving Play Mode the same request works.
+138. Add `ErrorEmitter` to an object and play (task: `Create an ErrorHost object that logs an error in Play Mode and play the scene`) → the task FAILS naming **1 new Console error**; the synthetic `api_key`/`password` text in it is shown as `[REDACTED]` everywhere (task card, Agents console, `sqlite3 …jarvis.sqlite "select validation_evidence from task_steps"`).
+139. Log an old error in the editor before the task → the report counts only errors **new** to the task ("repeat of an error that existed before" is shown separately).
+140. In a windowed editor change something in the open scene and do NOT save. Ask JARVIS to modify that scene → **approval card** "Modify Unity scene with your unsaved changes". DENY ⇒ nothing modified/saved, your change still unsaved. Repeat and APPROVE ⇒ JARVIS applies its change and saves the scene (your approved edit included).
+141. Duplicate-name test: ask `Create two GameObjects named Twin`, then `Add a Rigidbody to Twin` → JARVIS does **not** pick one: the task fails as ambiguous and lists `Twin#0`, `Twin#1`; `Add a Rigidbody to Twin#1` changes only the second.
+142. Change a script in the project (add a comment) and run `Compile the Unity project` → compile PASS with "domain reloaded"; the UNITY line goes BUSY and back; the next task still works (objects are re-resolved).
+143. Start a long task (`Play the scene for a long time`) and press **STOP** → STOPPED within seconds, Play Mode left, `Packages`/spool untouched, report written; Activity Monitor: no leftover Unity process of JARVIS' own after **CLOSE EDITOR** (UNITY line button).
+144. Quit JARVIS (⌘Q) while a Unity task runs and relaunch → the task is **INTERRUPTED** (not running); the UNITY line reconnects to a still-running editor you opened yourself; RESUME works; a Play Mode left over in an editor JARVIS started is reset, one in your own editor is not touched.
+145. `Delete TestCube` (goal asks for it) → **approval card** "Delete Unity object TestCube…". DENY ⇒ the object remains. Repeat and APPROVE ⇒ exactly that object is removed and the scene saved. Ask `Tidy the scene` (no deletion requested) with a plan that deletes → refused.
+146. Ask a design question in a finished task's review (e.g. suggestions about lighting) → shows as a **SUGGESTION** (proposal) in Tasks, never started automatically in any autonomy mode; "Purchase this asset" is a CRITICAL card that cannot be executed.
+147. Open Settings/Tasks and confirm nothing offers: running C#, menu items, shell, package install, Asset Store, uploads, git push.
+148. Tasks → expand a finished Unity task: UNITY section says **Visual validation: not performed**; the report (Report artifact / `…/artifacts/reports/*.md`) lists Unity facts and never says "looks correct".
+149. Agents screen: each Unity step is a **tool run** `UnityTool` (task-grouped, console events like "Applied: add BoxCollider to TestCube"), provider runs (planner, analysis, coding, UnityAgent) show their real engine/model; no fake provider cards for tools.
+150. **Compact HUD stays 392×448** during a Unity task and shows only a short phrase (`… · Unity · Compiling` / `Testing` / `Play Mode`); no hierarchy or Console in Compact; Compact ⇄ Full exclusivity unchanged.
+151. **VoiceOver**: the UNITY line reads "Unity editor: connected"; CLOSE EDITOR announces its target; approvals read their action. **Reduce Motion**: nothing new animates.
+152. Resources: Activity Monitor — JARVIS ≈0 % CPU with Unity connected and idle (JARVIS has no polling loop); Unity's own CPU/RAM (≈400–600 MB headless) is Unity's, not JARVIS'; provider processes appear only while a provider step runs.
+153. Report anything odd (I add it to `docs/KNOWN_ISSUES.md`). **Only after the fixture behaves** connect your real game **read-only** first (choose its folder, run `Inspect …`); do **not** let JARVIS mutate it until you submit a scoped task intentionally.
 
 ### V0.5 additions (proactive reasoning & approval policy) — MANUAL TEST REQUIRED
 **Prepare:** `docs/PROACTIVE_REASONING.md`. Use a **throw-away Git project** (small, with a `calc.py`). Default mode is **Ask Before Acting**. Developer helper: `build/Jarvis.app/Contents/MacOS/Jarvis --no-providers --open-full --section tasks --demo-proposals` (scripted demo task that leaves one normal and one critical suggestion; uses a temporary data directory).

@@ -85,3 +85,6 @@ Evidence, summaries, proposals and policy reasons are sanitized/bounded before s
 
 ## Limitations / what comes next
 Findings are limited to what V0.4 records (plus optional reviewer suggestions) — there is no project-wide scanning (deliberately). Only a few deterministic extractors exist. Auto actions are narrow (regression tests, tiny maintenance). No notifications (permission). The Report screen is still a placeholder. **V0.6** — Unity Project Agent (Unity MCP, scene/prefab/editor automation); **V0.7** — web research + asset acquisition (licenses, free-price verification, purchases stay critical approvals); **V0.8** — project memory (richer, learned project context beyond operational opportunity/proposal state).
+
+## V0.6 interplay
+Unity findings are ordinary findings: V0.5 policy stays authoritative. Unity content/design wording (lighting, scene layout, UI flow, art direction, skybox, post-processing, camera angle…) is design impact → PROPOSAL (never AUTO in any mode); "purchase/Asset Store/paid asset" → critical (external effect `purchase`, unsupported); "delete unused prefabs" → destructive → approval. Unity capabilities are not in the auto-action capability set (`read/write/build/test` only), so no Unity mutation can ever be an automatic action. The decision layer has no reference to the Unity layer (guarded).

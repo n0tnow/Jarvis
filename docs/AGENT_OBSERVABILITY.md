@@ -139,3 +139,6 @@ history/statistics. The synthetic secret fixture used by tests/demos is obviousl
 
 ## V0.5 additions
 Opportunity/proposal events appear in the activity feed (and the Agents timeline via task ids): "Opportunity detected / recorded / deduplicated / suppressed", "Proposal created", "Approval required", "Proposal approved / denied / dismissed", "Auto task created", "Autonomy budget exhausted", "Proactive assessment used <provider · model> because …". Proactive tasks are ordinary runs, grouped under their task, tagged `JARVIS AUTO TASK` / `APPROVED PROPOSAL` in Tasks.
+
+## V0.6 additions
+Each Unity step is one **tool run** (`agentType: UnityTool`, engine `tool`) with sanitized console events per typed operation ("Applied: add BoxCollider to TestCube (12 ms)", "Refused: …", "Rejected: …", "Console baseline captured (N existing errors are not attributed to this task)", "Leaving a Play Mode left over by an interrupted run"). Provider runs of the same task (planner, analysis, coding, `UnityAgent`, review) keep their real engine/model. There are no fake provider cards for tools and no separate Unity log viewer; Unity facts are summarized in the task detail and the report (`## Unity`, with "Visual validation: NOT PERFORMED"). The launched editor's own stdout is sanitized into a bounded in-memory tail and never stored.

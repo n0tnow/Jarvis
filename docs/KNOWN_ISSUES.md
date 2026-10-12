@@ -240,3 +240,31 @@ Description: Reworded asks about the same file are suppressed during a cooldown 
 ### JARVIS-V05-5 — No notifications
 Status: Open · FUTURE MILESTONE
 Description: Proposals are passive cards (a Compact tag and a Dashboard line). A macOS notification would need a permission and was deliberately not added.
+
+### JARVIS-V06-1 — Unity UI and real-game use are not user-verified
+Status: Open · MANUAL TEST REQUIRED
+Description: Automated and REAL (headless editor, fixture) tests passed, but nobody has verified the Unity line/task section/Compact phrase, VoiceOver, Reduce Motion, a **windowed** editor with the bridge installed by approval, or any real game. README items 126–153. The real game must only be connected read-only first.
+
+### JARVIS-V06-2 — No visual validation
+Status: Open · by design (future)
+Description: No Game/Scene View screenshot is captured or inspected; Unity reports state "Visual validation: NOT PERFORMED". Structural, compilation and test validation are real.
+
+### JARVIS-V06-3 — Narrow Unity surface
+Status: Open · by design
+Description: Deletion supports GameObjects only (approval per action); components/prefabs/scenes/assets cannot be deleted; no prefab unpack/apply; no package installation, project upgrade tooling, Asset Store, downloads; rollback = Undo + verify/repair, no scene transaction; one mutating Unity step per project at a time.
+
+### JARVIS-V06-4 — First import and a headless editor
+Status: Open · NON-BLOCKING
+Description: JARVIS' own editor is headless (no window): first open of a large project can take many minutes (connect timeout 10 min), and a person cannot watch it. A user's windowed editor works the same way once the bridge package is installed (needs approval and triggers a domain reload in that editor). Unity's own CPU/RAM (≈400–600 MB for the fixture) is Unity's.
+
+### JARVIS-V06-5 — A crash cannot clean up
+Status: Open · NON-BLOCKING
+Description: SIGKILL/crash of JARVIS cannot be intercepted: an owned editor dies with the process tree only on normal exit/SIGTERM; after a hard crash an owned editor may stay running (possibly in Play Mode). The next launch reconnects to it (state PLAY MODE is reported truthfully), an owned editor's leftover Play Mode is reset by the next Play step, and CLOSE EDITOR closes it. Tested with a simulated crash aftermath, not a real SIGKILL.
+
+### JARVIS-V06-6 — Reviewer behaviour changed (generic)
+Status: Open · behaviour note
+Description: Since DEC-050 a failing AI review no longer fails a task whose hard validators passed unless it names verifiable evidence or the user asked for a review gate; the advice is only in the report. Tasks with no build/test (nothing hard to pass) keep the old behaviour.
+
+### JARVIS-V06-7 — Test framework dependency of the bridge's test ops
+Status: Open · NON-BLOCKING
+Description: `runTests` needs `com.unity.test-framework` in the project (the fixture uses 1.7.0, resolved offline from the editor's built-in packages). Without it `getTestAvailability` says unavailable and a Unity test step fails honestly. PlayMode runs depend on the project's own PlayMode asmdefs.

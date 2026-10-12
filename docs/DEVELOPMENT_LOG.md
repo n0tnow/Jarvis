@@ -232,3 +232,31 @@ DEC-041 … DEC-046.
 ### Remaining Work
 User manual test (README 92–125). V0.6 (Unity Project Agent) only with approval. No tag.
 
+
+## 2026-10-12 — V0.6: Unity Project Agent & Editor Bridge
+
+### Goal
+Unity as a controlled execution environment inside the V0.4 engine (typed, observable, capability-checked), validated on a disposable fixture with a real editor.
+
+### Changes
+Embedded JARVIS Editor package (C#, file-spool) + disposable fixture · `Sources/Jarvis/Unity/` (discovery, detector, typed protocol, spool transport, policy, connection/service, mutation lock, launcher, installer) · Unity step types/capabilities/plan validation/migration v5 · `TaskEngine+Unity.swift` · `ReviewAuthority` (generic) · UI (project line, task section, Compact phrase) · simulated editor + ≈105 tests · `--unity-live-test` · verify.sh V0.6 guards · DEC-047…056 · `docs/UNITY_PROJECT_AGENT.md`.
+
+### Real findings (found by tests/live runs; all fixed)
+* The bridge's own first run showed the Unity Test Runner pops an unanswerable save-dialog for dirty scenes (run silently never started) → tests/`openScene` are refused with dirty scenes, and a stale "running" state is abandoned.
+* `openScene` of the *same* scene would have discarded a user's unsaved edits → any dirty scene blocks it.
+* `waitForStatus` returned the current status on timeout, so a timeout looked like "predicate satisfied" (Play Mode appeared to end by itself) → timeout now returns nil (transport and simulator).
+* A PlayMode test run leaves Play Mode *after* reporting → the engine waits for an idle editor before reading results.
+* The Play step's "always leave Play Mode" cleanup would have exited a Play Mode the step did not start (user's editor) → only a Play Mode the step started (or an owned editor's leftover) is left. Caught by the simulated-editor test, not the live test.
+* `targetNotFound` mapped to a generic tool failure, so deleting an already-deleted object was not idempotent → mapped to `validationFailed` and handled.
+* Cancelling during a Play observation waited the full 30 s on the simulator (cancellation not wired) → cancellable waiters everywhere.
+* A fixture's Git state: the test's own broken script was "the user's uncommitted work" → committed before provider scenarios; the Git-dirty approval for scene *files* was added to Unity edits.
+* Unity CPU in performance numbers first excluded helper processes (compiler servers) → now summed with descendants; JARVIS vs Unity vs providers reported separately.
+
+### Real-provider result
+OpenCode FREE `opencode/space-bunny-free` (routed by the real ModelRouter, Local Qwen excluded) fixed a real Unity compile error and a real failing EditMode test; Unity's own compiler/test runner validated both; the reviewer's verdict could not change the validated result.
+
+### Decisions
+DEC-047 … DEC-056.
+
+### Remaining Work
+User manual test (README 126–153). Visual validation, wider destructive operations and multi-editor orchestration are future work. V0.7 only with approval. No tag.
