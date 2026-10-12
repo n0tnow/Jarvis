@@ -130,6 +130,7 @@ final class AppContext {
         let memoryRepo = repo ?? JarvisRepository(database: try! JarvisDatabase(url: JarvisPaths.temporary("jarvis-memory-fallback").database))
         memory = ProjectMemory(repository: memoryRepo, preferences: preferences, embedding: embeddingController)
         memoryModel = MemoryViewModel(memory: memory, preferences: preferences)
+        memory.start()
         taskEngine.memory = memory
         opportunities = OpportunityEngine(repository: repo, audit: audit, tasks: taskEngine)
         proposalService = ProposalService(repository: repo, engine: opportunities)

@@ -28,9 +28,15 @@ struct IntelligenceRequest: Sendable {
     /// Provider-side conversation to continue (Claude `--resume`, Codex `exec resume`); nil = start a new one.
     var sessionID: String? = nil
     var presentation: ResponsePresentation = .text
+    /// V0.10: a bounded Project Memory packet (CURRENT TRUTH · MEMORY · UNCERTAINTY), present only when something in the project's memory is relevant. Context, never authority.
+    var memoryContext: String? = nil
 
-    /// The prompt as the provider should see it: unchanged for typed requests, with the spoken-conversation preamble for voice turns.
-    var providerPrompt: String { presentation == .voiceConversation ? VoicePresentation.preamble + "\n\n" + prompt : prompt }
+    /// The prompt as the provider should see it: unchanged for typed requests, with the spoken-conversation preamble for voice turns, and the memory packet in front when there is one.
+    var providerPrompt: String {
+        let base = presentation == .voiceConversation ? VoicePresentation.preamble + "\n\n" + prompt : prompt
+        guard let memoryContext, !memoryContext.isEmpty else { return base }
+        return memoryContext + "\n\n---\n\n" + base
+    }
 }
 
 /// Streaming-shaped on purpose so replies need not be atomic; cancellation is cooperative via the surrounding Task.

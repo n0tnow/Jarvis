@@ -9,6 +9,8 @@ final class HashingEmbedder: TextEmbedder, @unchecked Sendable {
     var isAvailable = true
     var calls = 0
     var failing = false
+    /// FNV-1a: stable across processes (Swift's hashValue is randomised per run, which would make the tests flaky).
+    static func bucket(_ s: String, _ n: Int) -> Int { var h: UInt64 = 0xcbf29ce484222325; for b in s.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }; return Int(h % UInt64(n)) }
     func embed(_ texts: [String]) async throws -> [[Float]] {
         calls += 1
         if failing { throw EmbeddingError.timedOut }
@@ -16,9 +18,9 @@ final class HashingEmbedder: TextEmbedder, @unchecked Sendable {
             var v = [Float](repeating: 0, count: dimension)
             for w in MemoryText.words(t) {
                 let s = MemoryText.stem(w)
-                v[abs(s.hashValue &* 31) % dimension] += 1
+                v[Self.bucket(s, dimension)] += 1
                 let chars = Array(s)
-                if chars.count >= 3 { for i in 0...(chars.count - 3) { v[abs(String(chars[i..<(i + 3)]).hashValue) % dimension] += 0.3 } }
+                if chars.count >= 3 { for i in 0...(chars.count - 3) { v[Self.bucket(String(chars[i..<(i + 3)]), dimension)] += 0.3 } }
             }
             let n = sqrt(v.reduce(0) { $0 + $1 * $1 })
             return n > 0 ? v.map { $0 / n } : v
@@ -245,5 +247,15 @@ struct MemoryIndexTests {
         try r.rig.repo.insertMemory(m)
         let rep = await r.index.sync(projectKey: r.project)
         #expect(rep.skippedSecret == 1 && rep.embedded == 0 && r.vectors == 0)
+    }
+}
+
+@Suite("Memory · vocabulary tables")
+struct MemoryVocabularyTests {
+    @Test func theBridgeAndFrameTablesBuildAndMapBothWays() {
+        #expect(MemoryRetriever.bridge["karar"]?.contains("decision") == true && MemoryRetriever.bridge["decision"]?.contains("karar") == true)
+        #expect(MemoryRetriever.bridge["indirilen"]?.contains("download") == true && MemoryRetriever.bridge["karantina"]?.contains("quarantine") == true)
+        #expect(MemoryIntentParser.frameWords.contains("decide") && !MemoryIntentParser.frameWords.contains("playwright"))
+        #expect(MemoryRetriever.queryTokens("İndirilen dosyaları").contains(MemoryText.stem("download")))
     }
 }

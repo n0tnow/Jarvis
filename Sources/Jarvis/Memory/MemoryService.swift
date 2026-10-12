@@ -387,6 +387,20 @@ final class MemoryService: @unchecked Sendable {
         return MemoryText.clip("\(old.subject): \(newValue)", MemoryConstants.maxSummary)
     }
 
+    /// A repository document says one record replaces another: the older live record with `key` becomes history. Nothing is deleted; the new one cites it.
+    func supersede(key: String, by newID: UUID) {
+        lock.lock(); defer { lock.unlock() }
+        guard var new = (try? repository.memory(newID)) ?? nil else { return }
+        let now = clock()
+        for var old in ((try? repository.memories(projectKey: new.projectKey, key: key)) ?? []) where old.id != newID && old.status.isLive {
+            old.status = .superseded; old.supersededBy = newID; old.updatedAt = now; old.pinned = false
+            try? repository.updateMemory(old); try? repository.deleteEmbedding(old.id)
+            if !new.relations.contains(where: { $0.predicate == "supersedes" && $0.target == old.id.uuidString }) { new.relations.append(MemoryRelation(predicate: "supersedes", targetKind: "memory", target: old.id.uuidString)) }
+            event(new.projectKey, "superseded", newID, "\(key) is replaced by a newer record")
+        }
+        try? repository.updateMemory(new)
+    }
+
     // MARK: - Consolidation (bounded, derived, never destructive)
 
     /// Several live failures/episodes that share a `lesson:<slug>` tag support ONE lesson. The sources stay; the lesson cites them.

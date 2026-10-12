@@ -121,9 +121,15 @@ enum MemoryIntentParser {
         let isQuestion = raw.contains("?") || has(["what ", "why ", "which ", "have we ", "did we ", "do we ", "does ", "how ", "who ", "ne ", "neden", "nasil", "hangi", "miydi", "muydu", "miyiz", "ediyor muyuz", "ogren", "anlat", "hatirla", "tell me", "show me", "list ", "goster"])
         guard isQuestion else { return nil }
         // a question about the OUTSIDE world / a generic request is not a memory question: the frame must refer to "we/our/project/this project/JARVIS" history or state
-        let frame = has(["we decided", "did we decide", "we decide", "we tried", "have we tried", "did we try", "we use", "do we use", "are we using", "we chose", "our ", "this project", "the project", "project's", "jarvis", "we rejected", "we reject", "we researched", "we did", "we changed", "we change", "did not we", "didn't we", "didnt we", "we ", "reject", "since yesterday",
-                         "what changed", "what failed", "what remains", "what do you know about", "what do we know", "remember", "karar vermis", "denemis", "denedik", "kullaniyor muyuz", "kullaniyoruz", "neden ", "reddettik", "arastirdik", "ne degisti", "ne biliyorsun", "ne biliyoruz", "bildigin", "aklinda", "hatirliyor", "projede", "projemizde", "bizim", "vermistik", "ettik", "yaptik", "secmistik"])
-        guard frame else { return nil }
+        // STRONG frames explicitly ask about THIS project's history or recorded state; only these are answered from records. (A first-person-plural verb — "we chose",
+        // "atmıyoruz", "seçtik" — makes a why-question about our own choices.)
+        let weFolded = t.split(whereSeparator: { !$0.isLetter }).map(String.init)
+        let weVerb = weFolded.contains { w in ["yoruz", "yoruz?", "tik", "tuk", "dik", "duk", "ediyoruz", "mistik", "mustuk", "tuk"].contains { w.hasSuffix($0) } && w.count > 5 }
+        let strongCues = ["we decided", "did we decide", "we decide", "decision", "we tried", "have we tried", "did we try", "we chose", "we choose", "why did we", "why do we", "why don't we", "why didn't we", "why are we", "we rejected", "we reject", "we researched", "we changed", "we change", "what failed", "what changed",
+                          "what remains", "what do you know about", "what do we know", "remember", "constraint", "known issue", "this project", "our project", "kisit", "karar", "denedik", "denemis", "denemistik", "degisti", "ne biliyor", "reddet", "arastirdik", "secmistik", "bildigin", "hatirliyor", "projemizde", "bizim"]
+        let weakCues = ["our ", "the project", "project's", "jarvis", "since yesterday", "projede", "kullaniyor muyuz", "kullaniyoruz", "neden ", "vermistik", "ettik", "yaptik", "reject", "did we", "do we", "are we using", "we use", "we "]
+        let strongHit = has(strongCues) || (weVerb && has(["neden", "niye", "why"]))
+        guard strongHit || has(weakCues) else { return nil }
         var kind: MemoryQuestion.Kind = .general
         if has(["constraint", "kisit", "limitation", "must not", "rules", "kurallar", "yasak"]) { kind = .constraints }
         else if has(["assets did we", "asset did we", "which assets", "what assets", "rejected asset", "varlik", "varliklari"]) { kind = .assets }
@@ -136,15 +142,16 @@ enum MemoryIntentParser {
         else if has(["what do you know", "what do we know", "ne biliyorsun", "ne biliyoruz", "bildigin"]) { kind = .known }
         else if has(["current", "now", "right now", "currently", "su an", "simdi", "guncel", "which version", "hangi surum"]) { kind = .current }
         let historical = has(historyCues) || kind == .tried || kind == .changed || kind == .failure
-        let strong = has(["decide", "decision", "tried", "try ", "failed", "changed", "rejected", "reject", "researched", "know about", "constraint", "remember", "karar", "denedik", "denemis", "degisti", "ne biliyor", "reddet", "arastir", "kisit", "this project", "our project", "known issue", "remains"])
-        return MemoryQuestion(kind: kind, topic: topic(of: raw), historical: historical, raw: raw, strongFrame: strong)
+        return MemoryQuestion(kind: kind, topic: topic(of: raw), historical: historical, raw: raw, strongFrame: strongHit)
     }
 
     /// The question's subject: content words minus the question frame.
     static func topic(of raw: String) -> String {
-        let frame: Set<String> = ["decide", "decided", "decision", "tried", "try", "failed", "changed", "know", "about", "remember", "project", "jarvis", "current", "currently", "now", "before", "previously", "earlier", "last", "time", "use", "using", "used",
-                                  "karar", "vermistik", "denedik", "denemis", "biliyorsun", "biliyoruz", "hakkinda", "degisti", "projede", "nedir", "neydi", "ne", "kullaniyoruz", "kullaniyor", "muyuz", "miydik", "daha", "once", "simdi", "neden", "why", "what", "did", "have", "do", "does", "tell", "show", "list"]
-        let words = MemoryText.words(raw).filter { !frame.contains($0) }
-        return words.joined(separator: " ")
+        MemoryText.words(raw).filter { !frameWords.contains($0) }.joined(separator: " ")
     }
+
+    /// Words that frame a question or a request rather than name its subject.
+    static let frameWords: Set<String> = Set(["decide", "decided", "decision", "tried", "try", "failed", "changed", "know", "about", "remember", "project", "jarvis", "current", "currently", "now", "before", "previously", "earlier", "last", "time", "use", "using", "used",
+                                  "karar", "vermistik", "denedik", "denemis", "biliyorsun", "biliyoruz", "hakkinda", "degisti", "projede", "nedir", "neydi", "ne", "kullaniyoruz", "kullaniyor", "muyuz", "miydik", "daha", "once", "simdi", "neden", "why", "what", "did", "have", "do", "does", "tell", "show", "list",
+                                  "decision", "choose", "chose", "choice", "secmistik", "secildi", "istiyoruz", "yerine", "instead", "change", "modify", "edit", "update", "add", "fix", "refactor", "implement", "work", "make", "need", "want", "let", "get", "see", "know"])        // (built from an array: a Set literal crashes on a duplicate)
 }

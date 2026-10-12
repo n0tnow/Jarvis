@@ -52,6 +52,9 @@ struct LaunchOptions {
     var unityNoProvider = false
     var unityFixture: String?
     var researchLiveTest = false
+    var memoryLiveTest = false
+    var memoryChild: String?             // internal: "quit" (helper cleanup test)
+    var memoryRepo: String?              // the project whose own docs are bootstrapped (default: the JARVIS checkout this app was built from)
     var researchChild: String?           // internal: "start" | "check" (restart test)
     var voiceLiveTest = false
     var voiceAudible = false
@@ -88,6 +91,9 @@ struct LaunchOptions {
             case "--unity-no-provider": unityNoProvider = true
             case "--unity-fixture": unityFixture = it.next()
             case "--research-live-test": researchLiveTest = true
+            case "--memory-live-test": memoryLiveTest = true
+            case "--memory-child": memoryChild = it.next()
+            case "--memory-repo": memoryRepo = it.next()
             case "--research-child": researchChild = it.next()
             case "--voice-live-test": voiceLiveTest = true
             case "--voice-audible": voiceAudible = true

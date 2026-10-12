@@ -16,8 +16,14 @@ final class MemorySwitches: @unchecked Sendable {
 protocol MemoryConversing: AnyObject {
     /// `.none` when the sentence is not about memory, memory is off, or the question is only loosely about the project (it then goes to the normal conversation).
     func recognizes(_ text: String) -> MemoryCommand
-    func reply(to command: MemoryCommand, language: ReplyLanguage) async -> String
+    /// nil = "this is not mine" (a loosely phrased question memory is not confident about): the caller continues with the normal conversation.
+    func reply(to command: MemoryCommand, language: ReplyLanguage) async -> String?
+    /// A bounded memory packet for an ordinary conversational question, or nil when nothing in memory is relevant (or memory is off).
+    func conversationContext(for prompt: String) async -> ConversationMemoryContext?
+    func recordConversationUse(_ c: ConversationMemoryContext, runID: UUID?)
 }
+
+struct ConversationMemoryContext: Sendable { var text: String; var packet: ContextPacket; var project: ProjectIdentity }
 
 struct MemoryDiagnostics: Equatable, Sendable {
     var project: String
@@ -88,6 +94,13 @@ final class ProjectMemory: MemoryConversing {
     }
 
     var isEnabled: Bool { prefs.projectMemoryEnabled }
+
+    /// Called once by the app: learns which project is current now and whenever the chosen folder changes (event-driven; nothing runs while idle).
+    func start() {
+        let p = prefs
+        Task { await refreshCurrentProject() }
+        observeContinuously(track: { _ = p.projectRoot }, onChange: { [weak self] in Task { @MainActor in await self?.refreshCurrentProject() } })
+    }
     /// Test hook / immediate refresh after a programmatic preference change.
     func syncSwitches() { switches.set(enabled: prefs.projectMemoryEnabled, semantic: prefs.memorySemanticEnabled) }
     private func changed(_ e: MemoryEvent) {
@@ -116,14 +129,29 @@ final class ProjectMemory: MemoryConversing {
 
     func recognizes(_ text: String) -> MemoryCommand {
         guard isEnabled else { return .none }
+        // Only questions that explicitly ask about THIS project's history / state ("what did we decide…") are answered from records. A loosely phrased question
+        // ("Can spoken approval authorize a critical action?") goes to the normal conversation WITH the relevant memory in its context — no guessing which one it is.
         let c = MemoryIntentParser.parse(text)
         if case .question(let q) = c, !q.strongFrame { return .none }
         return c
     }
 
+    func conversationContext(for prompt: String) async -> ConversationMemoryContext? {
+        guard isEnabled, prompt.count < 4_000, let p = currentProject else { return nil }
+        let packet = await builder.build(ContextRequest(goal: prompt, agent: .conversation, projectKey: p.key, projectRoot: p.rootPath))
+        guard !packet.isEmpty, packet.usedIDs.count > 0 else { return nil }
+        lastContext = "conversation: \(packet.stats.selected) memories · \(packet.stats.chars) chars"
+        return ConversationMemoryContext(text: ProjectContextBuilder.render(packet), packet: packet, project: p)
+    }
+
+    func recordConversationUse(_ c: ConversationMemoryContext, runID: UUID?) {
+        try? repository.insertMemoryContextUse(MemoryContextUse(runID: runID, taskID: nil, projectKey: c.project.key, agentType: "Conversation", memoryIDs: c.packet.usedIDs, truthKeys: c.packet.truth.map(\.key), items: c.packet.stats.selected, chars: c.packet.stats.chars))
+        revision &+= 1
+    }
+
     private func tr(_ l: ReplyLanguage, _ en: String, _ trk: String) -> String { l == .tr ? trk : en }
 
-    func reply(to command: MemoryCommand, language l: ReplyLanguage) async -> String {
+    func reply(to command: MemoryCommand, language l: ReplyLanguage) async -> String? {
         guard let project = await refreshCurrentProject() else {
             return tr(l, "Project memory is per project, so I need a project folder first. Open Tasks and choose one (Choose folder…), then ask again.", "Proje hafızası projeye özgüdür; önce bir proje klasörü gerekiyor. Tasks ekranından klasör seçip tekrar sorun.")
         }
@@ -180,6 +208,7 @@ final class ProjectMemory: MemoryConversing {
         }
     }
 
+    /// A loosely phrased question is answered from memory only when the top record is a convincing match: close in meaning (≥ 0.50) or sharing most of the question's words.
     // MARK: Agents
 
     /// The bounded memory packet for an agent job about to run, or nil (memory off, no project, nothing relevant). Everything it contains was reconciled with the

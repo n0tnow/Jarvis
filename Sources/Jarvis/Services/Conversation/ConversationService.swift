@@ -114,10 +114,17 @@ final class ConversationService {
             let command = memory.recognizes(text)
             if command != .none {
                 let lang = InputNormalizer.normalize(text).language
-                handleMemoryCommand(command, language: lang, memory: memory)
+                handleMemoryCommand(command, text: text, language: lang, memory: memory, origin: origin, source: source)
                 return .localResponse(.memory, lang)
             }
         }
+        return dispatch(text, origin: origin, source: source)
+    }
+
+    /// The normal routing of one user message (commands, local replies, tasks, research, provider). Split out so a loosely phrased memory question that memory is NOT
+    /// confident about can continue here after the memory check.
+    @discardableResult
+    private func dispatch(_ text: String, origin: InputOrigin, source: InputSource) -> RouteDecision {
         let decision = router.route(text)
 
         switch decision {
@@ -186,14 +193,18 @@ final class ConversationService {
         }
     }
 
-    private func handleMemoryCommand(_ command: MemoryCommand, language: ReplyLanguage, memory: any MemoryConversing) {
+    private func handleMemoryCommand(_ command: MemoryCommand, text original: String, language: ReplyLanguage, memory: any MemoryConversing, origin: InputOrigin, source: InputSource) {
         pendingTaskAcks += 1
         Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.pendingTaskAcks -= 1 }
-            let text = await memory.reply(to: command, language: language)
-            self.conversation.appendJarvis(text, route: .local)
-            self.announceLatestReply()
+            if let reply = await memory.reply(to: command, language: language) {
+                self.conversation.appendJarvis(reply, route: .local)
+                self.announceLatestReply()
+            } else {
+                _ = self.dispatch(original, origin: origin, source: source)           // memory was not confident: the question goes the normal way
+                self.announceLatestReply()
+            }
         }
     }
 
@@ -243,6 +254,7 @@ final class ConversationService {
     }
 
     private func runProviderRequest(_ kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID, presentation: ResponsePresentation = .text) async {
+        let memoryContext = await memoryHandler?.conversationContext(for: prompt)
         let resolution = await resolver.resolve(kind, prompt: prompt)
         if Task.isCancelled {                                   // STOP pressed while the provider was still being resolved
             conversation.markCancelled(messageID)
@@ -256,11 +268,13 @@ final class ConversationService {
             return
         }
 
+        if let memoryContext { memoryHandler?.recordConversationUse(memoryContext, runID: resolved.runID) }
+
         // Attempt loop. Bounded: the resolver allows at most `maxEscalations` hand-offs, and only in Auto, only after a
         // provider FAILURE that produced no output (never after a user cancel, never once text has streamed).
         var attempt: Attempt
         while true {
-            attempt = await runAttempt(resolved, kind: kind, prompt: prompt, language: language, messageID: messageID, presentation: presentation)
+            attempt = await runAttempt(resolved, kind: kind, prompt: prompt, language: language, messageID: messageID, presentation: presentation, memoryContext: memoryContext?.text)
             resolver.runFinished(resolved, outcome: attempt.outcome, report: attempt.report)
             if case .failed(let error) = attempt.outcome, !attempt.hasContent, !Task.isCancelled,
                let next = await resolver.escalate(from: resolved, error: error, prompt: prompt) {
@@ -294,7 +308,7 @@ final class ConversationService {
     }
 
     /// One provider attempt: start → stream (coalesced) → wait until the provider is really gone → report.
-    private func runAttempt(_ resolved: ResolvedProvider, kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID, presentation: ResponsePresentation) async -> Attempt {
+    private func runAttempt(_ resolved: ResolvedProvider, kind: IntelligenceRequestKind, prompt: String, language: ReplyLanguage, messageID: UUID, presentation: ResponsePresentation, memoryContext: String? = nil) async -> Attempt {
         respondingProvider = resolved.id
         respondingProviderName = resolved.name
         respondingRunID = resolved.runID
@@ -303,7 +317,7 @@ final class ConversationService {
         store.log("\(resolved.name) response started", kind: .info)
 
         let request = IntelligenceRequest(id: UUID(), kind: kind, prompt: prompt, history: conversation.messages, language: language,
-                                          sessionID: resolver.sessionID(for: resolved.id), presentation: presentation)
+                                          sessionID: resolver.sessionID(for: resolved.id), presentation: presentation, memoryContext: memoryContext)
         let coalescer = StreamCoalescer(conversation: conversation, id: messageID)
         var outcome = ProviderOutcome.completed
         var sawFinished = false

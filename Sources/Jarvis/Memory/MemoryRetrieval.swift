@@ -22,6 +22,8 @@ struct RetrievalRequest: Sendable {
     var intent: MemoryQuestion.Kind? = nil
     /// Cosine floor for an item with NO keyword anchor to count as related (browsing 0.30; agent context is stricter).
     var minSemantic: Float = MemoryRetriever.minSemantic
+    /// 0.8 in production (benchmark-chosen). 1.0 / 0.0 exist for the quality benchmark (semantic-only / keyword-only).
+    var semanticWeight: Double = MemoryRetriever.semanticWeight
 }
 
 struct RankedMemory: Identifiable, Sendable {
@@ -31,6 +33,8 @@ struct RankedMemory: Identifiable, Sendable {
     var semantic: Float?
     var reasons: [String]
     var caveat: String?
+    /// idf-weighted share of the question's SUBJECT words (frame words removed) that this record contains: 1 = it has them all, 0 = none.
+    var topic: Double = 0
     var id: UUID { item.id }
 }
 
@@ -42,6 +46,10 @@ struct RetrievalResult: Sendable {
     var milliseconds: Double
     /// Nothing in the project's memory is convincingly about this query (no lexical anchor and no strong semantic match).
     var lowConfidence: Bool
+    /// The question's subject words (for excerpting and for "nothing recorded").
+    var topicWords: [String] = []
+    /// Something in memory is really about the question: a record contains its subject words, or one is clearly close in meaning.
+    var answerable: Bool { ranked.first.map { $0.topic > 0 || ($0.semantic ?? 0) >= MemoryRetriever.answerableSemantic } ?? false }
 }
 
 /// Hybrid retrieval (DEC-117): structured filters → BM25 lexical (Turkish/English folded, prefix-stemmed, with a small TR↔EN project vocabulary) → semantic cosine from the
@@ -53,6 +61,8 @@ final class MemoryRetriever: @unchecked Sendable {
     weak var service: MemoryService?
     static let semanticWeight = 0.8
     static let minSemantic: Float = 0.30
+    /// Below this cosine, with none of the question's subject words in the record, the record is only loosely related: the honest answer is "nothing recorded".
+    static let answerableSemantic: Float = 0.50
 
     init(repository: JarvisRepository, index: MemoryIndex, service: MemoryService? = nil) { self.repository = repository; self.index = index; self.service = service }
 
@@ -65,7 +75,11 @@ final class MemoryRetriever: @unchecked Sendable {
         "varlik": ["asset"], "asset": ["varlik"], "gorev": ["task"], "task": ["gorev"], "hata": ["error", "failure", "bug"], "error": ["hata"], "kamera": ["camera"], "camera": ["kamera"],
         "guvenilmez": ["untrusted"], "untrusted": ["guvenilmez"], "arastirma": ["research"], "research": ["arastirma"], "denedik": ["tried"], "tried": ["denedik", "denemis"], "reddedildi": ["rejected"],
         "rejected": ["reddedildi", "reddettik"], "kullanma": ["use"], "secmistik": ["chose", "selected"], "yerine": ["instead"], "instead": ["yerine"], "model": ["model"], "unity": ["unity"],
-        "pencere": ["window"], "boyut": ["size"], "size": ["boyut"], "saklamak": ["store"], "saklıyor": ["store"], "saklamiyor": ["store"], "anahtar": ["key"], "key": ["anahtar"],
+        "pencere": ["window"], "boyut": ["size"], "size": ["boyut"], "saklıyor": ["store"], "saklamiyor": ["store"], "anahtar": ["key"], "key": ["anahtar"],
+        "dosya": ["file", "files", "artifact"], "dosyalari": ["file", "files", "artifact"], "dosyayi": ["file", "artifact"], "dosyalar": ["files", "artifact"], "dogrudan": ["directly", "direct"], "atmiyoruz": ["copy", "copied", "put", "import"], "atmak": ["copy", "put"],
+        "kopyala": ["copy"], "kopyalanir": ["copied"], "kopyalamiyoruz": ["copy", "copied"], "aktarma": ["import"], "aktarim": ["import"], "icerik": ["content"], "guvenlik": ["security"], "guvenli": ["safe"], "guvenilir": ["trusted"], "yetki": ["authority", "permission"],
+        "izin": ["permission", "allow"], "saklanir": ["stored"], "saklamak": ["store"], "saklamiyoruz": ["store", "stored"], "depolama": ["storage"], "surum": ["version"], "kutuphane": ["library"], "ag": ["network"], "internet": ["web", "network"], "gizli": ["secret"], "sifre": ["password", "credential"],
+        "reddedilen": ["rejected"], "reddettik": ["rejected", "rejected"], "kabul": ["accepted"], "oneri": ["proposal", "suggestion"], "plan": ["plan"], "test": ["test", "tests"], "derleme": ["compile", "build"], "sahne": ["scene"], "animasyon": ["animation"],
     ]
 
     static func queryTokens(_ q: String) -> [String] {
@@ -154,10 +168,29 @@ final class MemoryRetriever: @unchecked Sendable {
 
         func norm(_ v: [Double]) -> [Double] { let lo = v.min() ?? 0, hi = v.max() ?? 0; return hi > lo ? v.map { ($0 - lo) / (hi - lo) } : v.map { _ in 0 } }
         let lexN = norm(lex)
+        // the question's SUBJECT (frame words like "decide / why / change" removed): rare words such as "Playwright" must outweigh generic similarity
+        let topicAlts: [[String]] = MemoryText.words(req.query).filter { !MemoryIntentParser.frameWords.contains($0) }.map { w in Array(Set([MemoryText.stem(w)] + (Self.bridge[w] ?? []).map(MemoryText.stem))) }
+        var topicIDF: [Double] = []
+        for alts in topicAlts {
+            let dfw = docs.filter { d in alts.contains { d.contains($0) } }.count
+            topicIDF.append(dfw == 0 ? 0 : log(1 + (n - Double(dfw) + 0.5) / (Double(dfw) + 0.5)))
+        }
+        let topicTotal = topicIDF.reduce(0, +)
+        let topicWordsOut = topicAlts.map { $0.first ?? "" }
+        func topicCoverage(_ i: Int) -> Double {
+            guard topicTotal > 0 else { return 0 }
+            let d = Set(docs[i])
+            var got = 0.0
+            for (k, alts) in topicAlts.enumerated() where topicIDF[k] > 0 && alts.contains(where: { d.contains($0) }) { got += topicIDF[k] }
+            return got / topicTotal
+        }
         let semRaw: [Float?] = pool.map { sims[$0.id] }
         let semVals = semRaw.compactMap { $0 }
         let semLo = semVals.min() ?? 0, semHi = semVals.max() ?? 0
         let wanted = Self.intentTypes(req.intent)
+        // an area that half the project belongs to ("unity") says little about which record answers; a rare one ("camera") says a lot
+        var areaShare: [String: Double] = [:]
+        for m in pool { if let a = m.area { areaShare[a, default: 0] += 1 } }
         let now = Date()
         var ranked: [RankedMemory] = []
         for (i, m) in pool.enumerated() {
@@ -165,33 +198,50 @@ final class MemoryRetriever: @unchecked Sendable {
             var base: Double
             if let s = semRaw[i] {
                 let sN = semHi > semLo ? Double(s - semLo) / Double(semHi - semLo) : 0
-                base = Self.semanticWeight * sN + (1 - Self.semanticWeight) * lexN[i]
+                base = req.semanticWeight * sN + (1 - req.semanticWeight) * lexN[i]
                 reasons.append(String(format: "semantic %.2f", s)); if lex[i] > 0 { reasons.append("keyword match") }
             } else { base = lexN[i] * (semanticUsed ? 0.85 : 1); if lex[i] > 0 { reasons.append("keyword match") } }
             // an item is only a candidate if something REAL connects it to the query: a keyword anchor, a convincing semantic match, or a pin (min-max scores alone prove nothing)
             if !anchored[i] && (semRaw[i] ?? 0) < req.minSemantic && !m.pinned { continue }
             var boost = 0.0
+            let cover = topicCoverage(i)
+            if cover > 0 { boost += 0.30 * cover; reasons.append(String(format: "subject match %.0f%%", cover * 100)) }
             if m.pinned { boost += 0.15; reasons.append("pinned") }
             switch m.importance { case .critical: boost += 0.10; reasons.append("critical"); case .high: boost += 0.05; default: break }
             switch m.strength { case .authoritative: boost += 0.06; case .strong: boost += 0.03; default: break }
             if wanted.contains(m.type) { boost += 0.08; reasons.append("fits the question (\(m.type.label.lowercased()))") }
-            if let a = m.area, MemoryText.fold(req.query).contains(MemoryText.fold(a)) { boost += 0.06; reasons.append("area: \(a)") }
+            if let a = m.area, MemoryText.fold(req.query).contains(MemoryText.fold(a)) { boost += 0.06 * max(0, 1 - 3 * (areaShare[a, default: 0] / n)); reasons.append("area: \(a)") }
             if req.intent == .current, m.type == .projectFact || m.type == .constraint { boost += max(0, 0.02 * (1 - min(1, now.timeIntervalSince(m.updatedAt) / (365 * 86_400)))) }
             var mult: Double
             switch m.status { case .current: mult = 1; case .stale: mult = 0.85; case .disputed: mult = 0.85; case .unverified: mult = 0.7; case .superseded: mult = req.mode == .historical ? 0.9 : 0.5; case .archived: mult = 0.6; case .forgotten: continue }
             if m.status != .current { reasons.append(m.status.label.lowercased()) }
             if req.mode == .historical, m.status == .superseded { boost += 0.04 }
-            ranked.append(RankedMemory(item: m, score: (base + boost) * mult, lexical: lex[i], semantic: semRaw[i], reasons: reasons, caveat: Self.caveat(m, now: now)))
+            ranked.append(RankedMemory(item: m, score: (base + boost) * mult, lexical: lex[i], semantic: semRaw[i], reasons: reasons, caveat: Self.caveat(m, now: now), topic: cover))
         }
         ranked.sort { ($0.score, $0.item.updatedAt) > ($1.score, $1.item.updatedAt) }
         let top = Array(ranked.prefix(max(1, req.limit)))
         let confident = top.first.map { ($0.semantic ?? 0) >= req.minSemantic || anchoredRaw($0.lexical) } ?? false
-        let result = RetrievalResult(ranked: top, candidates: pool.count, semanticUsed: semanticUsed, semanticNote: semNote, milliseconds: ms(t0), lowConfidence: !confident)
+        let result = RetrievalResult(ranked: top, candidates: pool.count, semanticUsed: semanticUsed, semanticNote: semNote, milliseconds: ms(t0), lowConfidence: !confident, topicWords: topicWordsOut)
         service?.note(req.projectKey, "retrieved", nil, "\(top.count)/\(pool.count) · \(semanticUsed ? "hybrid" : "keyword") · \(Int(result.milliseconds)) ms")
         return result
     }
 
     private func anchoredRaw(_ lexical: Double) -> Bool { lexical > 0 }
+
+    /// Cheap, synchronous, model-free test used to decide whether a loosely phrased question might be about this project at all: the best fraction of the question's
+    /// content words that ONE memory contains. No embedding, no helper start.
+    func lexicalCoverage(query: String, projectKey: String) -> Double {
+        let words = MemoryText.words(query)
+        guard words.count >= 2 else { return 0 }
+        let alternatives: [Set<String>] = words.map { w in Set([MemoryText.stem(w)] + (Self.bridge[w] ?? []).map(MemoryText.stem)) }
+        let items = (try? repository.memories(projectKey: projectKey, statuses: [.current, .stale, .disputed])) ?? []
+        var best = 0.0
+        for m in items {
+            let d = Set(Self.docTokens(m))
+            best = max(best, Double(alternatives.filter { !$0.isDisjoint(with: d) }.count) / Double(alternatives.count))
+        }
+        return best
+    }
     private func ms(_ t0: Date) -> Double { Date().timeIntervalSince(t0) * 1000 }
 
     static func caveat(_ m: MemoryItem, now: Date) -> String? {

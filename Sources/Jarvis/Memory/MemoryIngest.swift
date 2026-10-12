@@ -5,8 +5,9 @@ import Foundation
 struct ParsedEntry: Equatable, Sendable {
     var id: String               // "DEC-094", "JARVIS-V09-3"
     var title: String
-    var fields: [String: String] // Status / Decision / Why / Reason / Context / Consequences / Description / Evidence / Next
+    var fields: [String: String] // Status / Decision / Why / Reason / Context / Consequences / Description / Evidence / Next (+ "_body": unlabeled text)
     var line: Int
+    var section = ""            // the `##` heading the entry sits under ("Open", "Resolved", …)
 }
 
 enum MemoryDocParsers {
@@ -16,8 +17,10 @@ enum MemoryDocParsers {
         var out: [ParsedEntry] = []
         var cur: ParsedEntry?
         var lastField: String?
+        var section = ""
         for (n, raw) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
             let line = String(raw)
+            if line.hasPrefix("## ") && level > 2 { section = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces) }
             if line.hasPrefix(marker) {
                 if let c = cur { out.append(c) }
                 cur = nil; lastField = nil
@@ -25,7 +28,7 @@ enum MemoryDocParsers {
                 guard head.hasPrefix(headingPrefix) else { continue }
                 let parts = head.components(separatedBy: " — ")
                 let id = parts[0].trimmingCharacters(in: .whitespaces)
-                cur = ParsedEntry(id: id, title: parts.dropFirst().joined(separator: " — ").trimmingCharacters(in: .whitespaces), fields: [:], line: n + 1)
+                cur = ParsedEntry(id: id, title: parts.dropFirst().joined(separator: " — ").trimmingCharacters(in: .whitespaces), fields: [:], line: n + 1, section: section)
                 continue
             }
             if line.hasPrefix("#") { if let c = cur { out.append(c) }; cur = nil; lastField = nil; continue }
@@ -35,7 +38,8 @@ enum MemoryDocParsers {
                 let label = String(line[line.startIndex..<colon])
                 cur!.fields[label] = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
                 lastField = label
-            } else if let f = lastField, !line.trimmingCharacters(in: .whitespaces).isEmpty {
+            } else if !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                let f = lastField ?? "_body"
                 cur!.fields[f] = ((cur!.fields[f] ?? "") + " " + line.trimmingCharacters(in: .whitespaces)).trimmingCharacters(in: .whitespaces)
             }
         }
@@ -153,15 +157,20 @@ final class MemoryIngestor: @unchecked Sendable {
                                         summary: summary, details: MemoryText.clip(why, MemoryConstants.maxDetails), strength: .strong, importance: Self.importance(for: decision + " " + e.title), area: Self.area(for: e.title + " " + decision),
                                         tags: [e.id.lowercased()], origin: .bootstrap, sources: [MemorySource(kind: .decisionDoc, ref: e.id, label: e.id, locator: "docs/DECISIONS.md:\(e.line)")])
                 c.statusHint = superseded ? .superseded : nil
-                report.add(service.admit(c, projectKey: projectKey, projectRoot: root), type: .decision)
+                let result = service.admit(c, projectKey: projectKey, projectRoot: root)
+                report.add(result, type: .decision)
+                // "supersedes DEC-017/DEC-018" in the entry's own status/decision text: the older decision becomes history (its record and provenance stay)
+                if let newID = result.itemID, !superseded {
+                    for target in Self.supersededIDs(in: (e.fields["Status"] ?? "") + " " + decision + " " + e.title) where target != e.id { service.supersede(key: "decision:\(target)", by: newID) }
+                }
             }
         }
         if let t = read("docs/KNOWN_ISSUES.md") {
             report.sources.append("docs/KNOWN_ISSUES.md")
             for e in MemoryDocParsers.issues(t) {
-                let body = e.fields["Description"] ?? e.fields["Evidence"] ?? e.title
-                let status = e.fields["Status"] ?? ""
-                let resolved = status.lowercased().hasPrefix("resolved") || status.lowercased().hasPrefix("fixed")
+                let body = e.fields["Description"] ?? e.fields["_body"] ?? e.fields["Evidence"] ?? e.title
+                let status = e.fields["Status"] ?? (e.section == "Resolved" ? "Resolved" : "")
+                let resolved = status.lowercased().hasPrefix("resolved") || status.lowercased().hasPrefix("fixed") || e.section == "Resolved" || body.hasPrefix("Resolved.")
                 var c = MemoryCandidate(type: .knownIssue, subject: MemoryText.clip(e.title, 60), key: "issue:\(e.id)", value: MemoryText.fold(body + status),
                                         summary: MemoryText.clip("\(e.id) — \(e.title): \(body)", MemoryConstants.maxSummary), details: MemoryText.clip("Status: \(status). " + (e.fields["Next"] ?? e.fields["Evidence"] ?? ""), MemoryConstants.maxDetails),
                                         strength: .strong, importance: status.contains("BLOCKING") && !status.contains("NON-BLOCKING") ? .high : .normal, area: Self.area(for: e.title + " " + body), tags: [e.id.lowercased()],
@@ -201,6 +210,17 @@ final class MemoryIngestor: @unchecked Sendable {
             }
         }
         return report
+    }
+
+    /// "supersedes DEC-017", "supersedes DEC-017/DEC-018", "supersedes the V0.7+ rows of DEC-068" → the decision ids named after the word.
+    static func supersededIDs(in text: String) -> [String] {
+        var out: [String] = []
+        let ns = text as NSString
+        guard let re = try? NSRegularExpression(pattern: "supersedes[^.;]{0,80}?(DEC-\\d+(?:\\s*[/,]\\s*(?:DEC-)?\\d+)*)", options: [.caseInsensitive]) else { return [] }
+        for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            for n in ns.substring(with: m.range(at: 1)).split(whereSeparator: { !$0.isNumber }) { let id = "DEC-" + String(n).leftPad(3); if !out.contains(id) { out.append(id) } }
+        }
+        return out
     }
 
     // MARK: Current project inspection (deterministic facts, authoritative while true)
@@ -358,4 +378,8 @@ enum ModelMemoryExtractor {
         }
         return out
     }
+}
+
+private extension String {
+    func leftPad(_ n: Int) -> String { count >= n ? self : String(repeating: "0", count: n - count) + self }
 }

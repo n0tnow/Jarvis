@@ -11,14 +11,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
-        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
+        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.memoryLiveTest && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
         let liveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true)
             : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true)
             : (options.proactiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-proactive", isDirectory: true)
             : (options.unityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-unity", isDirectory: true)
+            : (options.memoryLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.memoryChild != nil ? "live-test-memory-child" : "live-test-memory", isDirectory: true)
             : (options.researchLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.researchChild != nil ? "live-test-research-child" : "live-test-research", isDirectory: true)
             : (options.voiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.voiceQuitChild ? "live-test-voice-child" : "live-test-voice", isDirectory: true)
-            : (options.naturalVoiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.naturalChild ? "live-test-natural-child" : "live-test-natural", isDirectory: true) : nil))))))
+            : (options.naturalVoiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.naturalChild ? "live-test-natural-child" : "live-test-natural", isDirectory: true) : nil)))))))
         // The natural-voice live test runs the real stack in a closed acoustic loop (scripted microphone + simulated speaker); nothing else ever gets a rig.
         let rig: VoiceTestRig? = options.naturalVoiceLiveTest ? VoiceTestRig() : nil
         context = AppContext(stubIntelligence: stubbed, dataDirectory: liveData, voiceRig: rig)
@@ -82,6 +83,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if options.unityLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures", fixture = options.unityFixture, noProvider = options.unityNoProvider
             Task { await UnityLiveTest.run(context: context, captureDirectory: dir, fixtureTemplate: fixture, withProvider: !noProvider) }
+        }
+        if options.memoryLiveTest {
+            let context = context!, dir = options.liveDirectory ?? "captures", repo = options.memoryRepo
+            if options.memoryChild == "quit" { Task { await MemoryLiveTest.runQuitChild(context: context) } }
+            else { Task { await MemoryLiveTest.run(context: context, captureDirectory: dir, repoRoot: repo) } }
         }
         if options.researchLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures", child = options.researchChild
