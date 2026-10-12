@@ -494,3 +494,8 @@ Why: voice and the proactive layer stay I/O and decision layers.
 Status: Accepted (V0.9)
 Decision: `verify.sh` allows `URLSession`/`WKWebView` only in `HTTPTransport.swift`/`RenderedPageProvider.swift`/`WebClient.swift` (+ the fixture server), URL literals only in the research layer and the two policy tests, file writes outside the app folders only in Downloader/ArchiveInspector, and adds guards: no CAPTCHA/anti-bot evasion, no paid search API/key, UNKNOWN never free, only `AssetImporter` writes into a project, archive names validated before extraction, https-only bounded downloads, budgets exist, no unbounded polling, browser torn down, no page bodies/binaries in the schema or git.
 Why: the rules above are only real if a future change cannot silently undo them.
+
+## DEC-103 — Research yields to system pressure
+Status: Accepted (V0.9)
+Decision: the browser tier is offered only while memory pressure is normal and the thermal state is not serious (`ResearchResourcePolicy`); on a pressure rise an idle web view is released at once (`releaseUnderPressure`) and a navigation in progress finishes first; plain HTTP research continues (a JavaScript-only page is reported as needing the browser). Downloads are not browser work and are never interrupted by pressure.
+Why: correctness first, the heavy part second; integrates with V0.3.1's event-driven ResourceManager without any polling.

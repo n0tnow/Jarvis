@@ -52,7 +52,8 @@ Automated tests use disposable fixtures only; **the user's real game is never an
 
 ## 5. Measured (real, this Mac)
 
-* Poly Haven CC0 model glTF (2.8–5.6 KB JSON entry file; the md5 was published by the vendor): research → eligible (no approval needed: FREE_VERIFIED, CC0, trusted origin) → downloaded → inspected → `READY FOR IMPORT` (the download of such a small file is not separately timed); the published md5 matched; the file carried the quarantine attribute; provenance written; **nothing imported**.
+* Poly Haven CC0 model glTF (2.8–5.6 KB JSON entry file; the md5 was published by the vendor): research → eligible (no approval needed: FREE_VERIFIED, CC0, trusted origin) → downloaded → inspected → `READY FOR IMPORT` (the download of such a small file is not separately timed); the published md5 matched; the file carried the quarantine attribute; provenance written; **nothing imported by the acquisition itself**.
+* Import of that same real artifact into a **disposable Git folder fixture** (not Unity, not your game): `submitImport` → approval → `AssetImporter` → `ThirdParty/<name>-xxxxxx/…` byte-identical (SHA-256) + `JARVIS-PROVENANCE.json`, task completed, acquisition record updated with the destination and the import task. (Non-Unity folders use `ThirdParty/`, Unity projects `Assets/ThirdParty/`.) The artifact was glTF JSON, so no Unity-editor import was attempted; the Unity compile step is exercised with the simulated editor in unit tests.
 * Offline security fixtures (production URL policy, virtual public hosts): executable, HTML-as-zip, MIME-lying and script downloads refused; traversal, absolute-path, symlink and bomb archives rejected by inspection; lying-header zip aborts at extraction after < 1 KB.
 
 ## 6. Not done (honest)

@@ -330,7 +330,7 @@ User manual test (README 224–343): a human saying «Jarvis», recognition of a
 General-purpose, evidence-backed web research (Unity assets first) with source quality, licence/price verification, safe quarantined downloads, artifact inspection and an approval-gated import — as ordinary V0.4 tasks, with account actions and purchases left out entirely.
 
 ### Changes
-`Sources/Jarvis/Research/**` (URL policy/gate, transport, client, HTML extraction, classifier, licence/price/compatibility analyzers, untrusted-content fencing, providers, browser tier, query builder/intake, pipeline, ranker, report builder, planner, services, view model) · `Research/Acquisition/**` (sniffer, archive inspector, downloader, acquisition service, importer) · schema v7 + `ResearchRepository` · `TaskEngine+Research` + engine/intake/model integration · Research screen + Settings section · V0.5 web-authority rule and research proposals · fixture web with virtual public hosts · `--research-live-test` · verify.sh guards · docs (`WEB_RESEARCH.md`, `ASSET_ACQUISITION.md`, DEC-088…102, README 344–463).
+`Sources/Jarvis/Research/**` (URL policy/gate, transport, client, HTML extraction, classifier, licence/price/compatibility analyzers, untrusted-content fencing, providers, browser tier, query builder/intake, pipeline, ranker, report builder, planner, services, view model) · `Research/Acquisition/**` (sniffer, archive inspector, downloader, acquisition service, importer) · schema v7 + `ResearchRepository` · `TaskEngine+Research` + engine/intake/model integration · Research screen + Settings section · V0.5 web-authority rule and research proposals · fixture web with virtual public hosts · `--research-live-test` · verify.sh guards · docs (`WEB_RESEARCH.md`, `ASSET_ACQUISITION.md`, DEC-088…103, README 344–463).
 
 ### Research and decisions (details in the docs)
 Search sources checked against robots/terms/keys (DuckDuckGo HTML yes; Brave needs a key; Asset Store account-bound). Real Poly Haven and Kenney page structures inspected before writing providers. Playwright evaluated and not adopted.
@@ -345,7 +345,7 @@ Search sources checked against robots/terms/keys (DuckDuckGo HTML yes; Brave nee
 * Two structural guards caught real violations: UI reading the repository (moved into the view model) and a new `source: .voice` caller (developer live test listed beside `VoiceLiveTest`).
 
 ### Results
-Unit 1043 (142 suites) · verify PASSED · smoke 119/0/2 · idle 0.02 CPU-s/8 s, 72 MB · `--research-live-test` 37/0 (≈ 3 min).
+Unit 1044 (143 suites) · verify PASSED · smoke 119/0/2 · idle 0.02 CPU-s/8 s, 72 MB · `--research-live-test` 49/0 (≈ 3 min; includes the import of the real artifact into a disposable folder fixture and a real quit/relaunch). Also added after the first report draft: browser tier ↔ ResourceManager (memory pressure releases an idle browser and prefers plain HTTP, DEC-103).
 
 ### Also in this session
 `scripts/train_wake_head.sh` now checks every generator job and keeps/prints the logs on failure (JARVIS-V08-15; root cause on the user's Mac not reproduced).

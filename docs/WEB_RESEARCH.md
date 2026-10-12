@@ -1,6 +1,6 @@
 # Web Research (V0.9)
 
-> Status: IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (live public web, this Mac) · **MANUAL TEST REQUIRED**. Not user-verified. Companion: `ASSET_ACQUISITION.md`. Decisions: DEC-088…102.
+> Status: IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (live public web, this Mac) · **MANUAL TEST REQUIRED**. Not user-verified. Companion: `ASSET_ACQUISITION.md`. Decisions: DEC-088…103.
 
 JARVIS can research any bounded question on the public web and answer with a **cited, evidence-backed report**. Unity asset research is the first practical consumer, not the design centre. Research is **not** an autonomous browsing agent: it is an ordinary V0.4 task with a fixed, budgeted, deterministic plan.
 
@@ -65,7 +65,7 @@ Explicit factors, weights sum to 1: licence safety 0.20 · price certainty 0.15 
 
 ## 8. Browser tier (DEC-092)
 
-System WebKit (`WKWebView`, `WKWebsiteDataStore.nonPersistent()`): no profile, no cookies, no passwords, no Keychain, no extensions. A content-rule list blocks private/loopback/link-local/non-http(s) sub-resources and media/fonts; navigation is re-authorised through the URL gate; one constant extraction script (nothing from the network, page or a model is concatenated into it); offscreen window; torn down after 30 s idle and at quit. It **reads only** — never types, clicks, signs in or solves a CAPTCHA. Playwright was evaluated and not adopted (a Node runtime + browser download for no capability the system WebKit lacks here). Limited to `maxRendered` navigations per research.
+System WebKit (`WKWebView`, `WKWebsiteDataStore.nonPersistent()`): no profile, no cookies, no passwords, no Keychain, no extensions. A content-rule list blocks private/loopback/link-local/non-http(s) sub-resources and media/fonts; navigation is re-authorised through the URL gate; one constant extraction script (nothing from the network, page or a model is concatenated into it); offscreen window; torn down after 30 s idle and at quit. It **reads only** — never types, clicks, signs in or solves a CAPTCHA. Playwright was evaluated and not adopted (a Node runtime + browser download for no capability the system WebKit lacks here). Limited to `maxRendered` navigations per research. **ResourceManager (DEC-103):** under memory pressure or serious thermal state the tier is not offered (plain HTTP is preferred; a JavaScript-only page is then reported as needing the browser) and an idle web view is released at once (`releaseUnderPressure`); a navigation in progress finishes first. WebKit's own helper processes are system-launched, not JARVIS children — there is nothing of ours to track or kill beyond the web view (the user's Safari/Chrome are never touched).
 
 ## 9. Budgets (DEC-100)
 
@@ -73,7 +73,7 @@ Standard: 6 queries · 8 results/query · 12 sources · 1.5 MB/page · 14 MB tot
 
 ## 10. Persistence and restart (DEC-099)
 
-Schema v7: `research_sessions`, `research_queries`, `research_sources` (URLs, hashes, bounded excerpts — **no page bodies, no HTML, no binaries**), `research_claims`, `research_candidates`, `acquisitions`. Reports are artifacts. A restart marks in-flight research/downloads **interrupted**; only an explicit user "Resume" continues. A failed or cancelled task also ends its research row (`markEnded`) — found by the live test, which exposed rows stuck on "searching".
+Schema v7: `research_sessions`, `research_queries`, `research_sources` (URLs, hashes, bounded excerpts — **no page bodies, no HTML, no binaries**), `research_claims`, `research_candidates`, `acquisitions`. Reports are artifacts. A restart marks in-flight research/downloads **interrupted**; only an explicit user "Resume" continues. Verified for real: a SIGTERM in the middle of a live research and a fresh launch on the same data directory show the task and the session INTERRUPTED, nothing resumed, no network activity, and an explicit Resume continuing (`--research-live-test`). A failed or cancelled task also ends its research row (`markEnded`) — found by the live test, which exposed rows stuck on "searching".
 
 ## 11. UI
 

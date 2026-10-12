@@ -369,7 +369,7 @@ Seen once each: the V0.7 `--voice-live-test` check "no managed process left afte
 
 ### JARVIS-V09-1 — Not validated by a human
 Status: Open · MANUAL TEST REQUIRED
-Description: Everything was verified by unit tests (1043), fixtures under the production URL policy, `verify.sh` and `--research-live-test` on this Mac (real public web, real Poly Haven download). Nobody has used the Research screen, judged report quality, or tried real tasks of their own (README 344–463).
+Description: Everything was verified by unit tests (1044), fixtures under the production URL policy, `verify.sh` and `--research-live-test` on this Mac (real public web, real Poly Haven download). Nobody has used the Research screen, judged report quality, or tried real tasks of their own (README 344–463).
 
 ### JARVIS-V09-2 — Unity Asset Store is not automated
 Status: Open · by design
@@ -405,11 +405,11 @@ Description: candidates from structured providers (Poly Haven, Kenney, GitHub) n
 
 ### JARVIS-V09-10 — Browser-tier helper processes are not independently measured
 Status: Open · NON-BLOCKING
-Description: WebKit's content/network helpers are system-launched (XPC), not children of JARVIS. The live test verifies that the web view is released after use and shutdown and that no descendant process remains; it does not count WebKit helper processes system-wide.
+Description: WebKit's content/network helpers are system-launched (XPC), not children of JARVIS (there is no Chromium and nothing of ours to track). The live test verifies that the web view is released after use and shutdown and that no browser descendant process of JARVIS remains; it does not count WebKit helper processes system-wide.
 
 ### JARVIS-V09-11 — Import is exercised on fixtures only
 Status: Open · MANUAL TEST REQUIRED
-Description: the importer, its approval and the Unity compile step are tested on disposable fixtures; importing a researched asset into your real game is for you to try (README 344–463), ideally on a copy.
+Description: the importer and its approval ran for real on a disposable Git folder fixture (the real Poly Haven file) and, with the simulated editor, on Unity-style fixtures; no real Unity-editor import was performed (the real artifact was glTF JSON). Importing a researched asset into your real game is for you to try (README 344–463), ideally on a copy.
 
 ### JARVIS-V09-12 — Pre-existing Swift 6 warnings
 Status: Open · NON-BLOCKING

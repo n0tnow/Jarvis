@@ -173,7 +173,7 @@ VoiceResponseSpeaker ─► PlayerBackedTTSProvider(NeuralSpeechEngine | AppleSp
 ```
 `Sources/Jarvis/Voice/Natural/`: `EndpointPolicy`, `TurnMachine` (+ `WakeContextGate`), `BargeInDetector`, `HandsFreeCoordinator` (+ `VoicePresence`), `AudioHub` (`MicrophoneHub`, `HubAudioInput`, `AudioRing`, `EnergyGate`), `HelperHost` (+ `RestartBudget`), `SentinelRuntime`, `NeuralVoice` (runtime, engine, provider), `VoiceIdentity`, `TranscriptGuards` (`WakePhrase`, `SelfSpeechFilter`, `LanguageContinuity`), `TechnicalTerms`, `WakeCue`; `Voice/SpeechPlayer.swift`, `Voice/PlayerBackedTTS.swift`. Helpers (`scripts/voice-ai/`): `jarvis_sentinel_worker.py`, `jarvis_tts_worker.py`, `jarvis_wake_head.py`, `jarvis_audio_features.py`; bench/training tooling in `scripts/voice-ai/bench/`. Test/live-test only: `Services/Demo/VoiceTestRig.swift` (scripted microphone, simulated speaker, scripted answers), `App/NaturalVoiceLiveTest.swift`.
 
-## Web research & asset acquisition (V0.9 — DEC-088…102; details `WEB_RESEARCH.md`, `ASSET_ACQUISITION.md`)
+## Web research & asset acquisition (V0.9 — DEC-088…103; details `WEB_RESEARCH.md`, `ASSET_ACQUISITION.md`)
 ```
 Conversation (typed|voice) ─► GoalIntake/ResearchIntake ─► TaskEngine.submitResearch ─► V0.5 policy ─► TaskKind.research (fixed plan, budgets)
    steps: researchSearch ─► researchRead ─► researchExtract ─► [researchVerify] ─► researchReport          (typed step runners in TaskEngine+Research)
