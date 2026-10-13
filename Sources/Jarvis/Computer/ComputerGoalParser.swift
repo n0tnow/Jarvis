@@ -211,12 +211,36 @@ enum ComputerGoalParser {
             ])], apps: known.map { [$0] } ?? [])
         }
 
+        // 5b. enter quoted text into a named field: `type "hello" into the Name field in Xcode` (the text is the user's own words; secrets and passwords are refused by the policy)
+        if !words.isDisjoint(with: ["type", "write", "enter", "yaz", "gir"]), let text = quoted(raw), !words.isDisjoint(with: ["field", "box", "alan", "alana", "into", "in", "to"]) {
+            let tail = raw.components(separatedBy: text).last ?? ""
+            let tailTokens = ComputerText.tokens(tail).filter { !["into", "in", "to", "the", "field", "box", "text", "alan", "alana", "named", "called"].contains($0) }
+            let appTokenRange = AppCatalog.match(tokens: tailTokens)?.range
+            let labelTokens = tailTokens.enumerated().filter { !(appTokenRange?.contains($0.offset) ?? false) }.map(\.element)
+            if !labelTokens.isEmpty, labelTokens.count <= 3 {
+                let label = originalCase(of: labelTokens.joined(separator: " "), in: tail) ?? labelTokens.joined(separator: " ")
+                let app = known ?? AppRef()
+                return goal((known.map { launchSteps($0, verb: "activate") } ?? []) + [GoalStep(title: language == .tr ? "Metin giriliyor" : "Entering text", actions: [
+                    ComputerAction(kind: .setText, target: ActionTarget(app: app, role: "textField", title: label), text: text, summary: "Enter text in “\(label)”"),
+                ])], apps: known.map { [$0] } ?? [])
+            }
+        }
+
         // 6. save the current document
         if !words.isDisjoint(with: saveVerbs), words.contains("document") || words.contains("file") || words.contains("belge") || words.contains("dosyayi") || words.contains("this") || words.contains("it") {
             let app = known ?? AppRef()
             return goal([GoalStep(title: language == .tr ? "Kaydediliyor" : "Saving", actions: [
                 ComputerAction(kind: .selectMenuItem, target: ActionTarget(app: app, menuPath: ["File", "Save"]), checks: [.stateChanged], summary: "Choose File → Save"),
             ])], apps: known.map { [$0] } ?? [])
+        }
+
+        // 6b. Xcode navigators: "open the issue navigator in Xcode" → the allowlisted ⌘1…⌘9 shortcut of that navigator (semantic navigation, not hunting for a control)
+        if let app = known, app.bundleID == "com.apple.dt.Xcode", words.contains("navigator") || words.contains("navigatoru") || words.contains("gezgini"),
+           let adapter = AdapterRegistry.adapter(for: app.bundleID), let nav = adapter.navigation.first(where: { words.contains($0.key.split(separator: " ").first.map(String.init) ?? $0.key) }) {
+            let id = app.bundleID ?? ""
+            return goal(launchSteps(app, verb: "activate") + [GoalStep(title: language == .tr ? "\(nav.key.capitalized) gezgini açılıyor" : "Opening the \(nav.key) navigator", actions: [
+                ComputerAction(kind: .pressShortcut, target: ActionTarget(app: app), chord: nav.value, checks: [.stateChanged, .appFrontmost(bundleID: id)], summary: "Open the \(nav.key) navigator (\(nav.value.display))"),
+            ])], apps: [app])
         }
 
         // 7. read UI state: "read the current Console state in Unity" (when V0.6 does not own it), "what is open in Xcode"

@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTabViewDelegate, NST
         buildDocuments()
         main.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        state.set("status", "idle"); state.set("launched", "yes")
+        state.set("status", "idle"); state.set("launched", "yes"); recordDisplay()
         // A password somebody "already typed" (the test proves JARVIS can neither read nor persist it). Only its LENGTH ever reaches the state file.
         if let i = CommandLine.arguments.firstIndex(of: "--prefill-password"), i + 1 < CommandLine.arguments.count {
             passwordField.stringValue = CommandLine.arguments[i + 1]
@@ -110,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTabViewDelegate, NST
         _ = button("Open Alert", id: "fixture.alert", in: c, x: 240, y: 44, w: 110, action: #selector(openAlert))
         _ = button("New Window", id: "fixture.newwindow", in: c, x: 360, y: 44, w: 110, action: #selector(openExtraWindow))
         _ = button("Move Window", id: "fixture.move", in: c, x: 480, y: 44, w: 110, action: #selector(moveWindow))
+        _ = button("Next Display", id: "fixture.display", in: c, x: 600, y: 44, w: 110, action: #selector(nextDisplay))
 
         // two identical "Apply" buttons, told apart only by the group they are in
         for (i, name) in ["Sidebar", "Inspector"].enumerated() {
@@ -233,6 +234,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTabViewDelegate, NST
     @objc func moveWindow() {
         var o = main.frame.origin; o.x += 70; o.y -= 20
         main.setFrameOrigin(o); state.bump("moves")
+    }
+    /// Moves the main window onto the next display (so Retina vs non-Retina and negative global coordinates can be tested for real) and records which display it is on.
+    @objc func nextDisplay() {
+        let screens = NSScreen.screens
+        guard screens.count > 1 else { state.set("display", "only one"); return }
+        let current = screens.firstIndex(of: main.screen ?? screens[0]) ?? 0
+        let target = screens[(current + 1) % screens.count]
+        let f = target.visibleFrame
+        main.setFrameOrigin(NSPoint(x: f.minX + 40, y: f.maxY - main.frame.height - 40))
+        recordDisplay()
+    }
+    func recordDisplay() {
+        let s = main.screen ?? NSScreen.main
+        state.numbers["screenScale"] = Double(s?.backingScaleFactor ?? 0)
+        state.set("display", "\(Int(s?.frame.width ?? 0))x\(Int(s?.frame.height ?? 0))")
     }
     @objc func openExtraWindow() {
         let w = NSWindow(contentRect: NSRect(x: 360, y: 220, width: 280, height: 120), styleMask: [.titled, .closable], backing: .buffered, defer: false)

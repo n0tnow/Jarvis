@@ -148,13 +148,14 @@ final class ComputerExecutor {
     private func waitUntil(_ timeout: TimeInterval, initial: TimeInterval = 0.08, max maxDelay: TimeInterval = 0.4, _ cond: () async -> Bool) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         var delay = initial
-        while true {
+        repeat {
             if stop.isStopped { return false }
             if await cond() { return true }
-            if Date() >= deadline { return false }
             await pause(delay)
             delay = min(delay * 1.6, maxDelay)
-        }
+        } while Date() < deadline
+        if stop.isStopped { return false }
+        return await cond()
     }
 
     // MARK: Applications
@@ -439,7 +440,7 @@ final class ComputerExecutor {
         var attempts = 0
         var currentElement = el
         var currentBefore = before
-        while true {
+        for _ in 0...(maxRetries + 1) {
             if stop.isStopped { return finish(&r, .cancelled, detail: "stopped") }
             attempts += 1; r.attempts = max(r.attempts, attempts)
             do {
@@ -464,6 +465,7 @@ final class ComputerExecutor {
             if idem == .verifyFirst, await verify(checks, app: app, before: currentBefore, timeout: 0.01, windowTitle: a.target.windowTitle).passed { r.verification = VerificationResult(passed: true, checks: v.checks, detail: "the state had already changed"); return finish(&r, .verified, detail: "verified") }
             currentElement = again; currentBefore = fresh
         }
+        return finish(&r, .notVerified, detail: "the retry budget ended without the expected state")
     }
 
     private func effectiveChecks(_ a: ComputerAction) -> [Check] { a.checks.isEmpty && !a.kind.isReadOnly ? [.stateChanged] : a.checks }

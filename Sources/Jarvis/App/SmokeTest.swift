@@ -610,6 +610,29 @@ enum SmokeTest {
             await resetWorld()
         }
 
+        // --- V0.11 General Computer Use: wired but inert. An automated run can reach no application, no screen and no permission; nothing samples while idle; the screen exists; Compact stays 392×448.
+        do {
+            let cu = context.computer
+            check("V0.11 Computer Use is wired (schema v9, on by default, vision fallback OFF) and the stubbed run can reach no real UI", (context.database?.schemaVersion ?? 0) >= 9 && context.preferences.computerUseEnabled && !context.preferences.computerVisionEnabled && cu.isStubbed && !cu.backend.accessibilityTrusted())
+            check("V0.11 IDLE: no session, no emergency-stop sampler, no pending computer task", cu.activeSessions == 0 && !cu.watcher.isRunning && context.taskEngine.activeViews.filter { $0.task.kind == .computer }.isEmpty)
+            check("V0.11 Computer Use is a Full HUD destination", HUDSection.allCases.contains(.computer) && HUDSection.computer.title == "COMPUTER")
+            check("V0.11 the capability ladder is in place: a Unity edit is not a GUI job, “open Xcode” is", { if case .delegate(let c) = ComputerGoalParser.classify("Add a Rigidbody to the Player in the Unity scene", context: GoalContext()) { return c.mechanism == .typedCapability }; return false }() && { if case .computer = ComputerGoalParser.classify("Open Xcode", context: GoalContext()) { return true }; return false }())
+            let beforeTasks = context.taskEngine.orderedViews.count
+            let r = await context.taskEngine.submitComputer(goal: "Press Run", steps: [GoalStep(title: "Press", actions: [ComputerAction(kind: .pressElement, target: ActionTarget(app: AppRef(bundleID: "com.example.nothing"), role: "button", title: "Run"), summary: "Press Run")])], capability: CapabilityChoice(mechanism: .accessibility, engine: "test", reason: "smoke"), apps: [])
+            if case .success(let id) = r { await context.taskEngine.waitUntilFinished(id); let v = context.taskEngine.view(id); check("V0.11 a computer task in a stubbed run fails truthfully (permission required) and touches nothing", v?.task.state == .failed && v?.task.failureCategory == .permissionRequired) }
+            else { check("V0.11 a computer task in a stubbed run fails truthfully (permission required) and touches nothing", false, "\(r)") }
+            _ = beforeTasks
+            w.hideFullHUD(); w.showFullHUD(section: .computer); _ = await waitUntil { w.isFullHUDOpen && context.hud.section == .computer }
+            await settle(400)
+            check("V0.11 the Computer screen opens without observing anything", w.isFullHUDOpen && context.computer.activeSessions == 0 && !context.computer.watcher.isRunning)
+            w.hideFullHUD(); w.showCompactHUD(); _ = await waitUntil { w.isCompactHUDOpen }
+            context.store.log("Controlling · Xcode — Opening Settings", kind: .info)
+            await settle(200)
+            check("V0.11 the Compact HUD stays 392×448 while a computer session is logged", compactWindow()?.frame.size == CompactHUDLayout.size)
+            w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
         print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")

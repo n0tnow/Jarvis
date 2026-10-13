@@ -280,7 +280,10 @@ enum ComputerLiveTest {
         let screenOK = backend.screenCaptureAllowed()
         // 8a. vision OFF: nothing is captured
         let capturesBefore = runtime.timeline.filter { $0.text.contains("Vision") }.count
-        var visionAction = ComputerAction(kind: .visionPress, target: ActionTarget(app: AppRef(bundleID: fixtureBundle), windowTitle: "Fixture Main", title: "Launch"), checks: [.elementExists(bundleID: fixtureBundle, role: "statictext", title: "Canvas clicks: 1")], summary: "Press “Launch” (vision)")
+        func canvasPress(expecting n: Int) -> ComputerAction {
+            ComputerAction(kind: .visionPress, target: ActionTarget(app: AppRef(bundleID: fixtureBundle), windowTitle: "Fixture Main", title: "Launch"), checks: [.elementExists(bundleID: fixtureBundle, role: "statictext", title: "Canvas clicks: \(n)")], summary: "Press “Launch” (vision)")
+        }
+        var visionAction = canvasPress(expecting: 1)
         (v, _) = await runTask("Press the canvas button", [GoalStep(title: "Pressing Launch", actions: [visionAction])])
         check("VISION OFF BY DEFAULT: the vision fallback does nothing until you enable it", v.task.state == .failed && st().count("canvasClicks") == 0 && runtime.timeline.filter { $0.text.contains("Vision") }.count == capturesBefore + 0 || v.task.state == .failed, "\(v.task.failureReason?.prefix(100) ?? "")")
         // the same control through Accessibility is simply not there
@@ -319,11 +322,31 @@ enum ComputerLiveTest {
             var stale = StaleVerdict.fresh
             if let o = obs { stale = await ex2.checkStale(o) }
             check("STALE SCREEN LIVE: after the window moved, the OLD screenshot is refused as STALE", { if case .stale = stale { return true }; return false }(), "\(stale)")
-            visionAction.id = UUID()
+            visionAction = canvasPress(expecting: 2)
             (v, _) = await runTask("Press the canvas button again", [GoalStep(title: "Pressing Launch", actions: [visionAction])])
             let pts2 = (st().lists["canvasPoints"] ?? []).compactMap { s -> CGPoint? in let p = s.split(separator: ",").compactMap { Double($0) }; return p.count == 2 ? CGPoint(x: p[0], y: p[1]) : nil }
             let inside2 = pts2.last.map { CGRect(x: 40, y: 30, width: 180, height: 60).contains($0) } ?? false
-            check("STALE → RE-OBSERVE: acting again re-captured the MOVED window and the click still landed inside the control (no click from the old picture)", st().count("canvasClicks") == 2 && inside2 && st().count("canvasMisses") == 0, "clicks \(st().count("canvasClicks")), misses \(st().count("canvasMisses")), last view point \(pts2.last.map { "(\(Int($0.x)),\(Int($0.y)))" } ?? "none")")
+            check("STALE → RE-OBSERVE: acting again re-captured the MOVED window and the click still landed inside the control (no click from the old picture)", v.task.state == .completed && st().count("canvasClicks") == 2 && inside2 && st().count("canvasMisses") == 0, "clicks \(st().count("canvasClicks")), misses \(st().count("canvasMisses")), last view point \(pts2.last.map { "(\(Int($0.x)),\(Int($0.y)))" } ?? "none")")
+            // 8d2. MULTIPLE DISPLAYS: the fixture is moved onto the other displays (different scale factors, negative global coordinates) and the same vision click must still land inside the control
+            let layoutNow = backend.displays()
+            if layoutNow.displays.count > 1 {
+                var visited: [String] = []
+                var expected = 2
+                for _ in 0..<min(3, layoutNow.displays.count - 1) {
+                    (v, _) = await runTask("Move the fixture to the next display", [step("Moving the window", press("Next Display", window: "Fixture Main", checks: []))])
+                    try? await Task.sleep(for: .milliseconds(900))
+                    let disp = st().strings["display"] ?? "?", scale = st().numbers["screenScale"] ?? 0
+                    let wnow = (await backend.windows(pid: fixturePID)).first { $0.title == "Fixture Main" }
+                    expected += 1
+                    let pointsBefore = (st().lists["canvasPoints"] ?? []).count
+                    (v, dur) = await runTask("Press the canvas button on display \(disp)", [GoalStep(title: "Pressing Launch", actions: [canvasPress(expecting: expected)])])
+                    let ps = (st().lists["canvasPoints"] ?? []).dropFirst(pointsBefore).compactMap { s -> CGPoint? in let p = s.split(separator: ",").compactMap { Double($0) }; return p.count == 2 ? CGPoint(x: p[0], y: p[1]) : nil }
+                    let okPoint = ps.last.map { CGRect(x: 40, y: 30, width: 180, height: 60).contains($0) } ?? false
+                    visited.append("\(disp)@\(Int(scale))x")
+                    check("MULTI-DISPLAY + RETINA LIVE: on display \(disp) (scale \(Int(scale))x, window at (\(Int(wnow?.frame.minX ?? 0)),\(Int(wnow?.frame.minY ?? 0)))) the vision click landed inside the control", v.task.state == .completed && okPoint, "view point \(ps.last.map { "(\(Int($0.x)),\(Int($0.y)))" } ?? "none"); \(fmt(dur)) ms; \(v.task.failureReason ?? "")")
+                }
+                info("displays visited: \(visited.joined(separator: ", ")) (the primary display is \(Int(layoutNow.displays.first { $0.isPrimary }?.frame.width ?? 0))×\(Int(layoutNow.displays.first { $0.isPrimary }?.frame.height ?? 0)))")
+            } else { skip("MULTI-DISPLAY LIVE", "only one display is attached — the coordinate conversion is covered by the unit tests with synthetic layouts") }
             // 8e. memory pressure: AX keeps working, vision becomes unavailable
             runtime.pressureNormal = { false }                                    // the same signal ResourceManager gives when memory is tight
             runtime.onMemoryPressure()
@@ -551,7 +574,8 @@ enum ComputerLiveTest {
         perf.append(("fixture 5-step task (5 observe→act→verify cycles)", "\(fmt(ms(t5))) ms"))
         check("PERFORMANCE: a 5-step fixture task completed with every step verified", v.task.state == .completed, "\(fmt(dur)) ms")
         let resolveStart = Date()
-        if let s2 = try? await backend.snapshot(pid: fixturePID, scope: .frontWindow, budget: AXBudget()) { let tResolve = Date(); _ = TargetResolver.resolve(ActionTarget(role: "button", title: "Run"), in: s2); perf.append(("semantic target resolution (in-memory, over \(s2.nodeCount) nodes)", "\(fmt(ms(tResolve) / 1000 * 1000, "%.3f")) ms")); _ = resolveStart }
+        let mainIdx = (await backend.windows(pid: fixturePID)).first { $0.title == "Fixture Main" }?.index ?? 0
+        if let s2 = try? await backend.snapshot(pid: fixturePID, scope: .window(index: mainIdx), budget: AXBudget()) { let tResolve = Date(); _ = TargetResolver.resolve(ActionTarget(role: "button", title: "Run"), in: s2); perf.append(("semantic target resolution (in-memory, over \(s2.nodeCount) nodes)", "\(fmt(ms(tResolve) / 1000 * 1000, "%.3f")) ms")); _ = resolveStart }
         let idleCalls0 = (backend as? AXBackend)?.callCount ?? -1
         try? await Task.sleep(for: .seconds(8))
         let idleCalls1 = (backend as? AXBackend)?.callCount ?? -1

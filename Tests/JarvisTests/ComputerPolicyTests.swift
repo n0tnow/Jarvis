@@ -86,6 +86,21 @@ struct ComputerConsequenceTests {
 
 // MARK: - Secure fields, secrets, terminals, clipboard-safe text
 
+@Suite("Computer · Finder and files")
+struct ComputerFinderPolicyTests {
+    private func verdict(_ path: [String]) -> PolicyVerdict {
+        let a = ComputerAction(kind: .selectMenuItem, target: ActionTarget(app: AppRef(bundleID: SurfacePolicy.finder), menuPath: path), summary: "menu")
+        return ComputerPolicy.assess(a, in: ActionPolicyContext(bundleID: SurfacePolicy.finder)).verdict
+    }
+    @Test("Finder's menu cannot trash, delete, open or duplicate files (that would bypass the typed file tools and the quarantine)")
+    func finderMenu() {
+        for leaf in ["Move to Trash", "Delete Immediately…", "Empty Trash…", "Open", "Open With", "Get Info", "Duplicate", "Compress"] {
+            if case .blocked = verdict(["File", leaf]) {} else { Issue.record("Finder → \(leaf) must be blocked") }
+        }
+        #expect(verdict(["View", "as Icons"]) == .allow)                              // ordinary navigation is fine
+    }
+}
+
 @Suite("Computer · secrets and command surfaces")
 struct ComputerSecretPolicyTests {
     @Test("secure fields can never be read, set or typed into")

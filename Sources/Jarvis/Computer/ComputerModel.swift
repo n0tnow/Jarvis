@@ -11,9 +11,9 @@ import CoreGraphics
 enum ComputerMechanism: Int, Codable, CaseIterable, Comparable, Sendable {
     case typedCapability = 1      // A  a domain-specific JARVIS capability (V0.4 file/coding tools, V0.6 Unity bridge, Git tool)
     case structuredIntegration    // B  an existing API / structured integration
-    case controlledCLI            // C  an approved executable through ManagedProcess (V0.4 command profiles)
+    case controlledCLI            // C  an approved executable from the V0.4 command profiles
     case browserDOM               // D  the V0.9 browser / research capability
-    case accessibility            // E  macOS Accessibility (AXUIElement) and NSWorkspace
+    case accessibility            // E  macOS Accessibility and NSWorkspace
     case vision                   // F  window-scoped screenshot + semantic targeting (validated by JARVIS)
     case rawCoordinates           // G  a window-relative point, only after vision validated a fresh observation
 

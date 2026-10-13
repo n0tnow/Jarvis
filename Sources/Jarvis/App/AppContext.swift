@@ -268,6 +268,7 @@ final class AppContext {
             // tasks that were waiting for an approval wait again.
             let r = taskEngine.reconcileOnLaunch()
             _ = try? repository?.reconcileComputerAfterRestart()                       // V0.11: GUI sessions are INTERRUPTED, never resumed silently
+            try? repository?.pruneComputerSessions(keep: 100)                          // bounded history: old sessions (and their action/observation rows) fall away
             if let repo = self.repository {                                            // V0.9: in-flight research/downloads are INTERRUPTED, never resumed silently
                 _ = try? repo.reconcileResearchAfterRestart()
                 if let web = research, let active = try? repo.acquisitions(states: [.verifying, .approved, .downloading, .downloaded, .inspecting]) { for rec in web.acquisition.reconcile(active) { web.persistence?.save(rec) } }

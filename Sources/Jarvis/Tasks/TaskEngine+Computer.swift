@@ -158,7 +158,9 @@ extension TaskEngine {
     /// Performs one action, records it (bounded, no text), updates the Compact HUD line from real state.
     private func perform(_ ctx: TaskContext, _ st: ComputerTaskState, _ action: ComputerAction) async -> ActionResult {
         guard let ex = st.executor else { return failedResult(action, "no executor") }
-        let app = action.target.app.display
+        // the Compact HUD line comes from real state: the application's own name when it has been observed, else what the plan named
+        let known = ex.lastSnapshot?.app
+        let app = action.target.app.name ?? (known?.bundleID == action.target.app.bundleID ? known?.name : nil) ?? action.target.app.display
         mutate(ctx) { $0.activity = action.kind.isReadOnly ? "Observing · \(app)" : "Controlling · \(app) — \(action.summary)" }
         let res = await ex.perform(action)
         st.seq += 1

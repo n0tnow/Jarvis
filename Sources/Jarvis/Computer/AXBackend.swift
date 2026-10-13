@@ -61,8 +61,13 @@ final class AXBackend: UIBackend, @unchecked Sendable {
     private func str(_ el: AXUIElement, _ name: String) -> String? { attr(el, name) as? String }
     private func bool(_ el: AXUIElement, _ name: String) -> Bool? { (attr(el, name) as? Bool) ?? (attr(el, name) as? NSNumber)?.boolValue }
     private func children(_ el: AXUIElement) -> [AXUIElement] { (attr(el, kAXChildrenAttribute) as? [AXUIElement]) ?? [] }
+    /// A Core Foundation reference of the expected type, or nil (never a forced cast on data that came from another process).
+    private func element(_ ref: CFTypeRef?) -> AXUIElement? {
+        guard let ref, CFGetTypeID(ref) == AXUIElementGetTypeID() else { return nil }
+        return (ref as! AXUIElement)
+    }
     private func frame(_ el: AXUIElement) -> CGRect? {
-        guard let p = attr(el, kAXPositionAttribute), let s = attr(el, kAXSizeAttribute) else { return nil }
+        guard let p = attr(el, kAXPositionAttribute), let s = attr(el, kAXSizeAttribute), CFGetTypeID(p) == AXValueGetTypeID(), CFGetTypeID(s) == AXValueGetTypeID() else { return nil }
         var pt = CGPoint.zero, sz = CGSize.zero
         guard AXValueGetValue(p as! AXValue, .cgPoint, &pt), AXValueGetValue(s as! AXValue, .cgSize, &sz) else { return nil }
         return CGRect(origin: pt, size: sz)
@@ -158,8 +163,8 @@ final class AXBackend: UIBackend, @unchecked Sendable {
 
     private func defaultButtonTitle(_ window: AXUIElement) -> String? {
         let sheet = children(window).first { str($0, kAXRoleAttribute) == "AXSheet" } ?? window
-        guard let b = attr(sheet, kAXDefaultButtonAttribute), CFGetTypeID(b) == AXUIElementGetTypeID() else { return nil }
-        return str(b as! AXUIElement, kAXTitleAttribute)
+        guard let b = element(attr(sheet, kAXDefaultButtonAttribute)) else { return nil }
+        return str(b, kAXTitleAttribute)
     }
 
     private static func cgWindows(pid: Int32) -> [(id: UInt32, frame: CGRect)] {
@@ -184,8 +189,8 @@ final class AXBackend: UIBackend, @unchecked Sendable {
             case .minimize: try Self.check(AXUIElementSetAttributeValue(w, kAXMinimizedAttribute as CFString, kCFBooleanTrue))
             case .restore: try Self.check(AXUIElementSetAttributeValue(w, kAXMinimizedAttribute as CFString, kCFBooleanFalse))
             case .close:
-                guard let btn = self.attr(w, kAXCloseButtonAttribute) else { throw BackendError.unsupported("this window has no close button") }
-                try Self.check(AXUIElementPerformAction(btn as! AXUIElement, kAXPressAction as CFString))
+                guard let btn = self.element(self.attr(w, kAXCloseButtonAttribute)) else { throw BackendError.unsupported("this window has no close button") }
+                try Self.check(AXUIElementPerformAction(btn, kAXPressAction as CFString))
             }
         }
     }
@@ -257,8 +262,8 @@ final class AXBackend: UIBackend, @unchecked Sendable {
                             else if let n = raw as? NSNumber { value = n.stringValue }
                         }
                     }
-                    if title.isEmpty, let ui = self.attr(it.el, kAXTitleUIElementAttribute), CFGetTypeID(ui) == AXUIElementGetTypeID() {
-                        title = String((self.str(ui as! AXUIElement, kAXValueAttribute) ?? self.str(ui as! AXUIElement, kAXTitleAttribute) ?? "").prefix(120))
+                    if title.isEmpty, let ui = self.element(self.attr(it.el, kAXTitleUIElementAttribute)) {
+                        title = String((self.str(ui, kAXValueAttribute) ?? self.str(ui, kAXTitleAttribute) ?? "").prefix(120))
                     }
                     // a very large container exposes what is on screen when the application says so (AXVisibleChildren); otherwise only the first children are read
                     var kids = self.children(it.el)
@@ -291,8 +296,7 @@ final class AXBackend: UIBackend, @unchecked Sendable {
     // MARK: Menus
 
     private func menuBar(_ pid: Int32) -> AXUIElement? {
-        guard let m = attr(appElement(pid), kAXMenuBarAttribute) else { return nil }
-        return (m as! AXUIElement)
+        element(attr(appElement(pid), kAXMenuBarAttribute))
     }
     private func menuBarItems(_ pid: Int32) -> [AXUIElement] { menuBar(pid).map { children($0) } ?? [] }
 
@@ -465,8 +469,11 @@ final class AXBackend: UIBackend, @unchecked Sendable {
     func topWindowID(atGlobal p: CGPoint) async -> UInt32? {
         await run {
             guard let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return nil }      // front-to-back
+            // The Dock keeps one invisible full-display window (layer 20) on every screen and the Window Server owns backdrops: neither is "a window covering the application".
+            let transparentOwners: Set<String> = ["Dock", "Window Server"]
             for d in info {
-                guard let id = d[kCGWindowNumber as String] as? UInt32, let b = d[kCGWindowBounds as String] as? [String: CGFloat], (d[kCGWindowAlpha as String] as? Double ?? 1) > 0.05 else { continue }
+                guard let id = d[kCGWindowNumber as String] as? UInt32, let b = d[kCGWindowBounds as String] as? [String: CGFloat], (d[kCGWindowAlpha as String] as? Double ?? 1) > 0.05,
+                      !transparentOwners.contains(d[kCGWindowOwnerName as String] as? String ?? ""), (d[kCGWindowLayer as String] as? Int ?? 0) >= 0 else { continue }
                 let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
                 if r.contains(p) { return id }
             }
@@ -478,8 +485,7 @@ final class AXBackend: UIBackend, @unchecked Sendable {
         try await runThrowing {
             guard let el = self.elements[h] else { throw BackendError.elementGone }
             let name = (direction == .up || direction == .down) ? "AXVerticalScrollBar" : "AXHorizontalScrollBar"
-            guard let bar = self.attr(el, name), CFGetTypeID(bar) == AXUIElementGetTypeID() else { throw BackendError.unsupported("the scroll area has no \(name)") }
-            let barEl = bar as! AXUIElement
+            guard let barEl = self.element(self.attr(el, name)) else { throw BackendError.unsupported("the scroll area has no \(name)") }
             guard let current = (self.attr(barEl, kAXValueAttribute) as? NSNumber)?.doubleValue else { throw BackendError.unsupported("the scroll bar has no value") }
             let delta = (direction == .down || direction == .right) ? step : -step
             let next = min(1, max(0, current + delta))

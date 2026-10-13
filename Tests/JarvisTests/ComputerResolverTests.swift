@@ -133,6 +133,14 @@ struct ComputerGoalTests {
         #expect(parsed("Click Run in Xcode")?.steps.flatMap(\.actions).first { $0.kind == .pressElement }?.target.title == "Run")
     }
 
+    @Test("typing quoted text into a named field becomes a setText action with the user's own words")
+    func typeText() {
+        let p = parsed("type \"Weekly notes\" into the Name field in JARVIS Fixture")
+        let a = p?.steps.flatMap(\.actions).first { $0.kind == .setText }
+        #expect(a?.text == "Weekly notes" && a?.target.title == "Name" && a?.target.role == "textField" && a?.target.app.bundleID == "com.jarvis.fixture" && a?.origin == .userWords)
+        #expect(parsed("type hello") == nil)                                         // no quoted text / no field → not a computer plan
+    }
+
     @Test("a stronger mechanism owns the goal — Computer Use does NOT take it")
     func ladder() {
         func delegated(_ s: String) -> ComputerMechanism? { if case .delegate(let c) = classification(s) { return c.mechanism }; return nil }
