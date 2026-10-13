@@ -46,6 +46,7 @@ extension TaskEngine {
         case .delegateResearch: outcome = await runDelegateResearch(ctx, key)
         case .delegateComputer: outcome = await runDelegateComputer(ctx, key)
         case .approvalGate: outcome = await runApprovalGate(ctx, key)
+        case .experiment: outcome = await runExperiment(ctx, key)
         }
         leases.release(owner: Self.leaseOwner(step))
         unity?.lock.release(owner: Self.leaseOwner(step))

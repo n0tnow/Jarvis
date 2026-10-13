@@ -161,6 +161,8 @@ final class AppContext {
         visual.pressureNormal = { [weak computerResources] in (computerResources?.pressure.memory ?? .normal) == .normal }
         if !stubIntelligence { computer.vision = GroundedVisionProposer(grounder: visual) }
         taskEngine.computer = computer
+        taskEngine.visual = stubIntelligence ? nil : visual
+        taskEngine.experimentsRoot = runtimePaths.root.appendingPathComponent("experiments", isDirectory: true)
         taskEngine.computerAllowed = { [weak computerPrefs] in computerPrefs?.computerUseEnabled ?? true }
         computerModel = ComputerViewModel(runtime: computer, engine: taskEngine, preferences: preferences)
         orchestrationModel = OrchestrationViewModel(repository: repo)
@@ -295,6 +297,9 @@ final class AppContext {
             // tasks that were waiting for an approval wait again.
             let r = taskEngine.reconcileOnLaunch()
             _ = try? repository?.reconcileComputerAfterRestart()                       // V0.11: GUI sessions are INTERRUPTED, never resumed silently
+            _ = try? repository?.reconcileExperimentsAfterRestart()                   // V0.13: an experiment that was running is INTERRUPTED (never resumed by itself) …
+            if let root = taskEngine.experimentsRoot { let finished = Set(((try? repository?.recentExperiments(limit: 200)) ?? []).filter { $0.status != "running" }.map(\.id)); ExperimentWorkspace.reconcile(under: root, finishedIDs: finished) }       // … and its JARVIS-owned temporary folder is removed (marker-checked, inside the experiments root only)
+            _ = try? repository?.pruneCheckpoints(keep: 30); _ = try? repository?.pruneVisualObservations(keep: 500)
             _ = try? repository?.pruneOrchestration(keepTasks: 150)                  // V0.12: artifacts/routing rows of old finished tasks fall away (history stays)
             try? repository?.pruneComputerSessions(keep: 100)                          // bounded history: old sessions (and their action/observation rows) fall away
             if let repo = self.repository {                                            // V0.9: in-flight research/downloads are INTERRUPTED, never resumed silently

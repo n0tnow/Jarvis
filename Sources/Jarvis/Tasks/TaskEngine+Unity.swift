@@ -498,7 +498,7 @@ extension TaskEngine {
         var actions: [UnityEditAction] = []
         var agentRun: UUID?
         if let json = params.actionsJSON { actions = UnityActionParser.parse(json).actions }
-        if actions.isEmpty {
+        if actions.isEmpty && params.correction == nil {
             let proposed = await proposeUnityActions(ctx, step, run)
             switch proposed {
             case .cancelled: finishUnityRun(run, passed: false, cancelled: true, evidence: "cancelled"); return .cancelled
@@ -507,7 +507,7 @@ extension TaskEngine {
             case .skipped: break
             }
         }
-        guard !actions.isEmpty else { finishUnityRun(run, passed: false, evidence: "no actions"); return .failed(.validationFailed, "The Unity agent proposed no usable action.") }
+        guard !actions.isEmpty || params.correction != nil else { finishUnityRun(run, passed: false, evidence: "no actions"); return .failed(.validationFailed, "The Unity agent proposed no usable action.") }
         if actions.contains(where: { $0.operation.isDestructive }) && !ctx.record.destructiveRequested {
             finishUnityRun(run, passed: false, evidence: "deletion not requested")
             return .failed(.securityBlocked, "The goal did not ask for anything to be deleted, so a Unity deletion was refused.")
@@ -545,6 +545,11 @@ extension TaskEngine {
                 if ctx.cancelRequested || Task.isCancelled { finishUnityRun(run, passed: false, cancelled: true, evidence: "cancelled"); return .cancelled }
                 let (line, ok) = try await applyUnityAction(action.operation, ctx, step, run)
                 done.append(line); verified = verified && ok
+            }
+            // V0.13: bounded observe → act → inspect → correct for an objective the plan names (an object clearly visible to the camera).
+            if let corr = params.correction {
+                let (met, line) = try await runVisibilityCorrection(ctx, step, run, corr)
+                done.append(line); verified = verified && met
             }
             // Save exactly the scenes this step (or an approved user edit) made dirty — nothing else.
             if params.save, let st = run.conn.transport.currentStatus() {

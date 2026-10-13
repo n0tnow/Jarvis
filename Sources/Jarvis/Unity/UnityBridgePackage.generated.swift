@@ -1848,9 +1848,9 @@ namespace Jarvis.Bridge
         static D InstantiatePrefab(D a)
         {
             string path = Str(a, "assetPath");
-            Require(AssetPathOk(path, ".prefab"), "invalidArguments", "assetPath must be a .prefab inside Assets/.");
+            Require(AssetPathOk(path) && new[] { ".prefab", ".fbx", ".obj", ".dae", ".blend", ".gltf", ".glb" }.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase)), "invalidArguments", "assetPath must be a prefab or model inside Assets/.");
             var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-            Require(asset != null, "assetNotFound", "No prefab exists at " + path + ".");
+            Require(asset != null, "assetNotFound", "No prefab or model exists at " + path + ".");
             var scene = SceneFor(Str(a, "scene"));
             GameObject parent = a.ContainsKey("parent") && a["parent"] is D pd ? Resolve(pd) : null;
             if (parent != null) Require(parent.scene == scene, "invalidArguments", "The parent is in a different scene.");
@@ -2355,6 +2355,9 @@ namespace Jarvis.Bridge
             var d = Identity(go);
             d["tag"] = go.tag; d["layer"] = LayerMask.LayerToName(go.layer);
             d["isStatic"] = go.isStatic;
+            d["worldPosition"] = Vec(go.transform.position); d["worldEulerAngles"] = Vec(go.transform.eulerAngles);
+            var rs = go.GetComponentsInChildren<Renderer>(false);
+            if (rs.Length > 0) { var b = rs[0].bounds; foreach (var r in rs.Skip(1)) b.Encapsulate(r.bounds); d["boundsCenter"] = Vec(b.center); d["boundsRadius"] = (double)b.extents.magnitude; }
             d["localPosition"] = Vec(go.transform.localPosition); d["localEulerAngles"] = Vec(go.transform.localEulerAngles); d["localScale"] = Vec(go.transform.localScale);
             d["components"] = go.GetComponents<Component>().Where(c => c != null).GroupBy(c => c.GetType()).SelectMany(g => g.Select((c, i) => (object)Obj("type", g.Key.Name, "fullType", g.Key.FullName, "index", i))).ToList();
             d["prefab"] = PrefabInfo(go);

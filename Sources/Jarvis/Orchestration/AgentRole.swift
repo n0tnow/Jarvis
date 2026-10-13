@@ -99,7 +99,7 @@ enum AgentContracts {
     /// Capabilities NO role may ever hold (no code path honours them): kept in one place so a guard can assert it.
     static let neverGranted: Set<TaskCapability> = CapabilitySet.neverGranted
     private static let projectWrite: Set<TaskCapability> = [.writeProject, .destructiveFileOperation, .importIntoProject]
-    private static let unityMutation: Set<TaskCapability> = [.modifyUnityScene, .saveUnityScene, .createUnityPrefab, .controlUnityPlayMode, .deleteUnityObject, .editUnityAssets]
+    private static let unityMutation: Set<TaskCapability> = [.modifyUnityScene, .saveUnityScene, .createUnityPrefab, .controlUnityPlayMode, .deleteUnityObject, .editUnityAssets, .runExperiment]
 
     static func contract(_ role: AgentRole) -> AgentContract {
         switch role {
@@ -122,8 +122,8 @@ enum AgentContracts {
                                  context: ContextBudget(maxChars: 6_000, maxMemoryItems: 4, maxArtifacts: 2, maxFiles: 0),
                                  authority: "Reads the public web through the V0.9 URL-gated client in its own empty workspace. No project access, no downloads, no accounts, no purchases.", modelBacked: true)
         case .unity:
-            return AgentContract(role: role, stepTypes: [.unityInspect, .unityEdit, .unityCompile, .unityTest, .unityPlayMode, .unityValidate], allowedCapabilities: TaskCapability.unityDevelopment.union([.deleteUnityObject]), forbiddenCapabilities: neverGranted.union([.researchWeb, .controlComputer, .importIntoProject]),
-                                 outputSchema: "UnityResult {operations[], editor state facts, compile/test/console evidence}", validations: [.unityInspected, .unityState, .unityCompiled, .unityTestsPass, .unityPlayObserved], resource: .editor, mutates: true,
+            return AgentContract(role: role, stepTypes: [.unityInspect, .unityEdit, .unityCompile, .unityTest, .unityPlayMode, .unityValidate, .experiment], allowedCapabilities: TaskCapability.unityDevelopment.union([.deleteUnityObject]), forbiddenCapabilities: neverGranted.union([.researchWeb, .controlComputer, .importIntoProject]),
+                                 outputSchema: "UnityResult {operations[], editor state facts, compile/test/console evidence}", validations: [.unityInspected, .unityState, .unityCompiled, .unityTestsPass, .unityPlayObserved, .experimentConcluded], resource: .editor, mutates: true,
                                  retry: RetryBudget(repairAttempts: 1, escalations: 1, maxAttempts: 3, maxProviderInvocations: 4),
                                  context: ContextBudget(maxChars: 14_000, maxMemoryItems: 5, maxArtifacts: 3, maxFiles: 3),
                                  authority: "Typed V0.6 editor operations only (closed enum). No C#, menu item, package, shell or GUI automation.", modelBacked: false)
@@ -157,7 +157,7 @@ enum AgentContracts {
         case .codeChange, .delete, .importAsset: .coding
         case .build, .test: .qa
         case .review: .review
-        case .unityInspect, .unityEdit, .unityCompile, .unityTest, .unityPlayMode, .unityValidate: .unity
+        case .unityInspect, .unityEdit, .unityCompile, .unityTest, .unityPlayMode, .unityValidate, .experiment: .unity
         case .researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport, .acquire, .delegateResearch: .research
         case .computerAct, .delegateComputer: .computer
         case .approvalGate: nil

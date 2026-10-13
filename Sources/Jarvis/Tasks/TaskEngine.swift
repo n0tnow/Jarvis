@@ -57,6 +57,9 @@ final class TaskEngine {
     var unity: UnityService?
     /// V0.9: web research + acquisition services (nil = research/acquisition steps fail truthfully with "not available").
     var web: ResearchServices?
+    /// V0.13: general visual grounding (optional second opinion on a render; never an authority) and the root under which experiments create their disposable environments.
+    var visual: VisualGrounder?
+    var experimentsRoot: URL?
     /// V0.11: Computer Use (nil = computer steps fail truthfully with "not available"). Owns the backend, the emergency stop and the session timeline.
     var computer: ComputerRuntime?
     /// Settings → Computer Use: the master switch (a closure so a change applies to the next task at once).

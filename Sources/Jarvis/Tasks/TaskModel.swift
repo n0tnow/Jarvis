@@ -48,9 +48,11 @@ enum TaskCapability: String, Codable, Sendable, CaseIterable {
     // V0.13 (DEC-191…): the Unity development operator. `editUnityAssets` = create / change materials, animator controllers, prefab variants and model-import settings through the typed bridge
     // (never a script, never an overwrite); `captureUnityView` = render the Game camera to MEMORY for inspection (read-only; nothing is written into the project).
     case editUnityAssets, captureUnityView
+    // V0.13: run a bounded experiment in a DISPOSABLE environment JARVIS creates (never the user's project). Grants nothing outside that environment.
+    case runExperiment
 
     static let unityInspection: Set<TaskCapability> = [.inspectUnity, .readUnityConsole, .captureUnityView]
-    static let unityDevelopment: Set<TaskCapability> = [.inspectUnity, .readUnityConsole, .modifyUnityScene, .saveUnityScene, .createUnityPrefab, .runUnityCompile, .runUnityTests, .controlUnityPlayMode, .editUnityAssets, .captureUnityView]
+    static let unityDevelopment: Set<TaskCapability> = [.inspectUnity, .readUnityConsole, .modifyUnityScene, .saveUnityScene, .createUnityPrefab, .runUnityCompile, .runUnityTests, .controlUnityPlayMode, .editUnityAssets, .captureUnityView, .runExperiment]
 }
 
 struct CapabilitySet: Codable, Equatable, Sendable {
@@ -199,6 +201,8 @@ enum StepType: String, Codable, Sendable, CaseIterable {
     // V0.12 orchestration (DEC-157…): a node that is executed by ANOTHER ordinary V0.4 task (research / computer) which JARVIS starts, supervises and awaits, and an
     // approval GATE (a graph node that only a HUD approval can release — approving is never an agent's job).
     case delegateResearch, delegateComputer, approvalGate
+    // V0.13: a bounded experiment (question → hypothesis → disposable environment → evidence → verdict → cleanup).
+    case experiment
 
     var isComputer: Bool { self == .computerAct }
     /// V0.12: executed by a child task started by the orchestrator.
@@ -236,6 +240,7 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .delegateResearch: [.researchWeb]
         case .delegateComputer: [.controlComputer]
         case .approvalGate: []
+        case .experiment: [.runExperiment, .inspectUnity]
         }
     }
     /// Provider-executed (an agent run with a model) vs. deterministic JARVIS tool.
@@ -251,6 +256,7 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .computerAct, .delegateComputer: "ComputerAgent"
         case .delegateResearch: "ResearchAgent"
         case .approvalGate: "ApprovalGate"
+        case .experiment: "ExperimentTool"
         }
     }
     var defaultRisk: RiskClass { self == .delete || self == .importAsset ? .high : (self == .codeChange || self == .unityEdit || self == .acquire || self == .delegateComputer) ? .medium : .low }
@@ -268,6 +274,7 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .delegateResearch: .retryable    // a finished child is reused if its evidence is still valid; an interrupted one is resumed explicitly
         case .delegateComputer: .inspectFirst // the child re-observes from scratch
         case .approvalGate: .manual           // a gate is never replayed automatically: a restart needs a fresh decision
+        case .experiment: .retryable          // a new disposable environment each time; an interrupted one is cleaned up, never resumed in place
         }
     }
     var label: String {
@@ -278,7 +285,7 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .researchSearch: "Search"; case .researchRead: "Read sources"; case .researchExtract: "Extract"; case .researchVerify: "Verify"; case .researchReport: "Report"
         case .acquire: "Download to quarantine"; case .importAsset: "Import asset"
         case .computerAct: "Computer action"
-        case .delegateResearch: "Research"; case .delegateComputer: "Computer"; case .approvalGate: "Approval"
+        case .delegateResearch: "Research"; case .delegateComputer: "Computer"; case .approvalGate: "Approval"; case .experiment: "Experiment"
         }
     }
 }
@@ -325,6 +332,8 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
     case computerVerified
     // V0.12: a delegated child task finished and its own validation record says so; an approval gate was released by a HUD decision (never by text).
     case researchDelegated, computerDelegated, gateApproved
+    // V0.13: the experiment reached a verdict against its declared criteria and its environment was deleted.
+    case experimentConcluded
 
     static func allowed(for type: StepType) -> Set<ValidationKind> {
         switch type {
@@ -345,6 +354,7 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
         case .delegateResearch: [.researchDelegated]
         case .delegateComputer: [.computerDelegated]
         case .approvalGate: [.gateApproved]
+        case .experiment: [.experimentConcluded]
         }
     }
     static func `default`(for type: StepType) -> ValidationKind {
@@ -359,6 +369,7 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
         case .delegateResearch: .researchDelegated
         case .delegateComputer: .computerDelegated
         case .approvalGate: .gateApproved
+        case .experiment: .experimentConcluded
         }
     }
     /// Plain-language aliases an LLM planner may use (the examples in the product spec) → the real validation.

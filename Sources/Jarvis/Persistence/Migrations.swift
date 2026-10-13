@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11]
+    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -501,5 +501,39 @@ struct Migration: Sendable {
         """,
         "CREATE INDEX idx_project_checkpoints_project ON project_checkpoints(project_key, created_at)",
         "CREATE INDEX idx_tasks_workspace ON tasks(workspace_root, created_at)",
+    ])
+
+    /// V12 — experiments, visual evidence and asset evaluations (V0.13). An experiment is declared (question, hypothesis, bounds), run in a disposable environment and judged;
+    /// only the contract and the structured result are kept (never the environment, never pixels). Visual evidence records WHICH picture (hash), WHICH provider and WHAT it
+    /// reported — no screenshot is stored. An asset evaluation keeps the fact classes (verified / tested / supported by source / inferred / unknown / incompatible) apart.
+    static let v12 = Migration(version: 12, name: "experiments, visual evidence, asset evaluations", statements: [
+        """
+        CREATE TABLE experiments (
+            id TEXT PRIMARY KEY, task_id TEXT, step_key TEXT, project_key TEXT, kind TEXT NOT NULL, question TEXT NOT NULL, hypothesis TEXT NOT NULL, contract TEXT NOT NULL,
+            isolation TEXT NOT NULL DEFAULT 'disposable', environment_path TEXT, status TEXT NOT NULL, verdict TEXT, result TEXT, cleanup_state TEXT NOT NULL DEFAULT 'pending',
+            created_at REAL NOT NULL, finished_at REAL
+        )
+        """,
+        "CREATE INDEX idx_experiments_task ON experiments(task_id)",
+        "CREATE INDEX idx_experiments_status ON experiments(status)",
+        """
+        CREATE TABLE experiment_steps (
+            id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL REFERENCES experiments(id) ON DELETE CASCADE, seq INTEGER NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, evidence TEXT, at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_experiment_steps_exp ON experiment_steps(experiment_id, seq)",
+        """
+        CREATE TABLE visual_observations (
+            id TEXT PRIMARY KEY, task_id TEXT, step_key TEXT, at REAL NOT NULL, provider TEXT NOT NULL, picture_hash TEXT NOT NULL, subject TEXT, query TEXT, outcome TEXT NOT NULL, detail TEXT,
+            injection_notes INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX idx_visual_observations_task ON visual_observations(task_id, at)",
+        """
+        CREATE TABLE asset_evaluations (
+            id TEXT PRIMARY KEY, task_id TEXT, acquisition_id TEXT, project_key TEXT, name TEXT NOT NULL, source TEXT, facts TEXT NOT NULL, recommendation TEXT, created_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_asset_evaluations_acq ON asset_evaluations(acquisition_id)",
     ])
 }

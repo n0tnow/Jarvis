@@ -336,6 +336,16 @@ final class UnityService {
 
     // MARK: Ownership & cleanup
 
+    /// Closes the editor JARVIS started for ONE project and forgets its connection (an experiment's disposable project). Never touches a user's editor.
+    func closeOwnedEditor(root: String) async {
+        let key = UnityProcessScanner.canonical(root)
+        guard let conn = connections[key] else { return }
+        await restartOwnedEditor(conn)
+        conn.transport.close()
+        connections[key] = nil
+        onChange?()
+    }
+
     /// Closes ONE editor JARVIS started itself (never a user's) so it can be started again with different launch options.
     func restartOwnedEditor(_ conn: UnityConnection) async {
         guard let owned = conn.owned, conn.transport.currentStatus()?.owned == true else { return }

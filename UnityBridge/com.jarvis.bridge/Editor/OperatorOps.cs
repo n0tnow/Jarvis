@@ -655,9 +655,9 @@ namespace Jarvis.Bridge
         static D InstantiatePrefab(D a)
         {
             string path = Str(a, "assetPath");
-            Require(AssetPathOk(path, ".prefab"), "invalidArguments", "assetPath must be a .prefab inside Assets/.");
+            Require(AssetPathOk(path) && new[] { ".prefab", ".fbx", ".obj", ".dae", ".blend", ".gltf", ".glb" }.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase)), "invalidArguments", "assetPath must be a prefab or model inside Assets/.");
             var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-            Require(asset != null, "assetNotFound", "No prefab exists at " + path + ".");
+            Require(asset != null, "assetNotFound", "No prefab or model exists at " + path + ".");
             var scene = SceneFor(Str(a, "scene"));
             GameObject parent = a.ContainsKey("parent") && a["parent"] is D pd ? Resolve(pd) : null;
             if (parent != null) Require(parent.scene == scene, "invalidArguments", "The parent is in a different scene.");

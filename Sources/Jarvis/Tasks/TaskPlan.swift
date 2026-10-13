@@ -138,7 +138,7 @@ enum PlanParser {
             let risk = (raw["risk"] as? String).flatMap { RiskClass(rawValue: $0.lowercased()) } ?? type.defaultRisk
             let targets = (raw["targets"] as? [String] ?? (raw["target"] as? String).map { [$0] } ?? [])
             var unity: UnityStepParams?
-            if type.isUnity {
+            if type.isUnity || type == .experiment {
                 unity = UnityStepParams.parse(raw["unity"]) ?? UnityStepParams()
                 if let bad = raw["unity"].flatMap({ UnityActionParser.forbiddenContent(in: $0) }) { issues.append(.prohibitedOperation(step: id, phrase: "Unity " + bad)); continue }
             }
@@ -172,6 +172,7 @@ enum PlanParser {
         case "unity_test", "unitytests", "testunity": .unityTest
         case "unity_play", "unityplay", "playmode": .unityPlayMode
         case "unity_validate", "validateunity": .unityValidate
+        case "experiment", "unity_experiment", "runexperiment": .experiment
         default: nil
         }
     }
@@ -222,6 +223,10 @@ enum PlanValidator {
                     issues.append(.unsafeDestructiveStep(step: s.id, why: "target \"\(t)\" is not an explicit workspace-relative path"))
                 }
                 if s.risk < .high { issues.append(.unsafeDestructiveStep(step: s.id, why: "must be declared high risk")) }
+            }
+            if s.type == .experiment {
+                if s.unity?.experiment == nil { issues.append(.invalidUnityParameters(step: s.id, why: "an experiment step needs a complete experiment contract (question, hypothesis, kind, criteria)")) }
+                for why in (s.unity ?? UnityStepParams()).problems() { issues.append(.invalidUnityParameters(step: s.id, why: why)) }
             }
             if s.type.isUnity {
                 for why in (s.unity ?? UnityStepParams()).problems() { issues.append(.invalidUnityParameters(step: s.id, why: why)) }

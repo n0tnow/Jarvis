@@ -40,6 +40,7 @@ enum OrchestrationStatus {
         case .build: return tr(l, "The build passed.", "Derleme geçti.")
         case .test where s.validation == .testPass: return tr(l, "The tests passed\(count(s).map { " (\($0))" } ?? "").", "Testler geçti\(count(s).map { " (\($0))" } ?? "").")
         case .review: return tr(l, "The review is finished.", "İnceleme tamamlandı.")
+        case .experiment: return tr(l, "The experiment is finished.", "Deney tamamlandı.")
         default: return nil
         }
     }

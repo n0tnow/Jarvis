@@ -8,7 +8,10 @@ Make JARVIS an operator that can resume a real project, work inside its developm
 
 State:
 * CHECKPOINT 1 — Project Continuity: IMPLEMENTED · AUTOMATED TESTED (45 new tests; the V0.12 baseline of 1326 tests still passes). Derived view (tasks · Git · last checkpoint · memory · docs · Unity descriptor), reconciliation (current truth wins; JARVIS-written files are not “interference”), selection (interrupted → failed-once → recorded next → known issue; several ⇒ ask; design-sensitive ⇒ propose), bounded sessions (30 min / 12 nodes / 2 revisions / 2 correction rounds / 2 experiments), checkpoints per finished task (schema v11), Project panel in Tasks, Compact “Hamam · Continuing · Editing” line, Settings switch.
-* Next: Unity operator (C# bridge + typed Swift operations), visual grounding research + benchmark, experiments / asset suitability, correction loop, `--operator-live-test`, guards, docs, 150+ manual checks.
+* CHECKPOINT 2 — Unity development operator: IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (`--operator-live-test`, real Unity 6000.5.1f1 on a disposable fixture: 83 checks passed).
+* CHECKPOINT 3 — Visual grounding: IMPLEMENTED · AUTOMATED TESTED · REAL BENCHMARKED (16 cases; Apple OCR 7/16, Qwen3-VL-2B 15/16, 4B 15/16; local, offline, no key).
+* CHECKPOINT 4 — Experiments, asset suitability, correction loop (schema v12): IMPLEMENTED · AUTOMATED TESTED (17 new tests; `experiment` plan steps parse and validate their contract). NOT yet real-tested.
+* Next: real tests (visual correction, disposable-project experiment, continuation/restart/drift), Full/Compact HUD for operator + experiment + visual diagnostics, guards in `verify.sh`, docs, 150+ manual checks.
 
 Next Step:
 Continue the V0.13 plan; the final report is owed only when everything is verified. No tag, no V0.14.

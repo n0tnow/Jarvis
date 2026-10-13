@@ -419,6 +419,7 @@ enum OperatorPhase: String, Sendable {
         case .build, .test, .unityCompile, .unityTest: return .testing
         case .unityInspect, .unityValidate, .review, .unityPlayMode: return .inspecting
         case .approvalGate: return .waitingForApproval
+        case .experiment: return .experimenting
         }
     }
 }

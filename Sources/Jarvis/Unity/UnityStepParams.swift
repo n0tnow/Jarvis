@@ -51,6 +51,10 @@ struct UnityStepParams: Codable, Equatable, Sendable {
     var assets: [String] = []
     var profile = false
     var capture: UnityCaptureSpec?
+    /// V0.13: observe → act → inspect → correct, bounded: make an object clearly visible (aim the camera, add or raise a light, raise the ambient) and PROVE it with the editor's capture analysis.
+    var correction: UnityCorrectionSpec?
+    /// V0.13: a bounded experiment (`experiment` steps only).
+    var experiment: ExperimentSpec?
 
     static let maxTargets = 8, maxExpectations = 10, maxObserve = 30, maxNames = 20, maxAssets = 6
 
@@ -71,6 +75,10 @@ struct UnityStepParams: Codable, Equatable, Sendable {
         p.profile = d["profile"] as? Bool ?? false
         if let c = d["capture"] as? [String: Any] { p.capture = UnityCaptureSpec(width: (c["width"] as? NSNumber)?.intValue ?? 640, height: (c["height"] as? NSNumber)?.intValue ?? 360, targets: (c["targets"] as? [Any] ?? []).compactMap { $0 as? String }) }
         else if d["capture"] as? Bool == true { p.capture = UnityCaptureSpec() }
+        if let c = d["correct"] as? [String: Any] ?? d["correction"] as? [String: Any], let t = c["target"] as? String {
+            p.correction = UnityCorrectionSpec(target: t, maxRounds: (c["rounds"] as? NSNumber)?.intValue ?? (c["maxRounds"] as? NSNumber)?.intValue ?? UnityCorrectionSpec.defaultRounds)
+        }
+        if let e = d["experiment"] as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: e), let spec = try? JSONDecoder().decode(ExperimentSpec.self, from: data) { p.experiment = spec }
         if let acts = d["actions"] as? [Any], let data = try? JSONSerialization.data(withJSONObject: ["actions": acts]) { p.actionsJSON = String(decoding: data, as: UTF8.self) }
         p.expectations = (d["expectations"] as? [[String: Any]] ?? []).compactMap { e in
             guard let k = (e["kind"] as? String).flatMap(UnityExpectation.Kind.init(rawValue:)) else { return nil }
@@ -98,6 +106,8 @@ struct UnityStepParams: Codable, Equatable, Sendable {
         if assets.count > Self.maxAssets { out.append("too many assets") }
         for a in assets where !UnityDevOp.validAssetReference(a) { out.append("invalid asset \"\(a.prefix(40))\"") }
         if let c = capture { out += c.problems() }
+        if let c = correction { out += c.problems() }
+        if let e = experiment { out += ExperimentValidator.validate(e).map(\.description) }
         if let a = actionsJSON {
             let parsed = UnityActionParser.parse(a)
             if !parsed.problems.isEmpty { out.append("actions: " + parsed.problems.joined(separator: "; ")) }
@@ -122,6 +132,20 @@ struct UnityCaptureSpec: Codable, Equatable, Sendable {
         if !(64...1_280).contains(width) || !(64...1_280).contains(height) { out.append("capture size must be 64–1280 pixels") }
         if targets.count > 8 { out.append("too many capture targets") }
         for t in targets where t.isEmpty || t.count > 160 || t.contains("..") { out.append("invalid capture target") }
+        return out
+    }
+}
+
+
+/// Bounded visual correction of ONE objective: the object is clearly visible to the camera. At most `maxRounds` rounds (default 2); then the remaining uncertainty is reported.
+struct UnityCorrectionSpec: Codable, Equatable, Sendable {
+    var target: String
+    var maxRounds = UnityCorrectionSpec.defaultRounds
+    static let defaultRounds = 2, maxAllowedRounds = 3
+    func problems() -> [String] {
+        var out: [String] = []
+        if target.isEmpty || target.count > 160 || target.contains("..") { out.append("invalid correction target") }
+        if !(1...Self.maxAllowedRounds).contains(maxRounds) { out.append("correction rounds must be 1–\(Self.maxAllowedRounds)") }
         return out
     }
 }

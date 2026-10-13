@@ -28,7 +28,7 @@ struct UnityGuardTests {
     @Test func unityOperationsAreSentOnlyThroughTheConnectionAndOnlyFromTheEngineAndTheLiveTest() {
         for (path, text) in code("Sources/Jarvis") {
             if text.contains(".perform(") && text.contains("UnityToolSession") || text.contains("transport.send(") {
-                let ok = path.contains("/Unity/") || path.hasSuffix("TaskEngine+Unity.swift") || path.hasSuffix("UnityLiveTest.swift") || path.hasSuffix("OperatorLiveTest.swift")
+                let ok = path.contains("/Unity/") || path.hasSuffix("TaskEngine+Unity.swift") || path.hasSuffix("TaskEngine+UnityOperator.swift") || path.hasSuffix("TaskEngine+UnityCorrection.swift") || path.hasSuffix("TaskEngine+Experiment.swift") || path.hasSuffix("UnityLiveTest.swift") || path.hasSuffix("OperatorLiveTest.swift")
                 #expect(ok, "\(path) talks to the Unity editor")
             }
         }
@@ -76,7 +76,7 @@ struct UnityGuardTests {
 
     @Test func unityEditsAreNeverDoneByRewritingSceneYAML() {
         for (path, text) in code("Sources/Jarvis/Tasks") + code("Sources/Jarvis/Unity") {
-            #expect(!text.contains(".unity\"") || path.hasSuffix("UnityStepParams.swift") || path.hasSuffix("UnityPolicy.swift") || path.hasSuffix("UnityProjectDetector.swift") || path.hasSuffix("TaskEngine+Unity.swift") || path.hasSuffix("TaskPlan.swift") || path.hasSuffix("UnityDiscovery.swift") || path.hasSuffix("UnityOperatorOps.swift") || path.hasSuffix("TaskEngine+UnityOperator.swift") || path.hasSuffix("UnityProtocol.swift"), "\(path) mentions scene files")
+            #expect(!text.contains(".unity\"") || path.hasSuffix("UnityStepParams.swift") || path.hasSuffix("UnityPolicy.swift") || path.hasSuffix("UnityProjectDetector.swift") || path.hasSuffix("TaskEngine+Unity.swift") || path.hasSuffix("TaskPlan.swift") || path.hasSuffix("UnityDiscovery.swift") || path.hasSuffix("UnityOperatorOps.swift") || path.hasSuffix("TaskEngine+UnityOperator.swift") || path.hasSuffix("TaskEngine+Experiment.swift") || path.hasSuffix("UnityProtocol.swift"), "\(path) mentions scene files")
             #expect(!text.contains("YAMLDecoder") && !text.contains("m_GameObject"), "\(path) parses scene YAML")
         }
     }

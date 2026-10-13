@@ -415,7 +415,7 @@ extension UnityActionParser {
                 guard let k = a["kind"] as? String, let st = values(a["settings"]) else { return fail("needs a kind and settings") }
                 return .success(.dev(try UnityDevOp.configure(t, kind: k, settings: st)))
             case "instantiatePrefab":
-                guard let p = path("assetPath", ".prefab") else { return fail("needs a .prefab under Assets/") }
+                guard let p = ref("assetPath"), !p.contains("::"), [".prefab", ".fbx", ".obj", ".dae", ".blend", ".gltf", ".glb"].contains(where: { p.lowercased().hasSuffix($0) }) else { return fail("needs a prefab or model under Assets/") }
                 if let n = a["name"] as? String, !validName(n) { return fail("invalid name") }
                 for k in ["position", "rotation", "scale"] where a[k] != nil && vec(a[k]) == nil { return fail("\(k) must be [x, y, z]") }
                 return .success(.dev(.instantiatePrefab(assetPath: p, scene: (a["scene"] as? String).flatMap { UnityPolicy.isSafeProjectPath($0) && $0.hasSuffix(".unity") ? $0 : nil }, parent: UnityActionParser.target(a["parent"]), name: a["name"] as? String,
