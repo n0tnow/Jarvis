@@ -119,6 +119,14 @@ enum DevCapture {
                 context.hud.selectedTaskID = engine.orderedViews.first(where: { $0.task.title.contains("BoxCollider") })?.id; await settle(700)
                 snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "tasks_unity", in: directory)
             }
+            // V0.13: the Project card and the Experiments card (SIMULATED data in the throw-away database)
+            if let opDir = TaskDemo.seedOperatorDemo(context: context) {
+                projects.append(opDir)
+                print("operator demo: experiments in the throw-away database = \((try? context.repository?.recentExperiments(limit: 5).count) ?? -1)")
+                context.preferences.projectRoot = opDir
+                context.hud.section = .tasks; w.showFullHUD(section: .tasks); context.hud.selectedTaskID = nil; await settle(900)
+                snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "tasks_operator", in: directory)
+            }
             context.preferences.projectRoot = savedRoot
             context.hud.selectedTaskID = nil; context.hud.section = .dashboard
             for p in projects { try? FileManager.default.removeItem(atPath: p) }

@@ -7,6 +7,7 @@ import CoreGraphics
 extension TaskEngine {
     func runExperiment(_ ctx: TaskContext, _ key: String) async -> StepOutcome {
         guard let step = ctx.step(key), let spec = step.unity?.experiment else { return .failed(.malformedPlan, "An experiment step needs an experiment contract.") }
+        guard experimentsEnabled() else { return .failed(.capabilityDenied, "Experiments are turned off in Settings → Project operator.") }
         guard ctx.record.capabilities.allows(.runExperiment) else { return .failed(.capabilityDenied, "This task does not grant running experiments.") }
         guard let unity, let root = experimentsRoot else { return .failed(.unityUnavailable, "Experiments are not available in this configuration.") }
         let problems = ExperimentValidator.validate(spec, realProjectRoots: [ctx.workspace.root])

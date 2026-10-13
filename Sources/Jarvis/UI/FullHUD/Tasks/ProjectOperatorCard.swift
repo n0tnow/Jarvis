@@ -21,7 +21,7 @@ struct ProjectOperatorCard: View {
                     if let a = m.lastAnswer { Text(a).font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary).textSelection(.enabled) }
                 }
             }
-            .task(id: app.taskEngine.revision) { await m.refresh() }
+            .task(id: "\(app.taskEngine.revision)|\(app.preferences.projectRoot)") { await m.refresh() }
             .accessibilityElement(children: .contain)
         }
     }

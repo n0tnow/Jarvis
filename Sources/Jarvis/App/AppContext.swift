@@ -163,6 +163,7 @@ final class AppContext {
         taskEngine.computer = computer
         taskEngine.visual = stubIntelligence ? nil : visual
         taskEngine.experimentsRoot = paths.root.appendingPathComponent("experiments", isDirectory: true)
+        taskEngine.experimentsEnabled = { [weak preferences] in preferences?.experimentsEnabled ?? true }
         taskEngine.computerAllowed = { [weak computerPrefs] in computerPrefs?.computerUseEnabled ?? true }
         computerModel = ComputerViewModel(runtime: computer, engine: taskEngine, preferences: preferences)
         orchestrationModel = OrchestrationViewModel(repository: repo)

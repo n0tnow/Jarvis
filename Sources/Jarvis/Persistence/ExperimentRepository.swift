@@ -98,6 +98,14 @@ extension JarvisRepository {
                              .text(String(v.outcome.prefix(60))), .opt(Self.clean(v.detail, 400)), .int(Int64(v.injectionNotes))])
         }
     }
+    func recentVisualObservations(limit: Int = 8) throws -> [VisualObservationRecord] {
+        try database.read("SELECT * FROM visual_observations ORDER BY at DESC LIMIT ?", [.int(Int64(limit))]).compactMap { r in
+            guard let id = r.string("id").flatMap(UUID.init(uuidString:)), let at = r.date("at") else { return nil }
+            return VisualObservationRecord(id: id, taskID: r.string("task_id").flatMap(UUID.init(uuidString:)), stepKey: r.string("step_key"), at: at, provider: r.string("provider") ?? "", pictureHash: r.string("picture_hash") ?? "",
+                                           subject: r.string("subject"), query: r.string("query"), outcome: r.string("outcome") ?? "", detail: r.string("detail"), injectionNotes: r.int("injection_notes") ?? 0)
+        }
+    }
+
     func visualObservations(taskID: UUID) throws -> [VisualObservationRecord] {
         try database.read("SELECT * FROM visual_observations WHERE task_id = ? ORDER BY at", [.text(taskID.uuidString)]).compactMap { r in
             guard let id = r.string("id").flatMap(UUID.init(uuidString:)), let at = r.date("at") else { return nil }

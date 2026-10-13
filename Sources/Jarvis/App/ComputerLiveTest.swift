@@ -189,7 +189,7 @@ enum ComputerLiveTest {
         (v, _) = await runTask("Press Apply", [step("Pressing Apply", press("Apply", window: "Fixture Main"))])
         check("AMBIGUITY: two identical “Apply” buttons (Sidebar, Inspector) → the task stops as AMBIGUOUS, nothing is pressed", v.task.state == .failed && v.task.failureCategory == .ambiguousTarget && st().count("applySidebar") == 0 && st().count("applyInspector") == 0, "\(v.task.failureReason?.prefix(120) ?? "")")
         (v, _) = await runTask("Press Apply in the Inspector", [step("Pressing Apply (Inspector)", press("Apply", within: "Inspector", window: "Fixture Main"))])
-        check("CONTEXT: with “in the Inspector” from the user's words the right one is pressed", v.task.state == .completed && st().count("applyInspector") == 1 && st().count("applySidebar") == 0)
+        check("CONTEXT: with “in the Inspector” from the user's words the right one is pressed", v.task.state == .completed && st().count("applyInspector") == 1 && st().count("applySidebar") == 0, "state \(v.task.state.rawValue) · inspector×\(st().count("applyInspector")) sidebar×\(st().count("applySidebar")) · \(v.task.failureReason?.prefix(200) ?? "")")
         (v, _) = await runTask("Press Apply in Document B", [step("Pressing Apply in Document B", press("Apply", window: "Document B", checks: [.elementExists(bundleID: fixtureBundle, role: "statictext", title: "Applied 1")]))])
         check("MULTI-WINDOW: two similar windows are told apart by TITLE, not z-order — only Document B's Apply was pressed", v.task.state == .completed && st().count("applyDocB") == 1 && st().count("applyDocA") == 0, "A×\(st().count("applyDocA")) B×\(st().count("applyDocB"))")
         (v, _) = await runTask("Press Apply in Document", [step("Pressing Apply", press("Apply", window: "Document"))])
@@ -307,7 +307,7 @@ enum ComputerLiveTest {
             let inside = pts.last.map { CGRect(x: 40, y: 30, width: 180, height: 60).contains($0) } ?? false
             check("REAL VISION ACTION: OCR located “Launch” in the window screenshot, JARVIS validated freshness + bounds, and ONE click landed inside the control", v.task.state == .completed && st().count("canvasClicks") == 1 && inside, "click at view point \(pts.last.map { "(\(Int($0.x)),\(Int($0.y)))" } ?? "none"); \(fmt(dur)) ms end-to-end; \(v.task.failureReason ?? "")")
             let acts = actions(v)
-            check("MECHANISM: the click is recorded as the LAST rung (window-relative coordinates) after the vision proposal", acts.first?.mechanism.hasPrefix("G") == true && acts.first?.provider?.contains("Apple Vision") == true, acts.first?.mechanism ?? "?")
+            check("MECHANISM: the click is recorded as the LAST rung (window-relative coordinates) after the vision proposal", acts.first?.mechanism.hasPrefix("G") == true && (acts.first?.provider?.contains("visual grounding") == true || acts.first?.provider?.contains("Apple Vision") == true), acts.first?.mechanism ?? "?")
             perf.append(("vision fallback end-to-end (capture + OCR + validate + click + verify)", "\(fmt(ms(t1))) ms"))
             // 8d. stale: capture, move the window, the old observation must be refused
             let ex2 = runtime.makeExecutor(token: ComputerStopToken(), taskID: UUID())

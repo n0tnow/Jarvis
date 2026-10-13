@@ -97,6 +97,26 @@ enum TaskDemo {
     }
 
     /// DEMO ONLY (captures; stub-mode temp database): a finished Unity task with the evidence lines the real steps produce, in a Unity-shaped temp project.
+    /// V0.13 capture data (SIMULATED, throw-away database): one finished experiment and a few pieces of visual evidence, so the Experiments card can be rendered.
+    @MainActor static func seedOperatorDemo(context: AppContext) -> String? {
+        guard let repo = context.repository else { return nil }
+        let dir = makeProject()
+        let spec = ExperimentSpec(question: "Does the bucket model pack import and render in a clean Unity project?", hypothesis: "It imports, compiles, instantiates and renders without pink materials.", kind: .assetImport,
+                                  acquisitionID: UUID(), successCriteria: ["the project compiles", "it renders visibly"], failureCriteria: ["compile errors", "pink materials"])
+        let facts = [ExperimentFact(statement: "Unity imported and compiled the project without compile errors", factClass: .tested, evidence: "compile state read from the editor"),
+                     ExperimentFact(statement: "The subject is visible in the render", factClass: .tested, evidence: "area 12 % of the frame, contrast 0.41"),
+                     ExperimentFact(statement: "Probably compatible with URP", factClass: .inferred, evidence: "the pack states built-in materials; URP not tested"),
+                     ExperimentFact(statement: "Style fit with the project", factClass: .unknown, evidence: "no picture of the project was compared")]
+        let result = ExperimentResult(verdict: .confirmed, summary: "the hypothesis held: the project compiles, an object can be instantiated, it renders visibly, it does not render pink", facts: facts,
+                                      successMet: ["the project compiles", "it renders visibly"], failureHit: [], seconds: 41, environmentDeleted: true, pictureHashes: ["a1b2c3d4e5f60718"], projectUntouched: true)
+        var rec = ExperimentRecord(id: UUID(), taskID: nil, stepKey: "s1", projectKey: nil, spec: spec, environmentPath: nil, status: "concluded", result: result, cleanupState: "deleted")
+        rec.finishedAt = Date()
+        try? repo.save(rec)
+        try? repo.insert(VisualObservationRecord(taskID: nil, stepKey: "s2", provider: "unity-capture", pictureHash: "a1b2c3d4e5f60718", subject: "ExperimentSubject", query: "is it clearly visible?", outcome: "visible", detail: "area 12 %, contrast 0.41"))
+        try? repo.insert(VisualObservationRecord(taskID: nil, stepKey: "s4", provider: "Qwen3-VL-4B (on-device)", pictureHash: "0f9e8d7c6b5a4938", subject: "Save", query: "locate the Save button", outcome: "found", detail: "1 candidate, high confidence", injectionNotes: 1))
+        return dir
+    }
+
     @MainActor static func seedUnityTask(context: AppContext) -> String? {
         let fm = FileManager.default
         let dir = NSTemporaryDirectory() + "jarvis-unity-demo-\(UUID().uuidString.prefix(6))"

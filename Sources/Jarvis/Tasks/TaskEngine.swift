@@ -60,6 +60,8 @@ final class TaskEngine {
     /// V0.13: general visual grounding (optional second opinion on a render; never an authority) and the root under which experiments create their disposable environments.
     var visual: VisualGrounder?
     var experimentsRoot: URL?
+    /// Settings switch for the `experiment` step (default on); read at step start.
+    var experimentsEnabled: () -> Bool = { true }
     /// V0.11: Computer Use (nil = computer steps fail truthfully with "not available"). Owns the backend, the emergency stop and the session timeline.
     var computer: ComputerRuntime?
     /// Settings → Computer Use: the master switch (a closure so a change applies to the next task at once).

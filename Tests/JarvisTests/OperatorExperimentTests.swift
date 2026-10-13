@@ -215,6 +215,7 @@ struct ExperimentJudgementTests {
         try repo.insert(VisualObservationRecord(taskID: task, stepKey: "s1", provider: "unity-capture", pictureHash: "abcd1234abcd1234", subject: "Bucket", query: "visible?", outcome: "visible", detail: "area 10 %"))
         let obs = try repo.visualObservations(taskID: task)
         #expect(obs.count == 1 && obs[0].pictureHash == "abcd1234abcd1234")
+        #expect(try repo.recentVisualObservations(limit: 5).first?.provider == "unity-capture")
         let acq = UUID()
         let ev = AssetEvaluation(name: "Bucket", facts: [ExperimentFact(statement: "s", factClass: .tested, evidence: "e")], usage: ["FACT: x"], recommendation: "ok")
         try repo.save(AssetEvaluationRecord(taskID: task, acquisitionID: acq, projectKey: "git:abc", evaluation: ev, source: "https://e.org"))
@@ -273,6 +274,19 @@ struct ExperimentEngineTests {
         let v = await h.run("Test it")
         #expect(v.task.state == .failed)
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).isEmpty)
+    }
+
+    @Test("with experiments turned off in Settings the step fails with that reason and creates nothing")
+    func switchedOff() async throws {
+        let h = UnityHarness(script: UnityScripts.standard(plan: plan(spec)), editorAlive: false)
+        let root = URL(fileURLWithPath: NSTemporaryDirectory() + "exp-off-\(UUID().uuidString.prefix(6))")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        h.engine.experimentsRoot = root
+        h.engine.experimentsEnabled = { false }
+        let v = await h.run("Test it")
+        #expect(v.task.state == .failed && (v.task.failureReason ?? "").contains("turned off"))
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).isEmpty)
+        #expect(Preferences(defaults: UserDefaults(suiteName: "exp-pref-\(UUID().uuidString)")!).experimentsEnabled, "on by default")
     }
 
     @Test("without the experiments root (a stubbed run) or the capability the step is refused")
