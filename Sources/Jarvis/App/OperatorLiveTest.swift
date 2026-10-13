@@ -359,7 +359,7 @@ enum OperatorLiveTest {
             })
             let e = TaskEngine(repository: repo, artifacts: context.artifacts, audit: context.audit, leases: context.leases, agents: runner)
             e.unity = unity
-            e.experimentsRoot = context.paths.root.appendingPathComponent("experiments", isDirectory: true)
+            e.experimentsRoot = ExperimentWorkspace.defaultRoot(dataRoot: context.paths.root)
             return e
         }
         func stepJSON(_ id: String, _ title: String, _ type: String, deps: [String] = [], validation: String, unity u: String, risk: String = "low") -> String {
@@ -385,7 +385,7 @@ enum OperatorLiveTest {
 
         let spec = "{\"question\":\"Does a plain material render visibly in a clean project?\",\"hypothesis\":\"A sphere with the default material is created, compiles, and is visible and not pink.\",\"kind\":\"materialRender\",\"assetPaths\":[],\"successCriteria\":[\"the project compiles\",\"it renders visibly\"],\"failureCriteria\":[\"compile errors\",\"pink\"],\"minutes\":8,\"diskMegabytes\":1024,\"networkRequests\":0,\"artifacts\":2,\"cleanup\":\"delete\"}"
         let expPlan = planJSON([stepJSON("s1", "Test the material", "experiment", validation: "experimentConcluded", unity: "{\"experiment\":\(spec)}", risk: "low")])
-        let expRoot = context.paths.root.appendingPathComponent("experiments", isDirectory: true)
+        let expRoot = ExperimentWorkspace.defaultRoot(dataRoot: context.paths.root)
 
         if wants("correction") {
             _ = await legacy(.openScene(path: scenePath))
@@ -449,6 +449,67 @@ enum OperatorLiveTest {
             finish2 = true
         }
 
+
+        // ------------------------------------------------------------ 9b. a REAL asset: V0.9 research → quarantine → disposable-project experiment → suitability evaluation (explicit section: live public web + providers)
+        if sections.contains("asset-experiment") {
+            await unity.shutdownOwnedEditors()
+            _ = await waitUntil(60) { conn.transport.currentStatus() == nil }
+            guard let web = context.research, context.research != nil else { skip("asset experiment", "web research services are not available"); finish() }
+            let tasks = context.taskEngine
+            func approveWhenAsked(_ id: UUID, within seconds: Double = 600) async {
+                let end = Date().addingTimeInterval(seconds)
+                while Date() < end, ((try? repo.engineTask(id)) ?? nil)?.state.isTerminal != true {
+                    if let a = tasks.pendingApprovals.first(where: { $0.taskID == id }) { info("approving as the user: \(a.action.prefix(110))"); _ = tasks.decide(a.id, approved: true, by: "live-test (user simulated)") }
+                    try? await Task.sleep(for: .milliseconds(300))
+                }
+            }
+            var chosen: CandidateRecord?, researchID: UUID?
+            for goal in ["Find a free CC0 low-poly 3D props pack (FBX or OBJ) for a Unity game, for example from Kenney", "Find the free Poly Haven wooden bucket 3D model, CC0"] where chosen == nil {
+                var r = ResearchIntake.parse(goal: goal, id: UUID())
+                r.constraints.assetKind = .model3D; r.constraints.freeOnly = true
+                guard case .success(let rid) = await tasks.submitResearch(r) else { continue }
+                await tasks.waitUntilFinished(rid)
+                researchID = rid
+                let cands = (try? repo.researchCandidates(rid)) ?? []
+                for c in cands.sorted(by: { $0.rank < $1.rank }).prefix(5) { info("  candidate #\(c.rank) \(c.name) — price \(c.price.state.rawValue), licence \(c.license.identifier ?? c.license.state.rawValue), \(c.acquisition.rawValue), verdict \(c.verdict.rawValue)") }
+                chosen = cands.filter { $0.verdict != .notRecommended && $0.price.state == .freeVerified && $0.license.allowsAutomaticAcquisition && $0.acquisition == .publicDirectDownload && $0.downloadURL != nil }.sorted { $0.score > $1.score }.first
+            }
+            guard let cand = chosen, let rid = researchID else { info("no legitimately downloadable FREE_VERIFIED asset was found on the live web right now — reported honestly, nothing was downloaded"); check("An asset is acquired only when FREE_VERIFIED, permissively licensed and publicly downloadable", true, "none available"); finish() }
+            info("acquiring “\(cand.name)” into the JARVIS quarantine (public download, no login)")
+            let request = ResearchRequest(id: rid, goal: "Acquire \(cand.name)", type: .assetDiscovery, constraints: ResearchConstraints(), freshness: .current)
+            guard case .success(let aid) = await tasks.submitAcquisition(candidate: cand, request: request, approved: false) else { check("The acquisition task was accepted", false); finish() }
+            Task { await approveWhenAsked(aid) }
+            await tasks.waitUntilFinished(aid)
+            guard let acq = (try? repo.acquisition(aid)) ?? nil, acq.state == .readyForImport else { check("The acquisition reached READY_FOR_IMPORT", false, ((try? repo.acquisition(aid)) ?? nil).map { "\($0.state.label) \($0.failure ?? "")" } ?? "no record"); finish() }
+            check("REAL · The asset sits in the quarantine, hashed and inspected (never in a project)", acq.sha256?.count == 64 && acq.importedTo == nil, "\(acq.size ?? 0) bytes · \(acq.detectedType ?? "?") · \(acq.inspection?.entryCount ?? 0) entries")
+            let fingerprintBefore = ProjectContinuity.treeFingerprint(root: project)
+            let assetSpec = spec.replacingOccurrences(of: "\"kind\":\"materialRender\"", with: "\"kind\":\"assetImport\",\"acquisitionID\":\"\(acq.id.uuidString)\"")
+                .replacingOccurrences(of: "A sphere with the default material is created, compiles, and is visible and not pink.", with: "The pack imports into a clean Unity project, compiles, and an object from it renders visibly and not pink.")
+                .replacingOccurrences(of: "Does a plain material render visibly in a clean project?", with: "Does this free asset pack import and render in a clean Unity project?")
+                .replacingOccurrences(of: "\"minutes\":8", with: "\"minutes\":15")
+            let eng = scriptedEngine(planJSON([stepJSON("s1", "Test the asset", "experiment", validation: "experimentConcluded", unity: "{\"experiment\":\(assetSpec)}", risk: "low")]))
+            eng.web = web
+            let started = Date()
+            let (view, _) = await runTask(eng, "Test whether this free asset pack imports and renders in a clean Unity project", timeout: 1200)
+            let rec = (try? repo.experiments(taskID: view?.id ?? UUID()))?.first
+            info("experiment: \(rec?.result?.verdict.rawValue ?? rec?.status ?? "none") — \(rec?.result?.summary ?? summary(view)) (\(fmt(Date().timeIntervalSince(started))) s)")
+            for f in rec?.result?.facts ?? [] { info("  [\(f.factClass.rawValue)] \(f.statement) — \(f.evidence.prefix(100))") }
+            check("REAL · The experiment ran in a disposable project and ended with an HONEST verdict (confirmed, refuted or inconclusive — never a pass without evidence)", rec != nil && rec?.result != nil, rec?.result?.verdict.rawValue ?? rec?.status ?? "no record")
+            let strayAfter = await ownedEditorProcesses()
+            check("The disposable environment is gone, the editor is closed and your project is untouched", rec?.cleanupState == "deleted" && ((try? FileManager.default.contentsOfDirectory(atPath: expRoot.path)) ?? []).isEmpty && ProjectContinuity.treeFingerprint(root: project) == fingerprintBefore && strayAfter == 0)
+            if let r = rec?.result, r.verdict == .confirmed { check("A CONFIRMED verdict is backed by TESTED facts that name their evidence", r.facts.contains { $0.factClass == .tested && !$0.evidence.isEmpty && $0.statement.localizedCaseInsensitiveContains("compil") }) }
+            let evals = (try? repo.assetEvaluations(acquisitionID: acq.id)) ?? []
+            check("REAL · An asset EVALUATION was stored with fact classes, usage reasoning and a recommendation", evals.first.map { !$0.evaluation.recommendation.isEmpty && !$0.evaluation.usage.isEmpty && !$0.evaluation.facts.isEmpty } ?? false)
+            if let e = evals.first?.evaluation {
+                for l in e.summaryLines { info("  " + l) }
+                check("Price, licence, hash and size are facts of their own class — a licence stated by the source is SUPPORTED BY SOURCE, an unknown one is UNKNOWN and blocks the recommendation", e.facts.contains { $0.statement.hasPrefix("Licence") } && (!e.facts(.unknown).contains { $0.statement == "Licence" } || e.recommendation.contains("licence is unknown")))
+                let verdict = rec?.result?.verdict
+                check("The recommendation FOLLOWS the experiment: refuted ⇒ “do not use as delivered”, confirmed ⇒ “technically fine to try”, otherwise “not tested”", (verdict == .refuted && e.recommendation.hasPrefix("Do not use as delivered") && e.facts(.incompatible).count >= 1) || (verdict == .confirmed && e.recommendation.hasPrefix("Technically fine")) || (verdict == .inconclusive && e.recommendation.contains("Not tested")), "\(verdict?.rawValue ?? "none") → \(e.recommendation.prefix(120))")
+                check("No style fit is claimed without pictures of BOTH sides", e.facts.contains { $0.statement == "Style fit with the project" && $0.factClass == .unknown } || e.facts(.inferred).contains { $0.statement.contains("Visual comparison") })
+                check("No line of the usage reasoning presents an inference as a fact", e.usage.allSatisfy { $0.hasPrefix("FACT:") || $0.hasPrefix("INFERENCE:") || $0.hasPrefix("RECOMMENDATION:") })
+            }
+            finish()
+        }
 
         // ------------------------------------------------------------ 10. crash cleanup: a hard kill mid-experiment (run `crash-start`, then `crash-recover` as a SEPARATE launch)
         func editorsUnderExperimentsRoot() -> Int { UnityProcessScanner.editors().filter { $0.projectPath?.hasPrefix(UnityProcessScanner.canonical(expRoot.path) + "/") == true }.count }

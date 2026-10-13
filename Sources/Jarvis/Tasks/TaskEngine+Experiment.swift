@@ -101,6 +101,12 @@ extension TaskEngine {
         record.status = result.verdict == .inconclusive && inconclusive != nil ? "failed" : "concluded"
         record.result = result; record.cleanupState = deleted ? "deleted" : "failed"; record.finishedAt = Date()
         try? repository?.save(record)
+        if spec.kind == .assetImport, let aid = spec.acquisitionID, let acq = (try? repository?.acquisition(aid)) ?? nil {
+            let ev = evaluateAsset(acq, experiment: result, workspace: ctx.workspace.root, taskID: ctx.record.id)
+            ctx.evidence.append("Asset evaluation (\(acq.name.prefix(60))): " + ev.recommendation)
+            ctx.unityFacts.append("ASSET EVALUATION: " + ev.recommendation)
+            ctx.results[key + ".asset"] = ev.summaryLines.joined(separator: "\n")
+        }
         ctx.evidence.append("Experiment “\(spec.question.prefix(80))”: \(result.verdict.rawValue.uppercased()) — \(result.summary)")
         ctx.unityFacts.append("EXPERIMENT \(result.verdict.rawValue.uppercased()): \(result.summary)")
         ctx.results[key] = (result.facts.map { "[\($0.factClass.rawValue)] \($0.statement)" }).joined(separator: "\n")
@@ -110,6 +116,16 @@ extension TaskEngine {
         let evidence = "Experiment \(result.verdict.rawValue): \(result.summary)"
         setStep(ctx, key, to: .passed, evidence: evidence, result: result.summary)
         return .passed
+    }
+
+    /// The suitability of ONE acquired asset for THIS project, from facts that keep their class (the source's statements stay SUPPORTED BY SOURCE, an import that compiled becomes TESTED, everything else is INFERRED / UNKNOWN).
+    @discardableResult
+    func evaluateAsset(_ acq: AcquisitionRecord, experiment: ExperimentResult?, workspace: String, taskID: UUID?) -> AssetEvaluation {
+        let cand: CandidateRecord? = acq.candidateID.flatMap { cid in ((try? repository?.researchCandidates(acq.researchID ?? UUID())) ?? []).first { $0.id == cid } }
+        let input = AssetEvaluationInput(name: acq.name, sourceURL: acq.sourceURL, candidate: cand, acquisition: acq, project: TaskIntake.projectFacts(root: workspace), experiment: experiment)
+        let ev = AssetEvaluator.evaluate(input)
+        try? repository?.save(AssetEvaluationRecord(taskID: taskID, acquisitionID: acq.id, projectKey: nil, evaluation: ev, source: acq.sourceURL))
+        return ev
     }
 
     // MARK: Judging (pure)

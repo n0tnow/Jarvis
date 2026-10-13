@@ -90,7 +90,10 @@ enum AssetEvaluator {
         let compat = c?.compatibility
         let tested = i.experiment?.facts.filter { $0.factClass == .tested } ?? []
         facts += tested
-        let importedAndCompiled = tested.contains { $0.statement.localizedCaseInsensitiveContains("compil") } && tested.contains { $0.statement.localizedCaseInsensitiveContains("import") }
+        // “Imported and compiled” counts as a TESTED compatibility ONLY when the experiment as a whole held (an object came out of the asset and rendered); a refuted or inconclusive run proves nothing about compatibility.
+        let importedAndCompiled = i.experiment?.verdict == .confirmed && tested.contains { $0.statement.localizedCaseInsensitiveContains("compil") } && tested.contains { $0.statement.localizedCaseInsensitiveContains("import") }
+        let refutedBy: String? = i.experiment?.verdict == .refuted ? (i.experiment?.failureHit.first ?? "a check failed") : nil
+        if let why = refutedBy { add("It does NOT work in a clean Unity project as delivered: \(why)", .incompatible, "experiment result: " + (i.experiment?.summary ?? "refuted")) }
         if let compat {
             switch compat.overall {
             case .incompatible: add("Compatibility with this project", .incompatible, compat.reasons.first ?? "the source states a conflict")
@@ -112,13 +115,14 @@ enum AssetEvaluator {
         else { add("Style fit with the project", .unknown, "not assessed: a style claim needs a rendered picture of the asset next to a capture of the project (none exists)") }
 
         // Recommendation
-        let blockers = facts.filter { $0.factClass == .incompatible }
+        let blockers = facts.filter { $0.factClass == .incompatible && !$0.statement.hasPrefix("It does NOT work") }
         let unknownLicense = facts.contains { $0.statement == "Licence" && $0.factClass == .unknown }
         let notFree = facts.contains { $0.statement.hasPrefix("Price:") && !$0.statement.contains("free") }
         var rec: String
         if !blockers.isEmpty { rec = "Do not use: \(blockers[0].statement) (\(blockers[0].evidence))." }
         else if unknownLicense { rec = "Do not import yet: the licence is unknown. Read the source's licence page, then decide." }
         else if notFree { rec = "Not free as far as verified; JARVIS never buys anything. Decide yourself." }
+        else if let why = refutedBy { rec = "Do not use as delivered: the experiment refuted it (\(why)). A different format or a conversion would have to be tested first." }
         else if importedAndCompiled { rec = "Technically fine to try: it imported and compiled in a clean project. Import it into the real project only through its own approved task." }
         else { rec = "Not tested: the facts above come from the source. Run the asset test before importing." }
         return AssetEvaluation(name: i.name, facts: facts, usage: usage(i, tested: importedAndCompiled), recommendation: rec)

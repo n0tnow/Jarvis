@@ -116,6 +116,23 @@ struct ExperimentContractTests {
         #expect(!ExperimentWorkspace.remove(root, under: root), "the root itself is never removed")
     }
 
+    @Test("the experiments root is outside the JARVIS data folder — and the workspace guard accepts a disposable project there (found by the real asset test: inside the data folder, importing was refused)")
+    func rootAcceptedByTheGuard() throws {
+        let data = URL(fileURLWithPath: NSHomeDirectory() + "/Library/Application Support/JARVIS/live-test-unit-\(UUID().uuidString.prefix(6))")
+        let root = ExperimentWorkspace.defaultRoot(dataRoot: data)
+        #expect(!root.path.contains("/Library/Application Support/JARVIS") && root.path.contains("/Library/Caches/JARVIS/experiments-live-test-unit"))
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let ws = ExperimentWorkspace(root: root)
+        try ws.create(taskID: nil, kind: .assetImport)
+        _ = try WorkspaceGuard(rootPath: ws.projectPath)
+        // the same project inside the data folder is refused, which is exactly why the root moved
+        let inside = data.appendingPathComponent("experiments/x/project")
+        try FileManager.default.createDirectory(at: inside, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: data) }
+        #expect(throws: (any Error).self) { _ = try WorkspaceGuard(rootPath: inside.path) }
+    }
+
     @Test("after a crash the orphan environment is found and removed — only ours, only when its owner is gone")
     func orphans() throws {
         let root = URL(fileURLWithPath: NSTemporaryDirectory() + "exp-orph-\(UUID().uuidString.prefix(6))")
@@ -180,6 +197,19 @@ struct ExperimentJudgementTests {
         let tested = AssetEvaluator.evaluate(AssetEvaluationInput(name: "Bucket pack", sourceURL: "https://example.org/bucket", candidate: cand, acquisition: rec, project: ProjectFacts(name: "Hamam", unityVersion: "6000.5.1f1", renderPipeline: "URP"), experiment: exp))
         #expect(tested.hasAnyTested && tested.facts(.tested).contains { $0.statement.hasPrefix("Probably compatible") } && tested.recommendation.contains("Technically fine to try"))
         #expect(tested.summaryLines.joined().contains("TESTED:") && tested.summaryLines.joined().contains("INFERENCES / UNKNOWN:"))
+    }
+
+    @Test("a REFUTED experiment makes the asset INCOMPATIBLE as delivered: no TESTED compatibility, no 'it rendered', and the recommendation says not to use it (found by the real asset run)")
+    func refutedAsset() {
+        let cand = CandidateRecord(researchID: UUID(), name: "Bucket", url: "https://example.org/bucket")
+        var rec = AcquisitionRecord(id: UUID(), researchID: nil, candidateID: nil, taskID: nil, state: .readyForImport, acquisitionClass: .publicDirectDownload, name: "Bucket", sourceURL: "https://example.org/bucket")
+        rec.licenseID = "CC0-1.0"; rec.licenseSourceURL = "https://example.org/l"; rec.priceState = .freeVerified; rec.priceVerifiedAt = Date()
+        let facts = [ExperimentFact(statement: "Unity imported and compiled the project without compile errors", factClass: .tested, evidence: "compiler"), ExperimentFact(statement: "The Console shows no import errors", factClass: .tested, evidence: "console")]
+        let refuted = ExperimentResult(verdict: .refuted, summary: "the hypothesis failed: nothing could be instantiated", facts: facts, successMet: ["the project compiles"], failureHit: ["nothing could be instantiated"], seconds: 7, environmentDeleted: true)
+        let ev = AssetEvaluator.evaluate(AssetEvaluationInput(name: "Bucket", sourceURL: "https://example.org/bucket", candidate: cand, acquisition: rec, project: nil, experiment: refuted))
+        #expect(ev.recommendation.hasPrefix("Do not use as delivered") && ev.recommendation.contains("nothing could be instantiated"))
+        #expect(ev.facts(.incompatible).count == 1 && !ev.facts.contains { $0.factClass == .tested && $0.statement.hasPrefix("Compatibility") })
+        #expect(!ev.usage.joined().contains("imported and rendered"), "never claims a render that did not happen")
     }
 
     @Test("an unknown licence or a price that is not verified free blocks the recommendation; a style claim needs pictures of BOTH sides")
@@ -274,6 +304,26 @@ struct ExperimentEngineTests {
         let v = await h.run("Test it")
         #expect(v.task.state == .failed)
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).isEmpty)
+    }
+
+    @Test("an asset experiment that cannot start still leaves an honest asset EVALUATION: nothing tested, the source's statements stay SUPPORTED BY SOURCE, the recommendation says 'not tested'")
+    func evaluationWithoutAnExperiment() async throws {
+        let acqID = UUID()
+        let assetSpec = spec.replacingOccurrences(of: "\"kind\":\"materialRender\"", with: "\"kind\":\"assetImport\",\"acquisitionID\":\"\(acqID.uuidString)\"")
+        let h = UnityHarness(script: UnityScripts.standard(plan: plan(assetSpec)), editorAlive: false)
+        let root = URL(fileURLWithPath: NSTemporaryDirectory() + "exp-eval-\(UUID().uuidString.prefix(6))")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        h.engine.experimentsRoot = root
+        h.launcher.failure = UnityBridgeError.notConnected("no editor in this test")
+        var rec = AcquisitionRecord(id: acqID, researchID: nil, candidateID: nil, taskID: nil, state: .readyForImport, acquisitionClass: .publicDirectDownload, name: "Bucket pack", sourceURL: "https://example.org/bucket")
+        rec.licenseID = "CC0-1.0"; rec.licenseSourceURL = "https://example.org/license"; rec.priceState = .freeVerified; rec.priceVerifiedAt = Date()
+        try h.task.repo.upsert(rec)
+        let v = await h.run("Test whether the bucket pack imports and renders")
+        #expect(v.task.state == .failed, Comment(rawValue: "\(v.task.state) \(v.task.failureReason ?? "")"))
+        let saved = try #require(try h.task.repo.assetEvaluations(acquisitionID: acqID).first)
+        #expect(!saved.evaluation.hasAnyTested && saved.evaluation.recommendation.contains("Not tested"))
+        #expect(saved.evaluation.facts(.supportedBySource).contains { $0.statement.hasPrefix("Licence: CC0-1.0") })
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).isEmpty, "the environment is gone")
     }
 
     @Test("with experiments turned off in Settings the step fails with that reason and creates nothing")

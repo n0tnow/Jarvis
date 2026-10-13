@@ -9,6 +9,13 @@ struct ExperimentWorkspace: Equatable, Sendable {
     var path: URL { root.appendingPathComponent(id.uuidString, isDirectory: true) }
     var projectPath: String { path.appendingPathComponent("project", isDirectory: true).path }
 
+    /// Where disposable environments live: the user's CACHES folder, never inside the JARVIS data folder — the workspace guard refuses that folder as a project, and an experiment is a (temporary) project.
+    /// One root per data directory, so a live-test database never reconciles another database's environments.
+    static func defaultRoot(dataRoot: URL) -> URL {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return caches.appendingPathComponent("JARVIS", isDirectory: true).appendingPathComponent("experiments-" + dataRoot.lastPathComponent, isDirectory: true)
+    }
+
     struct Marker: Codable, Equatable, Sendable { var id: UUID; var createdAt: Date; var taskID: UUID?; var kind: String; var pid: Int32 }
 
     init(root: URL, id: UUID = UUID()) { self.root = root; self.id = id }

@@ -8,7 +8,7 @@ question · hypothesis · kind (`assetImport` / `materialRender` / `animationPla
 
 ## 2. Isolation and cleanup
 
-A disposable Unity project is created under JARVIS' own experiments root (`<data dir>/experiments/<id>/project`) with a **marker file**. Deletion (`ExperimentWorkspace.remove`) happens only for a real directory inside that root whose marker carries the expected id — never a symlink, never the root, never a user's folder. The engine **always** cleans up: success, failure, cancel, time budget, disk budget. It closes only the editor JARVIS started for that project, and proves the real project untouched with a tree fingerprint before / after.
+A disposable Unity project is created under JARVIS' own experiments root in the user's Caches folder (`~/Library/Caches/JARVIS/experiments-<data dir name>/<id>/project` — never inside the JARVIS data folder, which the workspace guard refuses as a project) with a **marker file**. Deletion (`ExperimentWorkspace.remove`) happens only for a real directory inside that root whose marker carries the expected id — never a symlink, never the root, never a user's folder. The engine **always** cleans up: success, failure, cancel, time budget, disk budget. It closes only the editor JARVIS started for that project, and proves the real project untouched with a tree fingerprint before / after.
 After a crash: at launch the experiment record becomes INTERRUPTED (never resumed) and `ExperimentWorkspace.reconcile` removes the orphan folder and stops any headless editor whose `-projectPath` is inside it (REAL TESTED: self-SIGKILL mid-experiment, then relaunch).
 
 ## 3. Steps (fixed, typed)
