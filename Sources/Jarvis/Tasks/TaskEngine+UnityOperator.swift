@@ -73,7 +73,7 @@ extension TaskEngine {
         guard let rel = r.result["file"] as? String, rel.hasPrefix("captures/"), !rel.contains(".."), rel.hasSuffix(".png") else { throw UnityToolError(category: .toolFailed, message: "The editor returned no capture file.") }
         let url = URL(fileURLWithPath: root).appendingPathComponent("Library/JarvisBridge").appendingPathComponent(rel)
         defer { try? FileManager.default.removeItem(at: url) }                     // the picture lives in memory only
-        guard let data = try? Data(contentsOf: url), data.count > 100, data.count < 8_000_000 else { throw UnityToolError(category: .toolFailed, message: "The capture could not be read.") }
+        guard let data = FileManager.default.contents(atPath: url.path), data.count > 100, data.count < 8_000_000 else { throw UnityToolError(category: .toolFailed, message: "The capture could not be read.") }
         func n(_ k: String) -> Int { (r.result[k] as? NSNumber)?.intValue ?? 0 }
         return UnityCaptureResult(png: data, width: n("width"), height: n("height"), camera: r.result["camera"] as? String ?? "?", luminance: UnityLuminance(json: r.result["luminance"] as? [String: Any] ?? [:]),
                                   objects: (r.result["targets"] as? [[String: Any]] ?? []).compactMap(UnityObjectVisibility.init(json:)))

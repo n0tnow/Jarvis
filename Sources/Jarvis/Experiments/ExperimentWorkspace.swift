@@ -65,7 +65,17 @@ struct ExperimentWorkspace: Equatable, Sendable {
     @discardableResult
     static func reconcile(under root: URL, isAlive: (Int32) -> Bool = { pid in kill(pid, 0) == 0 }, finishedIDs: Set<UUID> = []) -> [Orphan] {
         var removed: [Orphan] = []
-        for o in orphans(under: root, isAlive: isAlive, finishedIDs: finishedIDs) where remove(URL(fileURLWithPath: o.path), under: root, expectedID: o.marker.id) { removed.append(o) }
+        for o in orphans(under: root, isAlive: isAlive, finishedIDs: finishedIDs) {
+            terminateEditors(under: o.path)
+            if remove(URL(fileURLWithPath: o.path), under: root, expectedID: o.marker.id) { removed.append(o) }
+        }
         return removed
+    }
+
+    /// A crash can leave the disposable project's headless editor (and its import workers) running. They belong to an environment nobody owns any more, so they are stopped before the folder
+    /// is removed. Only processes whose `-projectPath` is INSIDE this orphan's folder are touched; any other editor — the user's own included — is never signalled.
+    static func terminateEditors(under path: String) {
+        let base = UnityProcessScanner.canonical(path) + "/"
+        for e in UnityProcessScanner.editors() { if let p = e.projectPath, p.hasPrefix(base) { kill(e.pid, SIGKILL) } }
     }
 }

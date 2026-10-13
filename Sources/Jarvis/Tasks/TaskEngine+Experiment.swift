@@ -132,8 +132,12 @@ extension TaskEngine {
         } else {
             if has("animation is running") { met.append("the animation runs") } else { hit.append("the animation did not run") }
         }
-        let verdict: ExperimentResult.Verdict = hit.isEmpty && !met.isEmpty ? .confirmed : (hit.isEmpty ? .inconclusive : .refuted)
-        let summary = verdict == .confirmed ? "the hypothesis held: " + met.joined(separator: ", ") : (verdict == .refuted ? "the hypothesis failed: " + hit.joined(separator: ", ") + (met.isEmpty ? "" : " (held: " + met.joined(separator: ", ") + ")") : "no check could be made")
+        // Every check the kind NEEDS must have been made: a check that was never made is not a pass.
+        let required = spec.kind == .animationPlayback ? ["the project compiles", "the animation runs"]
+            : ["the project compiles", "it renders visibly", "it does not render pink"] + (spec.kind == .assetImport ? ["an object can be instantiated"] : [])
+        let unmade = required.filter { !met.contains($0) }                      // only consulted when nothing was refuted
+        let verdict: ExperimentResult.Verdict = !hit.isEmpty ? .refuted : (unmade.isEmpty ? .confirmed : .inconclusive)
+        let summary = verdict == .confirmed ? "the hypothesis held: " + met.joined(separator: ", ") : (verdict == .refuted ? "the hypothesis failed: " + hit.joined(separator: ", ") + (met.isEmpty ? "" : " (held: " + met.joined(separator: ", ") + ")") : "no verdict: these checks could not be made — " + unmade.joined(separator: ", ") + (met.isEmpty ? "" : " (held: " + met.joined(separator: ", ") + ")"))
         return ExperimentResult(verdict: verdict, summary: summary, facts: facts, successMet: met, failureHit: hit, seconds: seconds, environmentDeleted: deleted, pictureHashes: hashes, projectUntouched: untouched)
     }
 
@@ -188,6 +192,10 @@ extension TaskEngine {
             _ = try await conn.perform(.dev(try UnityDevOp.configure(UnityTarget(path: "ExperimentSubject"), kind: "renderer", settings: ["material": .string(m)])), session: session)
             instance = "ExperimentSubject"
             fact("The material was assigned to a test sphere", .tested, "typed renderer assignment, verified")
+        } else if spec.kind == .materialRender {
+            _ = try await conn.perform(.createGameObject(name: "ExperimentSubject", scene: nil, parent: nil, primitive: "Sphere", position: [0, 0, 0], rotation: nil, scale: nil, ifAbsent: true), session: session)
+            instance = "ExperimentSubject"
+            fact("A plain sphere with the project's DEFAULT material was created (no material asset was given)", .tested, "typed creation, verified in the editor")
         } else {
             for path in candidates.prefix(3) where !path.hasSuffix(".mat") {
                 if let r = try? await conn.perform(.dev(.instantiatePrefab(assetPath: path, scene: nil, parent: nil, name: "ExperimentSubject", position: [0, 0, 0], rotation: nil, scale: nil, ifAbsent: true)), session: session), r.result["object"] != nil {

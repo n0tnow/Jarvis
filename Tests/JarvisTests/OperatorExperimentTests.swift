@@ -154,6 +154,12 @@ struct ExperimentJudgementTests {
         #expect(err.verdict == .refuted)
         let none = TaskEngine.judge(spec: spec(), facts: [], inconclusive: "the disposable editor could not be started", seconds: 1, deleted: true, hashes: [], untouched: true)
         #expect(none.verdict == .inconclusive && none.summary.contains("no verdict") && none.environmentDeleted)
+        // a check that was never made is not a pass: compile held, but nothing was ever rendered
+        let partial = TaskEngine.judge(spec: spec(), facts: [f("Unity imported and compiled the project without compile errors")], inconclusive: nil, seconds: 1, deleted: true, hashes: [], untouched: true)
+        #expect(partial.verdict == .refuted || partial.verdict == .inconclusive)
+        var mat = spec(); mat.kind = .materialRender
+        let noRender = TaskEngine.judge(spec: mat, facts: [f("Unity imported and compiled the project without compile errors"), f("The Console shows no import errors")], inconclusive: nil, seconds: 1, deleted: true, hashes: [], untouched: true)
+        #expect(noRender.verdict == .inconclusive && noRender.summary.contains("it renders visibly"), "compile alone never confirms a render hypothesis")
         #expect(TaskEngine.judge(spec: spec(), facts: [f("Imported 3 prefabs", .verified)], inconclusive: nil, seconds: 1, deleted: true, hashes: [], untouched: true).verdict == .inconclusive, "untested facts never confirm a hypothesis")
     }
 

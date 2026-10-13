@@ -9,6 +9,7 @@ import AppKit
 enum OperatorLiveTest {
     static func run(context: AppContext, captureDirectory: String, sections: Set<String>) async {
         var failures = 0, passes = 0, skipped = 0
+        var finish2 = false
         func check(_ name: String, _ ok: Bool, _ detail: String = "") {
             print("\(ok ? "REAL TESTED PASS" : "REAL TESTED FAIL")  \(name)\(detail.isEmpty ? "" : " — \(detail)")")
             if ok { passes += 1 } else { failures += 1 }
@@ -346,10 +347,136 @@ enum OperatorLiveTest {
             check("The Console is read structurally (typed entries, not screenshots)", con.0 != nil, "\(errs.count) error entr\(errs.count == 1 ? "y" : "ies")" + (errs.isEmpty ? "" : ": " + errs.prefix(2).compactMap { $0["message"] as? String }.joined(separator: " | ")))
         }
 
+        // ------------------------------------------------------------ 8. engine scenarios (ENGINE: scripted planner, REAL editor): visual correction
+        let repo = context.repository!
+        func git(_ args: [String]) async {
+            _ = await ManagedProcess.runOnce(executable: "/usr/bin/git", arguments: ["-c", "user.name=JARVIS Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false"] + args,
+                                             environment: ProviderEnvironment.make(), workingDirectory: project, timeout: 60)
+        }
+        func scriptedEngine(_ planText: String) -> TaskEngine {
+            let runner = ScriptedAgentRunner(audit: context.audit, real: nil, scriptedTypes: ["PlannerAgent", "AnalysisAgent", "CodingAgent", "ReviewAgent", "UnityAgent"], script: { job, _ in
+                job.type == "PlannerAgent" ? planText : (job.type == "ReviewAgent" ? "{\"verdict\":\"pass\",\"summary\":\"fine\",\"issues\":[]}" : nil)
+            })
+            let e = TaskEngine(repository: repo, artifacts: context.artifacts, audit: context.audit, leases: context.leases, agents: runner)
+            e.unity = unity
+            e.experimentsRoot = context.paths.root.appendingPathComponent("experiments", isDirectory: true)
+            return e
+        }
+        func stepJSON(_ id: String, _ title: String, _ type: String, deps: [String] = [], validation: String, unity u: String, risk: String = "low") -> String {
+            "{\"id\":\"\(id)\",\"title\":\"\(title)\",\"description\":\"\(title)\",\"type\":\"\(type)\",\"dependsOn\":[\(deps.map { "\"\($0)\"" }.joined(separator: ","))],\"expected\":\"done\",\"validation\":\"\(validation)\",\"risk\":\"\(risk)\",\"unity\":\(u)}"
+        }
+        func planJSON(_ steps: [String]) -> String { "{\"summary\":\"operator plan\",\"steps\":[" + steps.joined(separator: ",") + "]}" }
+        func runTask(_ engine: TaskEngine, _ goal: String, timeout: Double = 900, cancelWhen: ((TaskEngine, UUID) -> Bool)? = nil) async -> (TaskView?, Double) {
+            await git(["add", "-A"]); await git(["commit", "-q", "-m", "scenario"])
+            guard case .success(let id) = await engine.submit(goal: goal, kind: .development, workspacePath: project, preference: nil, destructiveRequested: false) else { return (nil, 0) }
+            var cancelledAt: Date?
+            let watcher = Task { @MainActor in
+                while !Task.isCancelled {
+                    if let w = cancelWhen, cancelledAt == nil, w(engine, id) { cancelledAt = Date(); engine.cancel(id) }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+            }
+            let watchdog = Task { @MainActor in try? await Task.sleep(for: .seconds(timeout)); if !Task.isCancelled { engine.cancel(id) } }
+            await engine.waitUntilFinished(id)
+            watcher.cancel(); watchdog.cancel()
+            return (engine.view(id), cancelledAt.map { Date().timeIntervalSince($0) } ?? 0)
+        }
+        func summary(_ v: TaskView?) -> String { (v?.steps ?? []).map { "\($0.type.rawValue):\($0.state.rawValue)" }.joined(separator: " → ") + " · " + (v?.task.failureReason ?? "") }
+
+        let spec = "{\"question\":\"Does a plain material render visibly in a clean project?\",\"hypothesis\":\"A sphere with the default material is created, compiles, and is visible and not pink.\",\"kind\":\"materialRender\",\"assetPaths\":[],\"successCriteria\":[\"the project compiles\",\"it renders visibly\"],\"failureCriteria\":[\"compile errors\",\"pink\"],\"minutes\":8,\"diskMegabytes\":1024,\"networkRequests\":0,\"artifacts\":2,\"cleanup\":\"delete\"}"
+        let expPlan = planJSON([stepJSON("s1", "Test the material", "experiment", validation: "experimentConcluded", unity: "{\"experiment\":\(spec)}", risk: "low")])
+        let expRoot = context.paths.root.appendingPathComponent("experiments", isDirectory: true)
+
+        if wants("correction") {
+            _ = await legacy(.openScene(path: scenePath))
+            // The subject is placed where the Game camera cannot see it.
+            let away = await op(.editGameObject(P("Mover"), GameObjectEdit(position: [0, 0, -80], worldSpace: true)))
+            _ = await save()
+            let before = await op(.captureView(camera: nil, width: 480, height: 270, targets: [P("Mover")]))
+            let visBefore = before.0.flatMap { try? TaskEngine.loadCapture($0, root: project) }?.objects.first
+            check("Set-up: the object is placed outside the camera's view and the editor measures it as NOT visible", away.0 != nil && visBefore?.visible == false, visBefore?.summary ?? before.1)
+            let correct = planJSON([stepJSON("s1", "Inspect Mover", "unityInspect", validation: "unityInspected", unity: "{\"targets\":[\"Mover\"]}"),
+                                    stepJSON("s2", "Make Mover clearly visible", "unityEdit", deps: ["s1"], validation: "unityState", unity: "{\"correct\":{\"target\":\"Mover\",\"rounds\":2}}", risk: "medium")])
+            let (view, _) = await runTask(scriptedEngine(correct), "Make the Mover object clearly visible in the Game view")
+            let ev = view?.steps.first { $0.type == .unityEdit }?.validationEvidence ?? ""
+            check("ENGINE · The correction loop aimed the camera from MEASURED facts and the task succeeded", view?.task.state == .completed && ev.contains("Visibility") && ev.contains("aim"), summary(view) + " · " + ev.prefix(260))
+            let after = await op(.captureView(camera: nil, width: 640, height: 360, targets: [P("Mover")]))
+            if let r = after.0, let c = try? TaskEngine.loadCapture(r, root: project) {
+                try? c.png.write(to: URL(fileURLWithPath: captureDirectory + "/operator/after-correction.png"))
+                check("REAL · A fresh capture confirms the object is now visible (geometry + pixels, not a model's opinion)", c.objects.first?.visible == true, c.objects.first?.summary ?? "")
+            } else { check("A fresh capture after the correction", false, after.1) }
+            let obs = (try? repo.visualObservations(taskID: view?.id ?? UUID())) ?? []
+            check("Each round left visual evidence (picture hash · provider · outcome), never pixels", obs.count >= 2 && obs.allSatisfy { $0.provider == "unity-capture" && $0.pictureHash.count >= 8 }, "\(obs.count) observations: " + obs.map(\.outcome).joined(separator: ", "))
+            let bounded = planJSON([stepJSON("s1", "Inspect", "unityInspect", validation: "unityInspected", unity: "{\"targets\":[\"Mover\"]}"),
+                                    stepJSON("s2", "Fix", "unityEdit", deps: ["s1"], validation: "unityState", unity: "{\"correct\":{\"target\":\"Mover\",\"rounds\":9}}", risk: "medium")])
+            let (rej, _) = await runTask(scriptedEngine(bounded), "Make the Mover object visible")
+            check("A plan asking for 9 correction rounds is refused at plan validation (bounded to 2)", rej?.task.state == .failed && !(rej?.steps.contains { $0.state == .passed && $0.type == StepType.unityEdit } ?? false), summary(rej))
+            _ = await legacy(.openScene(path: scenePath))
+        }
+
+        // ------------------------------------------------------------ 9. experiments in a disposable Unity project
+        func ownedEditorProcesses() async -> Int {
+            let r = await ManagedProcess.runOnce(executable: "/usr/bin/pgrep", arguments: ["-f", "jarvisOwned"], environment: ProviderEnvironment.make(), workingDirectory: "/", timeout: 10)
+            return (r?.output ?? "").split(separator: "\n").filter { !$0.isEmpty }.count
+        }
+        if wants("experiment") {
+            await unity.shutdownOwnedEditors()
+            _ = await waitUntil(60) { conn.transport.currentStatus() == nil }
+            let fingerprintBefore = ProjectContinuity.treeFingerprint(root: project)
+            let eng = scriptedEngine(expPlan)
+            let started = Date()
+            let (view, _) = await runTask(eng, "Test whether a plain material renders in a clean project", timeout: 900)
+            let rec = (try? repo.experiments(taskID: view?.id ?? UUID()))?.first
+            check("ENGINE+REAL · The experiment ran in a disposable project with a real editor and CONFIRMED its hypothesis from measured evidence", view?.task.state == .completed && rec?.result?.verdict == .confirmed, "\(fmt(Date().timeIntervalSince(started))) s · " + (rec?.result?.summary ?? summary(view)))
+            check("TESTED facts are labelled TESTED and carry their evidence", (rec?.result?.facts ?? []).contains { $0.factClass == .tested && $0.statement.contains("compile") } && (rec?.result?.facts ?? []).contains { $0.statement.localizedCaseInsensitiveContains("visible") }, (rec?.result?.facts ?? []).map { "[\($0.factClass.rawValue)] \($0.statement)" }.joined(separator: " | "))
+            check("The disposable environment is DELETED (record + disk) and the experiments root is empty", rec?.cleanupState == "deleted" && rec?.result?.environmentDeleted == true && ((try? FileManager.default.contentsOfDirectory(atPath: expRoot.path)) ?? []).isEmpty)
+            check("The real project was not touched by the experiment (tree fingerprint identical)", ProjectContinuity.treeFingerprint(root: project) == fingerprintBefore && rec?.result?.projectUntouched == true)
+            check("No JARVIS-owned editor process is left", await ownedEditorProcesses() == 0)
+            if let h = rec?.result?.pictureHashes.first { check("Picture evidence is a hash, not stored pixels", h.count >= 8) }
+
+            // The contract may never name the real project.
+            let bad = planJSON([stepJSON("s1", "Bad test", "experiment", validation: "experimentConcluded", unity: "{\"experiment\":\(spec.replacingOccurrences(of: "in a clean project?", with: "inside \(project)/Assets?"))}", risk: "low")])
+            let (badView, _) = await runTask(scriptedEngine(bad), "Test it in the real project")
+            check("POLICY · A contract that names the real project never starts (refused, nothing created)", badView?.task.state == .failed && ((try? FileManager.default.contentsOfDirectory(atPath: expRoot.path)) ?? []).isEmpty, summary(badView))
+
+            // Cancellation while the disposable editor is starting: environment deleted, editor closed, bounded latency.
+            let cancelEng = scriptedEngine(expPlan)
+            let (cv, latency) = await runTask(cancelEng, "Test whether a plain material renders in a clean project", timeout: 900, cancelWhen: { _, _ in UnityProcessScanner.editors().contains { $0.projectPath?.hasPrefix(UnityProcessScanner.canonical(expRoot.path) + "/") == true } })
+            let crec = (try? repo.experiments(taskID: cv?.id ?? UUID()))?.first
+            let stray = await ownedEditorProcesses()
+            check("Cancelling a running experiment ends it quickly, deletes the environment and closes the editor", cv?.task.state == .cancelled && latency < 45 && ((try? FileManager.default.contentsOfDirectory(atPath: expRoot.path)) ?? []).isEmpty && crec?.cleanupState == "deleted" && stray == 0,
+                  "state \(cv?.task.state.rawValue ?? "?") · cancel→finished \(fmt(latency, "%.2f")) s · cleanup \(crec?.cleanupState ?? "?")")
+            finish2 = true
+        }
+
+
+        // ------------------------------------------------------------ 10. crash cleanup: a hard kill mid-experiment (run `crash-start`, then `crash-recover` as a SEPARATE launch)
+        func editorsUnderExperimentsRoot() -> Int { UnityProcessScanner.editors().filter { $0.projectPath?.hasPrefix(UnityProcessScanner.canonical(expRoot.path) + "/") == true }.count }
+        if wants("crash-start") {
+            await unity.shutdownOwnedEditors()
+            _ = await waitUntil(60) { conn.transport.currentStatus() == nil }
+            let eng = scriptedEngine(expPlan)
+            await git(["add", "-A"]); await git(["commit", "-q", "-m", "scenario"])
+            guard case .success = await eng.submit(goal: "Test whether a plain material renders in a clean project", kind: .development, workspacePath: project, preference: nil, destructiveRequested: false) else { check("The experiment task was submitted", false); finish() }
+            let up = await waitUntil(240) { editorsUnderExperimentsRoot() > 0 }
+            check("The disposable editor is running and the experiment is mid-flight", up)
+            info("simulating a crash now: SIGKILL of the JARVIS process (no cleanup code runs); the next launch must clean up — run with --operator-section crash-recover")
+            try? FileManager.default.removeItem(atPath: project)
+            fflush(stdout)
+            kill(getpid(), SIGKILL)
+        }
+        if wants("crash-recover") {
+            let recs = (try? repo.recentExperiments(limit: 20)) ?? []
+            check("After the crash the experiment is INTERRUPTED (it is never resumed by itself)", recs.contains { $0.status == "interrupted" }, recs.map(\.status).joined(separator: ", "))
+            check("The orphaned environment was deleted at launch (marker-checked, inside the experiments root)", ((try? FileManager.default.contentsOfDirectory(atPath: expRoot.path)) ?? []).isEmpty)
+            check("The orphaned disposable editor of the crashed run was stopped at launch", editorsUnderExperimentsRoot() == 0)
+        }
+
         // ------------------------------------------------------------ cleanup
         await unity.shutdownOwnedEditors()
         let gone = await waitUntil(60) { conn.transport.currentStatus() == nil }
         check("The owned editor was closed at the end (no orphan process)", gone)
+        if finish2 { check("No JARVIS-owned editor process remains after the whole run", await ownedEditorProcesses() == 0) }
         finish()
     }
 }

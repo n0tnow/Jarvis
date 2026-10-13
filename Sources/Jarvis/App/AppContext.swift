@@ -162,7 +162,7 @@ final class AppContext {
         if !stubIntelligence { computer.vision = GroundedVisionProposer(grounder: visual) }
         taskEngine.computer = computer
         taskEngine.visual = stubIntelligence ? nil : visual
-        taskEngine.experimentsRoot = runtimePaths.root.appendingPathComponent("experiments", isDirectory: true)
+        taskEngine.experimentsRoot = paths.root.appendingPathComponent("experiments", isDirectory: true)
         taskEngine.computerAllowed = { [weak computerPrefs] in computerPrefs?.computerUseEnabled ?? true }
         computerModel = ComputerViewModel(runtime: computer, engine: taskEngine, preferences: preferences)
         orchestrationModel = OrchestrationViewModel(repository: repo)

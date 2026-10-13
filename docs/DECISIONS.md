@@ -937,3 +937,78 @@ Why: architecture first, polish once.
 Status: Accepted (V0.12)
 Decision: allowed: subscription-backed Claude Code/Codex, runtime-verified $0 OpenCode models, local models for their allowed roles. Not present: any metered API call or key; unknown price is never free.
 Why: DEC-022…028 unchanged.
+
+## DEC-191 — Project continuity is a derived view; current truth wins
+Status: Accepted (V0.13)
+Decision: "where are we on project X" is rebuilt on demand from tasks, Git, the project's docs, the Unity descriptor, the last checkpoint and memory digests (`Sources/Jarvis/Continuity/`). Only checkpoints, the next-step queue and a session counter are persisted (schema v11). When a checkpoint or a memory disagrees with files / Git / Unity, current truth wins and the older item is reported as stale.
+Why: a second source of truth drifts; memory is context, never authority (DEC-104…126).
+
+## DEC-192 — "Continue" is one bounded V0.4 task through the V0.12 orchestrator
+Status: Accepted (V0.13)
+Decision: continuing a project calls `TaskEngine.submit` with a persisted constraint (`ContinuationMarker.constraint`). There is no continuation engine, scheduler or second orchestrator. It authorises one task toward one selected step, within that task's capabilities; it grants no approval, no capability, no commit / push / purchase / network, and starts no further continuation (depth 1).
+Why: DEC-157…190 — JARVIS is the only orchestrator; approvals are HUD-only.
+
+## DEC-193 — Next-step selection is tiered, and ambiguity is asked about
+Status: Accepted (V0.13)
+Decision: interrupted (resume, or re-plan when the project drifted) → failed once (retry; a retry of a retry is never offered) → recorded next (queue ∪ checkpoint ∪ project docs) → known issues. Several candidates in a tier ⇒ ask; a design-sensitive candidate ⇒ propose and wait. An interrupted task resumes only by explicit user action.
+Why: guessing the wrong direction costs more than one question.
+
+## DEC-194 — A continuation session is bounded and the bound survives a restart
+Status: Accepted (V0.13)
+Decision: `ContinuationBounds.standard` = 30 min · 12 nodes · 2 revisions · 2 correction rounds · 2 experiments, stored as a task constraint and enforced in the engine (graph timeout, correction loop, experiment count).
+Why: autonomy needs a visible end.
+
+## DEC-195 — The Unity operator is a closed, typed operation set
+Status: Accepted (V0.13)
+Decision: `UnityOperation.dev(UnityDevOp)` — 23 operations; per-component settings are whitelisted, typed and range-checked in Swift (`UnityComponentSchema`) and equal to the bridge's accepted keys (a parity test enforces it). No operation carries C#, a menu item, a shell line, a URL or reflection; the bridge keeps its V0.6 security boundary (version 0.13.0). The goal must ask for scene creation, component removal and prefab unpacking; shared-prefab apply, model-importer changes, component removal and unpack additionally need a per-exact-action user approval.
+Why: DEC-047…056 — typed operations only.
+
+## DEC-196 — Verified by read-back; Play Mode blocked twice
+Status: Accepted (V0.13)
+Decision: an operator edit counts as done only when the editor's own read-back (an idempotent second pass) confirms it. Persistent changes are refused in Play Mode / while compiling by `UnityPolicy` first and by the bridge (`playModeMutationBlocked`) even if the policy were bypassed. Only overrides JARVIS touched can be reverted or applied. The user's dirty scene is protected for scene-touching operations.
+Why: "the model said so" is not evidence.
+
+## DEC-197 — Captures live in memory; lighting is judged from numbers
+Status: Accepted (V0.13)
+Decision: `captureView` renders the Game camera to a spool PNG that is read into memory and deleted at once; objective analysis (frustum, area, contrast, luminance, magenta fraction) comes from the editor. A visual model never decides lighting. An owned editor that must render is relaunched with a graphics device but no window (`-batchmode` without `-nographics`).
+Why: the benchmark's only failure was a model calling a dim frame bright (DEC-199).
+
+## DEC-198 — Visual grounding is perception, not authority; no cloud provider
+Status: Accepted (V0.13)
+Decision: `Sources/Jarvis/Vision/` returns normalised, validated regions and bounded text. Safety = the worst of model label, printed screen text and the requested label (V0.11 `ConsequenceClassifier`); instruction-like text in a picture is recorded and ignored; proposals reach the executor only through `VisionProposing`. All providers are on-device; privacy classes exist but no cloud provider is registered; no API key. Observations store hash + provider + outcome, never pixels.
+Why: DEC-127…156 — the GUI is the last rung; screen content stays on the machine.
+
+## DEC-199 — Local VLM: Qwen3-VL via a pinned, offline, on-demand helper
+Status: Accepted (V0.13)
+Decision: after a measured 16-case benchmark (Apple OCR 7/16, Qwen3-VL-2B 15/16, 4B 15/16, 4B with better boxes) the local options are Qwen3-VL-4B / 2B-Instruct 4-bit MLX (Apache-2.0) at pinned revisions, installed only by `scripts/setup_vision_ai.sh`, started on demand, unloaded after 45 s idle and under memory pressure, killed if hung and at quit. Off/On-device is a setting.
+Why: nothing resident, nothing downloaded by the app, nothing paid.
+
+## DEC-200 — Experiments run in a marker-checked disposable environment and always clean up
+Status: Accepted (V0.13)
+Decision: a contract (question, hypothesis, bounds, criteria; 0 network) is validated at plan time and at start; the environment is a Unity project under the JARVIS experiments root with a marker; deletion is confined to marked directories inside that root; cancel / failure / budget all clean up; the real project's tree fingerprint is compared before / after; after a crash the record is INTERRUPTED and the next launch removes the orphan folder and stops headless editors inside it. An experiment never imports into a real project.
+Why: "test it safely" must hold even when JARVIS dies.
+
+## DEC-201 — Verdicts require every needed check; unmade checks are INCONCLUSIVE
+Status: Accepted (V0.13)
+Decision: CONFIRMED only if every check the experiment kind needs was made and held; a failed check ⇒ REFUTED; missing checks or nothing tested ⇒ INCONCLUSIVE, which fails the step. Facts are classed VERIFIED · TESTED · SUPPORTED BY SOURCE · INFERRED · UNKNOWN · INCOMPATIBLE.
+Why: found by the real test — a compile-only run first "confirmed" a render hypothesis.
+
+## DEC-202 — Asset suitability never upgrades a guess
+Status: Accepted (V0.13)
+Decision: unknown price is never free; an unknown licence is never safe; "probably compatible" is INFERRED until an experiment imported and compiled it; a style claim needs rendered pictures of both the asset and the project; usage text is labelled FACT / INFERENCE / RECOMMENDATION; promotion into a project is a separate approval-gated task.
+Why: DEC-088…103.
+
+## DEC-203 — The correction loop is deterministic, bounded and objective-only
+Status: Accepted (V0.13)
+Decision: capture → measure → one deterministic fix (aim camera / add fill light / raise brightest light / raise ambient) through the normal typed operations → capture again, at most the session's correction rounds (default 2). When nothing objective is left, it reports. Taste words are SUBJECTIVE: never corrected, never a passed check.
+Why: a model's taste is not a test.
+
+## DEC-204 — No cloud vision; Prime Video is a manual test
+Status: Accepted (V0.13)
+Decision: a Claude Code image probe worked over the user's subscription but would send screen content out, so it is documented as an option and not integrated. There is no Prime-Video-specific scraper; purchase / rental / subscription actions have no code path; existing login sessions are used only through ordinary UI actions the user could do, never through cookie / Keychain access.
+Why: DEC-022…028, DEC-127…156.
+
+## DEC-205 — Roadmap after V0.13
+Status: Accepted (V0.13)
+Decision: V0.14 = self-improvement; V0.15 = persona / whiteboard; V1.0 = integration, stabilisation, real-world validation, security audit, packaging. V0.13 does none of the first two.
+Why: DEC-189.

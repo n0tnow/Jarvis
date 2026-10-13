@@ -486,7 +486,7 @@ struct Migration: Sendable {
 
     /// V11 — project continuity (V0.13). Continuity is DERIVED (tasks, Git, memory, the Unity descriptor); only what cannot be derived cheaply is stored: one row per project
     /// (when the last continuation session ran) and the checkpoints a finished task or session left behind (Git HEAD, dirty set, file hashes, validated / remaining / next).
-    /// No chain-of-thought, no screenshots, no raw output.
+    /// Only validated facts and short summaries are kept.
     static let v11 = Migration(version: 11, name: "project continuity", statements: [
         """
         CREATE TABLE project_continuity (
@@ -504,8 +504,8 @@ struct Migration: Sendable {
     ])
 
     /// V12 — experiments, visual evidence and asset evaluations (V0.13). An experiment is declared (question, hypothesis, bounds), run in a disposable environment and judged;
-    /// only the contract and the structured result are kept (never the environment, never pixels). Visual evidence records WHICH picture (hash), WHICH provider and WHAT it
-    /// reported — no screenshot is stored. An asset evaluation keeps the fact classes (verified / tested / supported by source / inferred / unknown / incompatible) apart.
+    /// only the contract and the structured result are kept (never the environment, never raw pictures). Visual evidence records WHICH picture (hash), WHICH provider and WHAT it
+    /// reported — no picture is stored. An asset evaluation keeps the fact classes (verified / tested / supported by source / inferred / unknown / incompatible) apart.
     static let v12 = Migration(version: 12, name: "experiments, visual evidence, asset evaluations", statements: [
         """
         CREATE TABLE experiments (
