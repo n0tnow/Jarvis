@@ -180,3 +180,21 @@ enum EscalationReason: String, Codable, Sendable {
         }
     }
 }
+
+// MARK: - Role evidence as a routing filter (security-relevant work)
+
+/// “Free alone is not enough” (DEC-181): for security-relevant coding and review the routing candidates are filtered by RECORDED role-benchmark evidence. A free or local model qualifies only
+/// when it ran the role's cases and passed them all; a subscription engine with no recorded evidence is allowed (it is not benchmarked per role by default), but one that FAILED is not.
+/// Applied in Auto only: an explicit provider choice is respected as the user's decision.
+enum RoleEvidence {
+    static func benchmarkKey(_ c: RoutingCandidate) -> String { c.model ?? "engine:\(c.engine.rawValue)" }
+
+    static func qualifies(_ c: RoutingCandidate, role: String, results: [BenchmarkResultRecord]) -> Bool {
+        let needed = RoleBenchmarkSuite.cases(role: role).count
+        let score = RoleScoreboard.scores(results)[role]
+        switch c.engine.costClass {
+        case .subscription: return score == nil || RoleScoreboard.isQualified(score, needed: needed, minRate: 1.0)
+        default: return RoleScoreboard.isQualified(score, needed: needed, minRate: 1.0)          // free / local: evidence is REQUIRED and must be complete
+        }
+    }
+}

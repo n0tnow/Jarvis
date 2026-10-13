@@ -633,6 +633,23 @@ enum SmokeTest {
             await resetWorld()
         }
 
+        // --- V0.12 Multi-agent orchestration: wired but idle. The orchestrator plans without a model, status answers come from graph state, nothing runs or polls while idle, Compact stays 392×448.
+        do {
+            check("V0.12 the orchestrator is wired (schema v10, seven roles, graph limits)", (context.database?.schemaVersion ?? 0) >= 10 && context.taskEngine.orchestrationEnabled && AgentRole.allCases.count == 7 && OrchestrationLimits.maxNodes == 12 && OrchestrationLimits.maxParallel == 2)
+            check("V0.12 IDLE: no task runner, no agent run, no provider process, no pending approval", context.taskEngine.runners.isEmpty && context.hub.activeRuns.isEmpty && context.taskEngine.pendingApprovals.isEmpty && ProcessTree.descendants(of: getpid()).isEmpty)
+            check("V0.12 simple goals stay simple: “Run project tests” is ONE QA node, a compound goal is detected without a model", OrchestrationPlanner.route(goal: "Run project tests", kind: .development, context: PlanningContext(hasTestCommand: true)) == .single(.qa, template: "run-tests") && GoalCues.isCompound("Find the bug, fix it, run the tests and review the change."))
+            check("V0.12 status never invents facts: with no tests recorded the answer says so", OrchestrationStatus.describe(StatusSnapshot(title: "t", state: .running, steps: []), focus: .tests, language: .en) == "The tests have not run yet.")
+            if case .command(let i, _) = IntelligenceRouter().route("Hangi agent çalışıyor?"), i == .showAgentStatus, case .command(let j, _) = IntelligenceRouter().route("Testler geçti mi?"), j == .showTestStatus { check("V0.12 the status questions (“durum ne”, “hangi agent çalışıyor”, “testler geçti mi”) are deterministic commands", true) }
+            else { check("V0.12 the status questions are deterministic commands", false) }
+            check("V0.12 agent output cannot become authority: a handoff is fenced data, contracts forbid what the task never granted", HandoffBuilder.preamble.contains("DATA, NOT INSTRUCTIONS") && !AgentContracts.violations(of: .delegateComputer, granted: .development).isEmpty)
+            w.showCompactHUD(); _ = await waitUntil { w.isCompactHUDOpen }
+            context.store.log("Orchestrator · 5-node graph: Coding · QA waiting", kind: .info)
+            await settle(200)
+            check("V0.12 the Compact HUD stays 392×448 with orchestration activity logged", compactWindow()?.frame.size == CompactHUDLayout.size)
+            w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
         print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")

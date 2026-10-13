@@ -3,7 +3,7 @@ import Foundation
 extension JarvisTask {
     /// Read-only projection of an engine task for the existing HUD surfaces (Compact card, Dashboard, Tasks, center stage).
     /// Progress is derived by the existing `JarvisTask` rules from the step list: skipped steps are not measurable work and are left out.
-    init(view v: TaskView, activeAgents: Int) {
+    init(view v: TaskView, activeAgents: Int, agentLine: (active: String, waiting: String?)? = nil) {
         let steps = v.steps.filter { $0.state != .skipped }.map { s -> TaskStep in
             let status: StepStatus
             switch s.state {
@@ -26,7 +26,7 @@ extension JarvisTask {
         self.init(id: v.task.id, title: v.task.title, details: v.task.goal, status: status, createdAt: v.task.createdAt, startedAt: v.task.startedAt,
                   completedAt: v.task.finishedAt, steps: steps, accumulatedRunTime: v.task.accumulatedSeconds, runningSince: v.runningSince,
                   engine: EngineTaskInfo(progressFraction: v.task.progressFraction, activity: v.task.activity, activeAgents: activeAgents,
-                                         failureReason: v.task.failureReason, summary: v.task.summary, stepCount: steps.count))
+                                         failureReason: v.task.failureReason, summary: v.task.summary, stepCount: steps.count, agentLine: agentLine?.active, waitingLine: agentLine?.waiting))
     }
 }
 
@@ -52,7 +52,7 @@ final class TaskBridge {
         let views = engine.orderedViews.prefix(40)
         let active = hub.activeRuns
         store.setEngineTasks(views.map { v in
-            JarvisTask(view: v, activeAgents: active.filter { $0.taskID == v.id }.count)
+            JarvisTask(view: v, activeAgents: active.filter { $0.taskID == v.id }.count, agentLine: engine.compactAgentLine(v))
         })
         // HUD state: only changes the engine itself caused.
         let live = engine.activeViews

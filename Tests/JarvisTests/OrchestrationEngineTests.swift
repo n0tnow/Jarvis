@@ -134,6 +134,7 @@ struct OrchestrationEngineTests {
             let graphRow = try r.h.repo.taskGraph(v.id)
             #expect(r.jobs("PlannerAgent") == 1 && graphRow?.planner == "model")
             #expect(pressured ? c.value.max == 1 : c.value.max == 2, "pressure=\(pressured) max concurrent analyses = \(c.value.max)")
+            #expect(r.jobs("AnalysisAgent") == 3 && v.steps.allSatisfy { $0.attempts == 1 }, "every node ran exactly once (a dependent of two parallel readers must not start twice): \(v.steps.map { "\($0.key):\($0.attempts)" })")
         }
     }
 
@@ -269,6 +270,45 @@ struct OrchestrationEngineTests {
         #expect(pending.contains(.codeChange) && pending.contains(.review) && pending.contains(.test), "the change and everything built on it run again")
         #expect(ctx.steps.first { $0.type == .analysis }?.state == .passed, "the analysis does not depend on the file")
         #expect(ctx.artifacts.filter { $0.status == .stale }.map(\.kind).contains(.codeChange))
+    }
+
+    private static let blockingReview = "{\"verdict\":\"fail\",\"summary\":\"The fix is not documented\",\"issues\":[{\"text\":\"add() was changed without a comment explaining why\",\"severity\":\"blocking\",\"evidence\":\"return a + b\"}]}"
+
+    @Test("a review finding backed by evidence triggers exactly ONE repair cycle: repair, real tests again, one more review")
+    func reviewRepairCycle() async throws {
+        let reviews = Box<Int>(0), edits = Box<Int>(0)
+        let r = try ORig(script: { job, i in
+            switch job.type {
+            case "ReviewAgent": reviews.value += 1; return .text(reviews.value == 1 ? OrchestrationEngineTests.blockingReview : Scripts.reviewPass)
+            case "CodingAgent":
+                edits.value += 1
+                return .text(edits.value == 1 ? TaskFixtures.fixEdit : "<<<<<<< SEARCH calc.py\n    return a + b\n=======\n    return a + b  # sum of the two operands\n>>>>>>> REPLACE\n")
+            default: return await Scripts.standard()(job, i)
+            }
+        })
+        let v = await r.run(fixGoal)
+        #expect(v.task.state == .completed, "\(v.task.failureReason ?? "") \(v.steps.map { "\($0.key):\($0.state)" })")
+        #expect(reviews.value == 2 && edits.value == 2)
+        #expect(TaskFixtures.read("calc.py", in: r.project)?.contains("sum of the two operands") == true)
+        let testRuns = r.h.hub.runs.values.filter { $0.engine == .tool }.count
+        #expect(testRuns >= 3, "the reproduction, the first validation and the validation after the review repair really ran")
+    }
+
+    @Test("a second failed review ends the task: the writer → critic loop is not endless")
+    func reviewLoopIsBounded() async throws {
+        let reviews = Box<Int>(0), edits = Box<Int>(0)
+        let r = try ORig(script: { job, i in
+            switch job.type {
+            case "ReviewAgent": reviews.value += 1; return .text(OrchestrationEngineTests.blockingReview)
+            case "CodingAgent":
+                edits.value += 1
+                return .text(edits.value == 1 ? TaskFixtures.fixEdit : "<<<<<<< SEARCH calc.py\n    return a + b\n=======\n    return a + b  # again\n>>>>>>> REPLACE\n")
+            default: return await Scripts.standard()(job, i)
+            }
+        })
+        let v = await r.run(fixGoal)
+        #expect(v.task.state == .failed && v.task.failureCategory == .validationFailed)
+        #expect(reviews.value == 2 && edits.value == 2, "one review, one repair, one more review — then it stops")
     }
 
     @Test("a node cannot exceed its role's provider budget, however it is retried")

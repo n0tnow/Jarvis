@@ -302,7 +302,8 @@ final class TaskEngine {
                 // Which nodes may start now is ONE policy (`ConcurrencyPolicy`): two read-only nodes at most, one under any resource pressure, everything that writes/builds/tests/reviews alone.
                 let pressure = resourcePressure()
                 let limit = min(limits.maxConcurrentSteps, ConcurrencyPolicy.parallelLimit(pressure))
-                for step in readySteps(ctx) where inflight.count < limit && ConcurrencyPolicy.canStart(step.type, alongside: Array(inflight.values), pressure: pressure) {
+                // A node already started is never started again, even before its own task has marked it running (found by the V0.12 live test: a dependent of two parallel readers ran twice).
+                for step in readySteps(ctx) where inflight[step.key] == nil && inflight.count < limit && ConcurrencyPolicy.canStart(step.type, alongside: Array(inflight.values), pressure: pressure) {
                     inflight[step.key] = step.type
                     let key = step.key
                     group.addTask { @MainActor [weak self] in

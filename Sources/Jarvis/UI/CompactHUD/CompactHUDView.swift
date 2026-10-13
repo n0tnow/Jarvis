@@ -147,7 +147,7 @@ struct CompactHUDView: View {
             if let step = task.currentStep, let number = task.currentStepNumber {
                 HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.s) {
                     Text("STEP \(number)/\(task.steps.count)").jarvisLabel(Theme.Opacity.textTertiary)
-                    Text(step.title).font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary).lineLimit(1)
+                    Text(task.engine?.agentLine ?? step.title).font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary).lineLimit(1)
                 }
             }
 
@@ -179,6 +179,7 @@ struct CompactHUDView: View {
         if let f = e.progressFraction { s += " · \(Int((f * 100).rounded())) %" }
         let agents = app.hub.activeRuns.filter { $0.taskID == task.id }.count          // live, not the projection's last snapshot
         if agents > 0 { s += " · \(agents) agent\(agents == 1 ? "" : "s")" }
+        if let w = e.waitingLine { s += " · " + w }
         if let u = app.taskEngine.view(task.id)?.currentStep?.type.unityActivity { s += " · " + u }      // V0.6: "Unity · Compiling" (one short phrase; no Unity UI in Compact)
         return s
     }

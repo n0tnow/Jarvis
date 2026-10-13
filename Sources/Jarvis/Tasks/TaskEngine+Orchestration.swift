@@ -459,3 +459,63 @@ extension TaskEngine {
         statusSnapshot().map { OrchestrationStatus.describe($0, focus: focus, language: language) }
     }
 }
+
+// MARK: - Review → repair (one bounded cycle)
+
+extension TaskEngine {
+    /// The reviewer found a defect it could back with evidence (`ReviewAuthority` already decided that it fails the task). The change is repaired ONCE with those findings, every
+    /// build/test that depends on the change is run again for real, and only if they all pass does the review run once more. Returns true when a re-review should happen.
+    func reviewRepairCycle(_ ctx: TaskContext, review step: TaskStepRecord, result: ReviewResult) async -> Bool {
+        guard let code = nearestCodeStep(ctx, before: step), (ctx.step(code.key)?.attempts ?? 0) < Self.maxStepAttempts, !ctx.cancelRequested, !Task.isCancelled else { return false }
+        ctx.reviewCycles += 1
+        ctx.escalationReasons[code.key] = .reviewFoundDefect
+        mutate(ctx) { $0.activity = "Repairing after the review" }
+        note("Orchestrator · the review found a defect — one repair cycle: \(code.title)", .warning, taskID: ctx.record.id)
+        let findings = (result.detailed.filter { $0.severity == .blocking }.map { "- \($0.text) (evidence: \($0.evidence))" } + result.issues.map { "- \($0)" }).prefix(6).joined(separator: "\n")
+        let used = ctx.candidates[code.key] ?? []
+        let attempt = beginAttempt(ctx, code, .repair)
+        let r = await codeAttempt(ctx, code, kind: .repair, failure: "The reviewer found these defects in your change:\n" + findings, pin: used.last, exclude: [])
+        if r.cancelled || r.failure != nil {
+            endAttempt(attempt, outcome: r.cancelled ? "cancelled" : "failed:\(r.failure?.0.rawValue ?? "toolFailed")", evidence: r.failure?.1, runID: r.runID, candidate: r.candidate)
+            return false
+        }
+        endAttempt(attempt, outcome: "applied", evidence: r.evidence, runID: r.runID, candidate: r.candidate)
+        updateStep(ctx, code.key) { $0.agentRunID = r.runID; $0.resultSummary = "Changed: " + ctx.finals.keys.sorted().joined(separator: ", ") }
+        try? repository?.markArtifactsStale(taskID: ctx.record.id, nodeKeys: [code.key])
+        recordArtifact(ctx, key: code.key)
+        // Everything that proves the change runs again, in plan order — a repair that breaks the build or the tests never reaches the second review.
+        let graph = TaskGraph(steps: ctx.steps)
+        let anc = graph.ancestors(of: step.key)
+        for v in ctx.steps where anc.contains(v.key) && (v.type == .build || (v.type == .test && v.validation == .testPass)) {
+            guard let profile = v.type == .build ? ctx.profiles.build : ctx.profiles.test else { continue }
+            let res = await runCommand(ctx, v, profile, label: "\(v.title) · after the review repair", attemptKind: .recheck)
+            if ctx.cancelRequested || Task.isCancelled || res.cancelled { return false }
+            let line = evidenceLine(v, profile, res)
+            ctx.evidence.append(line)
+            updateStep(ctx, v.key) { $0.validationEvidence = line }
+            if !res.succeeded { ctx.lastFailureTail[v.key] = res.tail; return false }
+            try? repository?.markArtifactsStale(taskID: ctx.record.id, nodeKeys: [v.key])
+            recordArtifact(ctx, key: v.key)
+        }
+        try? repository?.markArtifactsStale(taskID: ctx.record.id, nodeKeys: [step.key])
+        return true
+    }
+}
+
+// MARK: - Compact HUD line
+
+extension TaskEngine {
+    /// "Coding · space-bunny-free" for the node that is running now, and the role that waits next ("QA waiting"). nil for tasks that are not orchestrated.
+    func compactAgentLine(_ v: TaskView) -> (active: String, waiting: String?)? {
+        guard contexts[v.id]?.orchestrated == true, v.task.state.isActive else { return nil }
+        guard let cur = v.steps.first(where: { $0.state.isActive || $0.state == .waitingForApproval }) else { return nil }
+        let role = cur.role?.label ?? "Approval"
+        var s = role
+        if let rid = cur.agentRunID ?? hub?.activeRuns.first(where: { $0.taskID == v.id && $0.label == cur.title })?.id, let rec = audit.record(rid) {
+            s += " · " + (rec.model.map { $0.split(separator: "/").last.map(String.init) ?? $0 } ?? rec.engine.displayName)
+        }
+        let done = Set(v.steps.filter { $0.state == .passed || $0.state == .skipped }.map(\.key))
+        let next = v.steps.first { $0.state == .pending && $0.dependsOn.contains(cur.key) } ?? v.steps.first { $0.state == .pending && !$0.dependsOn.allSatisfy(done.contains) }
+        return (s, next.map { "\($0.role?.label ?? "Approval") waiting" })
+    }
+}

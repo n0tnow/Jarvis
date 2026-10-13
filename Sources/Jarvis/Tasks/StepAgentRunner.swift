@@ -18,6 +18,8 @@ struct AgentJob: Sendable {
     var preference: ProviderPreference?
     /// V0.12: which graph node this job serves (routing decisions, artifacts and context measurements are recorded per node) and how much upstream handoff text it carries.
     var nodeKey: String?
+    /// V0.12: for security-relevant work, only candidates whose recorded ROLE benchmark qualifies may serve this job (Auto only).
+    var requireRoleEvidence: String?
     var handoffChars = 0
     var artifactCount = 0
     var fileCount = 0
@@ -51,7 +53,7 @@ final class ManagerAgentRunner: StepAgentRunner {
     func run(_ job: AgentJob) async -> AgentJobResult {
         var d = AgentDescriptor(type: job.type, prompt: job.prompt, profile: job.profile, taskID: job.taskID, parentRunID: nil, preference: job.preference,
                                 validator: job.validator, timeout: job.timeout, includeTaskContext: false, title: job.title)
-        d.owner = .task; d.exclude = job.exclude; d.pin = job.pin; d.policy = job.policy
+        d.owner = .task; d.exclude = job.exclude; d.pin = job.pin; d.policy = job.policy; d.requireRoleEvidence = job.requireRoleEvidence
         switch await manager.spawn(d) {
         case .completed(let text, let runID, let engine, let model, let validation, _):
             return .completed(text: text, runID: runID, candidate: RoutingCandidate(engine: engine, model: model), validated: validation == .passed)

@@ -28,6 +28,8 @@ struct AgentDescriptor: Sendable {
     var pin: RoutingCandidate?
     /// Per-descriptor override of the repair/escalation budget (the task engine owns the bigger loop).
     var policy: EscalationPolicy?
+    /// V0.12: only candidates with qualifying recorded evidence for this ROLE benchmark may serve the job (Auto only; see `RoleEvidence`).
+    var requireRoleEvidence: String?
 }
 
 /// Retry/escalation are bounded and configurable (DEC-026): never an open loop.
@@ -147,6 +149,11 @@ final class AgentRunManager {
         if let pin = d.pin { ordered = ordered.filter { $0 == pin } }
         if !d.exclude.isEmpty { ordered = ordered.filter { !d.exclude.contains($0) } }
         guard !ordered.isEmpty else { return .rejected(.noEligibleProvider("no further provider is eligible for this step")) }
+        if let role = d.requireRoleEvidence, decision.mode == .auto {
+            let repo = audit.repository
+            ordered = ordered.filter { RoleEvidence.qualifies($0, role: role, results: (try? repo?.benchmarks(modelID: RoleEvidence.benchmarkKey($0))) ?? []) }
+            guard !ordered.isEmpty else { return .rejected(.noEligibleProvider("no eligible provider has passed the \(role) role benchmark for this security-relevant work")) }
+        }
         // Capacity-aware, policy-ordered: the first candidate that has a free slot is CLAIMED immediately.
         var candidates: [RoutingCandidate] = []
         var firstRejection: AgentRejection?

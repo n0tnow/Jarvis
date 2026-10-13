@@ -204,6 +204,7 @@ extension TaskEngine {
                                } catch { verdictBox.set(false, notes: ["toolFailed|\(error)"]); return BenchmarkSuite.Verdict(passed: false, detail: "\(error)") }
                            }, timeout: limits.providerTimeout, exclude: exclude, pin: pin)
         job.nodeKey = step.key; job.handoffChars = handoff.chars; job.artifactCount = handoff.artifactCount; job.fileCount = paths.count
+        if ctx.orchestrated, ReviewIndependence.looksSecurityRelevant(goal: ctx.record.goal, paths: paths) { job.requireRoleEvidence = "security" }
         let result = await runJob(ctx, job)
         switch result {
         case .cancelled(let rid): out.cancelled = true; out.runID = rid; return out
@@ -443,11 +444,13 @@ extension TaskEngine {
         var excluded: Set<RoutingCandidate> = []
         // V0.12 review independence (risk-based, never forced for trivial work): a nontrivial change is reviewed by a candidate that is NOT the writer when another eligible one exists.
         var independenceExclusion: Set<RoutingCandidate> = []
+        var securityRelevant = false
         if ctx.orchestrated {
             let diff = diffText(ctx, limit: 14_000)
             let lines = diff.split(separator: "\n").filter { ($0.hasPrefix("+") && !$0.hasPrefix("+++")) || ($0.hasPrefix("-") && !$0.hasPrefix("---")) }.count
             let facts = ReviewIndependence.Facts(changedFiles: Set(ctx.changes.map(\.path)).count, changedLines: lines, taskRisk: ctx.record.risk,
                                                  securityRelevant: ReviewIndependence.looksSecurityRelevant(goal: ctx.record.goal, paths: ctx.changes.map(\.path)), escalated: ctx.escalationCount > 0)
+            securityRelevant = facts.securityRelevant
             if ReviewIndependence.isRequired(facts) {
                 let writers = ctx.steps.filter { $0.type == .codeChange }.flatMap { ctx.candidates[$0.key] ?? [] }
                 ctx.reviewWriters[key] = writers
@@ -462,6 +465,7 @@ extension TaskEngine {
                                validator: { ReviewResult.parse($0) != nil ? BenchmarkSuite.Verdict(passed: true, detail: "") : BenchmarkSuite.Verdict(passed: false, detail: "reply with the JSON object {\"verdict\": \"pass\" or \"fail\", …}") },
                                timeout: limits.providerTimeout, exclude: excluded)
             job.nodeKey = key; job.handoffChars = handoff.chars; job.artifactCount = handoff.artifactCount
+            if securityRelevant { job.requireRoleEvidence = "security" }
             var result = await runJob(ctx, job)
             // No other eligible provider: the writer also reviews (stated in the routing record), the review is not skipped.
             if case .rejected(.noEligibleProvider) = result, !excluded.isEmpty, round == 0 {
@@ -491,6 +495,11 @@ extension TaskEngine {
                     return .passed
                 case .fail(let why):
                     endAttempt(attempt, outcome: "failed:\(FailureCategory.validationFailed.rawValue)", evidence: line + "\n" + review.issues.joined(separator: "\n"), runID: runID, candidate: cand)
+                    // V0.12: ONE writer → critic → writer cycle (never an endless loop): the coding agent repairs with the reviewer's evidence-backed findings, JARVIS re-runs the
+                    // build/tests, and the change is reviewed once more. A second failed review ends the task.
+                    if ctx.orchestrated, ctx.reviewCycles < OrchestrationLimits.maxReviewCycles, await reviewRepairCycle(ctx, review: step, result: review) {
+                        return await runReview(ctx, key)
+                    }
                     return .failed(.validationFailed, why)
                 }
             }

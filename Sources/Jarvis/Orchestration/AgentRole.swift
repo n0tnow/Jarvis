@@ -34,6 +34,17 @@ enum AgentRole: String, Codable, Sendable, CaseIterable {
     }
 }
 
+extension AgentRole {
+    /// The role name for an Observatory run ("CodingAgent" → "Coding", "TestTool" → "QA"); other types (Planner, Benchmark…) keep their own name.
+    static func displayName(forAgentType t: String) -> String {
+        switch t {
+        case "AnalysisAgent": "Analysis"; case "CodingAgent": "Coding"; case "ResearchAgent": "Research"; case "UnityAgent", "UnityTool": "Unity"
+        case "ComputerAgent": "Computer"; case "ReviewAgent": "Review"; case "QAAgent", "TestTool", "BuildTool": "QA"; case "PlannerAgent": "Planner"
+        default: t
+        }
+    }
+}
+
 /// How heavy running a node of this role is for the machine (drives the concurrency policy and the resource scheduler).
 enum ResourceClass: String, Codable, Sendable {
     case modelLight      // a read-only model call (analysis, research synthesis): may overlap with another light node

@@ -13,6 +13,8 @@ import Foundation
 ///   --task-live-test        REAL end-to-end test of the V0.4 task engine on isolated fixture projects (OpenCode free preferred); opt-in
 ///   --proactive-live-test   REAL test of the V0.5 proactive layer (opportunities, policy, proposals, auto action, denial, restart) on isolated fixtures; opt-in
 ///   --computer-live-test    REAL test of V0.11 General Computer Use: real Accessibility, a JARVIS-owned fixture app, window-scoped capture + on-device OCR, Finder/System Settings/Blender navigation, cancel/stop/restart; opt-in
+///   --orchestration-live-test  REAL test of V0.12 multi-agent orchestration: role graphs on disposable fixtures, real providers where available (OpenCode free / Claude Code / Codex, no paid API), role benchmarks, routing reasons, handoffs, parallelism, review independence, QA truth, injection/approval/memory-authority attacks, cancel, hard-kill + resume, status, context efficiency, resource pressure, idle; opt-in
+///   --orchestration-soak <min>  (with the above) also run a bounded multi-minute stability loop and report memory / DB / process growth
 ///   --voice-live-test       REAL test of the V0.7 voice stack with SYNTHETIC speech (system voices): recognisers, benchmark, TTS, stop, E2E through the typed pipeline, resources; opt-in
 ///   --voice-audible         (with the above) let JARVIS speak aloud during the TTS checks (default: real playback at volume 0)
 ///   --voice-no-whisper      (with the above) skip the local Whisper helper
@@ -58,6 +60,9 @@ struct LaunchOptions {
     var computerChild: String?           // internal: "start" | "check" (restart test)
     var computerFixtureState: String?    // internal: the fixture's state file (restart test children)
     var computerRepo: String?
+    var orchestrationLiveTest = false
+    var orchestrationChild: String?      // internal: "start" | "check" (restart test)
+    var orchestrationSoakMinutes = 0.0
     var memoryChild: String?             // internal: "quit" (helper cleanup test)
     var memoryRepo: String?              // the project whose own docs are bootstrapped (default: the JARVIS checkout this app was built from)
     var researchChild: String?           // internal: "start" | "check" (restart test)
@@ -101,6 +106,9 @@ struct LaunchOptions {
             case "--computer-child": computerChild = it.next()
             case "--computer-fixture-state": computerFixtureState = it.next()
             case "--computer-repo": computerRepo = it.next()
+            case "--orchestration-live-test": orchestrationLiveTest = true
+            case "--orchestration-child": orchestrationChild = it.next()
+            case "--orchestration-soak": orchestrationSoakMinutes = it.next().flatMap(Double.init) ?? 2
             case "--memory-child": memoryChild = it.next()
             case "--memory-repo": memoryRepo = it.next()
             case "--research-child": researchChild = it.next()

@@ -46,6 +46,7 @@ final class AppContext {
     /// V0.11: General Computer Use (Accessibility / NSWorkspace / window-scoped vision) as an ordinary V0.4 task kind. Stubbed runs get a backend that can reach nothing.
     let computer: ComputerRuntime
     let computerModel: ComputerViewModel
+    let orchestrationModel: OrchestrationViewModel
     // V0.5 proactive layer: decides (never executes) — approved/auto actions become normal V0.4 tasks
     let opportunities: OpportunityEngine
     let proposalService: ProposalService
@@ -148,6 +149,7 @@ final class AppContext {
         taskEngine.computer = computer
         taskEngine.computerAllowed = { [weak computerPrefs] in computerPrefs?.computerUseEnabled ?? true }
         computerModel = ComputerViewModel(runtime: computer, engine: taskEngine, preferences: preferences)
+        orchestrationModel = OrchestrationViewModel(repository: repo)
         let engineRef = taskEngine
         computer.onEmergencyStop = { [weak engineRef] in engineRef?.cancelComputerTasks(reason: "emergency stop") }
         computer.onEvent = { [weak engineRef] id, e in engineRef?.note(e.summary, e.isWarning ? .warning : .info, taskID: id) }
@@ -340,6 +342,30 @@ final class AppContext {
         if Task.isCancelled { audit.finish(runID, status: .cancelled, resultText: "stopped after \(outcomes.count)/\(total) cases") }
         else { audit.finish(runID, status: .succeeded, resultText: "passed \(passed)/\(outcomes.count) cases") }
         store.log("Benchmark finished for \(modelID)", kind: .info)
+    }
+
+    /// V0.12: the ROLE benchmark (planning, analysis, coding, review, research synthesis, strict JSON, security discipline) for one engine/model. Real requests (OpenCode free, or the
+    /// user's own Claude Code / Codex subscription — never a paid API). Results are recorded under suite `roles-v1`; they never change the V0.3.1 Auto gates.
+    @discardableResult
+    func benchmarkRoles(engine: ProviderID, modelID: String? = nil) async -> [BenchmarkRunner.CaseOutcome] {
+        guard !intelligenceIsStubbed else { return [] }
+        let key = modelID ?? "engine:\(engine.rawValue)"
+        let runID = audit.begin(agentType: "BenchmarkAgent", engine: engine, model: modelID, decision: nil, prompt: "role benchmark \(RoleBenchmarkSuite.id)", privacy: .normal, label: "Role benchmark · \(modelID ?? engine.displayName)", owner: .benchmark)
+        hub.setPhase(runID, .running, activity: "Role benchmark")
+        let openCode = self.openCode, hub = self.hub, providers = self.providers
+        let outcomes = await benchmarks.run(modelID: key, cases: RoleBenchmarkSuite.all, suite: RoleBenchmarkSuite.id, makeProvider: {
+            switch engine {
+            case .openCode:
+                guard let id = modelID, let m = openCode.model(id), let p = openCode.provider(for: m) else { return nil }
+                return SafeProvider(base: p, runID: runID, hub: hub)
+            case .claudeCode, .codex:
+                guard let path = providers.status(engine).executablePath, providers.status(engine).state.isUsable else { return nil }
+                return SafeProvider(base: providers.makeProvider(engine, path: path), runID: runID, hub: hub)
+            default: return nil
+            }
+        })
+        audit.finish(runID, status: .succeeded, resultText: "\(outcomes.filter(\.passed).count)/\(outcomes.count) role cases passed")
+        return outcomes
     }
 
     func benchmarkAllFreeModels() async {

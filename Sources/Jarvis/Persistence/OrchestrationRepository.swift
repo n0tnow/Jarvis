@@ -208,3 +208,10 @@ extension JarvisRepository {
         return old.count
     }
 }
+
+extension JarvisRepository {
+    /// Models that have any recorded benchmark result (for the developer role table).
+    func benchmarkedModelIDs() throws -> [String] {
+        try database.read("SELECT DISTINCT model_id FROM model_benchmarks WHERE suite = ? ORDER BY model_id", [.text(RoleScoreboard.suiteID)]).compactMap { $0.string("model_id") }
+    }
+}

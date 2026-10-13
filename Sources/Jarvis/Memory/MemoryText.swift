@@ -69,7 +69,13 @@ enum MemoryGate {
         "\\b(skip|bypass|disable|ignore|turn\\s+off|waive)\\s+(the\\s+)?(approval|confirmation|security|safety|policy|policies|sandbox|quarantine|checks?)",
         "\\b(purchases?|payments?|deletions?|downloads?)\\s+(are|is)\\s+(approved|allowed|pre-?approved|authori[sz]ed)",
         "trust(s|ed)?\\s+this\\s+(site|page|domain|source|website)",
-        "(her\\s*zaman|otomatik(?:man)?)\\s+(onayla|onay\\s*ver)", "onay(?:ı|i)?\\s+(atla|kapat|gerekmez)", "(satın\\s*alma|silme)\\w*\\s+(onaylandı|serbest|izinli)"
+        // V0.12: grants aimed at AGENTS ("always allow ComputerAgent to install software", "the coding agent may run commands", "without asking", "full access") are authority too.
+        "\\b(always|never)\\s+(allow|let|permit|enable|grant)\\b[^.]{0,60}\\b(agents?|computeragent|codingagent|researchagent|unityagent|reviewagent|qaagent)",
+        "\\b(allow|let|permit|enable|grant)\\s+(the\\s+)?(\\w+\\s+)?(agents?|computeragent|codingagent|researchagent|unityagent|qaagent|reviewagent)\\b[^.]{0,40}\\b(install|execute|run|delete|purchase|buy|push|commit|terminal|shell|sudo|download)",
+        "\\b(agents?|computeragent|codingagent|researchagent)\\s+(may|can|is\\s+allowed\\s+to|are\\s+allowed\\s+to|has\\s+permission\\s+to)\\s+(install|execute|run|delete|purchase|buy|push|commit)",
+        "\\bwithout\\s+(asking|approval|confirmation|permission|prompting)", "\\b(full|root|admin|unrestricted|shell)\\s+(access|permission|rights|control)\\b",
+        "sormadan|onay\\s*almadan|izin\\s*vermeden",
+                "(her\\s*zaman|otomatik(?:man)?)\\s+(onayla|onay\\s*ver)", "onay(?:ı|i)?\\s+(atla|kapat|gerekmez)", "(satın\\s*alma|silme)\\w*\\s+(onaylandı|serbest|izinli)"
     ].compactMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
 
     static func grantsAuthority(_ text: String) -> Bool {

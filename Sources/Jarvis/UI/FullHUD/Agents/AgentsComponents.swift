@@ -138,7 +138,7 @@ struct ProviderCardView: View {
                 Text(card.state.explanation).font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary).lineLimit(2)
                 if let a = card.activeRuns.first {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(a.agentType)\(card.activeRuns.count > 1 ? " +\(card.activeRuns.count - 1)" : "")").font(Theme.Typography.body).foregroundStyle(Color.jarvisPrimary).lineLimit(1)
+                        Text("\(AgentRole.displayName(forAgentType: a.agentType))\(card.activeRuns.count > 1 ? " +\(card.activeRuns.count - 1)" : "")").font(Theme.Typography.body).foregroundStyle(Color.jarvisPrimary).lineLimit(1)
                         Text(a.label).font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary).lineLimit(1)
                         Text(a.activity).font(Theme.Typography.caption).foregroundStyle(Theme.Palette.accent).lineLimit(1)
                         ProgressLine(run: a)
@@ -191,7 +191,7 @@ struct RunRowView: View {
             Button(action: onSelect) {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: Theme.Spacing.s) {
-                        Text(run.agentType).font(Theme.Typography.body).foregroundStyle(Color.jarvisPrimary).lineLimit(1)
+                        Text(AgentRole.displayName(forAgentType: run.agentType)).font(Theme.Typography.body).foregroundStyle(Color.jarvisPrimary).lineLimit(1)
                         PhaseChip(phase: run.phase, simulated: run.isSimulated)
                         Spacer(minLength: 0)
                         ElapsedLabel(run: run).font(Theme.Typography.mono).foregroundStyle(Color.jarvisSecondary)

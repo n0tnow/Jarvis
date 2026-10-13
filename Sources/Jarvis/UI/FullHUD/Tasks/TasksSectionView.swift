@@ -285,9 +285,13 @@ struct EngineTaskCard: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             Rectangle().fill(Color.white.opacity(Theme.Opacity.hairline)).frame(height: 0.8)
             if let plan = view.task.summary, view.task.state.isActive { Text("Plan: \(plan)").font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary) }
-            Text("PLAN · \(view.steps.count) STEPS").jarvisLabel(Theme.Opacity.textTertiary)
-            if view.steps.isEmpty { Text("No plan yet.").font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary) }
-            ForEach(view.steps) { s in StepRow(step: s, all: view.steps) }
+            if let detail = app.orchestrationModel.detail(view.id) {
+                TaskGraphView(view: view, detail: detail, developer: app.preferences.showDeveloperControls)      // V0.12: the plan seen as a role graph
+            } else {
+                Text("PLAN · \(view.steps.count) STEPS").jarvisLabel(Theme.Opacity.textTertiary)
+                if view.steps.isEmpty { Text("No plan yet.").font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary) }
+                ForEach(view.steps) { s in StepRow(step: s, all: view.steps) }
+            }
             if view.steps.contains(where: { $0.type.isUnity }) { unitySection }
             if let ws = view.task.workspaceRoot { Text("Workspace: \((ws as NSString).abbreviatingWithTildeInPath)").font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary).lineLimit(1).truncationMode(.middle) }
             if let g = view.task.gitBaseline, g.isRepository {

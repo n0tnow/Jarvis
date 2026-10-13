@@ -223,7 +223,7 @@ struct RunDetailView: View {
     private func header(_ run: AgentRunView) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: Theme.Spacing.s) {
-                Text(run.agentType).font(Theme.Typography.title).foregroundStyle(Color.jarvisPrimary)
+                Text(AgentRole.displayName(forAgentType: run.agentType)).font(Theme.Typography.title).foregroundStyle(Color.jarvisPrimary)
                 PhaseChip(phase: run.phase, simulated: run.isSimulated)
                 Spacer()
                 ElapsedLabel(run: run).font(Theme.Typography.mono).foregroundStyle(Color.jarvisSecondary)
@@ -267,7 +267,7 @@ struct RunDetailView: View {
             KeyValueRow(key: "Status", value: run.phase.label, valueTint: run.phase.tint)
             KeyValueRow(key: "Provider", value: run.engine.displayName)
             if let m = run.model { KeyValueRow(key: "Model", value: m) }
-            KeyValueRow(key: "Agent", value: run.agentType)
+            KeyValueRow(key: "Agent (role)", value: AgentRole.displayName(forAgentType: run.agentType))
             KeyValueRow(key: "Task", value: run.label)
             KeyValueRow(key: "Activity", value: run.activity)
             KeyValueRow(key: "Started", value: run.startedAt.formatted(date: .abbreviated, time: .standard))
