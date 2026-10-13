@@ -34,6 +34,9 @@ struct TaskReport: Codable, Equatable, Sendable {
     var advisories: [String]?
     /// V0.11: applications, capability, actions with their verification and approvals, fallbacks and the final state (never typed text). Optional so older reports still decode.
     var computer: [String]?
+    /// V0.12: the graph in words (roles, providers, routing reasons, artifacts, optional gaps) and the derived outcome (SUCCESS / PARTIAL / FAILED / BLOCKED …). Optional so older reports still decode.
+    var orchestration: [String]?
+    var outcome: String?
 
     // MARK: Build
 
@@ -126,6 +129,12 @@ struct TaskReport: Codable, Equatable, Sendable {
         switch state {
         case TaskState.completed.rawValue where kind == TaskKind.computer.label:
             return "\(title) — done. \(stepsPassed)/\(stepsTotal) step\(stepsTotal == 1 ? "" : "s"), each action observed and verified."
+        case TaskState.completed.rawValue where outcome == TaskOutcome.partial.rawValue:
+            let gaps = steps.filter { $0.state == "failed" || $0.state == "cancelled" }.map(\.title)
+            return "\(title) — PARTIAL: every required step is validated (\(stepsPassed)/\(stepsTotal)), but \(gaps.isEmpty ? "an optional step" : "“" + gaps.joined(separator: "”, “") + "”") did not complete, so part of the picture is missing. This is not a complete result."
+        case TaskState.failed.rawValue where outcome == TaskOutcome.blocked.rawValue:
+            let f = failure
+            return "\(title) — BLOCKED after \(stepsPassed)/\(stepsTotal) steps: \(f?.reason ?? "stopped by policy"). \(f?.suggestedNext ?? "")"
         case TaskState.completed.rawValue:
             var s = "\(title) — completed. \(stepsPassed)/\(stepsTotal) steps validated."
             if !filesChanged.isEmpty { s += " \(filesChanged.count) file\(filesChanged.count == 1 ? "" : "s") changed." }
@@ -154,6 +163,7 @@ struct TaskReport: Codable, Equatable, Sendable {
         if repairAttempts + escalations > 0 { l += ["", "Repairs: \(repairAttempts) · Escalations: \(escalations)"] }
         if let u = unity, !u.isEmpty { l += ["", "## Unity"] + u.map { "- \($0)" } }
         if let c = computer, !c.isEmpty { l += ["", "## Computer Use"] + c.map { "- \($0)" } }
+        if let o = orchestration, !o.isEmpty { l += ["", "## Orchestration" + (outcome.map { " — outcome: \($0.uppercased())" } ?? "")] + o.map { "- \($0)" } }
         if let a = advisories, !a.isEmpty { l += ["", "## Reviewer advice (did not change the validated result)"] + a.map { "- \($0)" } }
         if !warnings.isEmpty { l += ["", "## Warnings"] + warnings.map { "- \($0)" } }
         if let f = failure { l += ["", "## Failure", "- \(f.category): \(f.reason)", f.failedStep.map { "- Failed step: \($0)" } ?? "", "- Next: \(f.suggestedNext)"] }

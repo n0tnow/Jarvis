@@ -17,8 +17,8 @@ extension JarvisRepository {
                     goal, kind, risk, workspace_root, started_at, current_step, activity, progress_fraction, progress_source, constraints,
                     failure_category, failure_reason, cancel_requested, recovery, plan_version, capabilities, git_baseline,
                     report_artifact_id, checkpoint_artifact_id, accumulated_seconds, preference, destructive_requested,
-                    origin, origin_task_id, origin_opportunity_id, autonomy_depth, scope, input_channel)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    origin, origin_task_id, origin_opportunity_id, autonomy_depth, scope, input_channel, parent_task_id)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, Self.taskParams(t))
         }
     }
@@ -31,7 +31,7 @@ extension JarvisRepository {
                     progress_fraction=?18, progress_source=?19, constraints=?20, failure_category=?21, failure_reason=?22, cancel_requested=?23,
                     recovery=?24, plan_version=?25, capabilities=?26, git_baseline=?27, report_artifact_id=?28, checkpoint_artifact_id=?29,
                     accumulated_seconds=?30, preference=?31, destructive_requested=?32,
-                    origin=?33, origin_task_id=?34, origin_opportunity_id=?35, autonomy_depth=?36, scope=?37, input_channel=?38
+                    origin=?33, origin_task_id=?34, origin_opportunity_id=?35, autonomy_depth=?36, scope=?37, input_channel=?38, parent_task_id=?39
                 WHERE id = ?1
                 """, Self.taskParams(t))
         }
@@ -45,7 +45,7 @@ extension JarvisRepository {
          .opt(t.failureCategory?.rawValue), .opt(Self.clean(t.failureReason, 1000)), .int(t.cancelRequested ? 1 : 0), .opt(Self.clean(t.recovery, 400)),
          .int(Int64(t.planVersion)), .text(Self.js(t.capabilities)), .opt(t.gitBaseline.map { Self.js($0) }), .opt(t.reportArtifactID?.uuidString),
          .opt(t.checkpointArtifactID?.uuidString), .double(t.accumulatedSeconds), .opt(t.preference?.rawValue), .int(t.destructiveRequested ? 1 : 0),
-         .text(t.origin.rawValue), .opt(t.originTaskID?.uuidString), .opt(t.originOpportunityID?.uuidString), .int(Int64(t.autonomyDepth)), .opt(t.scope.map { js($0) }), .text(t.inputChannel.rawValue)]
+         .text(t.origin.rawValue), .opt(t.originTaskID?.uuidString), .opt(t.originOpportunityID?.uuidString), .int(Int64(t.autonomyDepth)), .opt(t.scope.map { js($0) }), .text(t.inputChannel.rawValue), .opt(t.parentTaskID?.uuidString)]
     }
 
     private static func task(_ r: SQLRow) -> TaskRecord? {
@@ -80,6 +80,7 @@ extension JarvisRepository {
         t.autonomyDepth = r.int("autonomy_depth") ?? 0
         t.scope = unjs(r.string("scope"), as: TaskScope.self)
         t.inputChannel = r.string("input_channel").flatMap(InputSource.init(rawValue:)) ?? .typed
+        t.parentTaskID = uid(r.string("parent_task_id"))
         return t
     }
 
@@ -102,8 +103,9 @@ extension JarvisRepository {
             for s in steps {
                 try ctx.execute("""
                     INSERT INTO task_steps(id, task_id, idx, title, status, started_at, finished_at, step_key, type, description, depends_on, expected,
-                        validation, risk, weight, attempts, agent_run_id, result_summary, failure_category, failure_reason, validation_evidence, unity_params, computer_params)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        validation, risk, weight, attempts, agent_run_id, result_summary, failure_category, failure_reason, validation_evidence, unity_params, computer_params,
+                        optional, revision, delegate_params, delegated_task_id)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """, Self.stepParams(s))
             }
         }
@@ -114,7 +116,8 @@ extension JarvisRepository {
             try ctx.execute("""
                 UPDATE task_steps SET task_id=?2, idx=?3, title=?4, status=?5, started_at=?6, finished_at=?7, step_key=?8, type=?9, description=?10,
                     depends_on=?11, expected=?12, validation=?13, risk=?14, weight=?15, attempts=?16, agent_run_id=?17, result_summary=?18,
-                    failure_category=?19, failure_reason=?20, validation_evidence=?21, unity_params=?22, computer_params=?23 WHERE id = ?1
+                    failure_category=?19, failure_reason=?20, validation_evidence=?21, unity_params=?22, computer_params=?23,
+                    optional=?24, revision=?25, delegate_params=?26, delegated_task_id=?27 WHERE id = ?1
                 """, Self.stepParams(s))
         }
     }
@@ -129,7 +132,9 @@ extension JarvisRepository {
          .text(s.risk.rawValue), .double(s.weight), .int(Int64(s.attempts)), .opt(s.agentRunID?.uuidString), .opt(Self.clean(s.resultSummary, 1500)),
          .opt(s.failureCategory?.rawValue), .opt(Self.clean(s.failureReason, 1000)), .opt(Self.clean(s.validationEvidence, 4000)),
          .opt(s.unity.flatMap { try? JSONEncoder().encode($0) }.map { String(decoding: $0, as: UTF8.self) }),
-         .opt(s.computer.flatMap { try? JSONEncoder().encode($0) }.map { String(decoding: $0, as: UTF8.self) })]
+         .opt(s.computer.flatMap { try? JSONEncoder().encode($0) }.map { String(decoding: $0, as: UTF8.self) }),
+         .int(s.optional ? 1 : 0), .int(Int64(s.revision)),
+         .opt(s.delegate.flatMap { try? JSONEncoder().encode($0) }.map { String(decoding: $0, as: UTF8.self) }), .opt(s.delegatedTaskID?.uuidString)]
     }
 
     private static func step(_ r: SQLRow) -> TaskStepRecord? {
@@ -145,6 +150,9 @@ extension JarvisRepository {
         s.startedAt = r.date("started_at"); s.finishedAt = r.date("finished_at"); s.validationEvidence = r.string("validation_evidence")
         s.unity = r.string("unity_params").flatMap { $0.data(using: .utf8) }.flatMap { try? JSONDecoder().decode(UnityStepParams.self, from: $0) }
         s.computer = r.string("computer_params").flatMap { $0.data(using: .utf8) }.flatMap { try? JSONDecoder().decode(ComputerStepParams.self, from: $0) }
+        s.optional = r.bool("optional"); s.revision = r.int("revision") ?? 0
+        s.delegate = r.string("delegate_params").flatMap { $0.data(using: .utf8) }.flatMap { try? JSONDecoder().decode(DelegateParams.self, from: $0) }
+        s.delegatedTaskID = Self.uid(r.string("delegated_task_id"))
         return s
     }
 

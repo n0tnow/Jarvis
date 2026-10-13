@@ -6,6 +6,9 @@ enum JarvisIntent: Equatable, Sendable {
     case openSection(HUDSection)      // dashboard · tasks · report · system · memory
     case openSettings
     case showStatus
+    /// V0.12: "which agent is running?" / "did the tests pass?" — answered from the real graph state.
+    case showAgentStatus
+    case showTestStatus
     case pauseTask
     case resumeTask
     case stopTask
@@ -22,6 +25,8 @@ enum JarvisIntent: Equatable, Sendable {
         case .openSection(let s): "Open \(s.title.capitalized)"
         case .openSettings: "Open Settings"
         case .showStatus: "Show status"
+        case .showAgentStatus: "Show running agents"
+        case .showTestStatus: "Show test status"
         case .pauseTask: "Pause task"
         case .resumeTask: "Resume task"
         case .stopTask: "Stop task"

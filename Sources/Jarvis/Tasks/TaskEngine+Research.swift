@@ -22,12 +22,12 @@ extension TaskEngine {
 
     @discardableResult
     func submitResearch(_ request: ResearchRequest, preference: ProviderPreference? = nil, inputChannel: InputSource = .typed, origin: TaskOrigin = .userTask, scope: TaskScope? = nil,
-                        originTaskID: UUID? = nil, originOpportunityID: UUID? = nil, autonomyDepth: Int = 0) async -> Result<UUID, TaskSubmitError> {
+                        originTaskID: UUID? = nil, originOpportunityID: UUID? = nil, autonomyDepth: Int = 0, parentTaskID: UUID? = nil) async -> Result<UUID, TaskSubmitError> {
         guard let web, webAllowed() else { return .failure(.workspace(web == nil ? "Web research is not available in this build." : "Web research is turned off in Settings → Web research.")) }
         let title = "Research · " + String(request.goal.prefix(60))
         let runtime = ResearchRuntime(request: request)
         return await submit(goal: request.goal, kind: .research, workspacePath: web.paths.researchWorkspace.path, constraints: request.constraints.summary, preference: preference, title: title, id: request.id,
-                            origin: origin, originTaskID: originTaskID, originOpportunityID: originOpportunityID, autonomyDepth: autonomyDepth, scope: scope, inputChannel: inputChannel, prepare: { ctx in ctx.research = runtime })
+                            origin: origin, originTaskID: originTaskID, originOpportunityID: originOpportunityID, autonomyDepth: autonomyDepth, scope: scope, inputChannel: inputChannel, parentTaskID: parentTaskID, prepare: { ctx in ctx.research = runtime })
     }
 
     /// An acquisition is its own task (so it has its own approval, progress, cancellation and report); its id equals the acquisition id.

@@ -11,6 +11,12 @@ extension TaskEngine {
             setStep(ctx, key, to: .failed, failure: (.capabilityDenied, "This task does not grant \(needed.map(\.rawValue).sorted().joined(separator: ", "))."))
             return .failed(.capabilityDenied, "capability not granted for \(step.type.rawValue) steps")
         }
+        // V0.12: the role contract is re-checked right before the node starts — a plan, a handoff or an artifact can never widen what a role may do.
+        if let (cat, why) = orchestrationRefusal(ctx, step) {
+            if step.state == .pending { setStep(ctx, key, to: .ready) }
+            setStep(ctx, key, to: .failed, failure: (cat, why))
+            return .failed(cat, why)
+        }
         if step.state == .pending { setStep(ctx, key, to: .ready) }
         guard setStep(ctx, key, to: .running) else { return .failed(.toolFailed, "The step could not be started.") }
         let position = (ctx.index(key) ?? 0) + 1
@@ -37,6 +43,9 @@ extension TaskEngine {
         case .acquire: outcome = await runAcquire(ctx, key)
         case .importAsset: outcome = await runImportAsset(ctx, key)
         case .computerAct: outcome = await runComputerAct(ctx, key)
+        case .delegateResearch: outcome = await runDelegateResearch(ctx, key)
+        case .delegateComputer: outcome = await runDelegateComputer(ctx, key)
+        case .approvalGate: outcome = await runApprovalGate(ctx, key)
         }
         leases.release(owner: Self.leaseOwner(step))
         unity?.lock.release(owner: Self.leaseOwner(step))
@@ -47,6 +56,7 @@ extension TaskEngine {
         case .cancelled: setStep(ctx, key, to: .cancelled)
         case .failed(let cat, let why): setStep(ctx, key, to: .failed, failure: (cat, why))
         }
+        recordArtifact(ctx, key: key)
         await checkpoint(ctx, reason: "step \(step.key) \(ctx.step(key)?.state.rawValue ?? "")")
         return outcome
     }
@@ -64,20 +74,22 @@ extension TaskEngine {
 
     func runAnalysis(_ ctx: TaskContext, _ key: String) async -> StepOutcome {
         guard let step = ctx.step(key) else { return .failed(.toolFailed, "missing step") }
-        let prior = priorResults(ctx, for: step)
-        let texts = [ctx.record.goal, step.title, step.details] + prior
+        let handoff = handoffFor(ctx, step)
+        let prior = ctx.orchestrated ? [] : priorResults(ctx, for: step)         // V0.12: orchestrated nodes receive typed, fenced handoffs instead of raw earlier text
+        let texts = [ctx.record.goal, step.title, step.details] + prior + (handoff.text.isEmpty ? [] : [handoff.text])
         let files = await ProjectContext.selectFiles(tools: ctx.tools, mentionedIn: texts, searchTerms: ProjectContext.terms(from: [ctx.record.goal, step.title, step.details]), max: 6)
         let snaps = await ProjectContext.snapshots(tools: ctx.tools, paths: files, perFileBytes: 9000, totalChars: 36_000)
         let tree = (try? ctx.tools.projectTree(maxEntries: 150)) ?? ""
         let failureNote = ctx.lastFailureTail.values.first.map { "\nLast failing command output:\n\($0.suffix(3000))" }
-        let prompt = TaskPrompts.analysis(goal: ctx.record.goal, step: step, tree: tree, files: snaps, prior: prior + (failureNote.map { [$0] } ?? []))
+        let prompt = TaskPrompts.analysis(goal: ctx.record.goal, step: step, tree: tree, files: snaps, prior: prior + (handoff.text.isEmpty ? [] : [handoff.text]) + (failureNote.map { [$0] } ?? []))
         var excluded: Set<RoutingCandidate> = []
         for round in 0..<2 {
             if ctx.cancelRequested || Task.isCancelled { return .cancelled }
             let attempt = beginAttempt(ctx, step, round == 0 ? .primary : .escalation)
-            let job = AgentJob(type: "AnalysisAgent", title: "\(step.title)", prompt: prompt, profile: jobProfile(ctx, .analysis, promptChars: prompt.count), taskID: ctx.record.id,
+            var job = AgentJob(type: "AnalysisAgent", title: "\(step.title)", prompt: prompt, profile: jobProfile(ctx, .analysis, promptChars: prompt.count), taskID: ctx.record.id,
                                validator: { AnalysisResult.parse($0) != nil ? BenchmarkSuite.Verdict(passed: true, detail: "") : BenchmarkSuite.Verdict(passed: false, detail: "reply with the JSON object containing a non-empty \"summary\"") },
                                timeout: limits.providerTimeout, exclude: excluded)
+            job.nodeKey = key; job.handoffChars = handoff.chars; job.artifactCount = handoff.artifactCount; job.fileCount = files.count
             let result = await runJob(ctx, job)
             if case .completed(let text, let runID, let cand, _) = result, let a = AnalysisResult.parse(text) {
                 verifying(ctx, key)
@@ -86,6 +98,8 @@ extension TaskEngine {
                 endAttempt(attempt, outcome: "passed", evidence: "structured result accepted", runID: runID, candidate: cand)
                 updateStep(ctx, key) { $0.agentRunID = runID }
                 setStep(ctx, key, to: .passed, evidence: "Structured analysis accepted (\(a.findings.count) findings, \(a.relevantFiles.count) relevant files)", result: a.rendered)
+                // A specialist may only REQUEST more knowledge; the orchestrator decides whether (and how often) the graph changes.
+                if !a.needsResearch.isEmpty { ctx.revisionRequests[key] = a.needsResearch.joined(separator: "; "); considerResearchRevision(ctx, after: key, wants: a.needsResearch) }
                 return .passed
             }
             if case .cancelled = result { endAttempt(attempt, outcome: "cancelled", evidence: nil); return .cancelled }
@@ -101,6 +115,7 @@ extension TaskEngine {
 
     func noteEscalationNeeded(_ ctx: TaskContext, _ step: TaskStepRecord, _ why: String) {
         ctx.escalationCount += 1
+        if ctx.orchestrated { ctx.escalationReasons[step.key] = inferEscalationReason(ctx, step, why: why) }
         note("\(step.title): escalating to another provider (\(why))", .warning, taskID: ctx.record.id)
     }
 
@@ -159,7 +174,8 @@ extension TaskEngine {
         var out = CodeAttempt()
         let tools = ctx.tools
         // Context: files named by earlier analysis, files that failed, files already changed by this task.
-        let analysis = ctx.steps.filter { $0.type == .analysis && $0.state == .passed }.compactMap { ctx.results[$0.key] }
+        let handoff = handoffFor(ctx, step)
+        let analysis = ctx.orchestrated ? (handoff.text.isEmpty ? [] : [handoff.text]) : ctx.steps.filter { $0.type == .analysis && $0.state == .passed }.compactMap { ctx.results[$0.key] }
         let texts = [ctx.record.goal, step.title, step.details] + analysis + [failure ?? ""] + Array(ctx.finals.keys)
         var paths = await ProjectContext.selectFiles(tools: tools, mentionedIn: texts, searchTerms: ProjectContext.terms(from: [ctx.record.goal, step.title, step.details]), max: 6)
         for p in ctx.finals.keys where !paths.contains(p) && ctx.finals[p]?.text != nil { paths.insert(p, at: 0) }
@@ -169,7 +185,7 @@ extension TaskEngine {
         let scope = ctx.record.scope
         let alreadyChanged = Set(ctx.changes.map(\.path)).count
         let verdictBox = ValidationBox<Bool>()                     // remembers WHY the last answer was rejected (policy blocks must not be "repaired")
-        let job = AgentJob(type: "CodingAgent", title: kind == .primary ? step.title : "\(kind == .repair ? "Repair" : "Escalated fix") · \(step.title)", prompt: prompt,
+        var job = AgentJob(type: "CodingAgent", title: kind == .primary ? step.title : "\(kind == .repair ? "Repair" : "Escalated fix") · \(step.title)", prompt: prompt,
                            profile: jobProfile(ctx, .codeChange, promptChars: prompt.count), taskID: ctx.record.id,
                            validator: { text in
                                let parsed = EditParser.parse(text)
@@ -187,6 +203,7 @@ extension TaskEngine {
                                    return BenchmarkSuite.Verdict(passed: false, detail: e.description)
                                } catch { verdictBox.set(false, notes: ["toolFailed|\(error)"]); return BenchmarkSuite.Verdict(passed: false, detail: "\(error)") }
                            }, timeout: limits.providerTimeout, exclude: exclude, pin: pin)
+        job.nodeKey = step.key; job.handoffChars = handoff.chars; job.artifactCount = handoff.artifactCount; job.fileCount = paths.count
         let result = await runJob(ctx, job)
         switch result {
         case .cancelled(let rid): out.cancelled = true; out.runID = rid; return out
@@ -420,16 +437,37 @@ extension TaskEngine {
 
     func runReview(_ ctx: TaskContext, _ key: String) async -> StepOutcome {
         guard let step = ctx.step(key) else { return .failed(.toolFailed, "missing step") }
-        let analysis = ctx.steps.filter { $0.type == .analysis && $0.state == .passed }.compactMap { ctx.results[$0.key] }
+        let handoff = handoffFor(ctx, step)
+        let analysis = ctx.orchestrated ? (handoff.text.isEmpty ? [] : [handoff.text]) : ctx.steps.filter { $0.type == .analysis && $0.state == .passed }.compactMap { ctx.results[$0.key] }
         let prompt = TaskPrompts.review(goal: ctx.record.goal, diff: diffText(ctx, limit: 14_000), evidence: ctx.evidence, analysis: analysis)
         var excluded: Set<RoutingCandidate> = []
+        // V0.12 review independence (risk-based, never forced for trivial work): a nontrivial change is reviewed by a candidate that is NOT the writer when another eligible one exists.
+        var independenceExclusion: Set<RoutingCandidate> = []
+        if ctx.orchestrated {
+            let diff = diffText(ctx, limit: 14_000)
+            let lines = diff.split(separator: "\n").filter { ($0.hasPrefix("+") && !$0.hasPrefix("+++")) || ($0.hasPrefix("-") && !$0.hasPrefix("---")) }.count
+            let facts = ReviewIndependence.Facts(changedFiles: Set(ctx.changes.map(\.path)).count, changedLines: lines, taskRisk: ctx.record.risk,
+                                                 securityRelevant: ReviewIndependence.looksSecurityRelevant(goal: ctx.record.goal, paths: ctx.changes.map(\.path)), escalated: ctx.escalationCount > 0)
+            if ReviewIndependence.isRequired(facts) {
+                let writers = ctx.steps.filter { $0.type == .codeChange }.flatMap { ctx.candidates[$0.key] ?? [] }
+                ctx.reviewWriters[key] = writers
+                if canEscalate(ctx) { independenceExclusion = Set(writers) }
+            }
+        }
+        excluded = independenceExclusion
         for round in 0..<2 {
             if ctx.cancelRequested || Task.isCancelled { return .cancelled }
             let attempt = beginAttempt(ctx, step, round == 0 ? .primary : .escalation)
-            let job = AgentJob(type: "ReviewAgent", title: step.title, prompt: prompt, profile: jobProfile(ctx, .review, promptChars: prompt.count), taskID: ctx.record.id,
+            var job = AgentJob(type: "ReviewAgent", title: step.title, prompt: prompt, profile: jobProfile(ctx, .review, promptChars: prompt.count), taskID: ctx.record.id,
                                validator: { ReviewResult.parse($0) != nil ? BenchmarkSuite.Verdict(passed: true, detail: "") : BenchmarkSuite.Verdict(passed: false, detail: "reply with the JSON object {\"verdict\": \"pass\" or \"fail\", …}") },
                                timeout: limits.providerTimeout, exclude: excluded)
-            let result = await runJob(ctx, job)
+            job.nodeKey = key; job.handoffChars = handoff.chars; job.artifactCount = handoff.artifactCount
+            var result = await runJob(ctx, job)
+            // No other eligible provider: the writer also reviews (stated in the routing record), the review is not skipped.
+            if case .rejected(.noEligibleProvider) = result, !excluded.isEmpty, round == 0 {
+                excluded = excluded.subtracting(independenceExclusion); job.exclude = excluded
+                result = await runJob(ctx, job)
+            }
             if case .completed(let text, let runID, let cand, _) = result, let review = ReviewResult.parse(text) {
                 verifying(ctx, key)
                 ctx.candidates[key, default: []].append(cand)

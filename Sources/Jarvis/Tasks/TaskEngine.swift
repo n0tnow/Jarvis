@@ -65,6 +65,11 @@ final class TaskEngine {
     @ObservationIgnored var webAllowed: () -> Bool = { true }
     @ObservationIgnored var browserTierAllowed: () -> Bool = { true }
     var limits = Limits()
+    /// V0.12 (DEC-157…): JARVIS as ORCHESTRATOR — role contracts, task graphs, artifacts/handoffs, routing records, graph revisions, approval gates. Production turns it on;
+    /// with it off the engine behaves exactly like V0.4–V0.11 (the older test suites rely on that).
+    @ObservationIgnored var orchestrationEnabled = false
+    /// Resource state for the scheduler (memory pressure / thermal / low power). Production wires `ResourceManager.pressure`; tests inject one.
+    @ObservationIgnored var resourcePressure: () -> ResourcePressure = { ResourcePressure() }
     /// Called after every persisted change (the store projection / HUD refresh).
     @ObservationIgnored var onChange: (() -> Void)?
     /// Meaningful milestones only (activity feed / log).
@@ -136,6 +141,19 @@ final class TaskEngine {
         var research: ResearchRuntime?
         /// V0.11: the live state of a computer task (executor, stop token, session bookkeeping); nil for every other task.
         var computer: ComputerTaskState?
+        // V0.12 orchestration state. The durable facts are the steps, the graph row, the artifacts and the routing decisions; these are the in-memory mirrors.
+        var orchestrated = false
+        var revisionCount = 0
+        var graphTemplate = ""
+        var ledgers: [String: NodeLedger] = [:]
+        var artifacts: [AgentArtifact] = []
+        var reviewCycles = 0
+        var independence: [String: ReviewIndependence.Outcome] = [:]
+        var reviewWriters: [String: [RoutingCandidate]] = [:]
+        var escalationReasons: [String: EscalationReason] = [:]
+        var optionalFailures: [String: String] = [:]
+        var startedGraphAt = Date()
+        var revisionRequests: [String: String] = [:]          // node key → what knowledge a specialist asked for (the ORCHESTRATOR decides whether to insert research)
 
         init(record: TaskRecord, steps: [TaskStepRecord], workspace: WorkspaceGuard, tools: ProjectTools, profiles: ProjectProfiles) {
             self.record = record; self.steps = steps; self.workspace = workspace; self.tools = tools; self.profiles = profiles
@@ -149,7 +167,8 @@ final class TaskEngine {
 
     var orderedViews: [TaskView] { views.values.sorted { $0.task.createdAt > $1.task.createdAt } }
     var activeViews: [TaskView] { orderedViews.filter { $0.task.state.isActive } }
-    var activeCount: Int { contexts.values.filter { $0.record.state.isActive }.count }
+    /// Root tasks only: the child tasks a graph delegates (research / computer nodes) belong to their parent and never count against the user-visible limit.
+    var activeCount: Int { contexts.values.filter { $0.record.state.isActive && $0.record.parentTaskID == nil }.count }
     func view(_ id: UUID) -> TaskView? { views[id] }
     func isRunnerActive(_ id: UUID) -> Bool { runners[id] != nil }
 
@@ -160,13 +179,13 @@ final class TaskEngine {
     func submit(goal rawGoal: String, kind: TaskKind, workspacePath: String, constraints: [String] = [], preference: ProviderPreference? = nil,
                 title: String? = nil, destructiveRequested: Bool = false, id: UUID? = nil, origin: TaskOrigin = .userTask,
                 originTaskID: UUID? = nil, originOpportunityID: UUID? = nil, autonomyDepth: Int = 0, scope: TaskScope? = nil,
-                inputChannel: InputSource = .typed, capabilities: CapabilitySet? = nil, prepare: ((TaskContext) -> Void)? = nil) async -> Result<UUID, TaskSubmitError> {
+                inputChannel: InputSource = .typed, capabilities: CapabilitySet? = nil, parentTaskID: UUID? = nil, prepare: ((TaskContext) -> Void)? = nil) async -> Result<UUID, TaskSubmitError> {
         let goal = rawGoal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !goal.isEmpty else { return .failure(.empty) }
         guard let repository else { return .failure(.persistenceUnavailable) }
         // Idempotent creation (V0.5: a proposal/auto-action may be delivered twice, e.g. around a crash): the same id never makes a second task.
         if let id, (try? repository.engineTask(id)) != nil { return .success(id) }
-        if activeCount >= limits.maxActiveTasks { return .failure(.tooManyActiveTasks(activeCount)) }
+        if parentTaskID == nil, activeCount >= limits.maxActiveTasks { return .failure(.tooManyActiveTasks(activeCount)) }
         let ws: WorkspaceGuard
         do { ws = kind.usesEmptyWorkspace ? try WorkspaceGuard(researchRoot: workspacePath) : try WorkspaceGuard(rootPath: workspacePath) } catch { return .failure(.workspace(String(describing: error))) }
 
@@ -174,6 +193,7 @@ final class TaskEngine {
         var record = TaskRecord(id: id ?? UUID(), title: Self.makeTitle(title ?? goal), goal: String(goal.prefix(1500)), kind: kind)
         record.origin = origin; record.originTaskID = originTaskID; record.originOpportunityID = originOpportunityID; record.autonomyDepth = autonomyDepth; record.scope = scope
         record.inputChannel = inputChannel
+        record.parentTaskID = parentTaskID
         record.category = kind == .development ? .repositoryModification : (kind == .computer ? .classification : .research)
         record.risk = destructiveRequested ? .high : (kind == .development || kind == .acquisition ? .medium : .low)
         record.destructiveRequested = destructiveRequested && kind == .development
@@ -260,7 +280,7 @@ final class TaskEngine {
         if ctx.terminating { return }
         if ctx.cancelRequested || Task.isCancelled { await finalizeCancelled(ctx); return }
         if ctx.hardFailure != nil { await finalizeFailure(ctx); return }
-        let counted = ctx.steps.filter { $0.state != .skipped }
+        let counted = ctx.steps.filter { $0.state != .skipped && !$0.optional }
         if !counted.isEmpty, counted.allSatisfy({ $0.state == .passed }) { await finalizeSuccess(ctx) }
         else {
             ctx.hardFailure = (.validationFailed, "The plan stopped before every step passed.")
@@ -273,11 +293,16 @@ final class TaskEngine {
     enum StepOutcome: Sendable { case passed, skipped, failed(FailureCategory, String), cancelled }
 
     private func scheduleLoop(_ ctx: TaskContext) async {
+        ctx.startedGraphAt = Date()
         await withTaskGroup(of: (String, StepOutcome).self) { group in
             var inflight: [String: StepType] = [:]
             while true {
                 if ctx.cancelRequested || Task.isCancelled || ctx.hardFailure != nil { break }
-                for step in readySteps(ctx) where inflight.count < limits.maxConcurrentSteps && canRunAlongside(step.type, inflight) {
+                if Date().timeIntervalSince(ctx.startedGraphAt) > OrchestrationLimits.graphTimeout { ctx.hardFailure = (.resourceUnavailable, "The task exceeded its time limit."); break }
+                // Which nodes may start now is ONE policy (`ConcurrencyPolicy`): two read-only nodes at most, one under any resource pressure, everything that writes/builds/tests/reviews alone.
+                let pressure = resourcePressure()
+                let limit = min(limits.maxConcurrentSteps, ConcurrencyPolicy.parallelLimit(pressure))
+                for step in readySteps(ctx) where inflight.count < limit && ConcurrencyPolicy.canStart(step.type, alongside: Array(inflight.values), pressure: pressure) {
                     inflight[step.key] = step.type
                     let key = step.key
                     group.addTask { @MainActor [weak self] in
@@ -288,27 +313,33 @@ final class TaskEngine {
                 if inflight.isEmpty { break }
                 guard let (key, outcome) = await group.next() else { break }
                 inflight[key] = nil
+                let optional = ctx.step(key)?.optional == true
                 switch outcome {
                 case .passed, .skipped: break
                 case .cancelled: if !ctx.cancelRequested { ctx.hardFailure = (.cancelled, "A step was cancelled.") }
-                case .failed(let cat, let why): ctx.hardFailure = ctx.hardFailure ?? (cat, why)
+                case .failed(let cat, let why):
+                    // An OPTIONAL node may fail without failing the task: its branch simply has no result and the task can only end PARTIAL.
+                    if optional, !ctx.cancelRequested { ctx.optionalFailures[key] = why; note("Optional step failed (the task continues): \(ctx.step(key)?.title ?? key) — \(why)", .warning, taskID: ctx.record.id) }
+                    else { ctx.hardFailure = ctx.hardFailure ?? (cat, why) }
                 }
             }
             if ctx.cancelRequested || Task.isCancelled { group.cancelAll() }
             for await _ in group {}                                  // drain: every started step really finishes before we finalize
         }
+        // Dependencies that can never be satisfied (and no failure explains it) are reported, never waited for.
+        if ctx.hardFailure == nil, !ctx.cancelRequested, !Task.isCancelled {
+            let done = Set(ctx.steps.filter { $0.state == .passed || $0.state == .skipped || ($0.optional && $0.state == .failed) }.map(\.key))
+            let pending = TaskGraph(steps: ctx.steps.filter { $0.state == .pending || $0.state == .ready }).nodes
+            if ConcurrencyPolicy.isDeadlocked(pending: pending, done: done, failedRequired: false, inflight: 0) {
+                ctx.hardFailure = (.malformedPlan, "The graph can never finish: " + pending.prefix(3).map(\.title).joined(separator: ", ") + " wait for dependencies that cannot be satisfied.")
+            }
+        }
     }
 
-    /// Pending steps whose dependencies all passed (a skipped dependency counts as satisfied: it had nothing to do).
+    /// Pending steps whose dependencies all finished (a skipped dependency counts as satisfied: it had nothing to do; so does a failed OPTIONAL one: it simply has no result).
     private func readySteps(_ ctx: TaskContext) -> [TaskStepRecord] {
-        let done = Set(ctx.steps.filter { $0.state == .passed || $0.state == .skipped }.map(\.key))
+        let done = Set(ctx.steps.filter { $0.state == .passed || $0.state == .skipped || ($0.optional && $0.state == .failed) }.map(\.key))
         return ctx.steps.filter { ($0.state == .pending || $0.state == .ready) && $0.dependsOn.allSatisfy(done.contains) }
-    }
-
-    /// Only read-only analysis steps run side by side; anything that writes, builds, tests or reviews the result runs alone.
-    private func canRunAlongside(_ type: StepType, _ inflight: [String: StepType]) -> Bool {
-        if inflight.isEmpty { return true }
-        return type == .analysis && inflight.values.allSatisfy { $0 == .analysis }
     }
 
     // MARK: Persisted mutation helpers
@@ -430,6 +461,8 @@ final class TaskEngine {
             for var a in pending { a.state = .cancelled; a.decidedAt = Date(); a.decidedBy = "cancel"; try? repository?.update(a); decisions.removeValue(forKey: a.id)?.resume(returning: false) }
         }
         for run in hub?.activeRuns.filter({ audit.record($0.id)?.taskID == taskID }) ?? [] { agents.cancel(runID: run.id) }
+        // V0.12: STOP cascades to every child task this graph delegated (research / computer): no new node starts, no child keeps running.
+        for (id, child) in contexts where child.record.parentTaskID == taskID { cancel(id) }
         if let root = ctx.record.workspaceRoot { unity?.cancelPendingRequests(for: root) }      // V0.6: nothing waits for the editor after STOP
         runners[taskID]?.cancel()
         if runners[taskID] == nil { Task { @MainActor in await self.finalizeCancelled(ctx) } }          // never started / already idle

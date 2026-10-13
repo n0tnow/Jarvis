@@ -7,6 +7,8 @@ struct AnalysisResult: Equatable, Sendable {
     var findings: [String]
     var relevantFiles: [String]
     var rootCause: String
+    /// V0.12: knowledge the specialist says it is missing. A REQUEST only — the orchestrator decides whether research is inserted (bounded, validated, audited).
+    var needsResearch: [String] = []
 
     static func parse(_ text: String) -> AnalysisResult? {
         guard let json = PlanParser.extractJSONObject(text), let d = json.data(using: .utf8),
@@ -14,7 +16,8 @@ struct AnalysisResult: Equatable, Sendable {
               let summary = (o["summary"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !summary.isEmpty else { return nil }
         func strings(_ k: String) -> [String] { (o[k] as? [Any] ?? []).compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty } }
         return AnalysisResult(summary: summary, findings: strings("findings"), relevantFiles: strings("relevantFiles") + strings("relevant_files"),
-                              rootCause: (o["rootCause"] as? String ?? o["root_cause"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
+                              rootCause: (o["rootCause"] as? String ?? o["root_cause"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+                              needsResearch: Array((strings("needsResearch") + strings("needs_research")).prefix(3)).map { String($0.prefix(200)) })
     }
 
     /// Compact one-block rendering that later steps receive as context (bounded).

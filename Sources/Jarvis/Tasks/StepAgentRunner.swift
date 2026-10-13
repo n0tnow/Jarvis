@@ -16,6 +16,11 @@ struct AgentJob: Sendable {
     var policy = EscalationPolicy(maxRepairAttempts: 1, maxEscalations: 0, maxTotalAttempts: 2)
     /// The routing mode the user chose when the task was submitted (nil = Auto). An explicit mode never falls back or escalates.
     var preference: ProviderPreference?
+    /// V0.12: which graph node this job serves (routing decisions, artifacts and context measurements are recorded per node) and how much upstream handoff text it carries.
+    var nodeKey: String?
+    var handoffChars = 0
+    var artifactCount = 0
+    var fileCount = 0
 }
 
 enum AgentJobResult: Equatable, Sendable {

@@ -121,6 +121,8 @@ final class AppContext {
         research = stubIntelligence ? nil : ResearchServices.standard(paths: p, repository: repo, artifacts: artifacts)
         taskEngine.web = research
         let webPrefs = preferences
+        taskEngine.orchestrationEnabled = true                              // V0.12: JARVIS is the orchestrator (role contracts, graphs, artifacts, routing records)
+        taskEngine.resourcePressure = { [weak resources] in resources?.pressure ?? ResourcePressure() }
         taskEngine.webAllowed = { [weak webPrefs] in webPrefs?.webResearchEnabled ?? true }
         let webResources = resources
         taskEngine.browserTierAllowed = { [weak webPrefs, weak webResources] in
@@ -181,6 +183,7 @@ final class AppContext {
         conversationService = ConversationService(store: store, conversation: conversation, windows: windowManager, resolver: voiceRig != nil ? ScriptedAnswerResolver() : coordinator)
         // Autonomous work is only enabled for the real app: stubbed automated runs never start tasks (and never reach providers).
         if !stubIntelligence { conversationService.taskSubmitter = taskIntake; conversationService.researchSubmitter = taskIntake; conversationService.computerSubmitter = taskIntake }
+        conversationService.graphStatus = { [weak taskEngine] focus, lang in taskEngine?.graphStatusText(focus, lang) }
         conversationService.memoryHandler = memory                         // V0.10: remember / correct / forget / "what did we decide…" — typed and spoken text alike
         memory.onActivity = { [weak store] message, kind in store?.log(message, kind: kind, persist: false) }
         memory.modelCall = { [weak self] task, prompt in
@@ -256,6 +259,8 @@ final class AppContext {
             self.taskBridge.finished(v)
             let finishedReport = self.taskEngine.report(for: v.id)
             Task { @MainActor in await self.memory.taskFinished(v, report: finishedReport) }          // V0.10: only meaningful outcomes become memory
+            // V0.12: a child task (research / computer node of a graph) reports to its PARENT's graph — it never speaks to the user or triggers the proactive layer on its own.
+            if v.task.parentTaskID != nil { return }
             Task { @MainActor in await self.opportunities.taskFinished(v) }          // event-driven post-task reflection (bounded; no polling)
             if let report = self.taskEngine.report(for: v.id) {
                 let text = self.taskEngine.researchSummary(for: v) ?? report.userSummary          // V0.9: a research task's message is its cited recommendation
@@ -268,6 +273,7 @@ final class AppContext {
             // tasks that were waiting for an approval wait again.
             let r = taskEngine.reconcileOnLaunch()
             _ = try? repository?.reconcileComputerAfterRestart()                       // V0.11: GUI sessions are INTERRUPTED, never resumed silently
+            _ = try? repository?.pruneOrchestration(keepTasks: 150)                  // V0.12: artifacts/routing rows of old finished tasks fall away (history stays)
             try? repository?.pruneComputerSessions(keep: 100)                          // bounded history: old sessions (and their action/observation rows) fall away
             if let repo = self.repository {                                            // V0.9: in-flight research/downloads are INTERRUPTED, never resumed silently
                 _ = try? repo.reconcileResearchAfterRestart()

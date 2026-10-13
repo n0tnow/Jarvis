@@ -193,6 +193,8 @@ struct BenchmarkResultRecord: Equatable, Sendable {
     var cancelled = false
     var ranAt = Date()
     var artifactID: UUID?
+    /// V0.12: characters of the prompt that produced this result (context-size evidence per role); nil for the V0.3.1 suite.
+    var contextChars: Int?
 }
 
 struct ProviderHealthRecord: Equatable, Sendable {

@@ -62,6 +62,7 @@ extension TaskEngine {
         let approvals = (try? repository?.approvals(taskID: t.id)) ?? []
         var r = TaskReport.build(task: t, steps: ctx.steps, attempts: attempts, changes: ctx.changes, approvals: approvals, cleanup: cleanup)
         if t.kind == .computer { r.computer = computerReportLines(taskID: t.id) }
+        if ctx.orchestrated { r.orchestration = orchestrationReportLines(ctx.record.id, task: t, steps: ctx.steps); r.outcome = TaskOutcome.derive(state: state, failure: t.failureCategory, steps: ctx.steps).rawValue }
         return r
     }
 
@@ -72,6 +73,7 @@ extension TaskEngine {
         var r = TaskReport.build(task: t, steps: steps, attempts: (try? repository.attempts(taskID: id)) ?? [], changes: (try? repository.taskFileChanges(taskID: id)) ?? [],
                                  approvals: (try? repository.approvals(taskID: id)) ?? [])
         if t.kind == .computer { r.computer = computerReportLines(taskID: id) }
+        if (try? repository.taskGraph(id)) != nil { r.orchestration = orchestrationReportLines(id, task: t, steps: steps); r.outcome = TaskOutcome.derive(state: t.state, failure: t.failureCategory, steps: steps).rawValue }
         return r
     }
 
@@ -189,6 +191,12 @@ extension TaskEngine {
             if let u = cp.unity { ctx.unityBaseline = u.baseline; ctx.unityFacts = u.facts; ctx.unityApprovedDirty = Set(u.approvedDirtyScenes) }
         }
         ctx.evidence = steps.filter { $0.state == .passed }.compactMap { $0.validationEvidence }
+        // V0.12: an orchestrated task keeps its graph, its typed artifacts and its revision count across a restart.
+        if let g = (try? repository.taskGraph(t.id)) ?? nil {
+            ctx.orchestrated = true; ctx.graphTemplate = g.template; ctx.revisionCount = g.revisions
+            ctx.artifacts = (try? repository.artifacts(taskID: t.id)) ?? []
+            for case let s in steps where s.type == .analysis && s.state == .passed && ctx.results[s.key] == nil { ctx.results[s.key] = ctx.artifacts.last { $0.nodeKey == s.key && $0.status == .valid }?.content }
+        }
         return ctx
     }
 
@@ -212,6 +220,7 @@ extension TaskEngine {
         }
         contexts[taskID] = ctx
         ctx.runningSince = nil
+        revalidateCompleted(ctx)                                       // V0.12: finished nodes are reused only while the truth they rested on still holds
         let target: TaskState = t.planVersion == 0 ? .planning : .running
         guard transition(ctx, to: target, activity: "Resumed after interruption") else { contexts[taskID] = nil; return false }
         mutate(ctx) { $0.recovery = "resumed by the user after a restart"; $0.cancelRequested = false }

@@ -17,6 +17,8 @@ final class CommandExecutor {
     private let clearConversation: () -> Void
     /// Returns true if a provider answer was actually being generated (and is now being stopped).
     private let cancelGeneration: () -> Bool
+    /// V0.12: answers status questions from the orchestrated task's real graph (nil = no orchestrated task → the V0.2 sentence).
+    var graphStatus: ((StatusFocus, ReplyLanguage) -> String?)?
 
     init(store: JarvisStore, windows: any JarvisWindowControlling, clearConversation: @escaping () -> Void,
          cancelGeneration: @escaping () -> Bool = { false }) {
@@ -59,7 +61,13 @@ final class CommandExecutor {
                                       : ExecutionResult(message: Phrasebook.nothingGenerating(l), tone: .notice)
 
         case .showStatus:
-            return ExecutionResult(message: statusMessage(l))
+            return ExecutionResult(message: graphStatus?(.general, l) ?? statusMessage(l))
+
+        case .showAgentStatus:
+            return ExecutionResult(message: graphStatus?(.agents, l) ?? statusMessage(l))
+
+        case .showTestStatus:
+            return ExecutionResult(message: graphStatus?(.tests, l) ?? Phrasebook.statusNoTask(store.state.label, l))
 
         case .pauseTask:
             guard let task = store.activeTask else { return notice(Phrasebook.noTask("pause", l)) }

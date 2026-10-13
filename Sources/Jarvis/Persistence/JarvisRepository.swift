@@ -99,10 +99,10 @@ final class JarvisRepository: @unchecked Sendable {
         try database.write { ctx in
             try ctx.execute("""
                 INSERT INTO model_benchmarks(model_id, suite, case_id, category, passed, validation, latency_ms, duration_ms,
-                    retries, malformed, cancelled, ran_at, artifact_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    retries, malformed, cancelled, ran_at, artifact_id, context_chars) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, [.text(b.modelID), .text(b.suite), .text(b.caseID), .text(b.category.rawValue), .bool(b.passed), .opt(b.validation),
                       .opt(b.latencyMS), .opt(b.durationMS), .int(Int64(b.retries)), .bool(b.malformed), .bool(b.cancelled),
-                      .date(b.ranAt), .opt(b.artifactID?.uuidString)])
+                      .date(b.ranAt), .opt(b.artifactID?.uuidString), .opt(b.contextChars)])
         }
     }
 
@@ -116,7 +116,7 @@ final class JarvisRepository: @unchecked Sendable {
                                          validation: r.string("validation"), latencyMS: r.double("latency_ms"),
                                          durationMS: r.double("duration_ms"), retries: r.int("retries") ?? 0,
                                          malformed: r.bool("malformed"), cancelled: r.bool("cancelled"),
-                                         ranAt: r.date("ran_at") ?? Date(), artifactID: Self.uuid(r.string("artifact_id")))
+                                         ranAt: r.date("ran_at") ?? Date(), artifactID: Self.uuid(r.string("artifact_id")), contextChars: r.int("context_chars"))
         }
     }
 

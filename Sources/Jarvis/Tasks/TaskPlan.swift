@@ -17,6 +17,10 @@ struct PlanStep: Codable, Equatable, Sendable {
     var unity: UnityStepParams?
     /// Only for computer steps: the typed actions (V0.11). Built by JARVIS' own parser/planner and validated before they are scheduled.
     var computer: ComputerStepParams?
+    /// V0.12: optional node (its failure ends the task PARTIAL, not FAILED).
+    var optional = false
+    /// V0.12: delegated node / approval gate parameters.
+    var delegate: DelegateParams?
 }
 
 struct TaskPlan: Codable, Equatable, Sendable {
@@ -138,9 +142,17 @@ enum PlanParser {
                 unity = UnityStepParams.parse(raw["unity"]) ?? UnityStepParams()
                 if let bad = raw["unity"].flatMap({ UnityActionParser.forbiddenContent(in: $0) }) { issues.append(.prohibitedOperation(step: id, phrase: "Unity " + bad)); continue }
             }
+            // V0.12: delegated nodes / approval gates carry a goal or the guarded action; `optional` marks a branch whose failure only makes the task PARTIAL.
+            var delegate: DelegateParams?
+            if type.isDelegate || type == .approvalGate {
+                let d = raw["params"] as? [String: Any] ?? [:]
+                delegate = DelegateParams(goal: String((d["goal"] as? String ?? raw["goal"] as? String ?? "").prefix(400)).trimmingCharacters(in: .whitespacesAndNewlines),
+                                          reason: String((d["reason"] as? String ?? "").prefix(300)),
+                                          gateAction: type == .approvalGate ? String((d["action"] as? String ?? d["gateAction"] as? String ?? raw["action"] as? String ?? "").prefix(200)) : nil)
+            }
             steps.append(PlanStep(id: id, title: title, description: (raw["description"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                                   type: type, dependsOn: deps, expected: (raw["expected"] as? String ?? raw["expectedOutcome"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-                                  validation: validation, risk: risk, targets: targets, unity: unity))
+                                  validation: validation, risk: risk, targets: targets, unity: unity, optional: raw["optional"] as? Bool ?? false, delegate: delegate))
         }
         guard issues.isEmpty else { return (nil, issues, keys) }
         return (TaskPlan(summary: (root["summary"] as? String ?? root["goal"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines), steps: steps), [], keys)
@@ -278,8 +290,13 @@ enum PlanValidator {
 
 enum PlannerPrompt {
     static func build(goal: String, kind: TaskKind, projectTree: String, buildCommand: String?, testCommand: String?, constraints: [String], allowDelete: Bool = false, scopeNotes: String? = nil,
-                      unity: UnityPlanContext? = nil) -> String {
+                      unity: UnityPlanContext? = nil, orchestration: PlanningContext? = nil) -> String {
         var allowedTypes = ["analysis", "build", "test", "review"]
+        if let o = orchestration {
+            if o.webAllowed { allowedTypes.append("delegateResearch") }
+            if o.computerAllowed { allowedTypes.append("delegateComputer") }
+            allowedTypes.append("approvalGate")
+        }
         if kind == .development { allowedTypes.insert("codeChange", at: 1) }
         if let unity { allowedTypes += unity.stepTypes(kind: kind) }
         if kind == .development && allowDelete { allowedTypes.append("delete") }
@@ -314,6 +331,7 @@ enum PlannerPrompt {
         \(allowDelete ? "- A \"delete\" step needs \"risk\": \"high\" and \"targets\": [explicit project-relative file paths, no wildcards]; the user must approve it before it runs." : "")
         - Do not invent files or commands that are not shown above.
         \(unity?.promptSection(kind: kind, allowDelete: allowDelete) ?? "")
+        \(orchestration.map { OrchestratorPrompt.section($0, kind: kind) } ?? "")
         """
     }
 

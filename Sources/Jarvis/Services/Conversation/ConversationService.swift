@@ -68,6 +68,8 @@ final class ConversationService {
     @ObservationIgnored weak var researchSubmitter: (any ResearchSubmitting)?
     /// V0.11: operate native macOS applications (typed and spoken requests alike). nil = such requests stay ordinary conversation.
     @ObservationIgnored weak var computerSubmitter: (any ComputerSubmitting)?
+    /// V0.12: status questions ("Durum ne?", "which agent is running?", "did the tests pass?") are answered from the orchestrated task's real graph, not by a model.
+    @ObservationIgnored var graphStatus: ((StatusFocus, ReplyLanguage) -> String?)? { didSet { executor.graphStatus = graphStatus } }
     /// V0.10: Project Memory (remember / correct / forget / "what did we decide…"). Typed and spoken text take this same path; nil = memory is not wired (stubbed runs).
     @ObservationIgnored weak var memoryHandler: (any MemoryConversing)?
     /// Called at the start of every accepted submission (V0.7: a typed message silences speech that is still playing).
@@ -144,6 +146,11 @@ final class ConversationService {
 
         case .reasoningRequired(let prompt, let lang):
             if computerSubmitter != nil, handleComputerIfAny(prompt, language: lang, channel: source) { return decision }
+            // V0.12: a COMPOUND goal about the project ("find the problems, research current docs if needed, fix it, run the tests") is one orchestrated task, even when it mentions research.
+            if let submitter = taskSubmitter, submitter.hasProject, GoalCues.isCompound(prompt) {
+                handleTaskRequest(prompt, intent: GoalCues.fix(prompt) ? GoalIntake.development(for: prompt) : GoalIntake.Intent(kind: .readOnlyAnalysis, destructive: false), language: lang, channel: source, compound: true)
+                return decision
+            }
             // "Research this error / find a free animation / compare these libraries" is a web RESEARCH task (read-only, bounded, cited).
             if researchSubmitter != nil, ResearchIntake.isResearchRequest(prompt) {
                 handleResearchRequest(prompt, language: lang, channel: source)
@@ -156,7 +163,7 @@ final class ConversationService {
 
         case .workerRequired(let prompt, let lang):
             if computerSubmitter != nil, handleComputerIfAny(prompt, language: lang, channel: source) { return decision }
-            if taskSubmitter != nil { handleTaskRequest(prompt, intent: GoalIntake.development(for: prompt), language: lang, channel: source) }
+            if taskSubmitter != nil { handleTaskRequest(prompt, intent: GoalIntake.development(for: prompt), language: lang, channel: source, compound: GoalCues.isCompound(prompt)) }
             else { handleProviderRequest(.worker, prompt: prompt, language: lang, origin: origin, presentation: source == .voice ? .voiceConversation : .text) }
 
         case .unsupported(_, let lang):
@@ -182,14 +189,14 @@ final class ConversationService {
     // MARK: Task path (V0.4)
 
     /// A durable task is created BEFORE any work starts; the reply only confirms what really happened.
-    private func handleTaskRequest(_ prompt: String, intent: GoalIntake.Intent, language: ReplyLanguage, channel: InputSource) {
+    private func handleTaskRequest(_ prompt: String, intent: GoalIntake.Intent, language: ReplyLanguage, channel: InputSource, compound: Bool = false) {
         guard let submitter = taskSubmitter else { return }
         pendingTaskAcks += 1
         Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.pendingTaskAcks -= 1 }
             switch await submitter.submitTask(goal: prompt, intent: intent, channel: channel) {
-            case .started(let title): self.conversation.appendJarvis(Phrasebook.taskStarted(title, readOnly: intent.kind == .readOnlyAnalysis, language), route: .worker)
+            case .started(let title): self.conversation.appendJarvis(compound ? Phrasebook.orchestratedStarted(title, language) : Phrasebook.taskStarted(title, readOnly: intent.kind == .readOnlyAnalysis, language), route: .worker)
             case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
             case .rejected(let why): self.conversation.appendJarvis(why, tone: .notice, route: .worker)
             }

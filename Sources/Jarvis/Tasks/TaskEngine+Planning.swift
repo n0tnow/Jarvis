@@ -48,7 +48,12 @@ extension TaskEngine {
                 note("Context · \(u.packet.stats.selected) memor\(u.packet.stats.selected == 1 ? "y" : "ies") for \(job.type)", .info, taskID: ctx.record.id)
             }
         }
+        // V0.12: a node can never call a provider more often than its role contract allows (repair and escalation included).
+        if providerBudgetExhausted(ctx, job) { return .rejected(.noEligibleProvider("this node used its provider budget")) }
+        let started = Date()
         let result = await runJobLoop(ctx, job)
+        let runMS = Date().timeIntervalSince(started) * 1000
+        recordRouting(ctx, job: job, result: result, runMS: runMS, queueMS: 0, memoryItems: used?.packet.stats.selected, memoryChars: used?.packet.stats.chars)
         if let u = used {
             let runID: UUID?
             switch result { case .completed(_, let id, _, _): runID = id; case .failed(let id, _, _, _): runID = id; case .cancelled(let id): runID = id; case .rejected: runID = nil }
@@ -119,11 +124,17 @@ extension TaskEngine {
         if ctx.record.kind.isWebTask || ctx.research?.importSource != nil { return planWebTask(ctx) }
         // V0.11: computer tasks have a deterministic plan from the user's own words (a model may only propose the NEXT short batch, inside a step).
         if ctx.record.kind == .computer { return planComputerTask(ctx) }
+        // V0.12: the orchestrator plans deterministic shapes itself (no model call); only an open-ended compound goal reaches the planner model below.
+        if let installed = await planOrchestrated(ctx) { return installed }
+        let orchestrating = orchestrationEnabled && (ctx.record.kind == .development || ctx.record.kind == .readOnlyAnalysis) && ctx.record.scope == nil && ctx.research?.importSource == nil
+        let planningStarted = Date()
+        let pc = orchestrating ? await planningContext(ctx) : nil
         let tree = (try? ctx.tools.projectTree(maxEntries: 160)) ?? ""
         let prompt = PlannerPrompt.build(goal: ctx.record.goal, kind: ctx.record.kind, projectTree: tree, buildCommand: ctx.profiles.build?.display,
                                          testCommand: ctx.profiles.test?.display, constraints: ctx.record.constraints, allowDelete: ctx.record.destructiveRequested, scopeNotes: ctx.record.scope?.promptNotes,
-                                         unity: unityPlanContext(ctx))
+                                         unity: unityPlanContext(ctx), orchestration: pc)
         var excluded: Set<RoutingCandidate> = []
+        let dcheck = delegateCheck(ctx)
         let kind = ctx.record.kind, caps = ctx.record.capabilities, allowDestructive = ctx.record.destructiveRequested, scope = ctx.record.scope
         for attempt in 0..<2 {
             if ctx.cancelRequested || Task.isCancelled { return false }
@@ -131,7 +142,12 @@ extension TaskEngine {
             let job = AgentJob(type: "PlannerAgent", title: "Plan · \(ctx.record.title)", prompt: prompt, profile: jobProfile(ctx, nil, promptChars: prompt.count),
                                taskID: ctx.record.id,
                                validator: { text in
-                                   let r = PlanValidator.check(text, kind: kind, capabilities: caps, allowDestructive: allowDestructive)
+                                   var r = PlanValidator.check(text, kind: kind, capabilities: caps, allowDestructive: allowDestructive)
+                                   if orchestrating, r.plan != nil {                       // V0.12: the graph rules (roles, optional nodes, ordering, validation gates) on top of V0.4's
+                                       let g = GraphValidator.check(text, kind: kind, capabilities: pc.map { TaskEngine.graphCapabilities(caps, plan: r.plan!, web: $0.webAllowed, computer: $0.computerAllowed) } ?? caps, allowDestructive: allowDestructive,
+                                                                    delegateCheck: dcheck)
+                                       if g.plan == nil { r = (nil, r.issues + g.issues.map { PlanIssue.prohibitedOperation(step: "graph", phrase: $0) }) }
+                                   }
                                    if let plan = r.plan, let scope {                      // V0.5: a proactive task's plan may not exceed what was approved
                                        let over = scope.planViolations(plan)
                                        if !over.isEmpty { box.set(nil, notes: over + ["scope"]); return BenchmarkSuite.Verdict(passed: false, detail: over.joined(separator: "; ")) }
@@ -143,7 +159,15 @@ extension TaskEngine {
             let result = await runJob(ctx, job)
             switch result {
             case .completed(_, _, _, _):
-                if let plan = box.result { installPlan(ctx, plan); return true }
+                if let plan = box.result {
+                    if orchestrating, let pc {
+                        mutate(ctx) { $0.capabilities = Self.graphCapabilities($0.capabilities, plan: plan, web: pc.webAllowed, computer: pc.computerAllowed) }
+                        ctx.orchestrated = true; ctx.graphTemplate = "model-planned"
+                    }
+                    installPlan(ctx, plan)
+                    if ctx.orchestrated { saveGraph(ctx, template: "model-planned", planner: "model", rationale: "open-ended compound goal planned by the model, validated by JARVIS", plannerChars: prompt.count, plannerMS: Date().timeIntervalSince(planningStarted) * 1000) }
+                    return true
+                }
                 ctx.hardFailure = (.malformedPlan, "The planner returned no usable plan.")
                 return false
             case .cancelled:
@@ -178,6 +202,9 @@ extension TaskEngine {
                                      dependsOn: s.dependsOn, expected: s.expected, validation: s.validation, risk: max(s.risk, s.type.defaultRisk), weight: 1)
             rec.unity = s.unity
             rec.computer = s.computer
+            rec.optional = s.optional
+            rec.delegate = s.delegate
+            rec.revision = ctx.revisionCount
             steps.append(rec)
         }
         try? repository?.insertSteps(steps)

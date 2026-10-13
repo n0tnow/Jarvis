@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7, v8, v9]
+    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -440,5 +440,47 @@ struct Migration: Sendable {
         )
         """,
         "CREATE INDEX idx_computer_observations_session ON computer_observations(session_id, at)",
+    ])
+
+    /// V10 — multi-agent orchestration (V0.12). The graph is the V0.4 plan: `task_steps` already hold nodes and edges (`depends_on`), so they only gain the orchestration
+    /// attributes (optional / revision / delegate parameters / the delegated child task). New tables hold what did not exist: the graph header, bounded structural revisions,
+    /// typed agent artifacts (sanitized, bounded, with provenance and a trust label), and one routing decision per node execution. No chain-of-thought, no raw provider
+    /// conversation, no secret and no page body is stored here.
+    static let v10 = Migration(version: 10, name: "multi-agent orchestration", statements: [
+        "ALTER TABLE task_steps ADD COLUMN optional INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE task_steps ADD COLUMN revision INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE task_steps ADD COLUMN delegate_params TEXT",
+        "ALTER TABLE task_steps ADD COLUMN delegated_task_id TEXT",
+        "ALTER TABLE model_benchmarks ADD COLUMN context_chars INTEGER",
+        "CREATE INDEX idx_tasks_parent ON tasks(parent_task_id)",
+        """
+        CREATE TABLE task_graphs (
+            task_id TEXT PRIMARY KEY, template TEXT NOT NULL, planner TEXT NOT NULL, rationale TEXT, node_count INTEGER NOT NULL, revisions INTEGER NOT NULL DEFAULT 0,
+            planner_chars INTEGER, planner_ms REAL, created_at REAL NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE graph_revisions (
+            id TEXT PRIMARY KEY, task_id TEXT NOT NULL, n INTEGER NOT NULL, reason TEXT NOT NULL, added TEXT, at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_graph_revisions_task ON graph_revisions(task_id, n)",
+        """
+        CREATE TABLE agent_artifacts (
+            id TEXT PRIMARY KEY, task_id TEXT NOT NULL, node_key TEXT NOT NULL, role TEXT, kind TEXT NOT NULL, trust TEXT NOT NULL, provider TEXT, model TEXT,
+            agent_run_id TEXT, attempt INTEGER NOT NULL DEFAULT 1, created_at REAL NOT NULL, inputs TEXT, status TEXT NOT NULL, validation TEXT, content TEXT NOT NULL,
+            content_hash TEXT NOT NULL, chars INTEGER NOT NULL, injection_flags TEXT
+        )
+        """,
+        "CREATE INDEX idx_agent_artifacts_task ON agent_artifacts(task_id, node_key)",
+        """
+        CREATE TABLE routing_decisions (
+            id TEXT PRIMARY KEY, task_id TEXT NOT NULL, node_key TEXT, role TEXT, agent_run_id TEXT, engine TEXT, model TEXT, mode TEXT, reason_text TEXT NOT NULL,
+            reason_json TEXT, independence TEXT, escalation_reason TEXT, failure_class TEXT, outcome TEXT, context_chars INTEGER, memory_items INTEGER, artifact_count INTEGER,
+            file_count INTEGER, handoff_chars INTEGER, queue_ms REAL, run_ms REAL, input_tokens INTEGER, output_tokens INTEGER, cost_class TEXT, created_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_routing_decisions_task ON routing_decisions(task_id, created_at)",
+        "CREATE INDEX idx_routing_decisions_role ON routing_decisions(role, engine, model)",
     ])
 }

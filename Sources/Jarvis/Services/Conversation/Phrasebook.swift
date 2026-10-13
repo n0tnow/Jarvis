@@ -50,6 +50,11 @@ enum Phrasebook {
         pick(l, "On it. I created the task “\(title)” and will plan it, \(readOnly ? "inspect the project" : "work through it, validate the result") and report back. Follow it in Tasks or Agents — say “stop” to cancel.",
              "Başlıyorum. “\(title)” görevini oluşturdum; planlayıp \(readOnly ? "projeyi inceleyeceğim" : "adım adım yürütüp sonucu doğrulayacağım") ve sonucu bildireceğim. Tasks veya Agents ekranından izleyebilirsiniz — iptal için “durdur” deyin.")
     }
+    /// V0.12: a compound goal. Short and speakable: it says what JARVIS will do, not every internal step.
+    static func orchestratedStarted(_ title: String, _ l: ReplyLanguage) -> String {
+        pick(l, "On it. I’ll inspect first and bring in research or the coding and QA agents only if they are needed — “\(title)”. Ask “status” any time; say “stop” to cancel.",
+             "Başlıyorum. Önce inceleyeceğim; gerekirse araştırma ve kod ajanlarını, ardından test ve inceleme adımlarını kullanacağım — “\(title)”. İstediğiniz zaman “durum ne” diye sorabilirsiniz; iptal için “durdur” deyin.")
+    }
     static func researchStarted(_ title: String, _ l: ReplyLanguage) -> String {
         pick(l, "Researching. I created the task “\(title)”: I will search, read the sources and write a cited report — nothing is downloaded, imported or bought. Follow it on the Research screen; say “stop” to cancel.",
              "Araştırıyorum. “\(title)” görevini oluşturdum: arayıp kaynakları okuyacak ve kaynaklı bir rapor yazacağım — hiçbir şey indirilmez, içe aktarılmaz ya da satın alınmaz. Research ekranından izleyebilirsiniz; iptal için “durdur” deyin.")

@@ -193,8 +193,13 @@ enum StepType: String, Codable, Sendable, CaseIterable {
     case researchSearch, researchRead, researchExtract, researchVerify, researchReport, acquire, importAsset
     // V0.11: one typed step = a short batch (1–5) of typed computer actions, each observed → acted → verified; a model may only propose them.
     case computerAct
+    // V0.12 orchestration (DEC-157…): a node that is executed by ANOTHER ordinary V0.4 task (research / computer) which JARVIS starts, supervises and awaits, and an
+    // approval GATE (a graph node that only a HUD approval can release — approving is never an agent's job).
+    case delegateResearch, delegateComputer, approvalGate
 
     var isComputer: Bool { self == .computerAct }
+    /// V0.12: executed by a child task started by the orchestrator.
+    var isDelegate: Bool { self == .delegateResearch || self == .delegateComputer }
     var isResearch: Bool { switch self { case .researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport: true; default: false } }
     var isWeb: Bool { isResearch || self == .acquire }
 
@@ -225,6 +230,9 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .acquire: [.researchWeb, .downloadToQuarantine]
         case .importAsset: [.readProject, .writeProject, .importIntoProject]
         case .computerAct: [.controlComputer]
+        case .delegateResearch: [.researchWeb]
+        case .delegateComputer: [.controlComputer]
+        case .approvalGate: []
         }
     }
     /// Provider-executed (an agent run with a model) vs. deterministic JARVIS tool.
@@ -237,10 +245,12 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport: "ResearchAgent"
         case .acquire: "AcquisitionTool"
         case .importAsset: "AssetImportTool"
-        case .computerAct: "ComputerAgent"
+        case .computerAct, .delegateComputer: "ComputerAgent"
+        case .delegateResearch: "ResearchAgent"
+        case .approvalGate: "ApprovalGate"
         }
     }
-    var defaultRisk: RiskClass { self == .delete || self == .importAsset ? .high : (self == .codeChange || self == .unityEdit || self == .acquire) ? .medium : .low }
+    var defaultRisk: RiskClass { self == .delete || self == .importAsset ? .high : (self == .codeChange || self == .unityEdit || self == .acquire || self == .delegateComputer) ? .medium : .low }
     /// Safe to repeat after an interruption without inspecting the world first.
     var idempotency: Idempotency {
         switch self {
@@ -252,6 +262,9 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .acquire: .retryable             // a partial download is deleted; a restart never resumes it silently (the user resumes explicitly)
         case .importAsset: .manual            // writes into a project: never replayed automatically
         case .computerAct: .inspectFirst      // a resumed step re-observes from scratch; an action whose postcondition already holds is not repeated
+        case .delegateResearch: .retryable    // a finished child is reused if its evidence is still valid; an interrupted one is resumed explicitly
+        case .delegateComputer: .inspectFirst // the child re-observes from scratch
+        case .approvalGate: .manual           // a gate is never replayed automatically: a restart needs a fresh decision
         }
     }
     var label: String {
@@ -262,8 +275,18 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .researchSearch: "Search"; case .researchRead: "Read sources"; case .researchExtract: "Extract"; case .researchVerify: "Verify"; case .researchReport: "Report"
         case .acquire: "Download to quarantine"; case .importAsset: "Import asset"
         case .computerAct: "Computer action"
+        case .delegateResearch: "Research"; case .delegateComputer: "Computer"; case .approvalGate: "Approval"
         }
     }
+}
+
+/// Parameters of a `delegateResearch` / `delegateComputer` node or an `approvalGate`. `goal` is the user's own (or the orchestrator's template) wording; the child task
+/// re-derives its plan from it through the SAME deterministic intake — a handoff can never inject actions.
+struct DelegateParams: Codable, Equatable, Sendable {
+    var goal: String = ""
+    var reason: String = ""
+    /// Gate only: the one action the approval is about (shown on the approval card).
+    var gateAction: String?
 }
 
 enum Idempotency: String, Codable, Sendable {
@@ -297,6 +320,8 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
     case assetImported         // every file was copied with a matching hash and provenance was written
     // V0.11: every action's declared postcondition was OBSERVED afterwards (dispatching an event is never success).
     case computerVerified
+    // V0.12: a delegated child task finished and its own validation record says so; an approval gate was released by a HUD decision (never by text).
+    case researchDelegated, computerDelegated, gateApproved
 
     static func allowed(for type: StepType) -> Set<ValidationKind> {
         switch type {
@@ -314,6 +339,9 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
         case .researchSearch: [.researchSearched]; case .researchRead: [.researchRead]; case .researchExtract: [.researchExtracted]
         case .researchVerify: [.researchVerified]; case .researchReport: [.researchReported]; case .acquire: [.artifactAcquired]; case .importAsset: [.assetImported]
         case .computerAct: [.computerVerified]
+        case .delegateResearch: [.researchDelegated]
+        case .delegateComputer: [.computerDelegated]
+        case .approvalGate: [.gateApproved]
         }
     }
     static func `default`(for type: StepType) -> ValidationKind {
@@ -325,6 +353,9 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
         case .researchSearch: .researchSearched; case .researchRead: .researchRead; case .researchExtract: .researchExtracted
         case .researchVerify: .researchVerified; case .researchReport: .researchReported; case .acquire: .artifactAcquired; case .importAsset: .assetImported
         case .computerAct: .computerVerified
+        case .delegateResearch: .researchDelegated
+        case .delegateComputer: .computerDelegated
+        case .approvalGate: .gateApproved
         }
     }
     /// Plain-language aliases an LLM planner may use (the examples in the product spec) → the real validation.
@@ -398,6 +429,8 @@ struct TaskRecord: Equatable, Sendable, Identifiable {
     var originOpportunityID: UUID?
     var autonomyDepth = 0
     var scope: TaskScope?
+    /// V0.12: the orchestrated task whose graph delegated this task (research / computer node); nil for every other task. A child never reports to the user on its own.
+    var parentTaskID: UUID?
 
     var isTerminal: Bool { state.isTerminal }
 }
@@ -428,6 +461,14 @@ struct TaskStepRecord: Equatable, Sendable, Identifiable {
     var unity: UnityStepParams?
     /// V0.11: the typed actions of a computer step (nil for every other step type).
     var computer: ComputerStepParams?
+    /// V0.12: an OPTIONAL node may fail without failing the task (the task then ends PARTIAL); every other node is required.
+    var optional = false
+    /// V0.12: the graph revision that introduced this node (0 = the original plan).
+    var revision = 0
+    /// V0.12: typed parameters of a delegated node or an approval gate.
+    var delegate: DelegateParams?
+    /// V0.12: the child task that executes a delegated node (research / computer).
+    var delegatedTaskID: UUID?
     var idempotency: Idempotency { type.idempotency }
 }
 
