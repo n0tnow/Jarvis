@@ -615,3 +615,153 @@ Why: memory must not be a magic box.
 Status: Accepted (V0.10)
 Decision: scope is JARVIS projects and project work; no general personal-life memory. Roadmap: V0.11 General Computer Use, V0.12 Advanced Multi-Agent / Routing, V1.0 Integration / Stabilization / Final Voice & UX Polish (supersedes only the V1.0 row wording of DEC-086).
 Why: keeps the privacy surface small.
+
+## DEC-127 — Computer Use is not a new authority system
+Status: Accepted (V0.11)
+Decision: a computer goal is an ordinary V0.4 task (`TaskKind.computer`, step type `computerAct`, capability `controlComputer` only; `captureWindow` only when the vision fallback is on). It goes Conversation → Goal Intake → TaskEngine → approval policy (HUD buttons only) → Context Builder → typed action → observe → act → verify. It uses the same states, approvals, cancellation, persistence, reports and restart rules; it cannot bypass the Task Engine, approvals, the memory truth hierarchy, ResourceManager, sanitization or any V0.4/V0.6/V0.9 safety rule. Only the user (typed or spoken) or an approved proposal can start one.
+Why: the less a new power can do on its own, the less can go wrong.
+
+## DEC-128 — The capability ladder: stronger, structured mechanisms outrank the GUI
+Status: Accepted (V0.11)
+Decision: A typed JARVIS capability (V0.4 project tools, V0.6 Unity bridge) > B structured integration > C controlled CLI > D V0.9 browser DOM > E macOS Accessibility/NSWorkspace > F window-scoped vision > G window-relative coordinates. `CapabilityResolver` claims a goal for the stronger rung first (source edits, file creation/rename, Unity scene/component/compile/test/Console, web research, Git → never Computer Use); Computer Use gets only what is left. Accessibility outranks vision; vision outranks raw coordinates; raw coordinates are the final fallback only.
+Why: a typed, verifiable path is safer and more reliable than clicking; GUI is for what has no other door.
+
+## DEC-129 — Every meaningful UI action is observe → resolve → policy → act → observe → verify
+Status: Accepted (V0.11)
+Decision: no blind macros (no fixed-coordinate scripts, recorded mouse paths or `sleep→click→sleep→click`); waits are conditions with backoff and named timeouts; each action type has declared postconditions; "the event was dispatched" is never success; plans are 1–5 actions then observe and re-plan.
+Why: UIs change; the only safe click is one whose target was just seen and whose effect is checked.
+
+## DEC-130 — Typed actions only
+Status: Accepted (V0.11)
+Decision: the action set is closed (observe, launch/activate/quit application, focus/minimize/restore/close window, press element, select menu item, set/type text, press key/shortcut, scroll, open/reveal file, open Settings pane, capture window, vision press). There is no "execute command/script", no AppleScript/Apple Events/JavaScript, no arbitrary key chord, no URL opening, no model-supplied coordinate. The model-facing action type has no coordinate field and a model proposal containing coordinates, scripts or shell lines is rejected whole.
+Why: what cannot be expressed cannot be abused.
+
+## DEC-131 — Semantic target resolution with interpretable states
+Status: Accepted (V0.11)
+Decision: targets are app (bundle id first) · window title · role · label · identifier · ancestor label · a user-given ordinal; resolution is EXACT / STRONG / AMBIGUOUS / NOT_FOUND / STALE — no fake percentages. Identical matches are never guessed (context from the user's words, the open dialog or the focus can separate them; otherwise the task stops AMBIGUOUS). Several similar windows are told apart by title, not z-order.
+Why: the cost of pressing the wrong "Apply" is higher than the cost of asking.
+
+## DEC-132 — Short-horizon planning; a model proposes, JARVIS validates and verifies
+Status: Accepted (V0.11)
+Decision: the plan comes from the user's own words (deterministic EN/TR parser); open-ended goals run bounded rounds (≤ 4) in which a model may propose the NEXT ≤ 3 actions as JSON (allowed apps only, allowed kinds only, observation inside an untrusted-data fence, privacy `sensitive` so labels never go to the free cloud pool). "Done" is believed only if JARVIS observes the declared postcondition; a model-proposed medium action asks first. The local Qwen model is not used for computer planning in V0.11 (not benchmarked for UI interpretation; it must never interpret security-critical dialogs).
+Why: models are good at choosing the next step, bad at being trusted.
+
+## DEC-133 — Risk comes from the semantic consequence; approvals bind to one action
+Status: Accepted (V0.11)
+Decision: `ConsequenceClassifier` classifies the control's own label (EN/TR) — an "OK" may save, delete, buy or send. Context text (a dialog's body) can only RAISE the risk of a generic confirm button; it can never lower anything or grant anything. Purchase, account action, credential entry, install/update, privacy grant, security/system setting, send, publish, force-quit, command execution and opening quarantined/executable files are BLOCKED with no approval path; delete/overwrite/submit/quit/close ask (HUD button, one action, per-action nonce — an old approval is never a new permission); medium actions the user named run, the same proposed by a model ask.
+Why: a button's control type says nothing about what it does.
+
+## DEC-134 — Coordinate safety
+Status: Accepted (V0.11)
+Decision: four explicit spaces (AppKit bottom-left · global top-left · image pixels · Vision normalized); Retina and multi-display layouts (negative coordinates, mixed scale) are converted natively; a click point is window-relative, inside the window, inside VISIBLE screen space (menu bar and Dock excluded), on the topmost window at that point; no Dock/menu-bar coordinate automation. macOS drops mouse events aimed at a single process (measured), so the one coordinate click goes through the system event stream as a single down/up pair and the pointer is restored.
+Why: coordinates are where silent wrong clicks come from.
+
+## DEC-135 — Screenshots are window-scoped, memory-only, local
+Status: Accepted (V0.11)
+Decision: one window per capture (never the desktop), held in memory, never encoded or written, released immediately; Screen Recording is requested only by the explicit Settings button when the user enables the vision fallback; the vision provider is on-device text recognition (Apple Vision; no model download, no network, no key). A cloud/paid/model vision provider is NOT wired (`UnavailableModelVision`): no verified-free, privacy-safe route exists. Metadata (size, hash, provider, `persisted = 0`) is audited, never pixels.
+Why: a screenshot can contain anything; the safest copy is none.
+
+## DEC-136 — Vision proposes; JARVIS validates; the action layer decides
+Status: Accepted (V0.11)
+Decision: vision returns a labelled region of ONE window image. The action layer re-checks freshness (age, app, title, frame, image fingerprint), bounds (window + visible screen), occlusion, policy (the recognised text goes through the same consequence classifier) and user activity before a single click, then verifies the result.
+Why: a perception result is evidence, not authority.
+
+## DEC-137 — Stale-screen protection and action fingerprints
+Status: Accepted (V0.11)
+Decision: an observation is valid only while the world matches it (≤ 6 s, same app frontmost, same window title, frame ±1.5 pt, not minimized, image hash within 8 bits); a resolved AX target carries a fingerprint (pid, bundle, window, role, label, identifier, frame, generation) re-checked right before the action. Mismatch → STALE → re-observe (once for vision) → refuse.
+Why: never click on an old picture.
+
+## DEC-138 — Permissions: never bypassed, never self-granted, requested just in time
+Status: Accepted (V0.11)
+Decision: Accessibility is required for observing and operating other applications and its absence is reported truthfully ("Permission required") — the task fails, nothing is attempted. Screen Recording is needed only for the vision fallback. Apple Events/Automation and Input Monitoring are not used. JARVIS only opens the right System Settings pane from an explicit button; it never touches TCC, never toggles a permission, never changes a security/privacy setting. No privacy permission is requested at launch.
+Why: least privilege, and the user alone grants.
+
+## DEC-139 — Secure fields, passwords and the Keychain
+Status: Accepted (V0.11)
+Decision: secure text fields are never read, set, typed into or copied (the tree builder never fetches their value; the backend refuses at three places; the policy blocks the action as USER INTERACTION REQUIRED); text shaped like a password or secret is never typed; the Keychain is never searched or used as a credential source; password managers and Keychain Access are not driven or observed. JARVIS is not a credential manager.
+Why: a credential should exist where the user typed it and nowhere else.
+
+## DEC-140 — The clipboard is sensitive
+Status: Accepted (V0.11)
+Decision: never monitored or polled, never read except to restore, never persisted, never sent to a model. A temporary write for a paste is restored afterwards unless the user copied something newer in the meantime.
+Why: it routinely holds secrets.
+
+## DEC-141 — No bypass of shell/tool restrictions through another application
+Status: Accepted (V0.11)
+Decision: typing, setting text or pressing keys in Terminal/iTerm/Warp/Script Editor/Automator or any console-like element (IDE terminal, Python console, DevTools, Immediate Window) is blocked; "open Terminal and run …" is refused as a request; messaging apps receive no keystrokes; no AppleScript/osascript/JavaScript path exists.
+Why: typing a command elsewhere is running it.
+
+## DEC-142 — UI text is untrusted observation, minimally extracted
+Status: Accepted (V0.11)
+Decision: labels, titles and values are bounded data. Document text is not extracted (text areas and web areas report a length only), secure fields report nothing, values are capped at 120 characters. A model sees only window titles and control labels inside an untrusted-data fence; a label can raise a risk, never lower it, never grant authority and never change a rule.
+Why: an application's text can be written by anyone.
+
+## DEC-143 — What Computer Use will and will not press
+Status: Accepted (V0.11)
+Decision: it never presses buy/subscribe/pay, sign-in/authorize/accept-terms, install/update, allow/grant, send/post/reply, publish/deploy/push, force-quit; it asks before delete/erase/trash/don't-save/overwrite/submit/quit/close; Finder's menu cannot trash/open/duplicate files; Settings switches and pop-ups are never touched; notifications are not clicked.
+Why: V0.9 purchase/account rules, V0.4 deletion policy and the "no external side effects" rule hold for the GUI too.
+
+## DEC-144 — Keyboard shortcuts are an allowlist
+Status: Accepted (V0.11)
+Decision: only listed chords execute (⌘F/O/L/T/N/A/C/Z/⇧⌘Z/⌘,/⌘1…⌘9 low; ⌘S/⇧⌘S/⌘W/Return medium); ⌘Q/⌘⌫ ask; force-quit, lock, Spotlight, log-out and empty-Trash chords are blocked; unknown chords never execute; Return with a dialog in front is judged as its default button; keys go only to the application they were planned for while it is frontmost.
+Why: a key chord is a hidden button.
+
+## DEC-145 — Files, URLs and the quarantine
+Status: Accepted (V0.11)
+Decision: `openFile`/`revealFile` only through `ComputerPathPolicy` (absolute, `realpath`, no traversal, no credential locations, never the V0.9 quarantine, never executable/installer types; revealing is allowed for any non-secret path); there is no generic URL action and Settings panes are a fixed enum. Computer Use cannot open a downloaded executable merely because it can click it.
+Why: the quarantine has to hold against every door.
+
+## DEC-146 — Unity and the browser keep their structured paths
+Status: Accepted (V0.11)
+Decision: Unity scene/component/compile/test/Console work always resolves to the V0.6 bridge; Computer Use may only bring the editor to the front or look at a harmless dialog. Web reading always resolves to V0.9; desktop clicking in a browser is not used for research.
+Why: the structured path is verifiable and already safe.
+
+## DEC-147 — Cancellation, emergency stop and user precedence
+Status: Accepted (V0.11)
+Decision: one stop token per task is set before the engine cancels, and an in-flight executor sends nothing further (typing is chunked with a check between chunks; waits end). Emergency stop = hold ⌃⌥⌘ (permission-free modifier sampler, 40 ms, 2 samples), running ONLY while a computer session runs; it stops all sessions and cancels the tasks; it kills nothing else. Before acting in the app the user is working in, an idle-time probe pauses JARVIS while keys/clicks are happening; geometry/focus changes make old targets STALE.
+Why: the user must always be able to move the mouse, type, switch app and stop JARVIS.
+
+## DEC-148 — Retries, timeouts, hung applications
+Status: Accepted (V0.11)
+Decision: actions are classed safe / verify-first / unsafe; retries ≤ 2, only for safe/verify-first, only while the fingerprint still matches; unsafe actions are never repeated; launch (20 s), window (6 s), AX response (1.5 s), verification (4 s), vision (20 s) have named timeouts and are reported honestly; a non-responsive application is reported and never force-quit.
+Why: no infinite find→click→fail→click loops.
+
+## DEC-149 — Sessions are audited metadata, never content
+Status: Accepted (V0.11)
+Decision: schema v9 (`computer_sessions`, `computer_actions`, `computer_observations`) stores the goal, applications, capability rung, action kind/risk/status/verification/approval/timing, a typed text's class and length, and observation counts/sizes/hash with `persisted = 0`; no Accessibility tree, no pixels, no typed text, no clipboard. Events are bounded and collapsed; the task report has a Computer Use section.
+Why: auditability without a surveillance archive.
+
+## DEC-150 — GUI sessions never resume silently
+Status: Accepted (V0.11)
+Decision: after a restart (or a crash) a running or approval-waiting computer session becomes INTERRUPTED (a waiting task is not re-created); only an explicit Resume continues it, and Resume re-checks the permission, finds the app and window again, re-observes everything and asks for approval again (the old one is dead). Nothing is ever clicked from old coordinates.
+Why: the screen at restart is not the screen at the plan.
+
+## DEC-151 — Memory integration (context yes, UI state no)
+Status: Accepted (V0.11)
+Decision: a computer task fetches ONE bounded `ComputerAgent` packet (constraints/decisions, ≤ 1800 chars, ≤ 5 items; ids audited in `memory_context_uses`) and gives it to planning prompts; live observations always win over memory; ordinary UI observations ("Xcode is open", window geometry) never become memory (the completion path is an explicit no-op for computer tasks).
+Why: memory carries project constraints, not transient screens.
+
+## DEC-152 — Voice uses the same path
+Status: Accepted (V0.11)
+Decision: a spoken "Xcode'u aç" is `ConversationService.submit(source: .voice)` → the same classification → the same task → short acknowledgement; there is no voice-specific automation engine; a spoken "yes" never approves.
+Why: one pipeline, one set of rules.
+
+## DEC-153 — The proactive layer cannot start GUI control
+Status: Accepted (V0.11)
+Decision: `OpportunityPolicy` turns any assessment needing `controlComputer`/`captureWindow` into an approval decision, `submitComputer` refuses `proactiveAutoAction`, and observation exists only during an active authorized task (no watching the screen for opportunities).
+Why: observation must not become surveillance.
+
+## DEC-154 — Nothing observes while idle
+Status: Accepted (V0.11)
+Decision: no Accessibility traversal, screenshot, clipboard read or application polling happens when no computer task exists; the only timer in the Computer layer is the emergency-stop sampler, started with the first session and stopped with the last; the OCR/capture path is created on demand and released.
+Why: JARVIS idles at ~0 % CPU and watches nothing.
+
+## DEC-155 — Resource policy
+Status: Accepted (V0.11)
+Decision: under memory pressure the vision fallback becomes unavailable and Computer Use continues AX-only; a vision/OCR request holds no model and releases its buffers; Accessibility actions are never made dependent on vision.
+Why: correctness must not depend on the heavy path.
+
+## DEC-156 — A JARVIS-owned fixture for real tests; live-test discipline
+Status: Accepted (V0.11)
+Decision: `build/JarvisFixture.app` (a separate bundle, `com.jarvis.fixture`, no permissions or entitlements) is the only target of real presses, typing, scrolling and clicks; it only counts and writes a JSON state file (never the password's content). Real Finder / System Settings / Blender / Unity runs are navigation or activation only; nothing in a user project, no toggle in System Settings, no real credential or purchase is ever involved. `--computer-live-test` reports Accessibility as BLOCKED rather than weakening anything.
+Why: tests that press things need something safe to press.

@@ -63,3 +63,6 @@ Unity Asset Store and any login-bound "free" asset (account authority); `.unityp
 ## V0.10 — asset memory
 
 Acquisitions that reached READY_FOR_IMPORT, and imports, become asset-decision memories linked to the acquisition / import task and the destination (`modifies file:…`). They record what happened and why, not a permission: a later download or import still goes through the full V0.9 policy and approvals.
+
+## V0.11 — quarantine and Computer Use
+Nothing in the quarantine (`acquisitions/`) is ever opened by Computer Use (`ComputerPathPolicy` refuses the quarantine root and every executable/installer type — `.app .pkg .dmg .sh .scpt .command …`, even outside it), and Finder's menu cannot open, trash or duplicate files. Import still goes only through `AssetImporter` (an approval-gated V0.4 task); installing downloaded software has no code path.

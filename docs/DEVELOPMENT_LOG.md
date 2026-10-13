@@ -384,3 +384,34 @@ DEC-104 … DEC-126.
 
 ### Remaining Work
 User manual test (README 464–583). V0.11 only with approval. No tag.
+
+## 2026-10-13 — V0.11 General Computer Use
+
+### Goal
+Let JARVIS operate ordinary macOS applications when no structured mechanism exists — observable, typed, bounded, policy-controlled, verifiable, cancelable — without becoming "a model clicking screenshot coordinates" and without a new authority.
+
+### Changes
+`Sources/Jarvis/Computer/` (model, consequence policy + shortcuts + paths + text classes, capability ladder, EN/TR goal parser + app catalog, semantic target resolver, coordinate/stale/fingerprint logic, `UIBackend` seam, `AXBackend` — the only Accessibility/CGEvent file, window-scoped ScreenCaptureKit capture + Apple Vision OCR, clipboard guard, observe→act→verify executor, bounded planner, adapters, runtime + ⌃⌥⌘ emergency sampler, view model) · `Tasks/TaskEngine+Computer.swift` (`TaskKind.computer`, step `computerAct`, capability `controlComputer`/`captureWindow`, sessions, adaptive rounds, report lines, restart rules) · schema v9 + `ComputerRepository` · conversation/voice route (`ComputerSubmitting`) · proactive policy guard · Computer screen + Settings section · `JarvisFixture` (separate test-dummy app) · `--computer-live-test` · 27 new verify.sh guards (plus narrow exemptions in 10 existing ones) and 7 smoke checks · 120 unit tests with a virtual macOS (`FakeUI`) · docs `GENERAL_COMPUTER_USE.md`, DEC-127…156, JARVIS-V11-1…18, README 584–703.
+
+### Research (details in `docs/GENERAL_COMPUTER_USE.md` §14)
+Vision: cloud/model routes rejected (text-only subscription CLIs, privacy, no verified-free image route); a local VLM rejected (RAM); Apple Vision text recognition chosen (free, on-device, 0.2–0.5 s per window) — VISION FALLBACK local OCR live-validated, model vision unavailable. macOS facts measured on this Mac: synthetic mouse events aimed at one process (`postToPid`) are ignored by AppKit → the click uses the system event stream with the pointer restored; AppKit's scroll-by-page action is advertised but unsupported → the scroll bar's `AXValue` is set instead; NSTabView tab buttons report selection in `AXValue`; a modal `NSAlert.runModal` window has subrole AXDialog with `AXModal`, a sheet is an AXSheet child of its window; the Dock keeps an invisible full-display window on every screen (layer 20) that must not count as "covering".
+
+### Real findings (found by the live runs; all fixed)
+* Pressing in "the front window" after the app opened a second window hit the wrong window → every window-scoped action and its verification now use the window the user named (several similar windows are told apart by title).
+* A modal dialog window's own controls were flagged "covered by a dialog" → a dialog-type window is modal as a whole, a normal window with a sheet only below the sheet.
+* Radio/tab selection was invisible (`AXSelected` unset) → selection also reads `AXValue == 1`.
+* `AXScrollToVisible` / `AXScrollDownByPage` are listed but unsupported by AppKit scroll views, wheel events posted to a process did nothing, and rows outside a 40-child cap were never seen → scroll-bar `AXValue` jump computed from geometry (only when the tree is not truncated) then stepped scrolling with frame-aware change detection; `AXVisibleChildren` is preferred for huge containers; an element that exists in the tree is not necessarily visible.
+* The vision click never arrived (`postToPid` mouse events dropped) → single HID down/up with the pointer restored, preceded by an occlusion check (and the Dock's invisible full-display window is ignored — found on the third display).
+* Verifying "state changed" on an action that does not change visible state looped through three 4 s retries → declarative, idempotent postconditions for the live fixture tasks; retries stay bounded.
+* A left-over modal alert kept the previous fixture alive (a polite quit is pending behind a modal) → the live test force-ends its OWN dummy app.
+* Structural guards caught: permission-gated APIs and pasteboard words in the new files (narrow exemptions), `requestAccess…` naming (renamed), `source: .voice` in the live test, a `Preferences` comment containing a forbidden word.
+
+### Results
+Unit 1258 (176 suites; 120 Computer) · `scripts/verify.sh` PASSED · smoke 132/0/2 · idle 0.02 CPU-s/8 s, 73 MB · `--computer-live-test` (release) 88 passed / 0 failed / 2 skipped (Xcode not installed; no Unity Editor running) — Accessibility GRANTED to the session running the test; three displays incl. Retina; measurements in `GENERAL_COMPUTER_USE.md` §13.
+
+### Decisions
+DEC-127 … DEC-156.
+
+### Remaining Work
+User manual test (README 584–703). V0.12 only with approval. No tag.
+

@@ -202,3 +202,6 @@ Wake mode and hands-free turns are unchanged. A research started by voice behave
 ## V0.10 note
 
 Hands-free turns and barge-in are unchanged; a memory question asked after the wake word takes the same path as a typed one. Voice code has no memory API (`verify.sh` voice-authority guards still pass).
+
+## V0.11 — wake word and Computer Use
+Wake is activation, not authentication (unchanged): "Jarvis, open Finder" after a wake reaches the same conversation path as typed text and creates a computer task under the same rules; nothing about the wake sentinel, VAD or barge-in touches Computer Use, and Computer Use never reads the microphone. The emergency stop is a modifier chord (⌃⌥⌘) sampled only while a computer session runs, separate from the HUD chords (⌥⌘ / ⌥⌘⌘) and Push-to-Talk (right ⌥): holding Control first prevents the HUD chord.

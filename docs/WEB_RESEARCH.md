@@ -104,3 +104,6 @@ See `KNOWN_ISSUES.md` JARVIS-V09-1…12: no human validation; Unity Asset Store 
 ## V0.10 — research memory
 
 Completed, validated research sessions become ONE research finding plus asset decisions (recommended / alternative / rejected **with the recorded reason**) that point at the V0.9 records; nothing from a page, a snippet or an injected instruction is ever copied. Price/licence findings are `currentSensitive` (stale after 24 h) and must be re-verified through this pipeline before they are used for an action.
+
+## V0.11 — the browser boundary
+Web reading stays on the V0.9 path (HTTP + the read-only WebKit tier). Computer Use never clicks around in a desktop browser for research, never touches cookies, sessions or profiles, never opens a URL (no URL action exists) and cannot reach the V0.9 purchase / sign-in / account boundary by clicking: "Buy", "Checkout", "Sign in", "Authorize", "Accept terms" and price-labelled buttons are blocked forever by the consequence classifier.

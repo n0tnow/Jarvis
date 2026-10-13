@@ -461,3 +461,77 @@ Description: DECISIONS, KNOWN_ISSUES, AGENTS, DEVELOPMENT_LOG (+ Unity inspectio
 ### JARVIS-V10-10 — Pre-existing Swift 6 warnings
 Status: Open · NON-BLOCKING
 Description: a few `lock()`-in-async warnings remain in older live-test code (warnings only in Swift 5 mode).
+
+## V0.11 — General Computer Use
+
+### JARVIS-V11-1 — Not used by a human yet
+Status: Open · MANUAL TEST REQUIRED
+Description: everything is automated-tested (120 unit tests on a virtual macOS) and REAL TESTED by `--computer-live-test` (real Accessibility against a JARVIS-owned fixture, real Finder/System Settings/Blender) — no person has used the Computer screen, the approval flow with real applications, the emergency chord or the voice path. See README 584–703.
+
+### JARVIS-V11-2 — Xcode was not installed on the development Mac
+Status: Open · NOT LIVE-VALIDATED
+Description: only the Command Line Tools are installed, so "open the JARVIS project in Xcode", Xcode Settings and the ⌘1…⌘9 navigators are plan-tested (parser + policy + virtual macOS), not run against Xcode. The same typed actions were exercised live against the fixture, Finder and System Settings.
+
+### JARVIS-V11-3 — Custom-drawn applications expose little to Accessibility
+Status: Open · by design
+Description: Blender's Accessibility tree is 7 nodes (window, menu bar); its editors and 3D viewport are not exposed. The window-scoped vision fallback can locate *text* in them (79 regions recognised in the Blender window) but V0.11 makes no attempt at modelling, and does not press inside the viewport.
+
+### JARVIS-V11-4 — The vision fallback is on-device text recognition only
+Status: Open · by design
+Description: it finds controls that carry visible text (en/tr). Icon-only controls, text rendered as images, low-contrast labels and languages the recogniser lacks cannot be located; a model-based vision provider is deliberately not wired (no verified-free, privacy-safe route; `UnavailableModelVision`). VISION FALLBACK: local OCR live-validated · model vision NOT available.
+
+### JARVIS-V11-5 — A coordinate click moves the real pointer
+Status: Open · by design
+Description: macOS ignores synthetic mouse events aimed at one process (measured), so the final-rung click goes through the system event stream as one down/up pair; the pointer is put back afterwards and the click is refused while the user is using the mouse or keyboard. Accessibility actions never move the pointer.
+
+### JARVIS-V11-6 — Large containers are read partially
+Status: Open · by design
+Description: the tree is bounded (≤ 250 nodes, depth 9, ≤ 40 children of one container unless the app offers `AXVisibleChildren`). A row of a 10 000-row table that is not among the first children or the visible children is not seen until the content is scrolled; a truncated tree is reported as such and scroll distances are then stepped, not computed.
+
+### JARVIS-V11-7 — Spaces, full-screen apps and Stage Manager
+Status: Open · NON-BLOCKING
+Description: Accessibility lists the windows of the current Space; a window on another Space or a full-screen app that macOS did not bring forward is "not found", honestly. No private API is used to switch Spaces.
+
+### JARVIS-V11-8 — Some UI is not automated
+Status: Open · by design
+Description: open/save panels (a modal panel is detected and never clicked through; `openFile` is the typed way), drag and drop, notifications, Dock and menu-bar extras are not operated. "Export this file to a specific safe location" through a save panel is therefore not supported in V0.11.
+
+### JARVIS-V11-9 — Consequence recognition is English and Turkish
+Status: Open · NON-BLOCKING
+Description: the label classifier knows EN/TR words and price patterns. A destructive or purchasing control labelled in another language is not recognised by its label; the mitigations are the blocked kinds (secure fields, terminals, Finder file menu items, System Settings switches), the dialog-context rule for generic confirm buttons and that every medium/high action from a *model* asks. Add vocabulary before using JARVIS with other languages.
+
+### JARVIS-V11-10 — The emergency chord and the interference probe are not physically tested
+Status: Open · MANUAL TEST REQUIRED
+Description: the ⌃⌥⌘ sampler is measured with scripted modifiers (75 ms to trigger); a real hold, and the real idle-time probe (`CGEventSource.secondsSinceLastEventType`), were exercised with an injected "user is typing" probe only.
+
+### JARVIS-V11-11 — Model-assisted planning has not run on a real model
+Status: Open · NON-BLOCKING
+Description: the bounded planner (prompt, JSON schema, forbidden keys, allowed apps, verified "done") is unit-tested with a scripted runner; automated runs must never spend quota and the live test makes no model request. The deterministic EN/TR parser covers the acceptance scenarios.
+
+### JARVIS-V11-12 — Window titles are the disambiguator
+Status: Open · by design
+Description: two windows with the same (or empty) title cannot be told apart by name; a dialog's empty title is handled by "the dialog comes first". Such cases stop as AMBIGUOUS rather than guess.
+
+### JARVIS-V11-13 — Hung applications are unit-tested only
+Status: Open · NON-BLOCKING
+Description: a really non-responsive application could not be produced safely; the 1.5 s messaging timeout, "application not responding" result and the no-force-quit rule are covered by the virtual macOS tests.
+
+### JARVIS-V11-14 — macOS may refuse to bring an app forward
+Status: Open · by design
+Description: focus rules (cooperative activation) can refuse an activation; JARVIS verifies the frontmost application and reports "did not become frontmost" instead of assuming. Key-based actions then stop as STALE.
+
+### JARVIS-V11-15 — The adapter set is small
+Status: Open · NON-BLOCKING
+Description: Finder, Xcode (navigators/Settings), Blender (notes), System Settings (navigation) and Unity (activate). Other applications use the generic Accessibility layer.
+
+### JARVIS-V11-16 — The fixture adds a second executable to the package
+Status: Open · NON-BLOCKING
+Description: `JarvisFixture` is built by `swift build`/`scripts/build_app.sh` (a ~300-line AppKit file); it is never inside `Jarvis.app`.
+
+### JARVIS-V11-17 — Per-key typing is slow
+Status: Open · NON-BLOCKING
+Description: when a field does not accept a direct value, `typeText` posts 8 characters per ~6 ms plus the target's own processing (≈ 20–60 ms per character in the fixture) — fine for a name, slow for a paragraph. Text longer than 2000 characters is refused.
+
+### JARVIS-V11-18 — Pre-existing Swift 6 warnings
+Status: Open · NON-BLOCKING
+Description: unchanged from V0.10 (older live-test code); none in the Computer layer.

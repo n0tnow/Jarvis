@@ -198,3 +198,22 @@ Full HUD ▸ MEMORY (MemoryViewModel) · Settings ▸ Project memory
 ```
 `Sources/Jarvis/Memory/`: `MemoryModel`, `MemoryText` (+ `MemoryGate`), `MemoryService`, `MemoryTruth`, `ProjectIdentity`, `MemoryIntent`, `MemoryIngest` (parsers · `MemoryIngestor` · `ModelMemoryExtractor`), `MemoryRetrieval`, `MemoryIndex`, `EmbeddingRuntime`, `ProjectContextBuilder`, `MemoryAnswer`, `ProjectMemory` (facade), `MemoryViewModel`; `Persistence/MemoryRepository`; `UI/FullHUD/Memory/MemorySectionView`, `UI/Settings/MemorySettingsSection`; helper `scripts/memory-ai/jarvis_embed_worker.py` + `scripts/setup_memory_ai.sh`; benchmark `scripts/memory-ai/bench/`; live test `App/MemoryLiveTest.swift`.
 Rules: memory is context, never authority; current project truth outranks it; the index is derived; nothing runs while idle.
+
+## V0.11 — General Computer Use
+
+```
+Conversation / voice ─▶ GoalIntake (ComputerGoalParser: capability ladder first) ─▶ TaskEngine (TaskKind.computer)
+        │                                                                   │ approvals (HUD only) · cancel · restart rules
+        ▼                                                                   ▼
+  stronger rung owns it?                             TaskEngine+Computer: plan (deterministic) / bounded model rounds
+  V0.4 tools · V0.6 Unity · V0.9 web · Git                         │
+        (normal path continues)                                     ▼
+                                          ComputerExecutor: OBSERVE ▸ RESOLVE ▸ POLICY ▸ ACT ▸ OBSERVE ▸ VERIFY
+                                              │  TargetResolver · ComputerPolicy · Coordinates/StaleCheck · retries/timeouts
+                                              ▼
+                                       UIBackend (protocol) ── AXBackend (real: AX, NSWorkspace, CGEvent, CGWindowList)
+                                                           └── ScreenCapture (ScreenCaptureKit + Apple Vision OCR)
+                                                           └── FakeUI (tests: a virtual macOS)
+```
+
+`ComputerRuntime` owns the backend, permissions (truthful, never prompting), vision gating (setting + permission + memory pressure), the timeline and the emergency-stop sampler (running only while a session runs). `Computer/` knows nothing about memory content, approvals' decisions or providers; `TaskEngine+Computer` is the only caller of the executor. Details, limits and measurements: `GENERAL_COMPUTER_USE.md`.

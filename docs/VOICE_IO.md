@@ -200,3 +200,6 @@ A spoken research request ("Hamam oyunum için ücretsiz bir kova modeli araşt�
 ## V0.10 — spoken memory questions
 
 A spoken "Playwright hakkında ne karar vermiştik?" is a normal final transcript: `ConversationService.submit(source: .voice)` → `ProjectMemory.recognizes/reply`. The answer is the same as typed; its final `Sources:`/`Kaynaklar:` line is **never read aloud** (`SpeechRenderer` drops it); there is no voice-specific memory path and spoken "yes/approve" still approves nothing.
+
+## V0.11 — spoken computer requests
+"Jarvis, Xcode'u aç" is `ConversationService.submit(source: .voice)` → the same classification → the same computer task (`inputChannel = .voice`, informational only) → a short Turkish/English acknowledgement ("Tamam — bunun için Mac'inizi kullanıyorum … durdur …"). There is no voice-specific automation engine; a spoken "yes/approve" never approves (HUD buttons only); "stop" stops the task. Live-tested with the typed-equivalent of a spoken "Finder'ı aç" through the real conversation service (the microphone/STT path is covered by the V0.7/V0.8 tests).

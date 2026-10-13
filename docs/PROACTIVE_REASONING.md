@@ -103,3 +103,6 @@ The proactive layer may *propose* a research ("the task failed with an unknown A
 ## V0.10 — memory as context only
 
 `OpportunityEngine.modelAssess` may prepend a proactive-kind packet (constraints and decisions, ≤ 1,500 characters) to its assessment prompt. `OpportunityPolicy` never reads memory (guarded by `verify.sh` and a test): a remembered suggestion grants nothing, a remembered approval approves nothing, and confidence still never outranks policy.
+
+## V0.11 — the proactive layer and Computer Use
+V0.5 may *notice* ("Xcode seems to need attention") but it can never start GUI control: `OpportunityPolicy` maps any assessment that requires `controlComputer`/`captureWindow` to **requireApproval** (reason `computerUse`), `TaskEngine.submitComputer` refuses `TaskOrigin.proactiveAutoAction`, and observation exists only during a user-authorized computer task (no watching the screen for opportunities). The proactive layer never imports the Computer layer (verify.sh).

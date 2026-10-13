@@ -133,3 +133,6 @@ Research reads the connected project's facts read-only (Unity version, render pi
 ## V0.10 — Unity facts vs memory
 
 The Unity descriptor (version, render pipeline, test framework, packages) is read fresh as **truth** (`ProjectTruth`: `unity.version`, `unity.pipeline`, `unity.tests`, `unity.package:<id>`) and shown in the agent's packet *separately* from memory; a memory that disagrees (e.g. an old Unity version) is superseded by an inspection-derived record, never silently kept current. Unity agents get constraints, decisions, known issues/failures, asset decisions and project facts for the area at hand.
+
+## V0.11 — Unity and the GUI
+The V0.6 bridge stays primary. `CapabilityResolver` claims every Unity scene/component/compile/test/Console goal for it before Computer Use sees it. Computer Use may only **activate** a running Unity Editor ("switch to Unity" — verified frontmost) or look at a harmless dialog; it never launches an editor (the placeholder bundle id `com.unity3d.UnityEditor5.x` matches any running `com.unity3d.UnityEditor*`), never presses inside the editor, never types into the Console. Not live-tested against a running editor in V0.11 (none was open); the resolver preference is tested.
