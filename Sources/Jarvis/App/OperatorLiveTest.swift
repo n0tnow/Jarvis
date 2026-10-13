@@ -350,9 +350,9 @@ enum OperatorLiveTest {
 
         // ------------------------------------------------------------ 8. engine scenarios (ENGINE: scripted planner, REAL editor): visual correction
         let repo = context.repository!
-        func git(_ args: [String]) async {
+        func git(_ args: [String], in dir: String? = nil) async {
             _ = await ManagedProcess.runOnce(executable: "/usr/bin/git", arguments: ["-c", "user.name=JARVIS Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false"] + args,
-                                             environment: ProviderEnvironment.make(), workingDirectory: project, timeout: 60)
+                                             environment: ProviderEnvironment.make(), workingDirectory: dir ?? project, timeout: 60)
         }
         func scriptedEngine(_ planText: String) -> TaskEngine {
             let runner = ScriptedAgentRunner(audit: context.audit, real: nil, scriptedTypes: ["PlannerAgent", "AnalysisAgent", "CodingAgent", "ReviewAgent", "UnityAgent"], script: { job, _ in
@@ -367,9 +367,9 @@ enum OperatorLiveTest {
             "{\"id\":\"\(id)\",\"title\":\"\(title)\",\"description\":\"\(title)\",\"type\":\"\(type)\",\"dependsOn\":[\(deps.map { "\"\($0)\"" }.joined(separator: ","))],\"expected\":\"done\",\"validation\":\"\(validation)\",\"risk\":\"\(risk)\",\"unity\":\(u)}"
         }
         func planJSON(_ steps: [String]) -> String { "{\"summary\":\"operator plan\",\"steps\":[" + steps.joined(separator: ",") + "]}" }
-        func runTask(_ engine: TaskEngine, _ goal: String, timeout: Double = 900, cancelWhen: ((TaskEngine, UUID) -> Bool)? = nil) async -> (TaskView?, Double) {
-            await git(["add", "-A"]); await git(["commit", "-q", "-m", "scenario"])
-            guard case .success(let id) = await engine.submit(goal: goal, kind: .development, workspacePath: project, preference: nil, destructiveRequested: false) else { return (nil, 0) }
+        func runTask(_ engine: TaskEngine, _ goal: String, timeout: Double = 900, workspace: String? = nil, cancelWhen: ((TaskEngine, UUID) -> Bool)? = nil) async -> (TaskView?, Double) {
+            await git(["add", "-A"], in: workspace); await git(["commit", "-q", "-m", "scenario"], in: workspace)
+            guard case .success(let id) = await engine.submit(goal: goal, kind: .development, workspacePath: workspace ?? project, preference: nil, destructiveRequested: false) else { return (nil, 0) }
             var cancelledAt: Date?
             let watcher = Task { @MainActor in
                 while !Task.isCancelled {
@@ -387,6 +387,15 @@ enum OperatorLiveTest {
         let spec = "{\"question\":\"Does a plain material render visibly in a clean project?\",\"hypothesis\":\"A sphere with the default material is created, compiles, and is visible and not pink.\",\"kind\":\"materialRender\",\"assetPaths\":[],\"successCriteria\":[\"the project compiles\",\"it renders visibly\"],\"failureCriteria\":[\"compile errors\",\"pink\"],\"minutes\":8,\"diskMegabytes\":1024,\"networkRequests\":0,\"artifacts\":2,\"cleanup\":\"delete\"}"
         let expPlan = planJSON([stepJSON("s1", "Test the material", "experiment", validation: "experimentConcluded", unity: "{\"experiment\":\(spec)}", risk: "low")])
         let expRoot = ExperimentWorkspace.defaultRoot(dataRoot: context.paths.root)
+
+        // ------------------------------------------------------------ 7b. Input System, package NOT installed in this fixture: the editor says so and every edit is refused with a clear reason (JARVIS never installs packages)
+        if wants("input") {
+            let info = await op(.inspectInput(assetPath: nil))
+            let pkg = info.0?.result["package"] as? [String: Any]
+            check("REAL · Without the package the editor reports the Input System as NOT installed (and lists no assets)", info.0 != nil && pkg?["installed"] as? Bool == false, "\(pkg ?? [:])")
+            let refused = await op(.createInputAsset(assetPath: "Assets/Input/Controls.inputactions"))
+            check("REAL · An Input System edit without the package is refused with inputSystemMissing — nothing is created", refused.0 == nil && refused.1.contains("not installed") && !FileManager.default.fileExists(atPath: project + "/Assets/Input/Controls.inputactions"), refused.1)
+        }
 
         if wants("correction") {
             _ = await legacy(.openScene(path: scenePath))
@@ -447,9 +456,146 @@ enum OperatorLiveTest {
             let stray = await ownedEditorProcesses()
             check("Cancelling a running experiment ends it quickly, deletes the environment and closes the editor", cv?.task.state == .cancelled && latency < 45 && ((try? FileManager.default.contentsOfDirectory(atPath: expRoot.path)) ?? []).isEmpty && crec?.cleanupState == "deleted" && stray == 0,
                   "state \(cv?.task.state.rawValue ?? "?") · cancel→finished \(fmt(latency, "%.2f")) s · cleanup \(crec?.cleanupState ?? "?")")
+
+            // ---- V0.13.1: the animation and audio experiments are KINDS of the same engine, on the same disposable-project machinery
+            func playbackPlan(_ kind: String, assets: String = "[]") -> String {
+                let sp = spec.replacingOccurrences(of: "\"kind\":\"materialRender\"", with: "\"kind\":\"\(kind)\"").replacingOccurrences(of: "\"assetPaths\":[]", with: "\"assetPaths\":\(assets)")
+                    .replacingOccurrences(of: "A sphere with the default material is created, compiles, and is visible and not pink.", with: "It plays in Play Mode in a clean project.")
+                    .replacingOccurrences(of: "Does a plain material render visibly in a clean project?", with: "Does a \(kind == "audioPlayback" ? "sound" : "clip") play in a clean project?")
+                return planJSON([stepJSON("s1", "Test it", "experiment", validation: "experimentConcluded", unity: "{\"experiment\":\(sp)}", risk: "low")])
+            }
+            func playbackCase(_ label: String, _ kind: String, assets: String = "[]", expect: ExperimentResult.Verdict, mustContain: [String], mustNotBeTested: [String] = []) async {
+                let t0 = Date()
+                let (v, _) = await runTask(scriptedEngine(playbackPlan(kind, assets: assets)), "Test whether it plays in a clean Unity project (\(label))", timeout: 600)
+                let rec = (try? repo.experiments(taskID: v?.id ?? UUID()))?.first
+                let facts = rec?.result?.facts ?? []
+                info("\(label): \(rec?.result?.verdict.rawValue ?? rec?.status ?? "none") in \(fmt(Date().timeIntervalSince(t0))) s — \(rec?.result?.summary ?? summary(v))")
+                for f in facts { info("    [\(f.factClass.rawValue)] \(f.statement) — \(f.evidence.prefix(80))") }
+                let stray = await ownedEditorProcesses()
+                check("REAL · \(label): the experiment ended \(expect.rawValue.uppercased()) with the stated TESTED facts", rec?.result?.verdict == expect && mustContain.allSatisfy { m in facts.contains { $0.statement.localizedCaseInsensitiveContains(m) } }, rec?.result?.summary ?? "")
+                check("REAL · \(label): the generalisation is NOT claimed as tested", mustNotBeTested.allSatisfy { m in !facts.contains { $0.factClass == .tested && $0.statement.localizedCaseInsensitiveContains(m) } })
+                check("REAL · \(label): environment deleted, editor closed, your project untouched", rec?.cleanupState == "deleted" && ((try? FileManager.default.contentsOfDirectory(atPath: expRoot.path)) ?? []).isEmpty && stray == 0 && rec?.result?.projectUntouched == true)
+            }
+            await playbackCase("ANIMATION success", "animationPlayback", expect: .confirmed, mustContain: ["animation is running", "position.x moved", "deterministic fixture was generated"], mustNotBeTested: ["different rig"])
+            await playbackCase("ANIMATION failure (the controller does not exist)", "animationPlayback", assets: "[\"Assets/Missing/None.controller\"]", expect: .refuted, mustContain: ["does not exist in the disposable project", "did not run"])
+            await playbackCase("AUDIO success", "audioPlayback", expect: .confirmed, mustContain: ["audio source is playing", "AudioClip", "confirmed it by reading it back"], mustNotBeTested: ["sounds right"])
+            await playbackCase("AUDIO failure (the clip does not exist)", "audioPlayback", assets: "[\"Assets/Missing/none.wav\"]", expect: .refuted, mustContain: ["does not exist in the disposable project", "did not enter playback"])
+
+            // ---- cancellation while the disposable editor is busy with an animation / audio experiment: no later step runs, everything is cleaned, latency measured
+            for (label, kind) in [("animation", "animationPlayback"), ("audio", "audioPlayback")] {
+                let (cv, lat) = await runTask(scriptedEngine(playbackPlan(kind)), "Test whether it plays in a clean Unity project (cancel \(label))", timeout: 600, cancelWhen: { _, _ in UnityProcessScanner.editors().contains { $0.projectPath?.hasPrefix(UnityProcessScanner.canonical(expRoot.path) + "/") == true } })
+                let crec = (try? repo.experiments(taskID: cv?.id ?? UUID()))?.first
+                let steps = (try? repo.experimentSteps(crec?.id ?? UUID())) ?? []
+                let stray = await ownedEditorProcesses()
+                check("REAL · Cancelling the \(label) experiment ends it (\(fmt(lat, "%.2f")) s), runs no later step, deletes the environment and closes the editor", cv?.task.state == .cancelled && lat < 45 && !steps.contains { $0.kind == "playAndObserve" } && ((try? FileManager.default.contentsOfDirectory(atPath: expRoot.path)) ?? []).isEmpty && crec?.cleanupState == "deleted" && stray == 0,
+                      "state \(cv?.task.state.rawValue ?? "?") · steps \(steps.map(\.kind).joined(separator: ",")) · cleanup \(crec?.cleanupState ?? "?")")
+            }
             finish2 = true
         }
 
+
+        // ------------------------------------------------------------ 9d. the REAL Input System (a disposable copy of the fixture whose manifest also lists com.unity.inputsystem 1.19.0 — the editor's own bundled package)
+        if wants("input") {
+            await unity.shutdownOwnedEditors()
+            _ = await waitUntil(60) { conn.transport.currentStatus() == nil }
+            let inputProject = UnityProcessScanner.canonical(NSTemporaryDirectory()) + "/jarvis-input-live-\(UUID().uuidString.prefix(8))"
+            fixtures.append(inputProject)
+            do {
+                try FileManager.default.copyItem(atPath: template, toPath: inputProject)
+                let mf = inputProject + "/Packages/manifest.json"
+                var json = (FileManager.default.contents(atPath: mf).flatMap { try? JSONSerialization.jsonObject(with: $0) }) as? [String: Any] ?? [:]
+                var deps = json["dependencies"] as? [String: Any] ?? [:]
+                deps["com.unity.inputsystem"] = "1.19.0"
+                json["dependencies"] = deps
+                try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: mf))
+            } catch { check("The Input System fixture was prepared", false, "\(error)"); finish() }
+            let t0 = Date()
+            let outcome2 = await unity.prepare(root: inputProject, approvedInstall: true, approvedUpgrade: false, rendering: false, progress: { info($0) })
+            check("REAL · A disposable editor opened the project with the Input System package (the editor's bundled 1.19.0)", outcome2 == .ready, "\(outcome2) after \(fmt(Date().timeIntervalSince(t0))) s")
+            guard outcome2 == .ready else { finish() }
+            let c2 = unity.connection(for: inputProject)
+            let s2 = UnityToolSession(capabilities: CapabilitySet(granted: TaskCapability.unityDevelopment), taskID: nil, runID: nil, hub: nil, destructiveRequested: false)
+            func op2(_ d: UnityDevOp) async -> (UnityResponse?, String) {
+                do { return (try await c2.perform(.dev(d), session: s2), "") } catch let e as UnityToolError { return (nil, "\(e.category.rawValue): \(e.message)") } catch { return (nil, "\(error)") }
+            }
+            _ = await c2.transport.waitForStatus(timeout: 180, { $0.isIdleEdit && !$0.compileRunning })
+            let asset = "Assets/Input/Controls.inputactions"
+            let inspect0 = await op2(.inspectInput(assetPath: nil))
+            let pkg2 = inspect0.0?.result["package"] as? [String: Any]
+            check("REAL · JARVIS reads the installed Input System package and its version from the editor", pkg2?["installed"] as? Bool == true && (pkg2?["version"] as? String)?.hasPrefix("1.") == true, UnityRender.input(inspect0.0?.result ?? [:]) + inspect0.1)
+
+            // create / read back
+            func verified2(_ d: UnityDevOp) async -> (Bool, String) { let (r, e) = await op2(d); guard let r else { return (false, e) }; let v = UnityDevVerifier.verify(d, r); return (v.0, v.1) }
+            let created = await verified2(.createInputAsset(assetPath: asset))
+            let again = await op2(.createInputAsset(assetPath: asset))
+            check("REAL · An InputActionAsset is created through Unity's API and read back; creating it again is a verified no-op", created.0 && again.0?.result["alreadyExists"] as? Bool == true, created.1)
+            let map = await verified2(.createInputMap(assetPath: asset, name: "Gameplay"))
+            let jump = await verified2(.createInputAction(assetPath: asset, map: "Gameplay", name: "Jump", actionType: "Button", expectedControlType: "Button"))
+            let move = await verified2(.createInputAction(assetPath: asset, map: "Gameplay", name: "Move", actionType: "Value", expectedControlType: "Vector2"))
+            check("REAL · An action map and two actions (with their expected control types) are created and verified from the saved file", map.0 && jump.0 && move.0, "\(map.1) · \(jump.1) · \(move.1)")
+            let bind = await op2(.addInputBinding(assetPath: asset, map: "Gameplay", action: "Jump", path: "<Keyboard>/space", groups: nil))
+            let bindID = bind.0?.result["bindingId"] as? String ?? ""
+            check("REAL · A harmless keyboard binding is added and the saved file confirms it", bind.0?.result["added"] as? Bool == true && bind.0?.result["verified"] as? Bool == true && !bindID.isEmpty, bind.1)
+            let read1 = await op2(.inspectInput(assetPath: asset))
+            let text1 = UnityRender.input(read1.0?.result ?? [:])
+            check("REAL · Reading the asset back lists Gameplay → Jump [Button → Button] with <Keyboard>/space marked as created by JARVIS", text1.contains("map Gameplay") && text1.contains("action Jump [Button → Button]") && text1.contains("<Keyboard>/space") && text1.contains("(created by JARVIS)") && text1.contains("action Move [Value → Vector2]"), text1)
+            let dup = await op2(.addInputBinding(assetPath: asset, map: "Gameplay", action: "Jump", path: "<Keyboard>/space", groups: nil))
+            check("REAL · An attempted EXACT DUPLICATE is detected: nothing is added", dup.0?.result["duplicate"] as? Bool == true && dup.0?.result["added"] as? Bool == false && (dup.0?.result["bindingId"] as? String) == bindID, dup.1)
+            let conflict = await op2(.addInputBinding(assetPath: asset, map: "Gameplay", action: "Move", path: "<Keyboard>/space", groups: nil))
+            check("REAL · The same key on ANOTHER action of the map is a conflict: refused with the facts, never guessed", conflict.0 == nil && conflict.1.contains("share a control") && conflict.1.contains("Jump") && conflict.1.contains("does not guess"), conflict.1)
+            let wildcard = await op2(.addInputBinding(assetPath: asset, map: "Gameplay", action: "Move", path: "<Keyboard>/anyKey", groups: nil))
+            check("REAL · A wildcard (anyKey) that overlaps other keys is an UNKNOWN conflict: refused, not guessed", wildcard.0 == nil && wildcard.1.contains("share a control") && wildcard.1.contains("[unknown]"), wildcard.1)
+            let other = await op2(.addInputBinding(assetPath: asset, map: "Gameplay", action: "Move", path: "<Gamepad>/leftStick", groups: nil))
+            check("REAL · A different control on the other action is added normally", other.0?.result["added"] as? Bool == true && other.0?.result["verified"] as? Bool == true, other.1)
+
+            // change / remove a JARVIS-created binding
+            let changed = await op2(.changeInputBinding(assetPath: asset, map: "Gameplay", action: "Jump", bindingID: bindID, path: "<Gamepad>/buttonSouth"))
+            let read2 = UnityRender.input((await op2(.inspectInput(assetPath: asset))).0?.result ?? [:])
+            check("REAL · A binding JARVIS created is changed (<Keyboard>/space → <Gamepad>/buttonSouth) and verified from the saved file", changed.0?.result["changed"] as? Bool == true && changed.0?.result["verified"] as? Bool == true && read2.contains("<Gamepad>/buttonSouth") && !read2.contains("<Keyboard>/space"), read2)
+
+            // user bindings are protected: one written by the "user" directly into the file, and one JARVIS no longer remembers
+            let file = inputProject + "/" + asset
+            var userID = ""
+            if let data = FileManager.default.contents(atPath: file), var root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], var maps = root["maps"] as? [[String: Any]], !maps.isEmpty {
+                var m0 = maps[0]
+                var bindings = m0["bindings"] as? [[String: Any]] ?? []
+                userID = UUID().uuidString.lowercased()
+                bindings.append(["name": "", "id": userID, "path": "<Keyboard>/f", "interactions": "", "processors": "", "groups": "", "action": "Jump", "isComposite": false, "isPartOfComposite": false])
+                m0["bindings"] = bindings; maps[0] = m0; root["maps"] = maps
+                try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: file))
+            }
+            let readU = UnityRender.input((await op2(.inspectInput(assetPath: asset))).0?.result ?? [:])
+            check("REAL · A binding written by the USER (<Keyboard>/f) is listed WITHOUT the 'created by JARVIS' mark", !userID.isEmpty && readU.contains("<Keyboard>/f id \(userID.prefix(8))") && !readU.contains("<Keyboard>/f id \(userID.prefix(8)) (created by JARVIS)"), readU)
+            let chUser = await op2(.changeInputBinding(assetPath: asset, map: "Gameplay", action: "Jump", bindingID: userID, path: "<Keyboard>/g"))
+            let rmUser = await op2(.removeInputBinding(assetPath: asset, map: "Gameplay", action: "Jump", bindingID: userID))
+            let readU2 = UnityRender.input((await op2(.inspectInput(assetPath: asset))).0?.result ?? [:])
+            check("REAL · Changing or removing the USER'S binding is refused (not created by JARVIS) and the file still holds it untouched", chUser.0 == nil && chUser.1.contains("was not created by JARVIS") && rmUser.0 == nil && rmUser.1.contains("was not created by JARVIS") && readU2.contains("<Keyboard>/f"), "\(chUser.1) · \(rmUser.1)")
+            let rm = await op2(.removeInputBinding(assetPath: asset, map: "Gameplay", action: "Jump", bindingID: bindID))
+            let read3 = UnityRender.input((await op2(.inspectInput(assetPath: asset))).0?.result ?? [:])
+            check("REAL · The JARVIS-created binding is removed and verified; the user's binding and the other action's binding remain", rm.0?.result["removed"] as? Bool == true && rm.0?.result["verified"] as? Bool == true && !read3.contains("<Gamepad>/buttonSouth") && read3.contains("<Keyboard>/f") && read3.contains("<Gamepad>/leftStick"), read3)
+            // JARVIS forgets what it created (e.g. Library cleared): everything is then treated as the user's
+            try? FileManager.default.removeItem(atPath: inputProject + "/Library/JarvisBridge/input-owned.json")
+            func bindingID(_ path: String) -> String {
+                guard let data = FileManager.default.contents(atPath: file), let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let maps = root["maps"] as? [[String: Any]], let bs = maps.first?["bindings"] as? [[String: Any]] else { return "00000000-0000-0000-0000-000000000000" }
+                return (bs.first { $0["path"] as? String == path }?["id"] as? String) ?? "00000000-0000-0000-0000-000000000000"
+            }
+            let forgot = await op2(.removeInputBinding(assetPath: asset, map: "Gameplay", action: "Move", bindingID: bindingID("<Gamepad>/leftStick")))
+            check("REAL · If JARVIS no longer remembers creating a binding it treats it as the user's: refused", forgot.0 == nil && forgot.1.contains("was not created by JARVIS"), forgot.1)
+            // ---- the same operations through the REAL task engine (a scripted plan, a real editor): inspect → typed edit → read-back evidence
+            await git(["init", "-q", "-b", "main"], in: inputProject)
+            let inputPlan = planJSON([stepJSON("s1", "Read the input actions", "unityInspect", validation: "unityInspected", unity: "{\"input\":true,\"assets\":[\"\(asset)\"]}"),
+                                      stepJSON("s2", "Add a Fire action on the left mouse button", "unityEdit", deps: ["s1"], validation: "unityState",
+                                               unity: "{\"actions\":[{\"op\":\"createInputAction\",\"assetPath\":\"\(asset)\",\"map\":\"Gameplay\",\"name\":\"Fire\",\"actionType\":\"Button\"},{\"op\":\"addInputBinding\",\"assetPath\":\"\(asset)\",\"map\":\"Gameplay\",\"action\":\"Fire\",\"path\":\"<Mouse>/leftButton\"}]}", risk: "medium")])
+            let (iv, _) = await runTask(scriptedEngine(inputPlan), "Add a Fire action bound to the left mouse button", timeout: 300, workspace: inputProject)
+            let iev = iv?.steps.first { $0.type == .unityEdit }?.validationEvidence ?? ""
+            let afterEngine = UnityRender.input((await op2(.inspectInput(assetPath: asset))).0?.result ?? [:])
+            check("ENGINE+REAL · An Input System task (inspect → typed edit) completes through the real engine; the evidence names what was read back", iv?.task.state == .completed && iev.contains("created Button action Gameplay/Fire") && iev.contains("bound <Mouse>/leftButton to Gameplay/Fire") && iev.contains("read back from the saved file") && iv?.steps.first { $0.type == .unityInspect }?.state == .passed, "\(iv?.task.state.rawValue ?? "?") \(iv?.task.failureReason ?? "") · \(iev.prefix(240))")
+            check("REAL · …and the saved asset really holds the new action and binding", afterEngine.contains("action Fire") && afterEngine.contains("<Mouse>/leftButton"), afterEngine)
+            let compile = try? await c2.perform(.getCompilationState, session: s2)
+            check("REAL · The project still compiles after all Input System edits (no script errors)", compile?.result["scriptCompilationFailed"] as? Bool == false)
+            await unity.shutdownOwnedEditors()
+            _ = await waitUntil(60) { c2.transport.currentStatus() == nil }
+        }
 
         // ------------------------------------------------------------ 9c. resource pressure and a bounded operator soak (explicit section: several real editors, ≈ 2–3 min)
         if sections.contains("soak") {

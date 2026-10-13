@@ -150,6 +150,16 @@ struct ContinuitySelectionTests {
         #expect(said.contains("failed") && said.contains("Add a mul test"))
     }
 
+    @Test("memory alone never starts work: a known issue that exists only as a memory item is PROPOSED (needsChoice), while a recorded next step in the project's own docs starts")
+    func memoryOnlyNeverStarts() {
+        let m = [MemoryDigest(type: .knownIssue, subject: "pickup", summary: "Pickup jitters on slopes")]
+        let only = ContinuityBuilder.build(inputs(memory: m))
+        guard case .needsChoice(let cs) = ContinuationSelector.decide(only, drift: ReconciliationReport()) else { Issue.record("memory-only work must be proposed, not started"); return }
+        #expect(cs.count == 1 && cs[0].source == .knownIssue)
+        let withDocs = ContinuityBuilder.build(inputs(memory: m, docs: ProjectDocsSummary(next: ["Polish the bucket pickup"])))
+        if case .startNext(let c) = ContinuationSelector.decide(withDocs, drift: ReconciliationReport()) { #expect(c.source == .checkpoint) } else { Issue.record("a documented next step is current truth and starts") }
+    }
+
     @Test("old failures and failures that need a decision are not retried; they are blockers")
     func notRetriable() {
         let old = digest("Ancient", .failed, category: "testFailed", reason: "x", ago: 9 * 86_400)
@@ -388,5 +398,62 @@ struct ContinuityPersistenceTests {
         for t in [root, child, other] { try repo.insert(t) }
         #expect(try repo.continuityTasks(roots: ["/tmp/proj"]).map(\.title) == ["Root"])
         #expect(try repo.continuityTasks(roots: ["/tmp/proj", "/tmp/else"]).count == 2, "known aliases of one project are all searched")
+    }
+}
+
+// MARK: - V0.13.1 — the Project card's scene facts: live, or history labelled as such
+
+@Suite("Continuity · scene facts (Project card)")
+struct UnitySceneFactsTests {
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    private func facts(live: Bool, age: TimeInterval = 0, dirty: Bool = false, broken: Int = 0, cameras: Int = 1, lights: Int = 2) -> UnitySceneFacts {
+        UnitySceneFacts(scene: "Assets/Scenes/Bathhouse.unity", objectCount: 18, cameras: cameras, lights: lights, missingScripts: broken, missingReferences: 0, isPlaying: false, hasUnsavedChanges: dirty, capturedAt: t0.addingTimeInterval(-age), live: live)
+    }
+
+    @Test("a live reading says so; a remembered one is NEVER live and always says how old it is and that the editor is not connected")
+    func freshness() {
+        #expect(facts(live: true).freshness(now: t0).hasPrefix("live"))
+        let old = facts(live: true, age: 7_200).remembered
+        #expect(!old.live && old.freshness(now: t0).contains("2 h ago") && old.freshness(now: t0).contains("not connected") && old.freshness(now: t0).contains("out of date"))
+        #expect(facts(live: false, age: 20).freshness(now: t0).contains("a moment ago"))
+        #expect(facts(live: false, age: 3 * 86_400).freshness(now: t0).contains("3 days ago"))
+        #expect(!facts(live: true).remembered.live, "remembering never makes a reading live again")
+    }
+
+    @Test("the headline is compact numbers only; warnings are concise and only when there is something to warn about")
+    func lineAndWarnings() {
+        #expect(facts(live: true).line == "Bathhouse · 18 objects · 1 camera · 2 lights · Edit Mode · saved")
+        #expect(facts(live: true).warnings.isEmpty)
+        let bad = facts(live: true, dirty: true, broken: 3, cameras: 0, lights: 0)
+        #expect(bad.warnings.count == 4 && bad.warnings[0].contains("3 broken references") && bad.warnings.contains("no camera in the scene") && bad.warnings.contains("unsaved changes"))
+        #expect(!facts(live: true).line.contains("/") && facts(live: true).line.count < 90, "no hierarchy, no paths")
+    }
+
+    @Test("built from the editor's own profile answer")
+    func fromProfile() {
+        let f = UnitySceneFacts(profile: ["scene": "Assets/Scenes/A.unity", "objectCount": 7, "cameras": 1, "lights": 1, "missingScripts": 2, "missingReferences": 1, "dirty": true], isPlaying: true, now: t0)
+        #expect(f.live && f.brokenReferences == 3 && f.hasUnsavedChanges && f.isPlaying && f.line.contains("Play Mode") && f.line.contains("unsaved"))
+    }
+}
+
+@MainActor
+@Suite("Continuity · scene facts from the Unity service", .serialized)
+struct UnitySceneServiceTests {
+    @Test("a connected editor gives LIVE facts; once it is gone the same numbers come back as history (never live); a project never read gives nothing; nothing is started or polled")
+    func liveThenHistory() async throws {
+        let h = UnityHarness(script: UnityScripts.standard(plan: UnityScripts.addCollider), editorAlive: true)
+        let service = h.service
+        #expect(await service.sceneFacts(for: h.project) == nil, "no connection yet: nothing to read, and the card must not start an editor")
+        #expect(h.launcher.launched.isEmpty)
+        #expect(await service.prepare(root: h.project, approvedInstall: true, approvedUpgrade: false) == .ready)
+        let live = try #require(await service.sceneFacts(for: h.project))
+        #expect(live.live && live.objectCount > 0, "\(live)")
+        let before = h.editor.received.count
+        h.editor.alive = false
+        service.existingConnection(for: h.project)?.apply(status: nil)
+        let history = try #require(await service.sceneFacts(for: h.project))
+        #expect(!history.live && history.objectCount == live.objectCount && history.freshness().contains("not connected"))
+        #expect(h.editor.received.count == before, "with the editor gone nothing was sent")
+        #expect(h.launcher.launched.isEmpty, "reading scene facts never launches an editor")
     }
 }

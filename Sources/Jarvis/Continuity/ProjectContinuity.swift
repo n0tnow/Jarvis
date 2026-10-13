@@ -36,6 +36,8 @@ final class ProjectContinuity: ContinuityConversing {
     var enabled: () -> Bool = { true }
     /// The live editor state for a project root (“CONNECTED”, “NOT RUNNING”…), from the Unity service. Never polled by this class.
     var unityEditorState: (String) -> String? = { _ in nil }
+    /// V0.13.1: the open scene's headline facts for the Project card — a live read from a CONNECTED editor, else the last reading as history. Called by the card's refresh only (never from a timer, never by a status answer).
+    var unityScene: (String) async -> UnitySceneFacts? = { _ in nil }
     /// V0.15 owns the final voice of JARVIS; until then every reply goes through this one hook unchanged.
     var presenter: (String, ReplyLanguage) -> String = { text, _ in text }
     var bounds = ContinuationBounds.standard

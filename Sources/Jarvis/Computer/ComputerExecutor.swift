@@ -63,6 +63,8 @@ final class ComputerExecutor {
     var launchTimeout = ComputerLimits.launchTimeout
     var windowTimeout = ComputerLimits.windowTimeout
     var verifyTimeout = ComputerLimits.verifyTimeout
+    /// How long an 'unsupported' answer from an Accessibility action is cross-checked against the state it should have produced (read-only).
+    var unsupportedLookTimeout: TimeInterval = 1.5
     /// Metadata hooks for the session record (counts and sizes only).
     var observed: (AXSnapshot) -> Void = { _ in }
     var screenObserved: (ScreenObservation) -> Void = { _ in }
@@ -450,7 +452,23 @@ final class ComputerExecutor {
                 else if currentElement.actions.contains("Confirm") { try await backend.perform(.confirm, on: currentElement.handle) }
                 else { try await backend.perform(.press, on: currentElement.handle) }
             } catch let e as BackendError {
-                return finish(&r, e == .timedOut ? .appUnresponsive : e == .permissionDenied ? .permissionRequired : .failed, detail: "\(e)")
+                // what the world looked like when the action was refused (bundle ids and numbers only): the evidence for JARVIS-V13-7
+                let front = await backend.frontmostApplication()
+                let world = " [frontmost \(front?.bundleID ?? "?")\(front?.pid == app.pid ? " = target" : " ≠ target"); input idle \({ let t = activity.secondsSinceAnyPointerOrKeyInput(); return t.isFinite ? "\(Int(t)) s" : "no activity probe" }())]"
+                // JARVIS-V13-7: an Accessibility ACTION's return code is not its outcome. An application can report "not supported / not implemented" for a press that its handler nevertheless ran
+                // (the fixture counted the click). So an "unsupported" answer is never taken at face value in either direction: the state the action was meant to produce is looked for (read-only,
+                // short), and the action is NEVER repeated (it may already have happened).
+                if case .unsupported = e {
+                    // no snapshot ⇒ no evidence (verify() would call an unreadable UI "unchanged-OK"; here an unreadable UI proves nothing)
+                    let readable = (try? await snapshot(of: app)) != nil
+                    let seen = readable ? await verify(checks, app: app, before: currentBefore, timeout: unsupportedLookTimeout, windowTitle: a.target.windowTitle) : VerificationResult(passed: false, checks: [], detail: "the UI could not be read")
+                    if seen.passed && !seen.checks.isEmpty {
+                        r.verification = seen
+                        return finish(&r, .verified, detail: "pressed “\(el.title.prefix(40))”: the application answered “\(e)” but the expected state was observed, so the press took effect (not repeated)" + world)
+                    }
+                    return finish(&r, .failed, detail: "\(e)" + world + " — and the expected state was not observed either")
+                }
+                return finish(&r, e == .timedOut ? .appUnresponsive : e == .permissionDenied ? .permissionRequired : .failed, detail: "\(e)" + world)
             } catch { return finish(&r, .failed, detail: "\(error)") }
             events(.actionExecuted(a.summary, .accessibility))
             let v = await verify(checks, app: app, before: currentBefore, windowTitle: a.target.windowTitle)
@@ -467,6 +485,8 @@ final class ComputerExecutor {
         }
         return finish(&r, .notVerified, detail: "the retry budget ended without the expected state")
     }
+
+    private var stateProbe = ""
 
     private func effectiveChecks(_ a: ComputerAction) -> [Check] { a.checks.isEmpty && !a.kind.isReadOnly ? [.stateChanged] : a.checks }
 
@@ -905,12 +925,18 @@ final class ComputerExecutor {
         let beforeCount = before?.windows.count ?? 0
         let beforeHash = before?.stateHash
         var failures: [String] = []
+        var polls = 0
+        let started = Date()
+        stateProbe = ""
         let ok = await waitUntil(timeout ?? verifyTimeout) {
+            polls += 1
             failures = []
             for c in checks { if !(await self.evaluate(c, app: app, beforeTitles: beforeTitles, beforeCount: beforeCount, beforeHash: beforeHash, windowTitle: windowTitle)) { failures.append(c.summary) } }
             return failures.isEmpty
         }
-        return VerificationResult(passed: ok, checks: checks.map(\.summary), detail: ok ? "all postconditions hold" : "not observed: " + failures.joined(separator: "; "))
+        // A failed verification says WHAT it saw (counts and flags only — no UI text): the root cause of JARVIS-V13-7 was found from exactly this.
+        let why = ok ? "" : " [\(polls) poll(s) in \(Int(Date().timeIntervalSince(started) * 1000)) ms; before: \(before?.nodeCount ?? -1) nodes\(before?.truncated == true ? " TRUNCATED" : ""), generation \(before?.generation ?? -1)\(stateProbe.isEmpty ? "" : "; " + stateProbe)]"
+        return VerificationResult(passed: ok, checks: checks.map(\.summary), detail: ok ? "all postconditions hold" : "not observed: " + failures.joined(separator: "; ") + why)
     }
 
     private func evaluate(_ c: Check, app: ApplicationSnapshot?, beforeTitles: Set<String>, beforeCount: Int, beforeHash: Int?, windowTitle: String?) async -> Bool {
@@ -946,6 +972,7 @@ final class ComputerExecutor {
             return (e?.selected ?? false) || e?.value == "1"
         case .stateChanged:
             guard let a = app, let s = await look(a), let h = beforeHash else { return true }
+            stateProbe = "after: hash \(s.stateHash == h ? "UNCHANGED" : "changed"), \(s.nodeCount) nodes\(s.truncated ? " TRUNCATED" : ""), \(s.windows.count) window(s), generation \(s.generation)"
             return s.stateHash != h
         case .newWindow(let b):
             guard let a = await target(b) else { return false }

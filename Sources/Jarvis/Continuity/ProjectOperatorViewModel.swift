@@ -12,6 +12,8 @@ final class ProjectOperatorViewModel {
     private(set) var busy = false
     private(set) var lastAnswer: String?
     private(set) var loadedRoot: String?
+    /// The open Unity scene's headline facts (V0.13.1): live, or remembered and labelled as history. Nil when the project is not a Unity project or nothing was ever read.
+    private(set) var scene: UnitySceneFacts?
 
     init(continuity: ProjectContinuity, preferences: Preferences) { self.continuity = continuity; self.preferences = preferences }
 
@@ -20,10 +22,11 @@ final class ProjectOperatorViewModel {
 
     func refresh() async {
         let root = preferences.projectRoot
-        guard !root.isEmpty, continuity.enabled(), !busy else { if root.isEmpty { view = nil; loadedRoot = nil }; return }
+        guard !root.isEmpty, continuity.enabled(), !busy else { if root.isEmpty { view = nil; scene = nil; loadedRoot = nil }; return }
         busy = true; defer { busy = false }
         guard let g = await continuity.gatherCurrent() else { view = nil; return }
         view = g.view; report = g.report; loadedRoot = root
+        scene = g.view.projectType == "unity" ? await continuity.unityScene(root) : nil
     }
 
     /// The Continue button is the same explicit user request as saying “continue”: one code path, no extra authority.

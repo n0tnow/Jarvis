@@ -171,6 +171,7 @@ final class AppContext {
         continuity = ProjectContinuity(repository: repo, engine: taskEngine, memory: memory, preferences: preferences)
         continuity.enabled = { [weak webPrefs] in webPrefs?.projectContinuationEnabled ?? true }
         continuity.unityEditorState = { [weak unity] root in unity?.existingConnection(for: root)?.state.label }
+        continuity.unityScene = { [weak unity] root in await unity?.sceneFacts(for: root) }
         operatorModel = ProjectOperatorViewModel(continuity: continuity, preferences: preferences)
         experimentsModel = ExperimentsViewModel(repository: repo)
         let engineRef = taskEngine

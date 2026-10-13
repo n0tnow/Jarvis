@@ -34,6 +34,7 @@ struct ProjectOperatorCard: View {
         }
         line("Git", ContinuityStatus.gitLine(v.git, .en) ?? "Not a Git repository.")
         if let u = v.unity { line("Unity", "\(u.version ?? "?") · \(u.renderPipeline) · \(u.sceneCount) scene(s)\(u.editor.map { " · editor \($0.lowercased())" } ?? "")") }
+        if let sc = m.scene { sceneRows(sc) }
         if let c = v.checkpoint { line("Checkpoint", "\(c.title) — \(c.outcome.lowercased()), \(ContinuityStatus.ago(c.createdAt, .en)) · \(c.validated.first ?? "")") }
         if !v.currentWork.isEmpty { line("Current", v.currentWork.joined(separator: " · ")) }
         if let t = v.recentCompleted.first { line("Last task", "“\(t.title)” — \(ContinuityStatus.ago(t.finishedAt ?? t.updatedAt, .en))") }
@@ -49,6 +50,18 @@ struct ProjectOperatorCard: View {
             Text("Truth sources: \(d.sources.joined(separator: ", ")) · decision: \(d.decision)").font(.system(size: 10, design: .monospaced)).foregroundStyle(Color.jarvisTertiary)
             ForEach(d.reconciliation, id: \.self) { Text($0).font(.system(size: 10, design: .monospaced)).foregroundStyle(Color.jarvisTertiary) }
         }
+    }
+
+    /// The open scene: headline numbers + where they come from. A remembered reading is dimmed and says how old it is — it is never presented as the present.
+    @ViewBuilder private func sceneRows(_ sc: UnitySceneFacts) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.s) {
+            Text("SCENE").font(.system(size: 9, weight: .semibold, design: .monospaced)).foregroundStyle(Color.jarvisTertiary).frame(width: 82, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(sc.line).font(Theme.Typography.caption).foregroundStyle(sc.live ? Color.jarvisSecondary : Color.jarvisTertiary).lineLimit(2).accessibilityIdentifier("operator.scene")
+                Text(sc.freshness()).font(.system(size: 10, design: .monospaced)).foregroundStyle(sc.live ? Color.jarvisTertiary : Theme.Palette.amber).accessibilityIdentifier("operator.scene.freshness")
+            }
+        }
+        if !sc.warnings.isEmpty { Text("Scene: " + sc.warnings.joined(separator: " · ")).font(Theme.Typography.caption).foregroundStyle(Theme.Palette.amber) }
     }
 
     private func line(_ label: String, _ text: String) -> some View {

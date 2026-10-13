@@ -5,6 +5,8 @@ import CoreGraphics
 /// A virtual macOS for Computer Use tests: applications with windows, elements, menus and behaviours (closures that mutate the world when pressed).
 /// Every mutating backend call is logged, so tests can prove what was — and was NOT — done.
 final class FakeUI: UIBackend, @unchecked Sendable {
+    /// Fault injection: every press answers with `error`, either before or after the element's handler ran.
+    var pressFailure: (error: BackendError, afterEffect: Bool)?
     struct Element {
         var role: String
         var title: String
@@ -195,7 +197,10 @@ final class FakeUI: UIBackend, @unchecked Sendable {
         guard let loc = handles[h], apps[loc.pid]?.windows.indices.contains(loc.win) == true, let e = apps[loc.pid]?.windows[loc.win].elements[safe: loc.el] else { throw BackendError.elementGone }
         record("\(op.rawValue) \(e.role) “\(e.title)”")
         switch op {
-        case .press, .confirm: e.onPress?(self, loc.pid)
+        case .press, .confirm:
+            if let f = pressFailure, !f.afterEffect { throw f.error }          // refused BEFORE anything happened
+            e.onPress?(self, loc.pid)
+            if let f = pressFailure, f.afterEffect { throw f.error }           // the handler ran, then the application answered "not supported" (JARVIS-V13-7)
         case .select: apps[loc.pid]?.windows[loc.win].elements[loc.el].selected = true; e.onPress?(self, loc.pid)
         case .focus:
             for i in apps[loc.pid]!.windows[loc.win].elements.indices { apps[loc.pid]!.windows[loc.win].elements[i].focused = i == loc.el }

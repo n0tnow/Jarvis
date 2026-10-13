@@ -57,6 +57,11 @@ struct LaunchOptions {
     var researchLiveTest = false
     var memoryLiveTest = false
     var computerLiveTest = false
+    var computerRepro = 0
+    var stabilitySoak = 0
+    var computerCycle = 0
+    var computerRestartRepeat = 0
+    var computerStopAfterContext = false
     var computerChild: String?           // internal: "start" | "check" (restart test)
     var computerFixtureState: String?    // internal: the fixture's state file (restart test children)
     var computerRepo: String?
@@ -109,6 +114,11 @@ struct LaunchOptions {
             case "--research-live-test": researchLiveTest = true
             case "--memory-live-test": memoryLiveTest = true
             case "--computer-live-test": computerLiveTest = true
+            case "--computer-stop-after-context": computerStopAfterContext = true; computerLiveTest = true
+            case "--computer-cycle": if let v = it.next(), let n = Int(v) { computerCycle = n }
+            case "--computer-restart-repeat": if let v = it.next(), let n = Int(v) { computerRestartRepeat = n; computerLiveTest = true }
+            case "--stability-soak": if let v = it.next(), let n = Int(v) { stabilitySoak = n }
+            case "--computer-repro": if let v = it.next(), let n = Int(v) { computerRepro = n; computerLiveTest = true }
             case "--computer-child": computerChild = it.next()
             case "--computer-fixture-state": computerFixtureState = it.next()
             case "--computer-repo": computerRepo = it.next()

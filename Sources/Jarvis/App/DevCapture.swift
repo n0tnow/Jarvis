@@ -118,6 +118,16 @@ enum DevCapture {
                 context.hud.section = .tasks; w.showFullHUD(section: .tasks); await settle(500)
                 context.hud.selectedTaskID = engine.orderedViews.first(where: { $0.task.title.contains("BoxCollider") })?.id; await settle(700)
                 snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "tasks_unity", in: directory)
+                // V0.13.1: the Project card's scene rows — a LIVE reading, then the same numbers as remembered history (SIMULATED data)
+                context.hud.selectedTaskID = nil
+                let demo = UnitySceneFacts(scene: "Assets/Scenes/Bathhouse.unity", objectCount: 42, cameras: 1, lights: 3, missingScripts: 2, missingReferences: 0, isPlaying: false, hasUnsavedChanges: true, live: true)
+                context.continuity.unityScene = { _ in demo }
+                await context.operatorModel.refresh(); await settle(500)
+                snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "tasks_scene_live", in: directory)
+                var old = demo.remembered; old.capturedAt = Date().addingTimeInterval(-7_200)
+                context.continuity.unityScene = { _ in old }
+                await context.operatorModel.refresh(); await settle(500)
+                snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "tasks_scene_stale", in: directory)
             }
             // V0.13: the Project card and the Experiments card (SIMULATED data in the throw-away database)
             if let opDir = TaskDemo.seedOperatorDemo(context: context) {

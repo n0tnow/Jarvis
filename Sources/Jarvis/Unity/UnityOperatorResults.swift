@@ -138,6 +138,9 @@ enum UnityDevVerifier {
             return (now.matches(v) || (v.string?.caseInsensitiveCompare(now.string ?? "") == .orderedSame), "\(b("alreadyApplied") ? "environment \(prop) was already" : "set environment \(prop) =") \(now)")
         case .createAnimatorController(let p): return (b("created"), "created animator controller \(p)")
         case .editAnimatorController(let p, let e, let layer): return controller(p, e, layer, res)
+        case .createAnimationClip(let p, let pr, let ax, let f, let t, let d, _):
+            let length = (res["length"] as? NSNumber)?.doubleValue ?? -1
+            return (b("created") && abs(length - d) < 0.01, "created animation clip \(p) (\(pr).\(ax) \(f) → \(t) over \(String(format: "%.1f", length)) s, read back)")
         case .setModelImporter(let p, let s):
             let after = res["after"] as? [String: Any] ?? [:]
             var ok = true
@@ -149,6 +152,14 @@ enum UnityDevVerifier {
                 ok = ok && ((after["clips"] as? [[String: Any]])?.first { $0["name"] as? String == clip }?["loop"] as? Bool == loop)
             }
             return (ok, "\(b("changed") ? "re-imported" : "import settings already as requested:") \(p) (\(s.keys.sorted().joined(separator: ", ")))")
+        case .createInputAsset(let p): return (b("created") ? res["verified"] as? Bool ?? false : b("alreadyExists"), "\(b("alreadyExists") ? "input actions asset already existed:" : "created input actions asset") \(p)")
+        case .createInputMap(let p, let n): return (res["verified"] as? Bool ?? false, "\(b("alreadyExists") ? "action map \(n) already existed in" : "created action map \(n) in") \(p) (read back from the saved file)")
+        case .createInputAction(let p, let m, let n, let t, _): return (res["verified"] as? Bool ?? false, "\(b("alreadyExists") ? "action \(m)/\(n) already existed in" : "created \(t) action \(m)/\(n) in") \(p) (read back from the saved file)")
+        case .addInputBinding(let p, let m, let a, let path, _):
+            if b("duplicate") { return (true, "\(m)/\(a) already had exactly this binding (\(path)); nothing was added") }
+            return (b("added") && (res["verified"] as? Bool ?? false), "bound \(path) to \(m)/\(a) in \(p) (binding \((res["bindingId"] as? String ?? "?").prefix(8)), read back from the saved file)")
+        case .changeInputBinding(let p, let m, let a, _, let path): return (res["verified"] as? Bool ?? false, "\(b("changed") ? "changed" : "kept") the JARVIS-created binding of \(m)/\(a) in \(p) → \(path) (read back)")
+        case .removeInputBinding(let p, let m, let a, _): return (b("removed") && (res["verified"] as? Bool ?? false), "removed a JARVIS-created binding of \(m)/\(a) in \(p) (read back)")
         default: return (true, op.summary)
         }
     }
@@ -197,6 +208,29 @@ extension UnityRender {
         }
         let env = r["environment"] as? [String: Any] ?? [:]
         return "Lighting (\(r["renderPipeline"] as? String ?? "?")): \(lights.isEmpty ? "NO LIGHTS" : lights.joined(separator: "; ")) · ambient \(env["ambientMode"] as? String ?? "?") intensity \(UnityValue(any: env["ambientIntensity"]).map(\.description) ?? "?")\(env["fog"] as? Bool == true ? " · fog" : "")"
+    }
+
+    /// The Input System: package, assets, and (for one asset) maps → actions → bindings with the ids JARVIS needs. Bounded.
+    static func input(_ r: [String: Any]) -> String {
+        let pkg = r["package"] as? [String: Any] ?? [:]
+        var s = "Input System: " + (pkg["installed"] as? Bool == true ? "installed \(pkg["version"] as? String ?? "")" : "NOT installed")
+        let assets = (r["assets"] as? [String]) ?? []
+        s += " · \(assets.count) .inputactions asset(s)" + (assets.isEmpty ? "" : ": " + assets.prefix(6).joined(separator: ", "))
+        if let a = r["asset"] as? [String: Any] {
+            s += "\n  \(a["path"] as? String ?? "?")"
+            for m in (a["maps"] as? [[String: Any]] ?? []).prefix(8) {
+                s += "\n    map \(m["name"] as? String ?? "?")"
+                for act in (m["actions"] as? [[String: Any]] ?? []).prefix(16) {
+                    s += "\n      action \(act["name"] as? String ?? "?") [\(act["type"] as? String ?? "?")\((act["expectedControlType"] as? String).flatMap { $0.isEmpty ? nil : " → " + $0 } ?? "")]"
+                    for b in (act["bindings"] as? [[String: Any]] ?? []).prefix(12) {
+                        s += "\n        \(b["path"] as? String ?? "(composite)") id \((b["id"] as? String ?? "?").prefix(8))\(b["ownedByJarvis"] as? Bool == true ? " (created by JARVIS)" : "")"
+                    }
+                }
+            }
+            let schemes = (a["controlSchemes"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+            s += "\n  control schemes: " + (schemes.isEmpty ? "none" : schemes.joined(separator: ", "))
+        }
+        return String(s.prefix(2_400))
     }
 
     static func asset(_ r: [String: Any]) -> String {

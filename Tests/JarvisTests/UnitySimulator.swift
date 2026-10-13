@@ -21,6 +21,14 @@ final class SimulatedUnityEditor: UnityTransport {
     var session = UUID().uuidString.replacingOccurrences(of: "-", with: "")
     var reloads = 0
     var isPlaying = false
+    /// Runtime knobs for experiment tests: does time advance / the pose move between samples, does an AudioSource report playing?
+    var runtimeAdvances = false
+    var animStates: [String: String?] = [:]
+    var animDefault: String?
+    /// false for experiment tests: the simulated editor stands in for a DISPOSABLE project, so it must not write into the harness's project.
+    var writesAssets = true
+    var audioPlays = true
+    private(set) var runtimeCalls = 0
     var isCompiling = false
     var compileGeneration = 0
     var compileErrors: [UnityCompilerError] = []
@@ -199,13 +207,35 @@ final class SimulatedUnityEditor: UnityTransport {
         case .createPrefabVariant: return ok(id, ["created": true, "assetType": "Variant"])
         case .removeComponent: return ok(id, ["removed": true])
         case .unpackPrefab: return ok(id, ["unpacked": true])
-        case .createAnimatorController: return ok(id, ["created": true, "parameters": [], "layers": []])
+        case .createAnimatorController: animStates = [:]; animDefault = nil; return ok(id, ["created": true, "parameters": [], "layers": []])
+        case .editAnimatorController(_, let e, _):
+            switch e {
+            case .addState(_, let n, let m, _): animStates[n] = m; if animDefault == nil { animDefault = n }
+            case .setDefaultState(_, let n): animDefault = n
+            default: break
+            }
+            return ok(id, ["changed": true, "parameters": [], "layers": [["states": animStates.map { ["name": $0.key, "motion": $0.value as Any, "isDefault": $0.key == animDefault, "speed": 1.0] as [String: Any] }]]])
         case .setModelImporter(_, let s): return ok(id, ["changed": true, "previous": ["animationType": "Generic"], "after": ["animationType": s["animationType"]?.string ?? "Generic"]])
         case .sceneProfile: return ok(id, ["scene": scene, "objectCount": objects.count, "cameras": 1, "lights": 0, "audioSources": 0, "animators": 0, "rigidbodies": 0, "canvases": 0, "missingScripts": 0, "missingReferences": 0])
         case .inspectLighting: return ok(id, ["scene": scene, "lights": [], "environment": ["ambientMode": "Skybox", "ambientIntensity": 1.0], "renderPipeline": "Built-in"])
-        case .inspectAsset(let p): return ok(id, ["path": p, "type": "Material", "shader": "Standard", "properties": []])
+        case .createAnimationClip(let p, _, _, _, _, let d, _):
+            if writesAssets { try? FileManager.default.createDirectory(atPath: (root + "/" + p as NSString).deletingLastPathComponent, withIntermediateDirectories: true); FileManager.default.createFile(atPath: root + "/" + p, contents: Data("clip".utf8)) }
+            return ok(id, ["created": true, "length": d])
+        case .inspectInput: return ok(id, ["package": ["installed": true, "version": "1.19.0"], "assets": []])
+        case .createInputAsset, .createInputMap, .createInputAction: return ok(id, ["created": true, "verified": true])
+        case .addInputBinding: return ok(id, ["added": true, "verified": true, "bindingId": "0f8fad5b-d9cb-469f-a165-70867728950e"])
+        case .changeInputBinding: return ok(id, ["changed": true, "verified": true])
+        case .removeInputBinding: return ok(id, ["removed": true, "verified": true])
+        case .inspectAsset(let p):
+            if p.hasSuffix(".wav") { return ok(id, ["path": p, "type": "AudioClip", "length": 0.5, "channels": 1, "frequency": 22_050]) }
+            return ok(id, ["path": p, "type": "Material", "shader": "Standard", "properties": []])
         case .prefabOverrides: return ok(id, ["overrides": [], "jarvisOverrides": 0, "otherOverrides": 0])
-        case .inspectRuntime(let ts, _): return ok(id, ["playing": isPlaying, "targets": ts.map { _ in ["exists": true, "object": ["path": "Hero"], "animator": ["hasController": true, "normalizedTime": 0.5, "inState": ["Walk": true], "clips": ["Walk"]], "audio": ["isPlaying": true, "clip": "Assets/Audio/step.wav"]] as [String: Any] }])
+        case .inspectRuntime(let ts, _):
+            runtimeCalls += 1
+            let n = Double(runtimeCalls)
+            return ok(id, ["playing": isPlaying, "targets": ts.map { _ in ["exists": true, "object": ["path": "Hero"], "pose": ["localPosition": [runtimeAdvances ? n * 0.3 : 1.0, 0.5, 5.0]],
+                                                                          "animator": ["hasController": true, "normalizedTime": runtimeAdvances ? 0.1 * n : 0.5, "inState": ["Walk": true], "clips": ["Walk"]],
+                                                                          "audio": ["isPlaying": audioPlays, "clip": "Assets/Audio/step.wav"]] as [String: Any] }])
         case .captureView(_, let w, let h, let ts):
             let dir = root + "/Library/JarvisBridge/captures"
             try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
@@ -399,6 +429,8 @@ final class FakeLauncher: UnityLaunching {
     var launched: [String] = []
     var onLaunch: (() -> Void)?
     var failure: Error?
+    /// A specific owned editor to hand out once (e.g. one that has already died).
+    var next: (any UnityOwnedEditor)?
     final class Owned: UnityOwnedEditor {
         var pid: pid_t = 99999
         var isRunning = true
@@ -408,6 +440,7 @@ final class FakeLauncher: UnityLaunching {
     }
     func launch(editor: UnityEditorInstall, projectRoot: String) throws -> any UnityOwnedEditor {
         if let failure { throw failure }
+        if let n = next { next = nil; launched.append(editor.version.description + " " + projectRoot); return n }
         launched.append(editor.version.description + " " + projectRoot)
         onLaunch?()
         return Owned()

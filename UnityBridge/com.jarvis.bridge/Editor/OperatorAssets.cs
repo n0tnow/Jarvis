@@ -266,6 +266,36 @@ namespace Jarvis.Bridge
 #endif
         }
 
+        /// <summary>V0.13.1 — a deterministic clip: ONE transform property moved linearly along one axis (the fixture of the animation experiment). Whitelisted properties only; never overwrites.</summary>
+        static D CreateAnimationClip(D a)
+        {
+#if JARVIS_ANIMATION
+            string path = Str(a, "assetPath");
+            Require(AssetPathOk(path, ".anim"), "invalidArguments", "assetPath must be a new .anim inside Assets/.");
+            Require(!File.Exists(Abs(path)), "assetExists", "A clip already exists at that path; the bridge never overwrites assets.");
+            string prop = Str(a, "property"), axis = Str(a, "axis");
+            Require(prop == "position" || prop == "rotation" || prop == "scale", "invalidArguments", "property must be position, rotation or scale.");
+            Require(axis == "x" || axis == "y" || axis == "z", "invalidArguments", "axis must be x, y or z.");
+            float from = F(a, "from"), to = F(a, "to"), dur = F(a, "duration");
+            Require(dur >= 0.1f && dur <= 60f && Mathf.Abs(from) <= 10000f && Mathf.Abs(to) <= 10000f, "invalidValue", "duration must be 0.1–60 s and from/to within ±10000.");
+            bool loop = !a.ContainsKey("loop") || B(a, "loop");
+            Directory.CreateDirectory(Path.GetDirectoryName(Abs(path)));
+            var clip = new AnimationClip { name = Path.GetFileNameWithoutExtension(path) };
+            string binding = (prop == "position" ? "localPosition." : prop == "rotation" ? "localEulerAnglesRaw." : "localScale.") + axis;
+            clip.SetCurve("", typeof(Transform), binding, AnimationCurve.Linear(0f, from, dur, to));
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            settings.loopTime = loop;
+            AnimationUtility.SetAnimationClipSettings(clip, settings);
+            AssetDatabase.CreateAsset(clip, path);
+            AssetDatabase.SaveAssets();
+            var back = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+            Require(back != null, "createFailed", "Unity could not create the clip.");
+            return Obj("created", true, "assetPath", path, "length", (double)back.length, "loop", back.isLooping, "property", binding);
+#else
+            throw new OpException("moduleMissing", "The Animation module is not enabled in this project.");
+#endif
+        }
+
         static D EditAnimatorController(D a)
         {
 #if JARVIS_ANIMATION

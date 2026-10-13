@@ -364,3 +364,137 @@ struct ExperimentEngineTests {
         #expect(r.task.state == .failed)
     }
 }
+
+// MARK: - V0.13.1 — animation and audio experiments are KINDS of the one engine
+
+@Suite("Operator · animation and audio experiments")
+struct PlaybackExperimentPureTests {
+    private func spec(_ kind: ExperimentKind, _ mod: (inout ExperimentSpec) -> Void = { _ in }) -> ExperimentSpec {
+        var s = ExperimentSpec(question: "Does it play?", hypothesis: "It plays in Play Mode.", kind: kind, successCriteria: ["it plays"], failureCriteria: ["it does not"])
+        mod(&s); return s
+    }
+    private func f(_ s: String, _ c: FactClass = .tested) -> ExperimentFact { ExperimentFact(statement: s, factClass: c, evidence: "e") }
+    private let compiled = ExperimentFact(statement: "Unity imported and compiled the project without compile errors", factClass: .tested, evidence: "compiler")
+
+    @Test("they are experiment KINDS with a fixture step — not separate engines — and a named acquisition inserts the hash-verified import")
+    func kinds() {
+        #expect(ExperimentKind.allCases.contains(.audioPlayback) && ExperimentKind.allCases.count == 4)
+        for k in [ExperimentKind.animationPlayback, .audioPlayback] {
+            #expect(spec(k).steps == [.createEnvironment, .openEditor, .compileAndConsole, .prepareFixture, .playAndObserve, .evaluate])
+            #expect(spec(k) { $0.acquisitionID = UUID() }.steps == [.createEnvironment, .importAsset, .openEditor, .compileAndConsole, .prepareFixture, .playAndObserve, .evaluate])
+            #expect(ExperimentValidator.validate(spec(k)).isEmpty, "no acquisition is needed: the fixture is generated")
+        }
+        #expect(spec(.assetImport) { $0.acquisitionID = UUID() }.steps == ExperimentKind.assetImport.steps, "the import step is never inserted twice")
+        let sources = ["Experiments", "Tasks"].flatMap { d in (try? FileManager.default.contentsOfDirectory(atPath: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path + "/Sources/Jarvis/" + d)) ?? [] }
+        #expect(!sources.contains { $0.contains("AnimationExperiment") || $0.contains("AudioExperiment") }, "no independent animation / audio experiment engine exists")
+    }
+
+    @Test("the fixture tone is a valid, harmless 0.5 s mono PCM WAV generated in code (no copyrighted audio, nothing downloaded)")
+    func tone() throws {
+        let d = TaskEngine.fixtureToneData()
+        #expect(d.prefix(4) == Data("RIFF".utf8) && d[8..<12] == Data("WAVE".utf8) && d[12..<16] == Data("fmt ".utf8))
+        func u16(_ o: Int) -> Int { Int(d[o]) | Int(d[o + 1]) << 8 }
+        func u32(_ o: Int) -> Int { u16(o) | u16(o + 2) << 16 }
+        #expect(u16(20) == 1 && u16(22) == 1 && u32(24) == 22_050 && u16(34) == 16, "PCM, mono, 22.05 kHz, 16-bit")
+        let dataBytes = u32(40)
+        #expect(dataBytes == d.count - 44 && abs(Double(dataBytes) / 2 / 22_050 - 0.5) < 0.01)
+        #expect(u32(4) == d.count - 8)
+        // not silence, not clipping
+        let samples = stride(from: 44, to: d.count - 1, by: 2).map { Int(Int16(bitPattern: UInt16(d[$0]) | UInt16(d[$0 + 1]) << 8)) }
+        #expect((samples.map(abs).max() ?? 0) > 5_000 && (samples.map(abs).max() ?? 0) < 20_000)
+        let root = NSTemporaryDirectory() + "tone-\(UUID().uuidString.prefix(6))"
+        try TaskEngine.writeFixtureTone(into: root)
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        #expect(FileManager.default.fileExists(atPath: root + "/" + TaskEngine.fixtureTonePath))
+    }
+
+    @Test("animation verdicts: playback observed ⇒ CONFIRMED; a missing controller or a clip that never advances ⇒ REFUTED; compile success alone never confirms")
+    func animationVerdicts() {
+        let ok = TaskEngine.judge(spec: spec(.animationPlayback), facts: [compiled, f("The animation is running in this fixture (normalized time 0.100 → 0.800; the object's position.x moved 0.2 → 1.4)"), f("It would play the same way on a different rig or character", .inferred)], inconclusive: nil, seconds: 5, deleted: true, hashes: [], untouched: true)
+        #expect(ok.verdict == .confirmed && ok.facts.contains { $0.factClass == .inferred })
+        let missing = TaskEngine.judge(spec: spec(.animationPlayback), facts: [compiled, f("The controller Assets/Missing.controller does not exist in the disposable project: nothing can be played")], inconclusive: nil, seconds: 5, deleted: true, hashes: [], untouched: true)
+        #expect(missing.verdict == .refuted && missing.failureHit.contains { $0.contains("did not run") })
+        let frozen = TaskEngine.judge(spec: spec(.animationPlayback), facts: [compiled, f("The animation did not run (normalized time 0.000 → 0.000; position.x 0.0 → 0.0)")], inconclusive: nil, seconds: 5, deleted: true, hashes: [], untouched: true)
+        #expect(frozen.verdict == .refuted)
+        let compileOnly = TaskEngine.judge(spec: spec(.animationPlayback), facts: [compiled], inconclusive: nil, seconds: 5, deleted: true, hashes: [], untouched: true)
+        #expect(compileOnly.verdict != .confirmed, "a compiling project says nothing about an animation")
+    }
+
+    @Test("audio verdicts: the source entered playback ⇒ CONFIRMED (and 'sounds right' stays UNKNOWN); a missing clip or a silent source ⇒ REFUTED")
+    func audioVerdicts() {
+        let ok = TaskEngine.judge(spec: spec(.audioPlayback), facts: [compiled, f("An AudioSource was configured with the clip Assets/JarvisExperiment/tone.wav (volume 0.2, loop, play on awake) and the editor confirmed it by reading it back"), f("The audio source is playing in Play Mode (isPlaying = true, clip tone)"), f("It sounds right (loudness, mix, spatial placement, output device)", .unknown)], inconclusive: nil, seconds: 5, deleted: true, hashes: [], untouched: true)
+        #expect(ok.verdict == .confirmed && ok.facts.contains { $0.factClass == .unknown && $0.statement.contains("sounds right") })
+        let missing = TaskEngine.judge(spec: spec(.audioPlayback), facts: [compiled, f("The audio file Assets/Missing/none.wav does not exist in the disposable project: no clip can be assigned"), f("The audio source did not enter playback: no clip was available")], inconclusive: nil, seconds: 5, deleted: true, hashes: [], untouched: true)
+        #expect(missing.verdict == .refuted && missing.failureHit.contains { $0.contains("did not enter playback") })
+        let silent = TaskEngine.judge(spec: spec(.audioPlayback), facts: [compiled, f("The audio source did not enter playback in Play Mode (isPlaying = false, clip tone)")], inconclusive: nil, seconds: 5, deleted: true, hashes: [], untouched: true)
+        #expect(silent.verdict == .refuted)
+        #expect(TaskEngine.judge(spec: spec(.audioPlayback), facts: [compiled], inconclusive: nil, seconds: 5, deleted: true, hashes: [], untouched: true).verdict != .confirmed)
+    }
+
+    @Test("the typed clip operation is a closed set: one whitelisted transform property on one axis, bounded numbers")
+    func clipOp() {
+        let ok = UnityActionParser.parse("{\"summary\":\"s\",\"actions\":[{\"op\":\"createAnimationClip\",\"assetPath\":\"Assets/A/Slide.anim\",\"property\":\"position\",\"axis\":\"x\",\"from\":0,\"to\":2,\"duration\":1,\"loop\":true}]}")
+        #expect(ok.problems.isEmpty && ok.actions.count == 1)
+        for bad in ["\"property\":\"material._Color\",\"axis\":\"x\"", "\"property\":\"position\",\"axis\":\"w\"", "\"property\":\"position\",\"axis\":\"x\",\"duration\":0"] {
+            let r = UnityActionParser.parse("{\"summary\":\"s\",\"actions\":[{\"op\":\"createAnimationClip\",\"assetPath\":\"Assets/A/Slide.anim\",\(bad),\"from\":0,\"to\":2}]}")
+            #expect(r.actions.isEmpty && !r.problems.isEmpty, Comment(rawValue: bad))
+        }
+    }
+}
+
+@MainActor
+@Suite("Operator · animation and audio experiments (engine, simulated editor)", .serialized)
+struct PlaybackExperimentEngineTests {
+    private func spec(_ kind: String, assets: String = "[]") -> String {
+        "{\"question\":\"Does it play?\",\"hypothesis\":\"It plays in Play Mode.\",\"kind\":\"\(kind)\",\"assetPaths\":\(assets),\"successCriteria\":[\"it plays\"],\"failureCriteria\":[\"it does not\"],\"minutes\":3,\"diskMegabytes\":64,\"networkRequests\":0,\"artifacts\":2,\"cleanup\":\"delete\"}"
+    }
+    private func run(_ kind: String, assets: String = "[]", advance: Bool = true, audioPlays: Bool = true) async throws -> (TaskView, ExperimentRecord?, URL) {
+        let plan = UnityScripts.plan([UnityScripts.step("s1", "Test it", "experiment", validation: "experimentConcluded", unity: "{\"experiment\":\(spec(kind, assets: assets))}", risk: "low")])
+        let h = UnityHarness(script: UnityScripts.standard(plan: plan), editorAlive: false)
+        h.editor.runtimeAdvances = advance; h.editor.audioPlays = audioPlays; h.editor.writesAssets = false
+        let root = URL(fileURLWithPath: NSTemporaryDirectory() + "exp-pb-\(UUID().uuidString.prefix(6))")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        h.engine.experimentsRoot = root
+        let v = await h.run("Test whether it plays in a clean project")
+        return (v, try h.task.repo.experiments(taskID: v.id).first, root)
+    }
+
+    @Test("an animation experiment builds its fixture with typed operations, plays, observes time AND pose change, labels the generalisation INFERRED, and deletes the environment")
+    func animationSuccess() async throws {
+        let (v, rec, root) = try await run("animationPlayback")
+        #expect(v.task.state == .completed, Comment(rawValue: "\(v.task.failureReason ?? "") \(rec?.result?.summary ?? "") \(rec?.result?.facts.map(\.statement) ?? [])"))
+        let r = try #require(rec?.result)
+        #expect(r.verdict == .confirmed && r.facts.contains { $0.factClass == .tested && $0.statement.contains("animation is running") && $0.statement.contains("position.x moved") })
+        #expect(r.facts.contains { $0.factClass == .inferred && $0.statement.contains("different rig") })
+        #expect(r.facts.contains { $0.statement.contains("deterministic fixture was generated") })
+        #expect(r.environmentDeleted && rec?.cleanupState == "deleted" && ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).isEmpty)
+    }
+
+    @Test("an animation that does not advance, and a controller that does not exist, are REFUTED — never turned into a pass by a clean compile")
+    func animationFailure() async throws {
+        let (_, frozen, _) = try await run("animationPlayback", advance: false)
+        #expect(frozen?.result?.verdict == .refuted && frozen?.result?.failureHit.contains { $0.contains("did not run") } == true)
+        let (_, missing, root) = try await run("animationPlayback", assets: "[\"Assets/Missing/None.controller\"]")
+        #expect(missing?.result?.verdict == .refuted && missing?.result?.facts.contains { $0.statement.contains("does not exist in the disposable project") } == true)
+        #expect(missing?.cleanupState == "deleted" && ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).isEmpty)
+    }
+
+    @Test("an audio experiment writes a generated tone BEFORE the editor opens, configures the source (read back), enters Play Mode, observes isPlaying — and never claims it sounds right")
+    func audioSuccess() async throws {
+        let (v, rec, root) = try await run("audioPlayback")
+        #expect(v.task.state == .completed, Comment(rawValue: "\(v.task.failureReason ?? "") \(rec?.result?.summary ?? "")"))
+        let r = try #require(rec?.result)
+        #expect(r.verdict == .confirmed && r.facts.contains { $0.factClass == .tested && $0.statement.contains("audio source is playing") })
+        #expect(r.facts.contains { $0.factClass == .unknown && $0.statement.contains("sounds right") })
+        #expect(r.environmentDeleted && ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).isEmpty)
+    }
+
+    @Test("an audio source that never plays, and a clip that does not exist, are REFUTED")
+    func audioFailure() async throws {
+        let (_, silent, _) = try await run("audioPlayback", audioPlays: false)
+        #expect(silent?.result?.verdict == .refuted && silent?.result?.failureHit.contains { $0.contains("did not enter playback") } == true)
+        let (_, missing, root) = try await run("audioPlayback", assets: "[\"Assets/Missing/none.wav\"]")
+        #expect(missing?.result?.verdict == .refuted && missing?.result?.facts.contains { $0.statement.contains("does not exist in the disposable project") } == true)
+        #expect(missing?.cleanupState == "deleted" && ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).isEmpty)
+    }
+}

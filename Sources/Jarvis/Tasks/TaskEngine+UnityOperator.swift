@@ -120,7 +120,16 @@ extension TaskEngine {
             let l = try await run.conn.perform(.dev(.inspectLighting(scene: params.scene)), session: run.session)
             lines.append(UnityRender.lighting(l.result))
         }
+        if params.input {
+            do { lines.append(UnityRender.input(try await run.conn.perform(.dev(.inspectInput(assetPath: nil)), session: run.session).result)) }
+            catch let e as UnityToolError { failures.append("input system: \(e.message)") }
+        }
         for a in params.assets.prefix(UnityStepParams.maxAssets) {
+            if a.hasSuffix(".inputactions") {
+                do { lines.append(UnityRender.input(try await run.conn.perform(.dev(.inspectInput(assetPath: a)), session: run.session).result)) }
+                catch let e as UnityToolError { failures.append("\(a): \(e.message)") }
+                continue
+            }
             do { lines.append(UnityRender.asset(try await run.conn.perform(.dev(.inspectAsset(path: a)), session: run.session).result)) }
             catch let e as UnityToolError { failures.append("\(a): \(e.message)") }
         }

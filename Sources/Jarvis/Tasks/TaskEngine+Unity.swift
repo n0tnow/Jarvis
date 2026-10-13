@@ -219,7 +219,7 @@ extension TaskEngine {
         } catch { finishUnityRun(run, passed: false, evidence: "\(error)"); return .failed(.toolFailed, "\(error)") }
 
         if ctx.cancelRequested || Task.isCancelled { finishUnityRun(run, passed: false, cancelled: true, evidence: "cancelled"); return .cancelled }
-        let rendered = String(lines.joined(separator: "\n").prefix(params.profile || !params.assets.isEmpty || params.capture != nil ? 6000 : 3500))
+        let rendered = String(lines.joined(separator: "\n").prefix(params.profile || params.input || !params.assets.isEmpty || params.capture != nil ? 6000 : 3500))
         verifying(ctx, key)
         ctx.results[key] = "Unity inspection:\n" + rendered
         if !failures.isEmpty {
@@ -692,6 +692,9 @@ enum UnityPrompts {
         - {"op": "createMaterial", "assetPath": "Assets/…mat", "shader": "Universal Render Pipeline/Lit" or "copyFrom": "Assets/…mat"}   {"op": "setMaterialProperty", "assetPath": "Assets/…mat", "property": "_BaseColor", "value": [r,g,b,a]}  (use property names shown by an asset inspection)
         - {"op": "setEnvironment", "property": "ambientLight|ambientIntensity|ambientMode|fog|fogColor|fogDensity|…", "value": ...}
         - {"op": "createAnimatorController", "assetPath": "Assets/…controller"}   {"op": "editAnimatorController", "assetPath": "…controller", "action": "addParameter|addState|setDefaultState|setStateSpeed|setStateMotion|addTransition|addBlendTreeState", "layer": 0, "name": "...", "motion": "Assets/…anim" or "Assets/…fbx::ClipName", "from": "…", "to": "…", "conditions": [{"parameter": "…", "mode": "If|IfNot|Greater|Less|Equals|NotEqual", "threshold": 0}]}
+        - Input System (needs com.unity.inputsystem; JARVIS never installs packages): {"op": "createInputAsset", "assetPath": "Assets/…inputactions"}   {"op": "createInputMap", "assetPath": "…", "name": "Gameplay"}   {"op": "createInputAction", "assetPath": "…", "map": "Gameplay", "name": "Jump", "actionType": "Button|Value|PassThrough", "expectedControlType": "Button"}
+          {"op": "addInputBinding", "assetPath": "…", "map": "Gameplay", "action": "Jump", "path": "<Keyboard>/space"} (an exact duplicate is not added; a control already used by another action of the map is REFUSED, never guessed)
+          {"op": "changeInputBinding"|"removeInputBinding", "assetPath": "…", "map": "…", "action": "…", "bindingId": "<id from the inspection>", "path": "<Gamepad>/buttonSouth"} (ONLY bindings JARVIS created; the user's own bindings are never touched). Read the current bindings first with a unityInspect step {"unity": {"assets": ["Assets/…inputactions"]}} or {"unity": {"input": true}}.
         - {"op": "setModelImporter", "assetPath": "Assets/…fbx", "settings": {"animationType": "Humanoid", "importAnimation": true, "clipLoop": ["ClipName", true]}} (the user must approve; JARVIS records the previous values)
         """
     }

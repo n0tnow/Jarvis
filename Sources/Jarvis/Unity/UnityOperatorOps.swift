@@ -203,13 +203,23 @@ enum UnityDevOp: Equatable, Sendable {
     case createAnimatorController(assetPath: String)
     case editAnimatorController(assetPath: String, edit: AnimatorEdit, layer: Int)
     case setModelImporter(assetPath: String, settings: [String: UnityValue])
+    /// V0.13.1: a deterministic animation clip (one transform property moved linearly) — the fixture the animation experiment plays; no arbitrary curves, no code.
+    case createAnimationClip(assetPath: String, property: String, axis: String, from: Double, to: Double, duration: Double, loop: Bool)
+    // Input System (V0.13.1): InputActionAssets edited through Unity's own InputActionAsset API (never by hand-editing JSON/YAML); only bindings JARVIS created can be changed or removed
+    case inspectInput(assetPath: String?)
+    case createInputAsset(assetPath: String)
+    case createInputMap(assetPath: String, name: String)
+    case createInputAction(assetPath: String, map: String, name: String, actionType: String, expectedControlType: String?)
+    case addInputBinding(assetPath: String, map: String, action: String, path: String, groups: String?)
+    case changeInputBinding(assetPath: String, map: String, action: String, bindingID: String, path: String)
+    case removeInputBinding(assetPath: String, map: String, action: String, bindingID: String)
     // runtime & capture (reads; allowed in Play Mode)
     case inspectRuntime(targets: [UnityTarget], animatorStates: [String])
     case captureView(camera: UnityTarget?, width: Int, height: Int, targets: [UnityTarget])
 
     static let allWireNames: Set<String> = ["createScene", "sceneProfile", "editGameObject", "duplicateGameObject", "removeComponent", "setObjectReference", "configureComponent", "instantiatePrefab", "prefabOverrides",
         "revertPrefabOverrides", "applyPrefabOverrides", "createPrefabVariant", "unpackPrefab", "inspectAsset", "createMaterial", "setMaterialProperty", "inspectLighting", "setEnvironment", "createAnimatorController",
-        "editAnimatorController", "setModelImporter", "inspectRuntime", "captureView"]
+        "editAnimatorController", "setModelImporter", "inspectRuntime", "captureView", "createAnimationClip", "inspectInput", "createInputAsset", "createInputMap", "createInputAction", "addInputBinding", "changeInputBinding", "removeInputBinding"]
 
     var wireName: String {
         switch self {
@@ -217,27 +227,29 @@ enum UnityDevOp: Equatable, Sendable {
         case .setObjectReference: "setObjectReference"; case .configureComponent: "configureComponent"; case .instantiatePrefab: "instantiatePrefab"; case .prefabOverrides: "prefabOverrides"
         case .revertPrefabOverrides: "revertPrefabOverrides"; case .applyPrefabOverrides: "applyPrefabOverrides"; case .createPrefabVariant: "createPrefabVariant"; case .unpackPrefab: "unpackPrefab"
         case .inspectAsset: "inspectAsset"; case .createMaterial: "createMaterial"; case .setMaterialProperty: "setMaterialProperty"; case .inspectLighting: "inspectLighting"; case .setEnvironment: "setEnvironment"
-        case .createAnimatorController: "createAnimatorController"; case .editAnimatorController: "editAnimatorController"; case .setModelImporter: "setModelImporter"
+        case .createAnimatorController: "createAnimatorController"; case .editAnimatorController: "editAnimatorController"; case .setModelImporter: "setModelImporter"; case .createAnimationClip: "createAnimationClip"
         case .inspectRuntime: "inspectRuntime"; case .captureView: "captureView"
+        case .inspectInput: "inspectInput"; case .createInputAsset: "createInputAsset"; case .createInputMap: "createInputMap"; case .createInputAction: "createInputAction"
+        case .addInputBinding: "addInputBinding"; case .changeInputBinding: "changeInputBinding"; case .removeInputBinding: "removeInputBinding"
         }
     }
 
     var capability: TaskCapability {
         switch self {
-        case .sceneProfile, .prefabOverrides, .inspectAsset, .inspectLighting, .inspectRuntime: .inspectUnity
+        case .sceneProfile, .prefabOverrides, .inspectAsset, .inspectLighting, .inspectRuntime, .inspectInput: .inspectUnity
         case .captureView: .captureUnityView
         case .createScene: .saveUnityScene
         case .editGameObject, .duplicateGameObject, .setObjectReference, .configureComponent, .instantiatePrefab, .revertPrefabOverrides, .setEnvironment: .modifyUnityScene
         case .removeComponent, .unpackPrefab: .deleteUnityObject
         case .applyPrefabOverrides: .createUnityPrefab
-        case .createPrefabVariant, .createMaterial, .setMaterialProperty, .createAnimatorController, .editAnimatorController, .setModelImporter: .editUnityAssets
+        case .createPrefabVariant, .createMaterial, .setMaterialProperty, .createAnimatorController, .editAnimatorController, .setModelImporter, .createAnimationClip, .createInputAsset, .createInputMap, .createInputAction, .addInputBinding, .changeInputBinding, .removeInputBinding: .editUnityAssets
         }
     }
 
     /// Changes the project on disk or the open scene (blocked in Play Mode by the policy AND the bridge, serialised by the Unity lock).
     var isPersistentMutation: Bool {
         switch self {
-        case .sceneProfile, .prefabOverrides, .inspectAsset, .inspectLighting, .inspectRuntime, .captureView: false
+        case .sceneProfile, .prefabOverrides, .inspectAsset, .inspectLighting, .inspectRuntime, .captureView, .inspectInput: false
         default: true
         }
     }
@@ -251,7 +263,7 @@ enum UnityDevOp: Equatable, Sendable {
     var isDestructive: Bool { switch self { case .removeComponent, .unpackPrefab: true; default: false } }
     var isRetryable: Bool {
         switch self {
-        case .createScene, .duplicateGameObject, .removeComponent, .createPrefabVariant, .createMaterial, .createAnimatorController, .applyPrefabOverrides, .unpackPrefab, .setModelImporter: false
+        case .createScene, .duplicateGameObject, .removeComponent, .createPrefabVariant, .createMaterial, .createAnimatorController, .applyPrefabOverrides, .unpackPrefab, .setModelImporter, .createAnimationClip, .createInputAsset, .addInputBinding: false
         default: true
         }
     }
@@ -263,10 +275,12 @@ enum UnityDevOp: Equatable, Sendable {
         case .createScene(let p, _): return [p]
         case .instantiatePrefab(let p, _, _, _, _, _, _, _): return [p]
         case .createPrefabVariant(let s, let p): return [s, p]
-        case .inspectAsset(let p), .createAnimatorController(let p): return [p]
+        case .inspectAsset(let p), .createAnimatorController(let p), .createInputAsset(let p): return [p]
+        case .inspectInput(let p): return p.map { [$0] } ?? []
+        case .createInputMap(let p, _), .createInputAction(let p, _, _, _, _), .addInputBinding(let p, _, _, _, _), .changeInputBinding(let p, _, _, _, _), .removeInputBinding(let p, _, _, _): return [p]
         case .createMaterial(let p, _, let c): return [p] + (c.map { [base($0)] } ?? [])
         case .setMaterialProperty(let p, _, let v): return [p] + (v.string.map { [base($0)] } ?? [])
-        case .setModelImporter(let p, _): return [p]
+        case .setModelImporter(let p, _), .createAnimationClip(let p, _, _, _, _, _, _): return [p]
         case .editAnimatorController(let p, let e, _): return [p] + e.motionAssets.map(base)
         case .setObjectReference(_, _, _, _, let a): return a.map { [base($0)] } ?? []
         case .configureComponent(_, _, let s): return s.values.compactMap { $0.string }.filter { $0.hasPrefix("Assets/") }.map(base)
@@ -309,8 +323,16 @@ enum UnityDevOp: Equatable, Sendable {
         case .createAnimatorController(let p): "create animator controller \(p)"
         case .editAnimatorController(let p, let e, _): "\(e.summary) in \(p)"
         case .setModelImporter(let p, let s): "change import settings of \(p) (\(s.keys.sorted().joined(separator: ", ")))"
+        case .createAnimationClip(let p, let pr, let ax, let f, let t, _, _): "create animation clip \(p) (\(pr).\(ax) \(f) → \(t))"
         case .inspectRuntime(let t, _): "inspect \(t.count) object(s) at runtime"
         case .captureView(_, let w, let h, _): "capture the game camera (\(w)×\(h))"
+        case .inspectInput(let p): "inspect the Input System\(p.map { " asset \($0)" } ?? "")"
+        case .createInputAsset(let p): "create input actions asset \(p)"
+        case .createInputMap(let p, let n): "create action map \(n) in \(p)"
+        case .createInputAction(let p, let m, let n, let t, _): "create \(t) action \(m)/\(n) in \(p)"
+        case .addInputBinding(let p, let m, let a, let path, _): "bind \(path) to \(m)/\(a) in \(p)"
+        case .changeInputBinding(let p, let m, let a, _, let path): "change a JARVIS-created binding of \(m)/\(a) in \(p) to \(path)"
+        case .removeInputBinding(let p, let m, let a, _): "remove a JARVIS-created binding of \(m)/\(a) in \(p)"
         }
     }
 
@@ -357,9 +379,17 @@ enum UnityDevOp: Equatable, Sendable {
         case .createAnimatorController(let p): return ["assetPath": s(p)]
         case .editAnimatorController(let p, let e, let l): var d = e.fields; d["assetPath"] = s(p); d["action"] = e.wireAction; if d["layer"] == nil { d["layer"] = l }; return d
         case .setModelImporter(let p, let st): return ["assetPath": s(p), "settings": st.mapValues(\.any)]
+        case .createAnimationClip(let p, let pr, let ax, let f, let t, let d, let l): return ["assetPath": s(p), "property": pr, "axis": ax, "from": f, "to": t, "duration": d, "loop": l]
         case .inspectRuntime(let ts, let states): return ["targets": ts.prefix(12).map(t), "animatorStates": Array(states.prefix(12)).map(s)]
         case .captureView(let cam, let w, let h, let ts):
             var d: [String: Any] = ["width": min(max(w, 64), 1_280), "height": min(max(h, 64), 1_280), "targets": ts.prefix(8).map(t)]; if let cam { d["camera"] = t(cam) }; return d
+        case .inspectInput(let p): return p.map { ["assetPath": s($0)] } ?? [:]
+        case .createInputAsset(let p): return ["assetPath": s(p)]
+        case .createInputMap(let p, let n): return ["assetPath": s(p), "name": s(n)]
+        case .createInputAction(let p, let m, let n, let ty, let ex): var d: [String: Any] = ["assetPath": s(p), "map": s(m), "name": s(n), "actionType": ty]; if let ex { d["expectedControlType"] = ex }; return d
+        case .addInputBinding(let p, let m, let a, let path, let g): var d: [String: Any] = ["assetPath": s(p), "map": s(m), "action": s(a), "path": s(path)]; if let g { d["groups"] = s(g) }; return d
+        case .changeInputBinding(let p, let m, let a, let id, let path): return ["assetPath": s(p), "map": s(m), "action": s(a), "bindingId": s(id), "path": s(path)]
+        case .removeInputBinding(let p, let m, let a, let id): return ["assetPath": s(p), "map": s(m), "action": s(a), "bindingId": s(id)]
         }
     }
 
@@ -371,6 +401,11 @@ enum UnityDevOp: Equatable, Sendable {
         return UnityPolicy.isSafeProjectPath(base) && base.range(of: #"^[A-Za-z0-9_ ./#()+-]{1,240}$"#, options: .regularExpression) != nil && sub.count <= 80 && !sub.contains("\n")
     }
     static func validAssetPath(_ s: String, ext: String) -> Bool { s.hasSuffix(ext) && validAssetReference(s) && !s.contains("::") }
+    /// An Input System control path: `<Keyboard>/space`, `<Gamepad>/buttonSouth`, `<Mouse>/leftButton`, `<XRController>{LeftHand}/trigger`. Bounded; no code, no wildcard-only paths, no `..`.
+    static func validInputControlPath(_ s: String) -> Bool { s.range(of: #"^<[A-Za-z][A-Za-z0-9 ]{0,40}>(\{[A-Za-z0-9 ]{1,30}\})?(/[A-Za-z0-9 \[\]#]{1,40}){1,3}$"#, options: .regularExpression) != nil }
+    static let inputActionTypes: Set<String> = ["Button", "Value", "PassThrough"]
+    static func validInputName(_ s: String) -> Bool { s.range(of: #"^[A-Za-z][A-Za-z0-9 _-]{0,39}$"#, options: .regularExpression) != nil }
+    static func validBindingID(_ s: String) -> Bool { s.range(of: #"^[0-9a-fA-F-]{36}$"#, options: .regularExpression) != nil }
 }
 
 extension UnityValue {

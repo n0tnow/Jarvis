@@ -321,6 +321,24 @@ struct UnityScenarioTests {
         h.engine.unity = service
     }
 
+    @Test("an editor that DIES while starting (a compile error in a batch-mode start) is noticed within seconds and its output is reported — not after the full connect timeout (found by the Input System live test)")
+    func aDeadEditorFailsFast() async {
+        let h = UnityHarness(script: UnityScripts.standard(plan: UnityScripts.addCollider), editorAlive: false)
+        h.service.connectTimeout = 120
+        final class Dying: UnityOwnedEditor {
+            var pid: pid_t = 4242; var isRunning = false
+            var outputTail = "Packages/com.jarvis.bridge/Editor/X.cs(28,24): error CS0104: 'PackageInfo' is an ambiguous reference"
+            var onExit: (() -> Void)?
+            func terminate() async {}
+        }
+        h.launcher.next = Dying()
+        let t0 = Date()
+        let outcome = await h.service.prepare(root: h.project, approvedInstall: true, approvedUpgrade: false)
+        guard case .failed(_, let why) = outcome else { Issue.record("expected a failure, got \(outcome)"); return }
+        #expect(Date().timeIntervalSince(t0) < 15, "it must not wait for the 120 s connect timeout")
+        #expect(why.contains("exited before") && why.contains("CS0104"), Comment(rawValue: why))
+    }
+
     @Test func anUnresponsiveEditorTimesOutTruthfully() async {
         UnityConnection.timeoutOverride = 0.2
         defer { UnityConnection.timeoutOverride = nil }

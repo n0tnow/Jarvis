@@ -11,6 +11,12 @@ enum IconCanvasRects { static let plus = CGRect(x: 40, y: 23, width: 50, height:
 
 @MainActor
 enum ComputerLiveTest {
+    /// `--computer-repro N`: ONLY the AMBIGUITY → CONTEXT → reset sequence, N times, with the per-iteration facts that explain a failure (JARVIS-V13-7). 0 = the normal live test.
+    static var reproIterations = 0
+    /// `--computer-restart-repeat N`: ONLY the safe-task crash/relaunch/resume cycle, N times (V0.13.1).
+    static var restartRepeat = 0
+    /// `--computer-stop-after-context`: the normal live test up to and including the CONTEXT check, then exit (a quick way to repeat the whole prefix many times in fresh processes).
+    static var stopAfterContext = false
     static let fixtureBundle = "com.jarvis.fixture"
     static let sentinelPassword = "S3ntinel-Pa55word-NotARealOne"
 
@@ -188,11 +194,48 @@ enum ComputerLiveTest {
         let scrollCount = actions(v).first?.attempts ?? 99
         check("SCROLL: bounded scrolling brought a row that was not visible into view", v.task.state == .completed && (st().numbers["scrollY"] ?? 0) > scrollBefore && scrollCount <= ComputerLimits.maxScrollAttempts, "\(actions(v).first?.detail ?? v.task.failureReason ?? "") scrollY \(Int(scrollBefore)) → \(Int(st().numbers["scrollY"] ?? 0)) in \(scrollCount) step(s)")
 
+        if Self.restartRepeat > 0 {
+            var failed = 0
+            for k in 1...Self.restartRepeat {
+                let t0 = Date()
+                let r = await Self.restartCycle(k, statePath: statePath, readCounts: { (st().count("run"), st().count("applyInspector"), st().count("applySidebar"), st().count("delete")) })
+                if !r.ok { failed += 1 }
+                print("RESTART CYCLE \(k)/\(Self.restartRepeat) \(r.ok ? "PASS" : "FAIL") in \(Int(Date().timeIntervalSince(t0) * 1000)) ms — \(r.detail)")
+                fflush(stdout)
+            }
+            print("RESTART REPEAT DONE: \(Self.restartRepeat - failed) passed, \(failed) failed")
+            finish()
+        }
+        if Self.reproIterations > 0 {
+            var failed = 0
+            for i in 1...Self.reproIterations {
+                let front0 = await backend.frontmostApplication()
+                let wins0 = await backend.windows(pid: fixturePID)
+                let fixtureWin = wins0.first { $0.title == "Fixture Main" }
+                let t0 = Date()
+                let before = (st().count("applyInspector"), st().count("applySidebar"))
+                (v, _) = await runTask("Press Apply", [step("Pressing Apply", press("Apply", window: "Fixture Main"))])
+                let ambiguous = v.task.failureCategory == .ambiguousTarget
+                (v, _) = await runTask("Press Apply in the Inspector", [step("Pressing Apply (Inspector)", press("Apply", within: "Inspector", window: "Fixture Main"))])
+                let ok = v.task.state == .completed && st().count("applyInspector") == before.0 + 1 && st().count("applySidebar") == before.1
+                let acts = actions(v)
+                // reset the visible label so the NEXT iteration's press changes the state again (the same text twice would be "no change" by design)
+                let (rv, _) = await runTask("Press Apply in the Sidebar", [step("Pressing Apply (Sidebar)", press("Apply", within: "Sidebar", window: "Fixture Main"))])
+                if !ok { failed += 1 }
+                let tl = runtime.timeline.suffix(6).map { $0.text.prefix(120) }.joined(separator: " | ")
+                print("REPRO \(i)/\(Self.reproIterations) \(ok ? "PASS" : "FAIL") ambiguous=\(ambiguous) state=\(v.task.state.rawValue) frontBefore=\(front0?.bundleID ?? "?") fixtureWin=\(fixtureWin?.cgWindowID.map { String($0) } ?? "?") focused=\(fixtureWin?.isFocused == true) attempts=\(acts.first?.attempts ?? -1) ms=\(Int(Date().timeIntervalSince(t0) * 1000)) reset=\(rv.task.state.rawValue) inspector×\(st().count("applyInspector")) sidebar×\(st().count("applySidebar"))" + (ok ? "" : " reason=\(v.task.failureReason?.prefix(160) ?? "") actions=\(acts.map { ($0.detail ?? "").prefix(300) }) timeline=\(tl)"))
+                fflush(stdout)
+            }
+            print("REPRO DONE: \(Self.reproIterations - failed) passed, \(failed) failed")
+            finish()
+        }
+
         // ------------------------------------------------------------ 5. ambiguity, multi-window
         (v, _) = await runTask("Press Apply", [step("Pressing Apply", press("Apply", window: "Fixture Main"))])
         check("AMBIGUITY: two identical “Apply” buttons (Sidebar, Inspector) → the task stops as AMBIGUOUS, nothing is pressed", v.task.state == .failed && v.task.failureCategory == .ambiguousTarget && st().count("applySidebar") == 0 && st().count("applyInspector") == 0, "\(v.task.failureReason?.prefix(120) ?? "")")
         (v, _) = await runTask("Press Apply in the Inspector", [step("Pressing Apply (Inspector)", press("Apply", within: "Inspector", window: "Fixture Main"))])
-        check("CONTEXT: with “in the Inspector” from the user's words the right one is pressed", v.task.state == .completed && st().count("applyInspector") == 1 && st().count("applySidebar") == 0, "state \(v.task.state.rawValue) · inspector×\(st().count("applyInspector")) sidebar×\(st().count("applySidebar")) · \(v.task.failureReason?.prefix(200) ?? "") · actions \(actions(v).map { "\($0.status)/attempts \($0.attempts)/\(($0.detail ?? "").prefix(220))" })")
+        check("CONTEXT: with “in the Inspector” from the user's words the right one is pressed", v.task.state == .completed && st().count("applyInspector") == 1 && st().count("applySidebar") == 0, "state \(v.task.state.rawValue) · inspector×\(st().count("applyInspector")) sidebar×\(st().count("applySidebar")) · \(v.task.failureReason?.prefix(200) ?? "") · actions \(actions(v).map { "\($0.status)/attempts \($0.attempts)/\(($0.detail ?? "").prefix(220))" }) · timeline \(runtime.timeline.suffix(10).map { String($0.text.prefix(110)) })")
+        if Self.stopAfterContext { finish() }
         (v, _) = await runTask("Press Apply in Document B", [step("Pressing Apply in Document B", press("Apply", window: "Document B", checks: [.elementExists(bundleID: fixtureBundle, role: "statictext", title: "Applied 1")]))])
         check("MULTI-WINDOW: two similar windows are told apart by TITLE, not z-order — only Document B's Apply was pressed", v.task.state == .completed && st().count("applyDocB") == 1 && st().count("applyDocA") == 0, "A×\(st().count("applyDocA")) B×\(st().count("applyDocB"))")
         (v, _) = await runTask("Press Apply in Document", [step("Pressing Apply", press("Apply", window: "Document"))])
@@ -637,6 +680,9 @@ enum ComputerLiveTest {
             check("RESTART LIVE: the destructive fixture button was never pressed across the whole crash/relaunch/resume", st().count("delete") == 0)
         }
 
+        let safeCycle = await Self.restartCycle(0, statePath: statePath, readCounts: { (st().count("run"), st().count("applyInspector"), st().count("applySidebar"), st().count("delete")) })
+        check("RESTART SAFE CYCLE: a safe task is killed at an approval; the relaunch finds it INTERRUPTED, nothing happens by itself, an explicit Resume re-observes, the steps that had passed are NOT pressed again and the destructive step is never pressed", safeCycle.ok, safeCycle.detail)
+
         // ------------------------------------------------------------ 19. performance and idle
         let t5 = Date()
         (v, dur) = await runTask("A 5-step fixture task", [step("1", press("Run", checks: [.elementExists(bundleID: fixtureBundle, role: "statictext", title: "Status: running")])), step("2", press("General", role: "tab", checks: [.elementSelected(bundleID: fixtureBundle, role: "radiobutton", title: "General")])), step("3", press("Render Properties", role: "tab", checks: [.elementSelected(bundleID: fixtureBundle, role: "radiobutton", title: "Render Properties")])), step("4", press("Apply", within: "Sidebar", checks: [.elementExists(bundleID: fixtureBundle, role: "statictext", title: "Status: applied sidebar")])), step("5", press("Output", role: "tab", checks: [.elementSelected(bundleID: fixtureBundle, role: "radiobutton", title: "Output")]))])
@@ -666,6 +712,81 @@ enum ComputerLiveTest {
     // MARK: Child processes for the restart test
 
     /// `--computer-child start`: submit a task that stops at an approval prompt on the fixture's “Delete Everything”, announce it, then wait to be killed.
+
+    /// One safe-task restart cycle in two child processes: (1) run 2 safe steps, wait at an approval, get SIGKILLed; (2) relaunch: INTERRUPTED, nothing automatic, explicit Resume re-observes, the finished steps are not pressed again.
+    static func restartCycle(_ k: Int, statePath: String, readCounts: () -> (run: Int, inspector: Int, sidebar: Int, delete: Int)) async -> (ok: Bool, detail: String) {
+        let exe = Bundle.main.executablePath ?? CommandLine.arguments[0]
+        let shared = ["--computer-live-test", "--computer-fixture-state", statePath, "--computer-cycle", "\(k)"]
+        let before = readCounts()
+        let c1 = ManagedProcess(executable: exe, arguments: shared + ["--computer-child", "start2"], environment: ProcessInfo.processInfo.environment, workingDirectory: "/")
+        var ready = false
+        if let lines = try? c1.start(stdin: nil, keepStdinOpen: true) {
+            let reader = Task { @MainActor in for await l in lines { if String(decoding: l, as: UTF8.self) == "CHILD_READY" { ready = true; break } } }
+            let end = Date().addingTimeInterval(60); while !ready, Date() < end { try? await Task.sleep(for: .milliseconds(50)) }
+            reader.cancel()
+            kill(c1.processIdentifier, SIGKILL)
+            let end2 = Date().addingTimeInterval(10); while c1.isRunning, Date() < end2 { try? await Task.sleep(for: .milliseconds(50)) }
+        }
+        let mid = readCounts()
+        guard ready else { return (false, "the first process never reached the hold point") }
+        let c2 = ManagedProcess(executable: exe, arguments: shared + ["--computer-child", "check2"], environment: ProcessInfo.processInfo.environment, workingDirectory: "/")
+        var results: [String] = []
+        if let lines = try? c2.start(stdin: nil, keepStdinOpen: true) {
+            let reader = Task { @MainActor in for await l in lines { let s = String(decoding: l, as: UTF8.self); if s.hasPrefix("CHILD ") { results.append(s) } } }
+            let end = Date().addingTimeInterval(90); while c2.isRunning, Date() < end { try? await Task.sleep(for: .milliseconds(50)) }
+            reader.cancel()
+            if c2.isRunning { await c2.cancel() }
+        }
+        let after = readCounts()
+        let pressedOnce = mid.run == before.run + 1 && mid.inspector == before.inspector + 1 && mid.sidebar == before.sidebar
+        let noDuplicate = after.run == mid.run && after.inspector == mid.inspector && after.sidebar == mid.sidebar && after.delete == 0
+        let interrupted = results.contains { $0.hasPrefix("CHILD PASS interrupted-not-resumed") }, resumed = results.contains { $0.hasPrefix("CHILD PASS resume-reobserves") }
+        return (pressedOnce && noDuplicate && interrupted && resumed, "pressed once before the kill \(pressedOnce) · interrupted & nothing automatic \(interrupted) · resume re-observed, asked again & denied \(resumed) · no duplicate press after the kill \(noDuplicate) (run \(before.run)→\(mid.run)→\(after.run), inspector \(before.inspector)→\(mid.inspector)→\(after.inspector), delete \(after.delete))" + (results.filter { $0.contains("FAIL") }.map { " · " + $0 }.joined()))
+    }
+
+    static func runChildStartSafe(context: AppContext, cycle: Int) async {
+        let engine = context.taskEngine
+        let steps = [step("Pressing Run", press("Run", window: "Fixture Main")), step("Pressing Apply (Inspector)", press("Apply", within: "Inspector", window: "Fixture Main")), step("Pressing Delete Everything", press("Delete Everything", window: "Fixture Main"))]
+        guard case .success(let id) = await engine.submitComputer(goal: "restart safe cycle \(cycle): press Run, then Apply in the Inspector, then Delete Everything", steps: steps, capability: capability, apps: [AppRef(bundleID: fixtureBundle, name: "JARVIS Fixture")]) else { print("CHILD FAIL submit"); fflush(stdout); exit(4) }
+        let end = Date().addingTimeInterval(60)
+        while Date() < end, !(engine.view(id)?.task.state == .waitingForApproval && !engine.pendingApprovals.isEmpty) { try? await Task.sleep(for: .milliseconds(30)) }
+        guard engine.view(id)?.task.state == .waitingForApproval else { print("CHILD FAIL never reached the approval: \(engine.view(id)?.task.state.rawValue ?? "?") \(engine.view(id)?.task.failureReason ?? "")"); fflush(stdout); exit(5) }
+        print("CHILD_READY"); fflush(stdout)
+        try? await Task.sleep(for: .seconds(300))
+        exit(0)
+    }
+
+    static func runChildCheckSafe(context: AppContext, statePath: String, cycle: Int) async {
+        let engine = context.taskEngine, repo = context.repository!, runtime = context.computer
+        func say(_ s: String) { print("CHILD \(s)"); fflush(stdout) }
+        try? await Task.sleep(for: .seconds(1))
+        guard let t = ((try? repo.engineTasks(limit: 40)) ?? []).filter({ $0.kind == .computer }).first(where: { $0.goal.contains("restart safe cycle \(cycle):") }) else { say("FAIL no restart task found"); exit(6) }
+        let session = (try? repo.computerSession(t.id)) ?? nil
+        let counts0 = readState(statePath)
+        let steps0 = ((try? repo.steps(taskID: t.id)) ?? []).map { "\($0.type.rawValue):\($0.state.rawValue)" }
+        let ok1 = t.state == .interrupted && session?.status == .interrupted && engine.runners[t.id] == nil && engine.pendingApprovals.isEmpty && counts0.count("delete") == 0
+        say("\(ok1 ? "PASS" : "FAIL") interrupted-not-resumed (task \(t.state.rawValue), session \(session?.status.rawValue ?? "?"), runners \(engine.runners.count), pending approvals \(engine.pendingApprovals.count), steps \(steps0))")
+        guard ok1 else { exit(7) }
+        // nothing may happen on its own: wait, then count again
+        try? await Task.sleep(for: .seconds(2))
+        guard readState(statePath).count("run") == counts0.count("run"), readState(statePath).count("applyInspector") == counts0.count("applyInspector") else { say("FAIL something pressed by itself after the relaunch"); exit(7) }
+        let obsBefore = (try? repo.computerObservations(sessionID: t.id).count) ?? 0
+        guard engine.resume(t.id) else { say("FAIL resume refused"); exit(8) }
+        let end = Date().addingTimeInterval(40)
+        while Date() < end, engine.pendingApprovals.isEmpty { try? await Task.sleep(for: .milliseconds(30)) }
+        let fresh = engine.pendingApprovals.first
+        let obsAfter = (try? repo.computerObservations(sessionID: t.id).count) ?? 0
+        if let fresh { engine.decide(fresh.id, approved: false, by: "user") }
+        let end2 = Date().addingTimeInterval(30)
+        while Date() < end2, !(engine.view(t.id)?.task.state.isTerminal ?? false) { try? await Task.sleep(for: .milliseconds(30)) }
+        let after = engine.view(t.id)
+        let c = readState(statePath)
+        let ok2 = fresh != nil && obsAfter > obsBefore && after?.task.state == .failed && after?.task.failureCategory == .approvalDenied && c.count("delete") == 0 && c.count("run") == counts0.count("run") && c.count("applyInspector") == counts0.count("applyInspector") && c.count("applySidebar") == counts0.count("applySidebar")
+        say("\(ok2 ? "PASS" : "FAIL") resume-reobserves (fresh approval \(fresh != nil), observations \(obsBefore)→\(obsAfter), final \(after?.task.state.rawValue ?? "?"), run \(counts0.count("run"))→\(c.count("run")), inspector \(counts0.count("applyInspector"))→\(c.count("applyInspector")), sidebar \(c.count("applySidebar")), delete \(c.count("delete")))")
+        runtime.shutdown()
+        exit(ok2 ? 0 : 9)
+    }
+
     static func runChildStart(context: AppContext, statePath: String) async {
         let engine = context.taskEngine
         let steps = [step("Pressing Delete Everything", press("Delete Everything", window: "Fixture Main"))]

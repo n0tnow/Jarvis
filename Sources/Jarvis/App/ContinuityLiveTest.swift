@@ -200,7 +200,7 @@ enum ContinuityLiveTest {
         finish()
     }
 
-    private static func resetFixture(_ fixture: String, _ write: (String, String) -> Void, _ git: ([String]) async -> String) async {
+    static func resetFixture(_ fixture: String, _ write: (String, String) -> Void, _ git: ([String]) async -> String) async {
         try? FileManager.default.removeItem(atPath: fixture)
         try? FileManager.default.createDirectory(atPath: fixture, withIntermediateDirectories: true)
         write("README.md", "# calc-fixture\nA tiny calculator used as a disposable continuity fixture.\n")

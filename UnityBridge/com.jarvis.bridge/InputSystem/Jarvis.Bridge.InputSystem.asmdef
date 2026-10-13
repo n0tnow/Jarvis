@@ -1,0 +1,14 @@
+{
+  "name": "Jarvis.Bridge.InputSystem",
+  "rootNamespace": "Jarvis.Bridge",
+  "references": [ "Jarvis.Bridge.Editor", "Unity.InputSystem" ],
+  "includePlatforms": [ "Editor" ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [ "JARVIS_HAS_INPUTSYSTEM" ],
+  "versionDefines": [ { "name": "com.unity.inputsystem", "expression": "1.0.0", "define": "JARVIS_HAS_INPUTSYSTEM" } ],
+  "noEngineReferences": false
+}

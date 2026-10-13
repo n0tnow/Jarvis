@@ -220,6 +220,8 @@ struct ProjectContinuityView: Equatable, Sendable {
     var unity: ContinuityUnity?
     var lastContinuationAt: Date?
     var pendingApprovals = 0
+    /// V0.13.1: the open scene's headline facts (live from a connected editor, or remembered and labelled as history). Never part of the persisted view.
+    var scene: UnitySceneFacts?
     /// Titles whose retry also failed: they are never started a third time without the user's direction.
     var exhausted: [String] = []
     /// The newest failure that nothing has followed (shown by the status even when it is not retriable).

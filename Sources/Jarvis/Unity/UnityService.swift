@@ -256,6 +256,22 @@ final class UnityService {
 
     func existingConnection(for root: String) -> UnityConnection? { connections[UnityProcessScanner.canonical(root)] }
 
+    /// V0.13.1 — the Project card's scene facts. Read from a CONNECTED editor only (this never starts or focuses one, and never polls: the card asks when it refreshes). With no editor the last
+    /// reading is returned as history (`live == false`); with none at all, nil.
+    private var lastScene: [String: UnitySceneFacts] = [:]
+    func sceneFacts(for root: String) async -> UnitySceneFacts? {
+        let key = UnityProcessScanner.canonical(root)
+        if let conn = connections[key], let st = conn.transport.currentStatus(), !st.isCompiling {
+            let session = UnityToolSession(capabilities: CapabilitySet(granted: TaskCapability.unityInspection), taskID: nil, runID: nil, hub: nil, destructiveRequested: false)
+            if let r = try? await conn.perform(.dev(.sceneProfile(scene: nil, maxObjects: 2_000)), session: session, timeout: 15) {
+                let facts = UnitySceneFacts(profile: r.result, isPlaying: st.isPlaying)
+                lastScene[key] = facts
+                return facts
+            }
+        }
+        return lastScene[key]?.remembered
+    }
+
     /// What the HUD shows: the busiest/most connected known connection, or discovery-only states.
     var summary: UnitySummary {
         if let live = connections.values.filter({ $0.state != .notConfigured }).sorted(by: { $0.state.priority > $1.state.priority }).first {
@@ -321,7 +337,13 @@ final class UnityService {
         conn.owned = owned
         var exited = false
         owned.onExit = { exited = true }
-        let status = await conn.transport.waitForStatus(timeout: connectTimeout, { _ in true })
+        // Wait for the bridge in short slices so that an editor that DIED (a compile error in a batch-mode start, a crash) is noticed at once, with its output, instead of after the full timeout.
+        var status: UnityStatusSnapshot?
+        let deadline = Date().addingTimeInterval(connectTimeout)
+        while status == nil, Date() < deadline {
+            status = await conn.transport.waitForStatus(timeout: min(2, max(0.1, deadline.timeIntervalSinceNow)), { _ in true })
+            if status == nil, exited || !owned.isRunning { exited = true; break }
+        }
         if let status {
             conn.apply(status: status)
             _ = status

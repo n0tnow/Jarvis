@@ -131,6 +131,35 @@ struct ComputerExecutorTests {
         #expect(res.verification?.passed == true)
     }
 
+    @Test("JARVIS-V13-7: an application that answers “not supported” for a press its handler DID run is judged by the state it produced — verified, one press, never repeated")
+    func unsupportedAnswerButEffect() async {
+        let r = CURig(); _ = FakeUI.demoApp(r.ui)
+        r.ui.pressFailure = (.unsupported("the element does not support this"), afterEffect: true)
+        let res = await r.act(.pressElement, app: "com.demo.app", role: "button", title: "Run", checks: [.elementExists(bundleID: "com.demo.app", role: "statictext", title: "Status: running")])
+        #expect(res.status == .verified && res.verification?.passed == true, Comment(rawValue: "\(res.status) \(res.detail)"))
+        #expect(res.detail.contains("the application answered") && res.detail.contains("not repeated"))
+        #expect(r.count("press") == 1, "a press that already took effect is never sent again")
+        // the default postcondition (some state changed) behaves the same
+        let r2 = CURig(); _ = FakeUI.demoApp(r2.ui)
+        r2.ui.pressFailure = (.unsupported("not implemented"), afterEffect: true)
+        let res2 = await r2.act(.pressElement, app: "com.demo.app", role: "button", title: "Run")
+        #expect(res2.status == .verified && r2.count("press") == 1, Comment(rawValue: "\(res2.status) \(res2.detail)"))
+    }
+
+    @Test("JARVIS-V13-7: “not supported” with NO observable effect stays a failure — the answer is not trusted either way, nothing is repeated, and the report says what was (not) seen")
+    func unsupportedAnswerNoEffect() async {
+        let r = CURig(); _ = FakeUI.demoApp(r.ui)
+        r.ui.pressFailure = (.unsupported("the element does not support this"), afterEffect: false)
+        let res = await r.act(.pressElement, app: "com.demo.app", role: "button", title: "Run", checks: [.elementExists(bundleID: "com.demo.app", role: "statictext", title: "Status: running")])
+        #expect(res.status == .failed && res.detail.contains("not supported") && res.detail.contains("not observed either"), Comment(rawValue: "\(res.status) \(res.detail)"))
+        #expect(r.count("press") == 1 && r.ui.apps.values.flatMap(\.windows).flatMap(\.elements).contains { $0.title == "Status: idle" })
+        // other errors are untouched: a vanished element is still a failure that names itself
+        let r3 = CURig(); _ = FakeUI.demoApp(r3.ui)
+        r3.ui.pressFailure = (.timedOut, afterEffect: false)
+        let res3 = await r3.act(.pressElement, app: "com.demo.app", role: "button", title: "Run")
+        #expect(res3.status == .appUnresponsive)
+    }
+
     @Test("a postcondition that never holds is NOT_VERIFIED, and safe actions are retried only within the budget")
     func retryBudget() async {
         let r = CURig(); let pid = FakeUI.demoApp(r.ui)

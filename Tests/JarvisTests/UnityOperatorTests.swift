@@ -48,14 +48,20 @@ struct UnityOperatorSchemaTests {
     func wireNames() throws {
         let cs = try String(contentsOfFile: sourceFolder() + "/OperatorOps.cs", encoding: .utf8)
         let re = try NSRegularExpression(pattern: #"R\("([A-Za-z]+)""#)
-        let registered = Set(re.matches(in: cs, range: NSRange(cs.startIndex..., in: cs)).map { String(cs[Range($0.range(at: 1), in: cs)!]) })
+        var registered = Set(re.matches(in: cs, range: NSRange(cs.startIndex..., in: cs)).map { String(cs[Range($0.range(at: 1), in: cs)!]) })
+        // the Input System operations are registered by the OPTIONAL assembly (compiled only when com.unity.inputsystem is installed); the main assembly registers the same names as "package missing" answers
+        let input = try String(contentsOfFile: sourceFolder() + "/../InputSystem/InputOps.cs", encoding: .utf8)
+        let reg = try NSRegularExpression(pattern: #"Register\("([A-Za-z]+)""#)
+        let inputNames = Set(reg.matches(in: input, range: NSRange(input.startIndex..., in: input)).map { String(input[Range($0.range(at: 1), in: input)!]) })
+        registered.formUnion(inputNames)
+        #expect(inputNames == ["inspectInput", "createInputAsset", "createInputMap", "createInputAction", "addInputBinding", "changeInputBinding", "removeInputBinding"])
         #expect(registered == UnityDevOp.allWireNames)
         #expect(UnityDevOp.allWireNames.allSatisfy { n in !["execute", "eval", "runcsharp", "menu", "shell", "invoke", "script", "command"].contains { n.lowercased().contains($0) } })
     }
 
     @Test("the bridge keeps its security boundary: no menu items, processes, network, assembly loading, environment or arbitrary invocation in the operator files")
     func bridgeBoundary() throws {
-        for f in ["OperatorOps.cs", "OperatorAssets.cs"] {
+        for f in ["OperatorOps.cs", "OperatorAssets.cs", "InputBase.cs", "../InputSystem/InputOps.cs"] {
             let text = try String(contentsOfFile: sourceFolder() + "/" + f, encoding: .utf8)
             for bad in ["ExecuteMenuItem", "Process.Start", "UnityWebRequest", "System.Net", "Assembly.Load", ".Invoke(", "GetEnvironmentVariable", "EditorApplication.ExecuteMenuItem", "Activator.CreateInstance", "System.Diagnostics"] {
                 #expect(!text.contains(bad), Comment(rawValue: "\(f) contains \(bad)"))
@@ -340,5 +346,105 @@ struct UnityEditPromptTests {
         #expect(withEvidence.contains("Already done by earlier steps") && withEvidence.contains("Mover#0/KeyLight#0") && withEvidence.contains("a created object keeps the path of its parent"))
         let without = UnityPrompts.edit(goal: "Add a light above Mover", step: step, inspection: [], analysis: [], allowDelete: false)
         #expect(!without.contains("Already done by earlier steps"))
+    }
+}
+
+// MARK: - Input System (V0.13.1)
+
+@Suite("Unity operator · Input System")
+struct UnityInputSystemTests {
+    private func parse(_ actions: String) -> UnityActionParser.Result { UnityActionParser.parse("{\"summary\":\"s\",\"actions\":[\(actions)]}") }
+    private let asset = "\"assetPath\":\"Assets/Input/Controls.inputactions\""
+    private let id = "0f8fad5b-d9cb-469f-a165-70867728950e"
+
+    @Test("the seven Input System operations parse into typed operations; reads and writes are told apart")
+    func valid() {
+        let r = parse("""
+        {"op":"createInputAsset",\(asset)}, {"op":"createInputMap",\(asset),"name":"Gameplay"},
+        {"op":"createInputAction",\(asset),"map":"Gameplay","name":"Jump","actionType":"Button","expectedControlType":"Button"},
+        {"op":"addInputBinding",\(asset),"map":"Gameplay","action":"Jump","path":"<Keyboard>/space","groups":"Keyboard&Mouse"},
+        {"op":"changeInputBinding",\(asset),"map":"Gameplay","action":"Jump","bindingId":"\(id)","path":"<Gamepad>/buttonSouth"},
+        {"op":"removeInputBinding",\(asset),"map":"Gameplay","action":"Jump","bindingId":"\(id)"}
+        """.replacingOccurrences(of: "\n        ", with: " "))
+        #expect(r.problems.isEmpty && r.actions.count == 6, Comment(rawValue: "\(r.problems)"))
+        let ops = r.actions.compactMap { a -> UnityDevOp? in if case .dev(let d) = a.operation { d } else { nil } }
+        #expect(ops.map(\.wireName) == ["createInputAsset", "createInputMap", "createInputAction", "addInputBinding", "changeInputBinding", "removeInputBinding"])
+        #expect(ops.allSatisfy { $0.isPersistentMutation && !$0.touchesScene && $0.capability == .editUnityAssets && $0.assetPaths == ["Assets/Input/Controls.inputactions"] })
+        #expect(!UnityDevOp.inspectInput(assetPath: nil).isPersistentMutation && UnityDevOp.inspectInput(assetPath: nil).capability == .inspectUnity)
+    }
+
+    @Test("a control path, name, action type, binding id or asset that cannot be what it says is refused before anything is sent")
+    func refused() {
+        for bad in ["{\"op\":\"addInputBinding\",\(asset),\"map\":\"G\",\"action\":\"Jump\",\"path\":\"<Keyboard>/space; rm -rf ~\"}",
+                    "{\"op\":\"addInputBinding\",\(asset),\"map\":\"G\",\"action\":\"Jump\",\"path\":\"space\"}",
+                    "{\"op\":\"addInputBinding\",\(asset),\"map\":\"G\",\"action\":\"Jump\",\"path\":\"<Keyboard>/../../x\"}",
+                    "{\"op\":\"createInputMap\",\(asset),\"name\":\"../x\"}",
+                    "{\"op\":\"createInputAction\",\(asset),\"map\":\"G\",\"name\":\"Jump\",\"actionType\":\"Script\"}",
+                    "{\"op\":\"removeInputBinding\",\(asset),\"map\":\"G\",\"action\":\"Jump\",\"bindingId\":\"not-a-guid\"}",
+                    "{\"op\":\"createInputAsset\",\"assetPath\":\"Assets/../Controls.inputactions\"}",
+                    "{\"op\":\"createInputAsset\",\"assetPath\":\"Assets/Controls.json\"}"] {
+            let r = parse(bad)
+            #expect(r.actions.isEmpty && !r.problems.isEmpty, Comment(rawValue: "\(bad) → \(r.problems)"))
+        }
+        #expect(UnityDevOp.validInputControlPath("<Keyboard>/space") && UnityDevOp.validInputControlPath("<Gamepad>/leftStick/up") && UnityDevOp.validInputControlPath("<XRController>{LeftHand}/trigger"))
+        #expect(!UnityDevOp.validInputControlPath("<Keyboard>") && !UnityDevOp.validInputControlPath("<Keyboard>/") && !UnityDevOp.validInputControlPath("Keyboard/space"))
+    }
+
+    @Test("the verifier counts an edit only when the saved file read back says so; an exact duplicate is a verified no-op that adds nothing")
+    func verifier() {
+        func resp(_ r: [String: Any]) -> UnityResponse { UnityResponse(id: "x", ok: true, result: r) }
+        let add = UnityDevOp.addInputBinding(assetPath: "Assets/I.inputactions", map: "G", action: "Jump", path: "<Keyboard>/space", groups: nil)
+        #expect(UnityDevVerifier.verify(add, resp(["added": true, "verified": true, "bindingId": id])).0)
+        #expect(!UnityDevVerifier.verify(add, resp(["added": true, "verified": false, "bindingId": id])).0, "no read-back, no proof")
+        let dup = UnityDevVerifier.verify(add, resp(["added": false, "duplicate": true, "verified": true]))
+        #expect(dup.0 && dup.1.contains("nothing was added"))
+        let change = UnityDevOp.changeInputBinding(assetPath: "Assets/I.inputactions", map: "G", action: "Jump", bindingID: id, path: "<Gamepad>/buttonSouth")
+        #expect(!UnityDevVerifier.verify(change, resp(["changed": true, "verified": false])).0)
+        #expect(!UnityDevVerifier.verify(.removeInputBinding(assetPath: "Assets/I.inputactions", map: "G", action: "Jump", bindingID: id), resp(["removed": true, "verified": false])).0)
+    }
+
+    @Test("the inspection shows maps, actions, expected control types, bindings with their ids, who created them, and the control schemes — bounded")
+    func render() {
+        let text = UnityRender.input(["package": ["installed": true, "version": "1.19.0"], "assets": ["Assets/I.inputactions"], "asset": ["path": "Assets/I.inputactions",
+            "maps": [["name": "Gameplay", "actions": [["name": "Jump", "type": "Button", "expectedControlType": "Button", "bindings": [["path": "<Keyboard>/space", "id": id, "ownedByJarvis": true], ["path": "<Gamepad>/buttonSouth", "id": "aaaaaaaa-0000-0000-0000-000000000000", "ownedByJarvis": false]]]]]],
+            "controlSchemes": [["name": "Keyboard&Mouse"]]]])
+        #expect(text.contains("installed 1.19.0") && text.contains("map Gameplay") && text.contains("action Jump [Button → Button]") && text.contains("<Keyboard>/space id 0f8fad5b (created by JARVIS)") && text.contains("control schemes: Keyboard&Mouse"))
+        #expect(!text.contains("<Gamepad>/buttonSouth id aaaaaaaa (created by JARVIS)"), "a user's own binding is never labelled as JARVIS'")
+        #expect(UnityRender.input(["package": ["installed": false]]).contains("NOT installed"))
+        #expect(text.count <= 2_400)
+    }
+
+    @Test("the bridge names its safety rules in code: only owned bindings change, a shared control is refused with the facts, the asset is reloaded to verify")
+    func bridgeRules() throws {
+        let src = try String(contentsOfFile: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path + "/UnityBridge/com.jarvis.bridge/InputSystem/InputOps.cs", encoding: .utf8)
+        for k in ["RequireOwned", "userBinding", "inputConflict", "InputActionAsset.FromJson", "asset.ToJson()", "Erase()", "DestroyImmediate"] { #expect(src.contains(k), Comment(rawValue: k)) }
+        #expect(!src.contains("ExecuteMenuItem") && !src.contains("Process.Start") && !src.contains("System.Net") && !src.contains("Assembly.Load"))
+        let asm = try String(contentsOfFile: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path + "/UnityBridge/com.jarvis.bridge/InputSystem/Jarvis.Bridge.InputSystem.asmdef", encoding: .utf8)
+        #expect(asm.contains("JARVIS_HAS_INPUTSYSTEM") && asm.contains("com.unity.inputsystem") && asm.contains("\"defineConstraints\""), "the optional assembly compiles only when the package is installed")
+    }
+}
+
+@Suite("Unity operator · Input System (engine, simulated editor)", .serialized)
+@MainActor
+struct UnityInputSystemEngineTests {
+    @Test("an Input System edit runs through the unityEdit step and is passed only on the editor's read-back; a refused conflict fails the step with the editor's facts")
+    func edits() async {
+        let a = "\"assetPath\":\"Assets/Input/Controls.inputactions\""
+        let plan = UnityHarness.editPlan("{\"op\":\"createInputAsset\",\(a)},{\"op\":\"createInputMap\",\(a),\"name\":\"Gameplay\"},{\"op\":\"createInputAction\",\(a),\"map\":\"Gameplay\",\"name\":\"Jump\"},{\"op\":\"addInputBinding\",\(a),\"map\":\"Gameplay\",\"action\":\"Jump\",\"path\":\"<Keyboard>/space\"}")
+        let h = UnityHarness(script: UnityScripts.standard(plan: plan))
+        h.editor.devOverrides["createInputAsset"] = ["created": true, "verified": true]
+        h.editor.devOverrides["createInputMap"] = ["created": true, "verified": true]
+        h.editor.devOverrides["createInputAction"] = ["created": true, "verified": true]
+        h.editor.devOverrides["addInputBinding"] = ["added": true, "verified": true, "bindingId": "0f8fad5b-d9cb-469f-a165-70867728950e"]
+        let v = await h.run("Add a Jump action on space")
+        #expect(v.task.state == .completed, Comment(rawValue: "\(v.task.failureReason ?? "") \(v.steps.map { "\($0.key):\($0.state):\($0.validationEvidence ?? "")" })"))
+        #expect(["createInputAsset", "createInputMap", "createInputAction", "addInputBinding"].allSatisfy { h.editor.received.contains($0) })
+        let evidence = v.steps.first { $0.type == .unityEdit }?.validationEvidence ?? ""
+        #expect(evidence.contains("bound <Keyboard>/space to Gameplay/Jump") && evidence.contains("read back from the saved file"), Comment(rawValue: evidence))
+        // an edit the editor cannot confirm is NOT passed
+        let h2 = UnityHarness(script: UnityScripts.standard(plan: UnityHarness.editPlan("{\"op\":\"addInputBinding\",\(a),\"map\":\"Gameplay\",\"action\":\"Jump\",\"path\":\"<Keyboard>/space\"}")))
+        h2.editor.devOverrides["addInputBinding"] = ["added": true, "verified": false, "bindingId": "0f8fad5b-d9cb-469f-a165-70867728950e"]
+        let v2 = await h2.run("Add a Jump action on space")
+        #expect(v2.task.state == .failed && v2.task.failureCategory == .validationFailed)
     }
 }

@@ -41,9 +41,11 @@ namespace Jarvis.Bridge
             R("setEnvironment", SetEnvironment, true);
             R("createAnimatorController", CreateAnimatorController, true);
             R("editAnimatorController", EditAnimatorController, true);
+            R("createAnimationClip", CreateAnimationClip, true);
             R("setModelImporter", SetModelImporter, true);
             R("inspectRuntime", InspectRuntime, false);
             R("captureView", CaptureView, false);
+            RegisterInputBase(R);
         }
 
         // ================================================================ small shared helpers

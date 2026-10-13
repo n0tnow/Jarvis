@@ -9,6 +9,8 @@ import CoreGraphics
 struct ComputerConsequenceTests {
     @Test(arguments: [
         ("Buy Now — $99", Consequence.purchase), ("Purchase", .purchase), ("Subscribe", .purchase), ("Satın Al", .purchase), ("Get 12 months for €49", .purchase), ("Checkout", .purchase),
+        ("Rent", .purchase), ("Rent HD", .purchase), ("Buy or Rent", .purchase), ("Rent or Buy", .purchase), ("Kirala", .purchase), ("Add to Cart", .purchase), ("Join Prime", .purchase), ("Donate", .purchase),
+        ("Current Scene", .ordinary), ("Parent", .ordinary), ("Transparent", .ordinary),
         ("Sign in", .accountAction), ("Accept Terms", .accountAction), ("I Agree", .accountAction), ("Authorize", .accountAction), ("Kabul Et", .accountAction),
         ("Install", .install), ("Install Now", .install), ("Update Now", .install),
         ("Allow", .privacyGrant), ("Full Disk Access", .privacyGrant), ("Always Allow", .privacyGrant),

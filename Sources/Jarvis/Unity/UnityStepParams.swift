@@ -49,6 +49,8 @@ struct UnityStepParams: Codable, Equatable, Sendable {
     var save = true
     /// V0.13 read-side additions of `unityInspect`: asset paths to inspect, a scene/lighting profile, and a camera capture (memory only) with the named objects analysed.
     var assets: [String] = []
+    /// V0.13.1: read the Input System package state and the project's .inputactions assets.
+    var input = false
     var profile = false
     var capture: UnityCaptureSpec?
     /// V0.13: observe → act → inspect → correct, bounded: make an object clearly visible (aim the camera, add or raise a light, raise the ambient) and PROVE it with the editor's capture analysis.
@@ -72,6 +74,7 @@ struct UnityStepParams: Codable, Equatable, Sendable {
         p.requireNoNewErrors = d["requireNoNewErrors"] as? Bool ?? true
         p.save = d["save"] as? Bool ?? true
         p.assets = (d["assets"] as? [Any] ?? []).compactMap { $0 as? String }
+        p.input = d["input"] as? Bool ?? false
         p.profile = d["profile"] as? Bool ?? false
         if let c = d["capture"] as? [String: Any] { p.capture = UnityCaptureSpec(width: (c["width"] as? NSNumber)?.intValue ?? 640, height: (c["height"] as? NSNumber)?.intValue ?? 360, targets: (c["targets"] as? [Any] ?? []).compactMap { $0 as? String }) }
         else if d["capture"] as? Bool == true { p.capture = UnityCaptureSpec() }

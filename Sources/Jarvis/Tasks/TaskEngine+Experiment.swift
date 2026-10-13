@@ -35,7 +35,7 @@ extension TaskEngine {
         var editorOpened = false
         var cancelled = false
 
-        stepLoop: for kind in spec.kind.steps {
+        stepLoop: for kind in spec.steps {
             if ctx.cancelRequested || Task.isCancelled { cancelled = true; break }
             if Date() > deadline { inconclusive = "the time budget of \(spec.minutes) min ended"; break }
             if ws.sizeBytes() > spec.diskMegabytes * 1_048_576 { inconclusive = "the disk budget of \(spec.diskMegabytes) MB was exceeded"; break }
@@ -44,7 +44,10 @@ extension TaskEngine {
                 switch kind {
                 case .createEnvironment:
                     try Self.createDisposableProject(at: project, version: unity.editors.first(where: \.available)?.version.description ?? "6000.5.1f1")
-                    stepLog(kind, "ok", "a clean Unity project under the JARVIS experiments root")
+                    if spec.kind == .audioPlayback, spec.assetPaths.isEmpty {         // the deterministic fixture sound is written BEFORE the editor opens, so the editor imports it itself
+                        try Self.writeFixtureTone(into: project)
+                        stepLog(kind, "ok", "a clean Unity project and a generated 0.5 s tone (no copyrighted or downloaded audio)")
+                    } else { stepLog(kind, "ok", "a clean Unity project under the JARVIS experiments root") }
                 case .importAsset:
                     guard let id = spec.acquisitionID, let rec = (try? repository?.acquisition(id)) ?? nil, let web else { inconclusive = "the quarantined asset is not available"; break stepLoop }
                     guard web.acquisition.verifyStored(rec) else { inconclusive = "the quarantined file no longer matches its recorded SHA-256"; break stepLoop }
@@ -80,8 +83,11 @@ extension TaskEngine {
                 case .instantiateAndCapture:
                     let r = try await experimentRender(ctx, step, project: project, spec: spec, discovered: (ctx.results[key + ".assets"] ?? "").split(separator: "\n").map(String.init), fact: fact, hashes: &hashes)
                     stepLog(kind, r ? "ok" : "issues", nil)
+                case .prepareFixture:
+                    let r = try await experimentFixture(ctx, project: project, spec: spec, fact: fact)
+                    stepLog(kind, r ? "ok" : "issues", nil)
                 case .playAndObserve:
-                    let r = try await experimentPlayback(ctx, step, project: project, spec: spec, fact: fact)
+                    let r = spec.kind == .audioPlayback ? try await experimentAudio(ctx, project: project, spec: spec, fact: fact) : try await experimentAnimation(ctx, project: project, spec: spec, fact: fact)
                     stepLog(kind, r ? "ok" : "issues", nil)
                 case .evaluate:
                     stepLog(kind, "ok", nil)
@@ -146,7 +152,9 @@ extension TaskEngine {
         }
         if has("without compile errors") { met.append("the project compiles") } else if has("compile error") { hit.append("the project does not compile") }
         if has("no import errors") { met.append("no Console errors after the import") } else if has("error(s)") && tested.contains(where: { $0.statement.hasPrefix("The Console shows") }) { hit.append("the Console shows errors") }
-        if spec.kind != .animationPlayback {
+        if spec.kind == .audioPlayback {
+            if has("audio source is playing") { met.append("the audio source plays") } else { hit.append("the audio source did not enter playback") }
+        } else if spec.kind != .animationPlayback {
             if has("instantiated") { met.append("an object can be instantiated") } else if spec.kind == .assetImport { hit.append("nothing could be instantiated") }
             if has("visible") && !has("not clearly visible") { met.append("it renders visibly") } else if has("not clearly visible") || has("outside the camera") { hit.append("it does not render visibly") }
             if has("does not render pink") { met.append("it does not render pink") } else if has("renders magenta") { hit.append("it renders pink (a missing shader or an unsupported material under this pipeline)") }
@@ -154,7 +162,7 @@ extension TaskEngine {
             if has("animation is running") { met.append("the animation runs") } else { hit.append("the animation did not run") }
         }
         // Every check the kind NEEDS must have been made: a check that was never made is not a pass.
-        let required = spec.kind == .animationPlayback ? ["the project compiles", "the animation runs"]
+        let required = spec.kind == .audioPlayback ? ["the project compiles", "the audio source plays"] : spec.kind == .animationPlayback ? ["the project compiles", "the animation runs"]
             : ["the project compiles", "it renders visibly", "it does not render pink"] + (spec.kind == .assetImport ? ["an object can be instantiated"] : [])
         let unmade = required.filter { !met.contains($0) }                      // only consulted when nothing was refuted
         let verdict: ExperimentResult.Verdict = !hit.isEmpty ? .refuted : (unmade.isEmpty ? .confirmed : .inconclusive)
@@ -241,29 +249,6 @@ extension TaskEngine {
         return visible && pink <= 0.15
     }
 
-    private func experimentPlayback(_ ctx: TaskContext, _ step: TaskStepRecord, project: String, spec: ExperimentSpec, fact: (String, FactClass, String) -> Void) async throws -> Bool {
-        guard let unity else { return false }
-        let conn = unity.connection(for: project)
-        var goal = UnityGoalIntent(); goal.sceneCreation = true
-        let session = UnityToolSession(capabilities: CapabilitySet(granted: TaskCapability.unityDevelopment), taskID: ctx.record.id, runID: nil, hub: nil, destructiveRequested: false)
-        session.goalIntent = goal
-        guard let controller = spec.assetPaths.first(where: { $0.hasSuffix(".controller") }) else { fact("The animation did not run: no controller was given", .tested, "contract"); return false }
-        _ = try await conn.perform(.dev(.createScene(path: "Assets/ExperimentScene.unity", empty: false)), session: session)
-        _ = try await conn.perform(.createGameObject(name: "ExperimentSubject", scene: nil, parent: nil, primitive: "Cube", position: [0, 0.5, 0], rotation: nil, scale: nil, ifAbsent: true), session: session)
-        _ = try await conn.perform(.addComponent(UnityTarget(path: "ExperimentSubject"), componentType: "Animator", ifAbsent: true), session: session)
-        _ = try await conn.perform(.dev(try UnityDevOp.configure(UnityTarget(path: "ExperimentSubject"), kind: "animator", settings: ["controller": .string(controller)])), session: session)
-        _ = try await conn.perform(.enterPlayMode, session: session)
-        defer { Task { @MainActor in _ = try? await conn.perform(.exitPlayMode, session: session); _ = await conn.transport.waitForStatus(timeout: 60, { !$0.isPlaying }) } }
-        guard await conn.transport.waitForStatus(timeout: 120, { $0.isPlaying && $0.state == "playing" }) != nil else { return false }
-        let t = UnityTarget(path: "ExperimentSubject")
-        func sample() async throws -> UnityRuntimeObject? { (try await conn.perform(.dev(.inspectRuntime(targets: [t], animatorStates: [])), session: session).result["targets"] as? [[String: Any]])?.first.map(UnityRuntimeObject.init(json:)) }
-        let a = try await sample()
-        _ = await conn.transport.waitForStatus(timeout: 0.7, { _ in false })
-        let b = try await sample()
-        let moved = a?.hasController == true && (a?.normalizedTime ?? 0) != (b?.normalizedTime ?? 0)
-        fact(moved ? "The animation is running (normalized time advances)" : "The animation did not run", .tested, "two runtime samples in Play Mode")
-        return moved
-    }
 }
 
 private extension CGImage {

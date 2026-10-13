@@ -356,7 +356,7 @@ enum UnityActionParser {
 
 extension UnityActionParser {
     static let devOperations: Set<String> = ["createScene", "editGameObject", "duplicateGameObject", "removeComponent", "setObjectReference", "configureComponent", "instantiatePrefab", "revertPrefabOverrides",
-                                              "applyPrefabOverrides", "createPrefabVariant", "unpackPrefab", "createMaterial", "setMaterialProperty", "setEnvironment", "createAnimatorController", "editAnimatorController", "setModelImporter"]
+                                              "applyPrefabOverrides", "createPrefabVariant", "unpackPrefab", "createMaterial", "setMaterialProperty", "setEnvironment", "createAnimatorController", "editAnimatorController", "setModelImporter", "createAnimationClip", "inspectInput", "createInputAsset", "createInputMap", "createInputAction", "addInputBinding", "changeInputBinding", "removeInputBinding"]
 
     static func validName(_ s: String) -> Bool { !s.isEmpty && s.count <= 80 && !s.contains("/") && !s.contains("#") && !s.contains("\n") }
     static func validIdentifier(_ s: String) -> Bool { s.range(of: #"^[A-Za-z_][A-Za-z0-9_]{0,80}$"#, options: .regularExpression) != nil }
@@ -441,6 +441,38 @@ extension UnityActionParser {
             case "setEnvironment":
                 guard let pn = a["property"] as? String, a.keys.contains("value"), let v = UnityValue(any: a["value"]) else { return fail("needs a property and a value") }
                 return .success(.dev(try UnityDevOp.environment(property: pn, value: v)))
+            case "createAnimationClip":
+                guard let p = path("assetPath", ".anim") else { return fail("needs a new .anim under Assets/") }
+                guard let pr = a["property"] as? String, ["position", "rotation", "scale"].contains(pr), let ax = a["axis"] as? String, ["x", "y", "z"].contains(ax),
+                      let f = (a["from"] as? NSNumber)?.doubleValue, let t = (a["to"] as? NSNumber)?.doubleValue, abs(f) <= 10_000, abs(t) <= 10_000,
+                      let d = (a["duration"] as? NSNumber)?.doubleValue, (0.1...60).contains(d) else { return fail("needs property position|rotation|scale, axis x|y|z, from/to numbers and a duration between 0.1 and 60 s") }
+                return .success(.dev(.createAnimationClip(assetPath: p, property: pr, axis: ax, from: f, to: t, duration: d, loop: (a["loop"] as? Bool) ?? true)))
+            case "inspectInput": return .success(.dev(.inspectInput(assetPath: a["assetPath"] == nil ? nil : path("assetPath", ".inputactions"))))
+            case "createInputAsset":
+                guard let p = path("assetPath", ".inputactions") else { return fail("needs a new .inputactions under Assets/") }
+                return .success(.dev(.createInputAsset(assetPath: p)))
+            case "createInputMap":
+                guard let p = path("assetPath", ".inputactions"), let n = a["name"] as? String, UnityDevOp.validInputName(n) else { return fail("needs an .inputactions asset and a map name (letters, digits, space, - _)") }
+                return .success(.dev(.createInputMap(assetPath: p, name: n)))
+            case "createInputAction":
+                guard let p = path("assetPath", ".inputactions"), let m = a["map"] as? String, UnityDevOp.validInputName(m), let n = a["name"] as? String, UnityDevOp.validInputName(n) else { return fail("needs an .inputactions asset, a map and an action name") }
+                let ty = (a["actionType"] as? String) ?? "Button"
+                guard UnityDevOp.inputActionTypes.contains(ty) else { return fail("actionType must be Button, Value or PassThrough") }
+                let ex = a["expectedControlType"] as? String
+                if let ex, ex.range(of: #"^[A-Za-z][A-Za-z0-9]{0,30}$"#, options: .regularExpression) == nil { return fail("expectedControlType must be a control type name (Button, Axis, Vector2 …)") }
+                return .success(.dev(.createInputAction(assetPath: p, map: m, name: n, actionType: ty, expectedControlType: ex)))
+            case "addInputBinding", "changeInputBinding", "removeInputBinding":
+                guard let p = path("assetPath", ".inputactions"), let m = a["map"] as? String, UnityDevOp.validInputName(m), let act = a["action"] as? String, UnityDevOp.validInputName(act) else { return fail("needs an .inputactions asset, a map and an action") }
+                if op == "removeInputBinding" || op == "changeInputBinding" {
+                    guard let id = a["bindingId"] as? String, UnityDevOp.validBindingID(id) else { return fail("needs the bindingId reported by inspectInput (a GUID)") }
+                    if op == "removeInputBinding" { return .success(.dev(.removeInputBinding(assetPath: p, map: m, action: act, bindingID: id))) }
+                    guard let bp = a["path"] as? String, UnityDevOp.validInputControlPath(bp) else { return fail("path must be a control path such as <Keyboard>/space") }
+                    return .success(.dev(.changeInputBinding(assetPath: p, map: m, action: act, bindingID: id, path: bp)))
+                }
+                guard let bp = a["path"] as? String, UnityDevOp.validInputControlPath(bp) else { return fail("path must be a control path such as <Keyboard>/space") }
+                let g = a["groups"] as? String
+                if let g, g.range(of: #"^[A-Za-z][A-Za-z0-9 ;_&-]{0,60}$"#, options: .regularExpression) == nil { return fail("groups must be control scheme names") }
+                return .success(.dev(.addInputBinding(assetPath: p, map: m, action: act, path: bp, groups: g)))
             case "createAnimatorController":
                 guard let p = path("assetPath", ".controller") else { return fail("needs a new .controller under Assets/") }
                 return .success(.dev(.createAnimatorController(assetPath: p)))

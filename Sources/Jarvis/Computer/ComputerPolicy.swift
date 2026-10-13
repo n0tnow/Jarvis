@@ -57,8 +57,8 @@ enum Consequence: String, Codable, Sendable {
 }
 
 enum ConsequenceClassifier {
-    private static let purchase: Set<String> = ["buy", "purchase", "pay", "checkout", "subscribe", "subscription", "order", "satin", "ode", "odeme", "siparis", "abone", "upgrade"]
-    private static let purchasePhrases = ["place order", "check out", "buy now", "add payment", "satin al", "get premium", "start trial", "free trial", "unlock full"]
+    private static let purchase: Set<String> = ["buy", "purchase", "pay", "checkout", "subscribe", "subscription", "order", "satin", "ode", "odeme", "siparis", "abone", "upgrade", "rent", "rental", "rentals", "kirala", "kiralama", "kiralik", "preorder", "cart", "basket", "sepete", "sepet", "donate", "bagis"]
+    private static let purchasePhrases = ["place order", "check out", "buy now", "add payment", "satin al", "get premium", "start trial", "free trial", "unlock full", "buy or rent", "rent or buy", "rent now", "add to cart", "add to basket", "pre order", "pre-order", "join prime", "try prime", "sepete ekle", "kiralamak icin", "satin al veya kirala"]
     private static let account: Set<String> = ["login", "signin", "signup", "register", "authorize", "authorise", "agree", "accept", "kabul", "onayla", "giris", "kayit"]
     private static let accountPhrases = ["sign in", "sign up", "log in", "create account", "accept terms", "i agree", "add account", "add to account", "oturum ac", "giris yap", "kayit ol", "kabul et", "terms of service", "continue with apple", "continue with google"]
     private static let credential: Set<String> = ["password", "passcode", "passphrase", "keychain", "token", "sifre", "parola", "credentials", "otp"]

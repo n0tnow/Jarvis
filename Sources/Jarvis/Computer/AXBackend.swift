@@ -369,7 +369,16 @@ final class AXBackend: UIBackend, @unchecked Sendable {
         try await runThrowing {
             guard let el = self.elements[h] else { throw BackendError.elementGone }
             switch op {
-            case .press: try Self.check(AXUIElementPerformAction(el, kAXPressAction as CFString))
+            case .press:
+                let t0 = Date()
+                let err = AXUIElementPerformAction(el, kAXPressAction as CFString)
+                if err == .actionUnsupported || err == .attributeUnsupported || err == .notImplemented {          // say what the element looked like at that moment (names only — no UI text)
+                    var names: CFArray?
+                    AXUIElementCopyActionNames(el, &names)
+                    let enabled = (self.attr(el, kAXEnabledAttribute) as? Bool).map { $0 ? "enabled" : "disabled" } ?? "enabled unknown"
+                    throw BackendError.unsupported("the element does not support this (AXPress returned \(err.rawValue) after \(Int(Date().timeIntervalSince(t0) * 1000)) ms; actions \((names as? [String]) ?? []); \(enabled))")
+                }
+                try Self.check(err)
             case .confirm: try Self.check(AXUIElementPerformAction(el, kAXConfirmAction as CFString))
             case .showMenu: try Self.check(AXUIElementPerformAction(el, kAXShowMenuAction as CFString))
             case .raise: try Self.check(AXUIElementPerformAction(el, kAXRaiseAction as CFString))

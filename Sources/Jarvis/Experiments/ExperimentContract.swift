@@ -11,27 +11,29 @@ enum ExperimentKind: String, Codable, Sendable, CaseIterable {
     case assetImport
     /// A material (or a shader property set): does it render under the project's pipeline (not pink, visible)?
     case materialRender
-    /// A clip/controller on a rig: does the animation actually run?
+    /// A clip/controller on a rig: does the animation actually run? (V0.13.1: with no asset named, JARVIS generates a deterministic clip + controller itself.)
     case animationPlayback
+    /// An AudioClip on an AudioSource: does the source actually enter playback in Play Mode? (V0.13.1: with no clip named, JARVIS generates a harmless tone WAV.) Never "does it sound good".
+    case audioPlayback
 
-    var label: String { switch self { case .assetImport: "Asset import test"; case .materialRender: "Material render test"; case .animationPlayback: "Animation playback test" } }
+    var label: String { switch self { case .assetImport: "Asset import test"; case .materialRender: "Material render test"; case .animationPlayback: "Animation playback test"; case .audioPlayback: "Audio playback test" } }
     /// The steps JARVIS runs for this kind (fixed, typed, in order).
     var steps: [ExperimentStepKind] {
         switch self {
         case .assetImport: [.createEnvironment, .importAsset, .openEditor, .compileAndConsole, .discover, .instantiateAndCapture, .evaluate]
         case .materialRender: [.createEnvironment, .openEditor, .compileAndConsole, .instantiateAndCapture, .evaluate]
-        case .animationPlayback: [.createEnvironment, .openEditor, .compileAndConsole, .playAndObserve, .evaluate]
+        case .animationPlayback, .audioPlayback: [.createEnvironment, .openEditor, .compileAndConsole, .prepareFixture, .playAndObserve, .evaluate]
         }
     }
 }
 
 enum ExperimentStepKind: String, Codable, Sendable {
-    case createEnvironment, importAsset, openEditor, compileAndConsole, discover, instantiateAndCapture, playAndObserve, evaluate
+    case createEnvironment, importAsset, openEditor, compileAndConsole, discover, instantiateAndCapture, prepareFixture, playAndObserve, evaluate
     var label: String {
         switch self {
         case .createEnvironment: "Create the disposable project"; case .importAsset: "Import the quarantined copy"; case .openEditor: "Open the editor"
         case .compileAndConsole: "Compile and read the Console"; case .discover: "List what was imported"; case .instantiateAndCapture: "Instantiate and render"
-        case .playAndObserve: "Play and observe"; case .evaluate: "Judge the criteria"
+        case .prepareFixture: "Prepare the fixture"; case .playAndObserve: "Play and observe"; case .evaluate: "Judge the criteria"
         }
     }
 }
@@ -56,6 +58,13 @@ struct ExperimentSpec: Codable, Equatable, Sendable {
     var cleanup = "delete"
 
     static let maxMinutes = 20, maxDiskMegabytes = 2_048, maxArtifacts = 6, maxCriteria = 6
+
+    /// The steps this experiment runs: the kind's fixed list, plus the hash-verified copy of a quarantined asset when the contract names one (the playback kinds may test an acquired clip / sound).
+    var steps: [ExperimentStepKind] {
+        var s = kind.steps
+        if acquisitionID != nil, !s.contains(.importAsset), let i = s.firstIndex(of: .createEnvironment) { s.insert(.importAsset, at: i + 1) }
+        return s
+    }
 
     var display: String { "\(kind.label): \(question.prefix(80))" }
 }

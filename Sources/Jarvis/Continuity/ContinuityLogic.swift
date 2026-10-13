@@ -184,8 +184,11 @@ enum ContinuationSelector {
         case .failed:
             guard let t = v.failed.first(where: { $0.id == only.taskID }) else { return .needsChoice([only]) }
             return .retryFailed(t)
-        case .checkpoint, .knownIssue:
+        case .checkpoint:
             return .startNext(only)
+        case .knownIssue:
+            // An item that exists ONLY as project memory is context, never a reason to start work on its own: it is proposed and waits for the user's choice (memory-only continuation is forbidden).
+            return .needsChoice([only])
         }
     }
 }
