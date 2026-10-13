@@ -109,3 +109,8 @@ V0.5 may *notice* ("Xcode seems to need attention") but it can never start GUI c
 
 ## V0.12 — the proactive layer and orchestration
 No change of authority: V0.5 may propose a compound task but gets no special graph rights. Scoped proactive tasks (a `TaskScope`) never use the orchestration templates (the V0.5 scope-bound planner path is kept); computer capabilities still become approval decisions; the engine still refuses `proactiveAutoAction` for Computer Use. Child tasks of a graph never reach the proactive layer on their own (the finished-task hook returns early for a parent-owned task); the parent's outcome does.
+
+
+## V0.13 additions
+
+The proactive layer neither starts a continuation, an experiment, a visual grounding nor an operator edit (guarded in `verify.sh`); an approved proposal becomes an ordinary V0.4 task, which may then use the operator like any user task. Nothing new runs while idle.

@@ -69,3 +69,9 @@ Nothing in the quarantine (`acquisitions/`) is ever opened by Computer Use (`Com
 
 ## V0.12 — asset questions
 “Check this asset: licence and URP compatibility — is it suitable?” becomes Research → Unity compatibility analysis → recommendation. Acquisition and import are never graph nodes (`AgentContracts.violations` refuses `acquire` / `importAsset`); a request that also asks to download/install/import is not routed to this template. The import stays a separate, approval-gated V0.4 task.
+
+
+## V0.13 additions
+
+* The quarantined, inspected artifact can be copied (hash-verified, scripts/executables never copied) into a **disposable** project for an experiment; the experiment never imports into a real project — promotion remains the separate, approval-gated `importIntoProject` task.
+* Real run: a Poly Haven bucket (CC0, free, 5.6 KB glTF JSON) was acquired, tested (REFUTED: Unity cannot instantiate a bare glTF without a package) and evaluated ("Do not use as delivered").

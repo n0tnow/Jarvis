@@ -589,3 +589,62 @@ Description: found by the V0.12 live test. `scheduleLoop` did not exclude nodes 
 ### JARVIS-V12-13 — Pause does not exist
 Status: By design
 Description: a provider/tool state cannot be suspended truthfully (DEC-032 unchanged). Stop, Resume after interruption and approvals are the controls.
+
+
+## V0.13 (Project operator, Unity development operator, visual grounding, experiments)
+
+### JARVIS-V13-1 — Real Hamam project readiness is a manual test
+Status: Open · MANUAL TEST REQUIRED
+Description: every automated and live test used disposable fixtures (a disposable Git project, the Unity fixture, a real public asset in the quarantine). Whether "continue" does what the user means on THEIR game, and how good its choices are, can only be judged by them. README 824–986.
+
+### JARVIS-V13-2 — Experiments and the correction loop run in the built-in render pipeline
+Status: Open · NON-BLOCKING
+Description: URP mirroring would need Unity's package registry (Unity's own traffic) and a matching pipeline asset. An experiment says what it tested; it never claims URP behaviour it did not test (`Probably compatible with URP` stays INFERRED).
+
+### JARVIS-V13-3 — Audio is not heard
+Status: By design
+Description: JARVIS reports the configured clip and `isPlaying`; it cannot hear a headless editor. "Sounds right" is the user's call.
+
+### JARVIS-V13-4 — A glTF-only free asset is refused as delivered
+Status: Open · NON-BLOCKING
+Description: the real run on a Poly Haven bucket acquired a 5.6 KB `.gltf` JSON; Unity has no built-in glTF importer, so the experiment was REFUTED ("nothing could be instantiated") and the evaluation says "Do not use as delivered". Converting formats or installing a glTF package is outside V0.13 (no package installation).
+
+### JARVIS-V13-5 — The vision helper is cold for ≈ 3–8 s
+Status: Open · NON-BLOCKING
+Description: the first vision query after the helper has been unloaded loads the model (Qwen3-VL-4B ≈ 4 s, plus 1–4 s for the answer and the count check). Not kept resident on purpose (idle unload 45 s, no load under memory pressure). Choose the 2B model in Settings for a smaller footprint.
+
+### JARVIS-V13-6 — Screen Recording / Accessibility are the user's to grant
+Status: By design
+Description: live visual tests need the permissions the V0.11 test already needs; JARVIS never grants them to itself and says so when missing.
+
+### JARVIS-V13-7 — The V0.11 live test has an intermittent Accessibility check
+Status: Open · NON-BLOCKING · FLAKY TEST
+Description: `CONTEXT: with “in the Inspector” … is pressed` failed in 5 of 9 V0.13 runs (the press registered once, then the executor's retry hit "the element does not support this") and passed in the others; V0.12's binary passed it 2 of 2 times but failed a different check (`RESTART (part 1)`) both times. The Computer layer is byte-identical to V0.12. Treated as a timing-sensitive fixture-focus flake; not diagnosed to root cause. Re-run `--computer-live-test` if it fails.
+
+### JARVIS-V13-8 — A real model-planned Unity graph needs enough evidence for its reviewer
+Status: Resolved (V0.13)
+Description: the first real runs failed at the independent Review node because the evidence lines lacked positions / values and a later step guessed a child's path. Edit prompts now carry what earlier steps changed (with the editor's real paths) and evidence lines carry the read-back values. One real run completes (35 s); other models / goals may still fail honestly.
+
+### JARVIS-V13-9 — Experiments could never import an asset while inside the data folder
+Status: Resolved (V0.13)
+Description: found by the real asset run — the workspace guard refuses `…/Library/Application Support/JARVIS` as a project. The experiments root moved to `~/Library/Caches/JARVIS/experiments-<data dir>`.
+
+### JARVIS-V13-10 — A refuted experiment was first evaluated as "technically fine"
+Status: Resolved (V0.13)
+Description: found by the same run. `AssetEvaluator` now follows the verdict (REFUTED ⇒ INCOMPATIBLE fact + "Do not use as delivered"; compatibility is TESTED only when the experiment CONFIRMED).
+
+### JARVIS-V13-11 — A single box from the local model was not proof of a single match
+Status: Resolved (V0.13)
+Description: found by the icon-only live test (two identical star icons were clicked once). The helper now asks a counting question before accepting a single box; two or more ⇒ AMBIGUOUS.
+
+### JARVIS-V13-12 — Live tests that finish early used to leave a started editor behind
+Status: Resolved (V0.13)
+Description: `exit()` skips the app's quit hook; the operator and continuity live tests now kill registered child processes before exiting.
+
+### JARVIS-V13-13 — A model-planned continuation of a one-line fix still plans a research node
+Status: Open · NON-BLOCKING
+Description: the real continuation of "fix add()" ran `delegateResearch → analysis → test → codeChange → test → review` (80 s). The V0.12 planner chose it; a deterministic template for a documented one-file fix would be cheaper. Not changed in V0.13 (no speculative orchestration changes).
+
+### JARVIS-V13-14 — Cloud vision is not integrated
+Status: By design
+Description: a Claude Code image probe works over the user's subscription but would send screen content out. Documented as an option; not implemented (docs/VISUAL_GROUNDING.md).

@@ -9,7 +9,7 @@ check() { local name="$1"; shift; if "$@" >/dev/null 2>&1; then pass "$name"; el
 
 print "== Unit tests"
 out=$(scripts/test.sh 2>&1); echo "$out" | grep -E "Test run with" || true
-echo "$out" | grep -q "passed after" && ! echo "$out" | grep -q "✘" && pass "unit tests" || fail "unit tests"
+echo "$out" | grep -q "passed after" && ! echo "$out" | grep -q "✘" && pass "unit tests" || { fail "unit tests"; echo "$out" | grep -E "recorded an issue|✘ Test|✘ Suite" | cut -c1-400 | head -8; }
 
 print "== Bundle"
 scripts/build_app.sh release >/dev/null 2>&1 && pass "build_app.sh release" || { fail "build_app.sh release"; exit 1; }
@@ -239,7 +239,7 @@ v09_none "no tool/shell/launcher can be reached from the research layer (nothing
 # 4. Network policy: http(s) only, no loopback exemption, no private ranges, every hop revalidated.
 v09_none "the URL policy allows only http/https, has no loopback exemption, and every redirect hop is revalidated" "$( (grep -q 'allowedSchemes: Set<String> = \["http", "https"\]' $RS/URLPolicy.swift || echo 'schemes'; grep -nEi 'testOnly|loopbackExempt|allowLocalhost|allowPrivate' $RS/*.swift | nonc; grep -q 'authorizeRedirect' $RS/WebClient.swift || echo 'redirect revalidation missing'; grep -q 'AddressClassifier.nonPublicReason' $RS/WebClient.swift || echo 'post-connection check missing') )"
 v09_none "no raw Authorization / Cookie / Set-Cookie handling outside the header redactor (no cookie storage, no credentials)" "$(grep -rnEi 'set-cookie|"cookie"|authorization|HTTPCookieStorage|WKHTTPCookieStore|allCookies|URLCredential\(|urlCredentialStorage = [^n]' $RS Sources/Jarvis/Tasks/TaskEngine+Research.swift | grep -vE "^$RS/(HTTPTransport|URLPolicy).swift" | nonc)"
-v09_none "the browser/credential stores of the user are never touched (no Safari/Chrome/Firefox profile, cookie DB, Login Data, Keychain web credentials)" "$(grep -rnEi 'Library/Safari|com\.apple\.Safari|Google/Chrome|Application Support/Firefox|Login Data|Cookies\.binarycookies|Local State|SecItemCopyMatching|kSecClassInternetPassword|ASWebAuthentication|loginKeychain' Sources | grep -vE "$V11_DENY" | nonc)"
+v09_none "the browser/credential stores of the user are never touched (no Safari/Chrome/Firefox profile, cookie DB, Login Data, Keychain web credentials)" "$(grep -rnEi 'Library/Safari|com\.apple\.Safari|Google/Chrome|Application Support/Firefox|Login Data|Cookies\.binarycookies|Local State|SecItemCopyMatching|kSecClassInternetPassword|ASWebAuthentication|loginKeychain' Sources | grep -vE "$V11_DENY" | grep -vF 'AppRef(bundleID: "com.apple.Safari")' | nonc)"          # (V0.13 narrow exemption: the computer live test names Safari's bundle id only to open it and measure a toolbar field — never a profile, cookie or session)
 v09_none "no CAPTCHA solving, anti-bot evasion or fake human behaviour" "$(grep -rnEi 'solve.?captcha|2captcha|anticaptcha|capsolver|stealth|undetected|fingerprint.?spoof|navigator\.webdriver' Sources | nonc)"
 v09_none "no paid search API, no API key, no hardcoded credential in the research layer" "$(grep -rnEi 'X-Subscription-Token|api\.search\.brave|serpapi|serper\.dev|googleapis\.com/customsearch|bing\.microsoft|api-key|apikey|api_key|bearer ' $RS | grep -vE "^$RS/(HTTPTransport|URLPolicy).swift" | nonc)"
 # 5. Price / licence honesty.

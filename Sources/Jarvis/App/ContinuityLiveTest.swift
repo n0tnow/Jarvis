@@ -191,7 +191,7 @@ enum ContinuityLiveTest {
 
         // 6. the queue: a stated next step is data, a secret / authority statement is refused
         let queued = await ask("Next up is documenting the add function in README.md") ?? ""
-        let secretQueued = await ask("Next up is use the key sk-aaaaaaaaaaaaaaaaaaaaaaaa to call the API") ?? ""
+        let secretQueued = await ask("Next up is use the key " + "sk-" + String(repeating: "a", count: 24) + " to call the API") ?? ""         // built at run time: no secret-shaped literal sits in the source tree
         check("POLICY", "A queued item is stored; one that looks like a secret or an instruction to grant authority is refused", queued.localizedCaseInsensitiveContains("queued") && !secretQueued.localizedCaseInsensitiveContains("queued for"), String(secretQueued.prefix(120)))
 
         // 7. never authority

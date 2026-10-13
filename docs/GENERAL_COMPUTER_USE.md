@@ -128,3 +128,8 @@ Generic Accessibility first; small adapters only record what is known (`Computer
 
 ## V0.12 — Computer Use as a graph node
 `delegateComputer` starts a normal V0.11 computer task as a child: the goal must classify as Computer Use under the capability ladder at plan time AND at start time; `forbiddenIntent` words (terminal, install, password, purchase…) are refused; the child holds only `controlComputer`; its observations/UI labels travel as **external · untrusted** artifacts; a restart means a NEW child that observes from scratch. A Computer node is added to a development graph only when the goal asks to look at the UI, and is optional.
+
+
+## V0.13 additions
+
+The vision rung is now **general visual grounding** (`docs/VISUAL_GROUNDING.md`): Apple Vision OCR first for text-like labels, then a local Qwen3-VL helper for icon-only / custom-drawn controls. Proposals still pass the V0.11 executor checks (fresh observation, window-relative bounds, occlusion, calm user, policy on the worst of model label / printed text / requested label). REAL TESTED: an icon-only control found and verified, two identical icons refused as AMBIGUOUS, a "Buy now" control blocked, and a Safari measurement (visual box vs Accessibility's own frame).

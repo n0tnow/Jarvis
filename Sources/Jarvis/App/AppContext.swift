@@ -49,6 +49,7 @@ final class AppContext {
     let orchestrationModel: OrchestrationViewModel
     /// V0.13: project continuity — status questions and “continue” resolved against current project truth; checkpoints when tasks finish. Derived view, no execution path of its own.
     let continuity: ProjectContinuity
+    let experimentsModel: ExperimentsViewModel
     /// V0.13: general visual grounding (perception only; its proposals pass through the same Computer Use validation as everything else).
     let visual: VisualGrounder
     let visionRuntime: LocalVLMRuntime
@@ -171,6 +172,7 @@ final class AppContext {
         continuity.enabled = { [weak webPrefs] in webPrefs?.projectContinuationEnabled ?? true }
         continuity.unityEditorState = { [weak unity] root in unity?.existingConnection(for: root)?.state.label }
         operatorModel = ProjectOperatorViewModel(continuity: continuity, preferences: preferences)
+        experimentsModel = ExperimentsViewModel(repository: repo)
         let engineRef = taskEngine
         computer.onEmergencyStop = { [weak engineRef] in engineRef?.cancelComputerTasks(reason: "emergency stop") }
         computer.onEvent = { [weak engineRef] id, e in engineRef?.note(e.summary, e.isWarning ? .warning : .info, taskID: id) }

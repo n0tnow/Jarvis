@@ -229,3 +229,28 @@ ConversationService (typed │ voice) ─► GoalIntake / compound-goal detectio
    ─► TaskOutcome (SUCCESS │ PARTIAL │ …) ─► report from graph state ─► Tasks graph view · Agents (roles) · Compact line · status questions
 ```
 `Sources/Jarvis/Orchestration/`: `AgentRole` (roles, contracts, limits) · `TaskGraph` (graph, `GraphValidator`, `ConcurrencyPolicy`, `TaskOutcome`) · `OrchestrationPlanner` (cues, templates, revision, planner prompt) · `Artifacts` (artifacts, trust, handoff) · `RoleRouting` (ledger, independence, explainer, scoreboard, failure/escalation vocabulary, role evidence) · `RoleBenchmarks` · `OrchestrationStatus` · `OrchestrationViewModel`; `Tasks/TaskEngine+Orchestration.swift`; `Persistence/OrchestrationRepository.swift` (schema v10); UI `TaskGraphView`; live test `App/OrchestrationLiveTest.swift`.
+
+
+## V0.13 — Project operator (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED · MANUAL TEST REQUIRED)
+
+V0.12 stays the ONLY orchestrator. V0.13 adds four capabilities around it — none of them is a second engine:
+
+```
+user: "where are we?" / "continue"                                  ┌──────────────────────────┐
+   │                                                                  │  Continuity/ (derived)   │
+   ├─ status ──► ProjectContinuity ──► files · Git · tasks · docs ·   │  view · reconcile ·      │
+   │             (local, no model)      Unity descriptor · checkpoint │  select · checkpoints    │
+   │                                    · memory digests (truth wins) └──────────────────────────┘
+   └─ continue ► TaskEngine.submit(goal, constraint=ContinuationMarker, bounds) ─► V0.12 graph ─► V0.4 steps
+                                                                                     │
+        Unity operator (UnityDevOp, 23 typed ops) ◄── unityEdit / unityInspect ◄────┤  correction loop (≤ 2 rounds)
+        Visual grounding (Vision/, on-device) ◄── Computer Use vision rung ◄────────┤  perception only
+        Experiments (disposable env in Caches) ◄── `experiment` step ◄──────────────┘  + asset evaluation (fact classes)
+```
+
+* **Continuity** (`Sources/Jarvis/Continuity/`): a derived view; only checkpoints, the next-step queue and a session counter are stored (schema v11). `docs/PROJECT_OPERATOR.md`.
+* **Unity operator** (`Unity/UnityOperatorOps.swift`, `UnityOperatorResults.swift`, `OperatorCorrection.swift`, `Tasks/TaskEngine+UnityOperator.swift`, `+UnityCorrection.swift`, Editor package 0.13.0): closed typed operations, read-back verification, double Play-Mode block. `docs/UNITY_DEVELOPMENT_OPERATOR.md`.
+* **Visual grounding** (`Vision/`): perception only; Apple Vision OCR + a local Qwen3-VL helper (`scripts/vision-ai`), worst-of safety, memory-only pictures. `docs/VISUAL_GROUNDING.md`.
+* **Experiments** (`Experiments/`, `Tasks/TaskEngine+Experiment.swift`, schema v12): a bounded contract, a marker-checked disposable Unity project under `~/Library/Caches/JARVIS`, verdicts that need every check, asset facts by class. `docs/EXPERIMENTATION.md`.
+
+Authority is unchanged: approvals are HUD buttons only; memory, artifacts, checkpoints, visual output and UI text never grant anything; the proactive layer starts none of it.

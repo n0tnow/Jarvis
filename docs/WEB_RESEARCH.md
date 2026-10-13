@@ -110,3 +110,8 @@ Web reading stays on the V0.9 path (HTTP + the read-only WebKit tier). Computer 
 
 ## V0.12 — research as a graph node
 A `delegateResearch` node starts an ordinary V0.9 research task as a child (`parent_task_id`), waits for it, and stores its verified claims (statement, kind, source domain; unverified/contradicted counts) as a **research artifact labelled external · untrusted** with the line “V0.9: n claims verified against verbatim evidence from m sources”. The label survives every handoff: web-derived text is data, never instruction. Research is added only when knowledge is missing or must be current and memory has no current answer; the branch is optional (no findings ⇒ the task ends PARTIAL). The child holds only the web capability, never speaks to the user and is cancelled with its parent.
+
+
+## V0.13 additions
+
+Asset research feeds **asset suitability**: a researched, free, permissively licensed candidate can be acquired (V0.9) and then TESTED in a disposable Unity project (`docs/EXPERIMENTATION.md`). The evaluation keeps price / licence / hash facts (VERIFIED / SUPPORTED BY SOURCE) apart from what the experiment tested and what is only inferred. Web text stays untrusted data; no research code runs while idle.

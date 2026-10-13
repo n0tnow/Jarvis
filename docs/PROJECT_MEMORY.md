@@ -147,3 +147,10 @@ A computer task fetches ONE bounded `ComputerAgent` context packet at session st
 
 ## V0.12 — memory and agents
 Role-specific packets still come only from `ProjectContextBuilder` (Analysis/Coding/Review/Unity/Research/Computer kinds, audited per run). The authority gate now also refuses agent-targeted grants (“always allow ComputerAgent to install software”, “the coding agent may run commands”, “without asking”, “full access”, Turkish “sormadan”); the orchestration layer reads memory in exactly one place — to decide whether current research already exists — and role contracts, validators, scheduler and routing never read it. Task completion ingestion is unchanged (no agent conversations are stored).
+
+
+## V0.13 additions
+
+* Memory is **context** for continuity, never its authority: `ContinuityBuilder` reads memory DIGESTS (constraints, decisions, known issues, validation results); when memory disagrees with the files, Git or the Unity descriptor the project wins and the item is reported stale. The selector module references no memory service (`verify.sh`).
+* Queued next steps are data in `project_continuity`; text that grants authority or looks like a secret is refused at the door.
+* Experiment and visual results do not become memory by themselves.

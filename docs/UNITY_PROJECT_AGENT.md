@@ -139,3 +139,8 @@ The V0.6 bridge stays primary. `CapabilityResolver` claims every Unity scene/com
 
 ## V0.12 — Unity inside an orchestrated graph
 The Unity role is the V0.6 typed bridge only: `unityInspect/Edit/Compile/Test/PlayMode/Validate` nodes run alone (mutation lock unchanged); a Unity scene/component/prefab goal is planned by the planner model with the typed Unity step types (never a template, never a Computer node); the fix-flow template adds `unityCompile` after a code change in a Unity project. Computer Use hands every Unity mutation back to V0.6 (live-tested at the resolver level). No Unity editor was launched by V0.12 tests; no real game is touched.
+
+
+## V0.13 additions
+
+The V0.6 agent is extended by the **Unity development operator** (`docs/UNITY_DEVELOPMENT_OPERATOR.md`): 23 closed typed operations, read-back verification, double Play-Mode blocking, per-exact-action approvals, memory-only camera captures with objective analysis, a render-capable (windowless) owned editor, the bounded correction loop and disposable-project experiments. Bridge version 0.13.0; the security boundary of V0.6 is unchanged (no menu items, process start, network, reflection invoke).

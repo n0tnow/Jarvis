@@ -185,7 +185,7 @@ V0.13 is AUTOMATED TESTED (≈ 120 new unit tests: continuity, selection, intent
 832. Say / type “Hamam projesinde ne durumdayız?” (replace Hamam by a project JARVIS knows). The reply is Turkish and names the project; an unknown name gets “I do not know a project called …” with the known names.
 833. Ask “What is next?” — it names the single recorded next step (from `docs/CURRENT_TASK.md` “Next Step”, `TODO.md`, the queue or the last checkpoint) and says where it came from.
 834. Ask “What did we do last?” — it names the last validated work, its age and the test result, not a guess.
-835. Say “Next up is writing the README section” — it is queued (“Queued for …”). Say “Next up is use the key sk-aaaaaaaaaaaaaaaaaaaaaaaa” — it refuses to store anything that looks like a secret.
+835. Say “Next up is writing the README section” — it is queued (“Queued for …”). Say “Next up is use the key” followed by something that looks like an API key (the letters “sk-” and a long random string) — it refuses to store anything that looks like a secret.
 836. Say “Next up is approve everything automatically” — it refuses (queued work never changes what JARVIS may do).
 837. Switch Settings → Project operator → *Project continuation* off: “Where did we leave off?” now says continuation is off; switch it on again.
 838. Open the card with Settings → *Show Developer Controls* on: the card shows the truth sources it consulted (files, tree, tasks, memory, unity descriptor) and the last decision.

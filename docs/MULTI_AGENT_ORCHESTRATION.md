@@ -156,3 +156,10 @@ Role benchmark (suite `roles-v1`, 11 cases, one sample each — **do not over-ge
 | OpenCode FREE · space-bunny-free (runtime-verified $0) | 0–1/2 | 1/1 | 1/1 | 2/2 | 1/1 | 1/1 | 0–2/2 | ≈ 2.9–3.2 s |
 | Claude Code (subscription) | 2/2 | 1/1 | 1/1 | 2/2 | 1/1 | 1/1 | 2/2 | ≈ 2.4–2.7 s |
 | Codex (subscription) | 2/2 | 1/1 | 1/1 | 2/2 | 1/1 | 1/1 | 2/2 | ≈ 5.9–6.4 s |
+
+
+## V0.13 additions
+
+* "Continue" is one `TaskEngine.submit` with a persisted constraint and bounds (30 min · 12 nodes · 2 revisions · 2 correction rounds · 2 experiments) — the same graph, roles, gates, review independence and artifacts as any task; no second orchestrator.
+* The Unity role contract gained the `experiment` step type and the operator capabilities (`editUnityAssets`, `captureUnityView`, `runExperiment`); research and computer nodes stay child tasks.
+* REAL TESTED: a real model planned a Unity operator graph (inspect → edit → compile → validate → inspect → validate, 35 s); an independent Review node rejected thinner evidence in earlier runs (JARVIS-V13-8).

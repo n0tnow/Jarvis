@@ -207,3 +207,10 @@ A hands-free request ("Jarvis, … analyze the multiplayer issue") is the same `
 
 ## V0.12 — the engine as orchestrator
 New step types: `delegateResearch` / `delegateComputer` (executed by child V0.9 / V0.11 tasks started and awaited by the engine; `parent_task_id`) and `approvalGate` (released only by a HUD decision). New step attributes: `optional` (failure ⇒ task PARTIAL), `revision`, delegate parameters. The scheduler asks `ConcurrencyPolicy` (read-only pairs only; 1 under pressure), never starts a started node again, detects deadlocks and enforces graph/job time limits. Before every node starts the role contract is re-checked (`orchestrationRefusal`); after it a typed artifact is stored; downstream prompts receive a fenced handoff instead of raw earlier text. Retry/escalation are bounded per node (`NodeLedger`), plus one review→repair cycle. Cancel cascades to children; restart interrupts the whole graph; resume revalidates finished nodes (changed files invalidate the code node and everything built on it). `orchestrationEnabled` is true in the app and false in the V0.4–V0.11 test suites. Full reference: `docs/MULTI_AGENT_ORCHESTRATION.md`.
+
+
+## V0.13 additions
+
+* New step type `experiment` (validation `experimentConcluded`, capability `runExperiment`); `unityEdit` steps may carry a `correct` block (≤ 2 rounds); later Unity edit prompts receive what earlier steps changed (real paths).
+* `TaskContext.continuation` carries the session bounds (graph timeout, correction rounds, experiments).
+* Experiments honour a Settings switch and are refused under memory / thermal pressure.

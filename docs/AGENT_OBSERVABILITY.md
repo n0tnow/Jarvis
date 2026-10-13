@@ -163,3 +163,10 @@ Computer sessions are ordinary tasks: activity-feed lines through `TaskEngine.no
 
 ## V0.12 — the observatory for orchestrated tasks
 Runs are labelled by ROLE (`AgentRole.displayName(forAgentType:)`: Coding, Analysis, Review, QA, Research, Unity, Computer). The Tasks screen shows the plan as a role graph (`TaskGraphView`): `Coding · OpenCode Free · space-bunny-free`, status, dependencies, duration, validation, attempts, OPTIONAL/REV tags, delegated child tasks and graph revisions; tapping a node shows its routing sentence, failure class, escalation reason and its sanitized artifacts with trust chips (and a warning when instruction-shaped text was found). With *Show Developer Controls*: template, planner time/size and a per-run line (context/handoff/memory/artifact sizes, time, cost class). The Compact HUD adds only “Coding · model … · QA waiting” inside the fixed 392 × 448 card. There is no hidden reasoning to show: only decisions, reasons, actions, evidence and validation.
+
+
+## V0.13 additions
+
+* The Tasks screen shows the **Project continuity** card (state, last checkpoint, next candidate, bounds, drift) and the **Experiments** card (kind, verdict, fact classes, cleanup state, "your project untouched"). With Developer Controls on, the continuity card lists the truth sources it consulted and the decision, and the Experiments card lists visual evidence rows (hash · provider · outcome).
+* The Compact HUD shows one operator line (`Project · Continuing · Editing` / `Experimenting`); its size stays 392 × 448.
+* Visual evidence is observable but never stores a picture.

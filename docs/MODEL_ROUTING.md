@@ -68,3 +68,11 @@ Computer Use calls a model in exactly one place: the optional bounded planner (`
 
 ## V0.12 — routing per ROLE
 The router is unchanged and still decides eligibility (price re-verified at runtime, privacy, local-model policy, health/cooldown, V0.3.1 benchmark gate, explicit user choice). V0.12 adds around it, per model run: a **persisted decision** (`routing_decisions`: role, engine/model, mode, a sentence such as “Selected space-bunny-free for Coding because development work goes to a verified-free OpenCode model first, it is currently verified $0 with zero data retention, it passed the … benchmark, the task is moderate.”, machine reason, sizes, timings, tokens, cost class); **review independence** (risk-based exclusion of the writer's candidates); **role evidence** for security-relevant coding/review (a free/local model needs COMPLETE passing evidence in the `security` role of the `roles-v1` suite; a subscription engine without evidence is allowed, one that failed is not; Auto only — explicit choices are respected); a per-node **invocation budget** (≤ 4); a failure vocabulary (`NodeFailureClass`) and explicit escalation reasons. Role benchmarks live in `model_benchmarks` (suite `roles-v1`) and never feed the V0.3.1 Auto gate. Local Qwen restrictions are unchanged. One task may legitimately use OpenCode Free for coding and Claude for review; Auto chooses per node, not per task. Telemetry (`routingTelemetry`) answers “which model succeeds most for each role / how often does free escalate / which role uses the most context” from recorded facts.
+
+
+## V0.13 additions
+
+* Continuation tasks use the SAME Auto routing as any task (the persisted constraint only carries bounds). Status questions never reach a provider.
+* Visual grounding is routed by privacy class (on-device › subscription › free cloud) and sensitivity (desktop / project / synthetic); desktop and project pictures never go to a cloud provider; no cloud provider is registered.
+* The local vision model is chosen in Settings (Qwen3-VL 4B or 2B, applies after relaunch); it is never selected by name inside the engine.
+* A real continuation of a documented one-file fix routed to OpenCode FREE / Claude Code through the V0.12 router like any other graph.

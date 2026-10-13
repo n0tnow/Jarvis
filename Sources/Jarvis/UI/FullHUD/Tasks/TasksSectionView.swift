@@ -5,8 +5,6 @@ import AppKit
 
 struct TasksSectionView: View {
     @Environment(AppContext.self) private var app
-    @State private var experiments: [ExperimentRecord] = []
-    @State private var observations: [VisualObservationRecord] = []
     var body: some View {
         let views = app.taskEngine.orderedViews
         let attention = views.filter { $0.task.state == .waitingForApproval || $0.task.state == .interrupted }
@@ -18,7 +16,7 @@ struct TasksSectionView: View {
             VStack(spacing: Theme.Spacing.m) {
                 ProjectBar()
                 ProjectOperatorCard()
-                ExperimentsCard(experiments: experiments, observations: observations)
+                ExperimentsCard(experiments: app.experimentsModel.experiments, observations: app.experimentsModel.observations)
                 ProposalsGroup()
                 if noTasks { emptyState }
                 if !attention.isEmpty { group("NEEDS YOUR ATTENTION", attention) }
@@ -32,8 +30,7 @@ struct TasksSectionView: View {
         }
         .accessibilityIdentifier("tasks.section")
         .task(id: "\(app.taskEngine.revision)|\(app.preferences.projectRoot)") {          // read when the screen appears and when a task finishes — never on a timer
-            experiments = (try? app.repository?.recentExperiments(limit: 4)) ?? []
-            observations = (try? app.repository?.recentVisualObservations(limit: 6)) ?? []
+            app.experimentsModel.refresh()
         }
     }
 
