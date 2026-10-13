@@ -24,6 +24,7 @@ enum ContinuityLiveTest {
         let fixture = UnityProcessScanner.canonical(NSTemporaryDirectory()) + "/jarvis-continuity-fixture" + (sections.contains("interrupt-start") || sections.contains("restart") ? "" : "-\(UUID().uuidString.prefix(6))")           // outside the JARVIS data folder (which can never be a project); fixed so `restart` finds it
         func finish(keepFixture: Bool = false) -> Never {
             engine.agents = realRunner
+            ProcessRegistry.shared.killAll()
             if !keepFixture { try? FileManager.default.removeItem(atPath: fixture) }
             print("CONTINUITY LIVE TEST \(failures == 0 ? "PASSED" : "FAILED") (\(passes) passed, \(failures) failed, \(skipped) skipped)"); fflush(stdout)
             exit(failures == 0 ? 0 : 1)

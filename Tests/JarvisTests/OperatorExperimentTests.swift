@@ -326,6 +326,20 @@ struct ExperimentEngineTests {
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).isEmpty, "the environment is gone")
     }
 
+    @Test("under memory or thermal pressure no experiment starts and nothing is created")
+    func underPressure() async throws {
+        for pressure in [ResourcePressure(memory: .critical), ResourcePressure(memory: .warning), ResourcePressure(thermalSerious: true)] {
+            let h = UnityHarness(script: UnityScripts.standard(plan: plan(spec)), editorAlive: false)
+            let root = URL(fileURLWithPath: NSTemporaryDirectory() + "exp-press-\(UUID().uuidString.prefix(6))")
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            h.engine.experimentsRoot = root
+            h.engine.resourcePressure = { pressure }
+            let v = await h.run("Test it")
+            #expect(v.task.state == .failed && (v.task.failureReason ?? "").contains("pressure"), Comment(rawValue: "\(v.task.failureReason ?? "")"))
+            #expect(((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).isEmpty)
+        }
+    }
+
     @Test("with experiments turned off in Settings the step fails with that reason and creates nothing")
     func switchedOff() async throws {
         let h = UnityHarness(script: UnityScripts.standard(plan: plan(spec)), editorAlive: false)

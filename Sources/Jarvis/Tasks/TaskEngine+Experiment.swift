@@ -13,6 +13,10 @@ extension TaskEngine {
         let problems = ExperimentValidator.validate(spec, realProjectRoots: [ctx.workspace.root])
         if !problems.isEmpty { return .failed(problems.contains { if case .unsafe = $0 { true } else { false } } ? .securityBlocked : .malformedPlan, problems.map(\.description).joined(separator: "; ")) }
 
+        // A second Unity editor is the heaviest thing JARVIS starts (≈ 2–4 GB): never while the Mac is under memory or thermal pressure.
+        let pressure = resourcePressure()
+        if pressure.memory != .normal || pressure.thermalSerious { return .failed(.resourceUnavailable, "Not starting an experiment now: the Mac is under \(pressure.thermalSerious ? "thermal" : "memory") pressure and a second Unity editor needs several GB. Nothing was created; try again when it eases.") }
+
         let ws = ExperimentWorkspace(root: root)
         let taskID = ctx.record.id
         var record = ExperimentRecord(id: ws.id, taskID: ctx.record.id, stepKey: key, projectKey: nil, spec: spec, environmentPath: ws.path.path, status: "running", result: nil, cleanupState: "pending")

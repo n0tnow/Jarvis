@@ -23,6 +23,7 @@ enum OperatorLiveTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3000) { ProcessRegistry.shared.killAll(); print("OPERATOR LIVE TEST TIMEOUT"); fflush(stdout); exit(2) }
         var fixtures: [String] = []
         func finish() -> Never {
+            ProcessRegistry.shared.killAll()          // exit() skips applicationWillTerminate: never leave a JARVIS-started editor behind (an early `finish()` of an explicit section used to)
             for f in fixtures { try? FileManager.default.removeItem(atPath: f) }
             print("OPERATOR LIVE TEST \(failures == 0 ? "PASSED" : "FAILED") (\(passes) passed, \(failures) failed, \(skipped) skipped)"); fflush(stdout)
             exit(failures == 0 ? 0 : 1)
@@ -449,6 +450,35 @@ enum OperatorLiveTest {
             finish2 = true
         }
 
+
+        // ------------------------------------------------------------ 9c. resource pressure and a bounded operator soak (explicit section: several real editors, ≈ 2–3 min)
+        if sections.contains("soak") {
+            await unity.shutdownOwnedEditors()
+            _ = await waitUntil(60) { conn.transport.currentStatus() == nil }
+            func rssMB() async -> Int { Int((await ManagedProcess.runOnce(executable: "/bin/ps", arguments: ["-o", "rss=", "-p", "\(getpid())"], environment: ProviderEnvironment.make(), workingDirectory: "/", timeout: 10)?.output ?? "").trimmingCharacters(in: .whitespacesAndNewlines)).map { $0 / 1024 } ?? -1 }
+            // pressure: no experiment starts, nothing is created, no editor is launched
+            let pressured = scriptedEngine(expPlan)
+            pressured.resourcePressure = { ResourcePressure(memory: .critical) }
+            let (pv, _) = await runTask(pressured, "Test whether a plain material renders in a clean project", timeout: 120)
+            let strayP = await ownedEditorProcesses()
+            check("RESOURCE PRESSURE: under critical memory pressure the experiment is refused with that reason; nothing is created and no editor starts", pv?.task.state == .failed && (pv?.task.failureReason ?? "").contains("pressure") && ((try? FileManager.default.contentsOfDirectory(atPath: expRoot.path)) ?? []).isEmpty && strayP == 0, pv?.task.failureReason?.prefix(120).description ?? "")
+            let before = await rssMB()
+            var okRuns = 0
+            let t0 = Date()
+            let rounds = 5
+            for i in 1...rounds {
+                let (v, _) = await runTask(scriptedEngine(expPlan), "Test whether a plain material renders in a clean project (soak \(i))", timeout: 300)
+                let rec = (try? repo.experiments(taskID: v?.id ?? UUID()))?.first
+                if v?.task.state == .completed && rec?.result?.verdict == .confirmed && rec?.cleanupState == "deleted" { okRuns += 1 }
+                info("soak \(i)/\(rounds): \(v?.task.state.rawValue ?? "?") · \(rec?.result?.verdict.rawValue ?? "?") · RSS \(await rssMB()) MB")
+            }
+            let after = await rssMB()
+            let strayEnd = await ownedEditorProcesses()
+            let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: expRoot.path)) ?? []
+            check("SOAK: \(rounds) real experiments in a row all CONFIRMED with their environment deleted", okRuns == rounds, "\(okRuns)/\(rounds) in \(fmt(Date().timeIntervalSince(t0))) s")
+            check("SOAK: JARVIS' own memory is flat across the runs (growth < 120 MB), no editor process and no experiment folder is left", after - before < 120 && strayEnd == 0 && leftovers.isEmpty, "RSS \(before) → \(after) MB · editors \(strayEnd) · folders \(leftovers.count)")
+            finish()
+        }
 
         // ------------------------------------------------------------ 9a. a REAL model-planned Unity operator graph (explicit section: spends a little subscription / free quota; a scene object carries an injection-shaped name)
         if sections.contains("model-planned") {
