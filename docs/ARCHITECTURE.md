@@ -1,6 +1,6 @@
 # Architecture (V0.1)
 
-Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.10 (project memory: derived, provenance-backed knowledge, hybrid retrieval, bounded agent context) on V0.9 (web research & asset acquisition: cited research, quarantine downloads, approval-gated import — all ordinary V0.4 tasks) on V0.8 (natural voice & presence: wake word, VAD, hands-free turns, barge-in, neural voice — an I/O layer, no authority) on V0.7 (voice I/O around the conversation pipeline; V0.6 Unity agent, V0.5 proactive layer, V0.4 task engine below). Decisions behind it: `DECISIONS.md`.
+Status: IMPLEMENTED · AUTOMATED TESTED (see `PROJECT_STATE.md`). Current: V0.12 (multi-agent orchestration — see the last section) on V0.11 (general computer use) on V0.10 (project memory: derived, provenance-backed knowledge, hybrid retrieval, bounded agent context) on V0.9 (web research & asset acquisition: cited research, quarantine downloads, approval-gated import — all ordinary V0.4 tasks) on V0.8 (natural voice & presence: wake word, VAD, hands-free turns, barge-in, neural voice — an I/O layer, no authority) on V0.7 (voice I/O around the conversation pipeline; V0.6 Unity agent, V0.5 proactive layer, V0.4 task engine below). Decisions behind it: `DECISIONS.md`.
 
 ## Shape
 

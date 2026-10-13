@@ -203,3 +203,6 @@ A spoken "Playwright hakkında ne karar vermiştik?" is a normal final transcrip
 
 ## V0.11 — spoken computer requests
 "Jarvis, Xcode'u aç" is `ConversationService.submit(source: .voice)` → the same classification → the same computer task (`inputChannel = .voice`, informational only) → a short Turkish/English acknowledgement ("Tamam — bunun için Mac'inizi kullanıyorum … durdur …"). There is no voice-specific automation engine; a spoken "yes/approve" never approves (HUD buttons only); "stop" stops the task. Live-tested with the typed-equivalent of a spoken "Finder'ı aç" through the real conversation service (the microphone/STT path is covered by the V0.7/V0.8 tests).
+
+## V0.12 — voice and the orchestrator
+No new voice path. A spoken compound goal is `ConversationService.submit(source: .voice)` → the same orchestrated task (`input_channel = voice`) with a short acknowledgement (what JARVIS will do, not each internal step); “Durum ne?”, “Hangi agent çalışıyor?”, “Testler geçti mi?” are deterministic commands answered from the graph (no provider call); “görevi durdur” stops the task while “sus / stop talking” stops speech; a spoken “yes/evet/onayla” never releases an approval gate.
