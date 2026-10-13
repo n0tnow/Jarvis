@@ -171,6 +171,30 @@ Optional set-up for the local model: `scripts/setup_local_ai.sh` (needs `uv`; th
 38. Quit JARVIS while the local model is loaded → no `jarvis_local_worker.py` process remains. After a force-quit (`kill -9`) the worker also exits by itself.
 39. Data check: `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select agent_type, engine, model, status from agent_runs order by started_at desc limit 5"` shows your requests (engine/model/status/reason; no prompt text, no secrets).
 
+### V0.13.1 additions (closure & stability) — MANUAL TEST REQUIRED
+V0.13.1 changes no capability family: it closes the V0.13 gaps (Input System operations, real animation and audio experiments, Scene Profile on the Project card, an Accessibility fix found by JARVIS-V13-7, guard matrix `docs/GUARD_MATRIX.md`). Use a COPY of a Unity project with the Input System package; never the real game.
+
+**Input System (typed Unity operations)**
+987. On a copy of a project that HAS `com.unity.inputsystem`: “Inspect the Input System setup” → package version, assets, maps, actions, bindings and control schemes are listed; nothing changes.
+988. “Create an input actions asset Assets/Input/Player.inputactions with a Gameplay map and a Jump button action bound to <Keyboard>/space” → after approval-free completion the asset exists and Unity shows it; JARVIS says it read the asset back.
+989. “Add <Gamepad>/buttonSouth to Jump”, then “change that binding to <Gamepad>/buttonEast”, then “remove it”: each step verified; the Jump/space binding you made yourself is untouched.
+990. Add a binding yourself in the Input Actions editor, then ask JARVIS to remove it: refused (“not created by JARVIS”). Ask JARVIS to add the same path to the same action twice: refused as a duplicate.
+991. On a project WITHOUT the Input System: the same requests answer “package missing”; JARVIS installs nothing.
+
+**Animation / audio experiments**
+992. “Test whether an animation clip plays in a clean Unity project” → an Experiments card entry; verdict CONFIRMED with “animation runs” and “pose moved”; the disposable project and the Unity process are gone afterwards.
+993. “Test whether an audio source plays” → CONFIRMED with “audio source plays”; the report says whether it SOUNDS right is UNKNOWN (JARVIS does not hear it).
+994. Stop an experiment mid-run: it ends cancelled within ~10 s; no folder under `~/Library/Caches/JARVIS/experiments-*`, no Unity process left.
+
+**Scene Profile card**
+995. With a JARVIS-owned editor connected to your project copy, the Project card shows a Scene block marked LIVE; close the editor: the block turns STALE (“as of …”, greyed). A stale block is never worded as the current state.
+996. Compact HUD is still 392×448 and shows one operator line.
+
+**Stability (JARVIS-V13-7)**
+997. Run `build/Jarvis.app/Contents/MacOS/Jarvis --computer-live-test` three times: no failure of “CONTEXT … in the Inspector”; if one ever fails, keep the log and report the “look” and “world” lines of the failure detail.
+998. Icon-only press with the vision model cold (first press after 1 minute idle): it works on the first try (the model loads before the picture is taken).
+999. `--stability-soak 10`: SOAK PASSED, RSS growth small, no orphan editors or folders.
+
 ### V0.13 additions (project operator, Unity development operator, general visual grounding, experiments) — MANUAL TEST REQUIRED
 V0.13 is AUTOMATED TESTED (≈ 120 new unit tests: continuity, selection, intents, reconciliation, the typed Unity operator and its schema parity with the Editor package, validated construction, policy, results, the experiment contract / workspace / verdicts / asset evaluation, the correction planner, visual grounding) and REAL TESTED (`Jarvis --operator-live-test` — a real Unity 6000.5.1f1 started by JARVIS on a disposable fixture: 80+ operator checks plus visual correction, a real disposable-project experiment, cancellation, hard-kill crash recovery, a real asset researched → quarantined → tested → evaluated, and a real model-planned Unity graph; `--continuity-live-test` — real providers on a disposable Git project: status, bounded continue, restart, external drift, failed retry once, hard-kill interrupt and resume; `--computer-live-test` — the V0.11 test now also exercises icon-only / ambiguous / purchase vision controls and a Safari measurement; `--visual-benchmark` — 16 cases on Apple OCR and Qwen3-VL 2B/4B). The real Hamam project and your other projects were never an automated target. It is **not** MANUALLY VERIFIED: that is yours to say. See `docs/PROJECT_OPERATOR.md`, `docs/UNITY_DEVELOPMENT_OPERATOR.md`, `docs/VISUAL_GROUNDING.md`, `docs/EXPERIMENTATION.md`.
 **Set-up and automated evidence**

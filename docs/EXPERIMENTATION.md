@@ -26,3 +26,13 @@ Price and licence come from the V0.9 records. UNKNOWN price is never free; an un
 ## 6. Limits
 
 Built-in render pipeline only (URP mirroring would need the registry). The material-render experiment without a material asset tests the *default* material and says so. Real-asset experiments (V0.9 research → acquisition → experiment) depend on a current free asset and are exercised through the README manual checks.
+
+## 7. V0.13.1: animation and audio experiments (same engine, DEC-208)
+
+`animationPlayback` and `audioPlayback` are **kinds of the one experiment engine** (`ExperimentKind`), not new engines. Steps: createEnvironment → [importAsset when an acquisition is named] → openEditor → compileAndConsole → **prepareFixture** → **playAndObserve** → evaluate (`TaskEngine+ExperimentPlayback.swift`).
+
+* **Animation** — with no asset named JARVIS generates a deterministic clip (`createAnimationClip`) and an Animator controller on a fixture object; the verdict needs compile OK **and** "animation runs" (Play Mode: the Animator reaches the state and normalized time advances) **and** "pose moved" (measured transform change). A broken clip / controller is REFUTED, not "inconclusive".
+* **Audio** — with no clip named JARVIS writes a short tone WAV **into the disposable project only** (`fixtureToneData`); the verdict needs compile OK and "audio source plays" (`isPlaying` in Play Mode). Whether it *sounds right* is UNKNOWN and said so; "a different rig will behave the same" is INFERRED.
+* Cleanup is the same for success, failure, cancel and hard-kill (marker-checked delete, orphan editor stopped at the next launch). Under memory or thermal pressure the experiment is refused up front.
+
+REAL TESTED: success + deterministic failure for both kinds, cancel mid-run (environment and editor gone in ≈ 6–7 s), 10-cycle stability soak with no leaked folders or editors.

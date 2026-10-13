@@ -56,6 +56,8 @@ enum ComputerLiveTest {
         var t = ActionTarget(app: AppRef(bundleID: app), windowTitle: window, role: role, title: title); t.within = within
         return ComputerAction(kind: .pressElement, target: t, checks: checks, summary: "Press “\(title)”", origin: origin)
     }
+    /// The pressed control still exists afterwards: the safe-cycle steps are counted by the fixture's own press counters (the restart semantics are what that cycle examines), not by a label that may already read the same.
+    static func exists(_ title: String) -> Check { .elementExists(bundleID: fixtureBundle, role: "button", title: title) }
     static func step(_ title: String, _ actions: ComputerAction...) -> GoalStep { GoalStep(title: title, actions: actions) }
 
     static let capability = CapabilityChoice(mechanism: .accessibility, engine: "macOS Accessibility / NSWorkspace", reason: "live test")
@@ -719,16 +721,16 @@ enum ComputerLiveTest {
         let shared = ["--computer-live-test", "--computer-fixture-state", statePath, "--computer-cycle", "\(k)"]
         let before = readCounts()
         let c1 = ManagedProcess(executable: exe, arguments: shared + ["--computer-child", "start2"], environment: ProcessInfo.processInfo.environment, workingDirectory: "/")
-        var ready = false
+        var ready = false, startLines: [String] = []
         if let lines = try? c1.start(stdin: nil, keepStdinOpen: true) {
-            let reader = Task { @MainActor in for await l in lines { if String(decoding: l, as: UTF8.self) == "CHILD_READY" { ready = true; break } } }
+            let reader = Task { @MainActor in for await l in lines { let t = String(decoding: l, as: UTF8.self); if t == "CHILD_READY" { ready = true; break }; if t.hasPrefix("CHILD ") { startLines.append(t) } } }
             let end = Date().addingTimeInterval(60); while !ready, Date() < end { try? await Task.sleep(for: .milliseconds(50)) }
             reader.cancel()
             kill(c1.processIdentifier, SIGKILL)
             let end2 = Date().addingTimeInterval(10); while c1.isRunning, Date() < end2 { try? await Task.sleep(for: .milliseconds(50)) }
         }
         let mid = readCounts()
-        guard ready else { return (false, "the first process never reached the hold point") }
+        guard ready else { return (false, "the first process never reached the hold point" + (startLines.isEmpty ? " (it printed nothing)" : ": " + startLines.joined(separator: " | ").prefix(400))) }
         let c2 = ManagedProcess(executable: exe, arguments: shared + ["--computer-child", "check2"], environment: ProcessInfo.processInfo.environment, workingDirectory: "/")
         var results: [String] = []
         if let lines = try? c2.start(stdin: nil, keepStdinOpen: true) {
@@ -746,7 +748,7 @@ enum ComputerLiveTest {
 
     static func runChildStartSafe(context: AppContext, cycle: Int) async {
         let engine = context.taskEngine
-        let steps = [step("Pressing Run", press("Run", window: "Fixture Main")), step("Pressing Apply (Inspector)", press("Apply", within: "Inspector", window: "Fixture Main")), step("Pressing Delete Everything", press("Delete Everything", window: "Fixture Main"))]
+        let steps = [step("Pressing Run", press("Run", window: "Fixture Main", checks: [exists("Run")])), step("Pressing Apply (Inspector)", press("Apply", within: "Inspector", window: "Fixture Main", checks: [exists("Apply")])), step("Pressing Delete Everything", press("Delete Everything", window: "Fixture Main"))]
         guard case .success(let id) = await engine.submitComputer(goal: "restart safe cycle \(cycle): press Run, then Apply in the Inspector, then Delete Everything", steps: steps, capability: capability, apps: [AppRef(bundleID: fixtureBundle, name: "JARVIS Fixture")]) else { print("CHILD FAIL submit"); fflush(stdout); exit(4) }
         let end = Date().addingTimeInterval(60)
         while Date() < end, !(engine.view(id)?.task.state == .waitingForApproval && !engine.pendingApprovals.isEmpty) { try? await Task.sleep(for: .milliseconds(30)) }

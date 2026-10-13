@@ -61,7 +61,11 @@ protocol VisionProposing: Sendable {
     var name: String { get }
     /// Where on THIS window image is the control that says `label`? Proposals only — JARVIS validates freshness, bounds and policy before any click.
     func propose(label: String, image: CGImage, scale: CGFloat) async -> [VisionProposal]
+    /// Called before the window picture is taken: a slow provider may load now so the picture is not stale when its answer arrives. Default: nothing to do.
+    func prepare(label: String) async
 }
+
+extension VisionProposing { func prepare(label: String) async {} }
 
 struct AppleVisionOCR: VisionProposing {
     let name = "Apple Vision on-device text recognition"

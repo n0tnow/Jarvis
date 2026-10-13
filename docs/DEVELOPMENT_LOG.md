@@ -466,3 +466,21 @@ Unit 1446 / 210 suites; verify PASSED (smoke 147/0/2; idle 0.01 CPU-s / 8 s at 7
 
 ### Open
 `docs/KNOWN_ISSUES.md` JARVIS-V13-1…14. MANUAL TEST REQUIRED: README 824–986.
+
+## 2026-10-14 — V0.13.1: Project Operator closure & stability
+
+### Goal
+Close V0.13: root-cause JARVIS-V13-7 without masking it, add Input System operations and real animation / audio experiments, show the Scene Profile on the Project card, audit the guards, run a bounded soak. Not V0.14.
+
+### Done
+* **V13-7**: instrumented the executor (polls, timing, hashes, world state, raw AX error class). The failing runs showed the fixture HAD counted the click while `AXPress` returned an "unsupported" class error: the executor trusted the return code. Fix (DEC-206): one read-only cross-check of the expected state, verified or failed, never repeated. The environmental trigger stopped reproducing and was not identified. Two further test-side flaws found by repetition: the safe restart cycle's `.stateChanged` check (now element-exists, child output captured on failure) and a cold VLM load aging the screenshot past 6 s (model now loaded before the picture; the 6 s rule is unchanged).
+* **Input System**: 7 typed ops + optional bridge assembly (`defineConstraints`/`versionDefines`), owned-binding ledger, duplicate / conflict refusal, read-back by reload. A C# compile error in the bridge made the owned editor exit; `prepare` now fails fast with the output tail.
+* **Experiments**: `animationPlayback` / `audioPlayback` through the same engine (`prepareFixture`, `playAndObserve`), generated clip / controller / tone, refused under pressure, cleanup on success / failure / cancel / hard-kill.
+* **Scene Profile** on the Project card (live from a connected editor or labelled stale), memory-only never starts work, rent / cart / donate words blocked, `GUARD_MATRIX.md` (5 gaps closed), `StabilitySoak`.
+
+### Evidence
+See `PROJECT_STATE.md` status. Before: V13-7 failed 5 of 9 V0.13 runs. After (final code): 10/10 full, 40/40 focused, 10/10 restart cycles; operator live 131/0/0 on Unity 6000.5.1f1.
+
+### Not done / next
+Wait for the manual test (README 987–999). V0.14 is not started.
+

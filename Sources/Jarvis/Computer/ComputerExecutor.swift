@@ -851,6 +851,7 @@ final class ComputerExecutor {
             _ = await waitUntil(windowTimeout) { await self.backend.frontmostApplication()?.pid == app.pid }
         }
         var lastWhy = ""
+        await vision.prepare(label: label)                                    // a cold model loads BEFORE the picture is taken (never counted against the screenshot's age)
         for attempt in 1...2 {                                                // a stale screen is re-observed once, never clicked
             if stop.isStopped { return finish(&r, .cancelled, detail: "stopped") }
             r.attempts = attempt

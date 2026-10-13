@@ -45,3 +45,9 @@ Full HUD → Tasks → **Project** card (state, last checkpoint, next candidate,
 ## 8. Tests
 
 Automated: `ContinuityCoreTests` (35), `ContinuityEngineTests` (11), migration tests. Real: see README manual checks 'V0.13' — the restart / drift / failed / interrupted scenarios against a **disposable** project clone. The real Hamam project is never an automated target.
+
+## 9. V0.13.1: Scene Profile on the Project card (DEC-209) and memory-only (DEC-210)
+
+The Full HUD Project card shows a compact **Scene** block: scene name, object / light / camera / renderer counts and the active render pipeline. It has two labelled states — **live** (an owned editor is connected right now; read through the typed `sceneProfile`) and **stale** (the last facts, with the time they were read, shown greyed with "as of …"). Nothing starts an editor to fill it, nothing polls: with no connected editor you see the stale block or nothing. A stale value is never presented as live and never decides anything. The Compact HUD is unchanged (392×448, one line).
+
+`ContinuationSelector`: a *known issue* that exists only in memory is offered as a choice, never started on its own — memory alone never starts work.

@@ -4,6 +4,8 @@
 
 ## Current Version
 
+**V0.13.1 — Project Operator Closure & Stability** (on V0.13, de48238): Input System typed Unity operations, real animation / audio experiments on the one experiment engine, Scene Profile (live / stale) on the Full HUD Project card, the JARVIS-V13-7 Accessibility fix (DEC-206), vision pre-warm, guard matrix, bounded soak. NOT V0.14. Details below describe V0.13, which this builds on.
+
 V0.13 — Autonomous Project Operator & General Visual Grounding (JARVIS can say where a project stands from CURRENT truth, continue it as ONE bounded task through the single V0.12 orchestrator, work in the Unity editor through a closed typed operator set, inspect and correct its own result from measured facts, test unknowns in disposable environments, and look at a picture without ever treating it as authority). Built on V0.12 (957f95e). NOT V0.14 (self-improvement) and NOT V0.15 (persona / whiteboard).
 
 ## Current Milestone
@@ -22,6 +24,9 @@ Previous milestone V0.8: Natural Voice & Presence (opt-in wake word "Jarvis" →
 
 ## Status
 
+**V0.13.1 — READY FOR MANUAL TEST.** NOT COMPLETE, NOT TAGGED. Automated + REAL on this Mac: `scripts/verify.sh` VERIFY PASSED (1470 tests / 216 suites; smoke 147 PASS / 0 FAIL / 2 SKIP; idle 0.01 CPU-s per 8 s at 73 MB); `--operator-live-test` 131/0/0 (real Unity 6000.5.1f1, disposable fixture; includes Input System and animation/audio experiments); model-planned graph 7/0; asset-experiment 10/0; operator soak 5/0; `--stability-soak 10` 15/0 (RSS 80→86 MB, no orphans); experiment hard-kill start/recover 6/0; `--continuity-live-test` 21/0/0 + interrupt/restart 8/0; `--computer-live-test` 10/10 consecutive full runs (95/0/2), 40/40 focused CONTEXT runs, restart repeat 10/10. JARVIS-V13-7 is MITIGATED, not "resolved" (trigger never identified; see KNOWN_ISSUES). MANUAL TEST REQUIRED: README 987–999.
+
+Previous status (V0.13):
 **V0.13 — READY FOR MANUAL TEST** (V0.12 and earlier: READY FOR MANUAL TEST as before). NOT COMPLETE, NOT TAGGED.
 (Automated + REAL verification passed on this Mac: `scripts/verify.sh` VERIFY PASSED (1446 unit tests / 210 suites; smoke 147 PASS / 0 FAIL / 2 SKIP; idle 0.01 CPU-s per 8 s at 73 MB; 28 new V0.13 guards plus narrowed old ones), release build, `--operator-live-test` 97 / 0 / 0 (real Unity 6000.5.1f1 on a disposable fixture) + explicit sections (soak 5/0, model-planned 7/0, asset-experiment 10/0, hard-kill crash start/recover), `--continuity-live-test` 21 / 0 / 0 (+ two-launch hard-kill 4 + 8), `--computer-live-test` 95 / 0 / 2 (icon-only / ambiguous / purchase / Safari; one intermittent check, JARVIS-V13-7), `--visual-benchmark` 15 / 16 for Qwen3-VL 2B, 4B and the OCR→4B chain. The real Hamam project and your other projects were never an automated target. Manual checks: README 824–986.)
 

@@ -1012,3 +1012,48 @@ Why: DEC-022…028, DEC-127…156.
 Status: Accepted (V0.13)
 Decision: V0.14 = self-improvement; V0.15 = persona / whiteboard; V1.0 = integration, stabilisation, real-world validation, security audit, packaging. V0.13 does none of the first two.
 Why: DEC-189.
+
+## DEC-206 — An Accessibility action's return code is not its outcome (JARVIS-V13-7)
+Status: Accepted (V0.13.1)
+Decision: when an application answers a press with "unsupported / not implemented", the executor does not take that at face value in either direction: it looks (read-only, ≤ 1.5 s) for the state the action was meant to produce. If it is there the press is VERIFIED ("the application answered … but the expected state was observed"); if not, the action FAILS and says what was and was not seen. The action is NEVER repeated (it may already have happened). A failed verification now reports counts and flags (polls, node counts, truncation, generation, frontmost app, input idle) — never UI text.
+Why: the real fixture counted the click while the call returned an error; reporting failure was wrong, and a retry would have double-fired.
+
+## DEC-207 — Input System edits use Unity's own API, in an optional assembly, and protect the user's bindings
+Status: Accepted (V0.13.1)
+Decision: seven typed operations (`inspectInput`, `createInputAsset`, `createInputMap`, `createInputAction`, `addInputBinding`, `changeInputBinding`, `removeInputBinding`). The full implementation lives in `Jarvis.Bridge.InputSystem`, compiled only when `com.unity.inputsystem` is installed (JARVIS never installs packages; the main assembly answers "not installed" and refuses edits). An `.inputactions` file is read and written only through `InputActionAsset.FromJson/ToJson` and the API's own editing calls, then reloaded to verify. Bindings JARVIS creates are remembered in `Library/JarvisBridge/input-owned.json`; only those can be changed or removed — anything else (including a binding JARVIS no longer remembers) is the user's. An exact duplicate is not added; a control already used by another action of the map, or a wildcard (`anyKey`) overlap, is REFUSED with the facts instead of guessed. Not exposed: enabling/disabling an action (runtime state, blocked in Play Mode) and control-scheme editing.
+Why: a "continue" must never redesign the user's input scheme; ambiguity is reported, not resolved.
+
+## DEC-208 — Animation and audio experiments are kinds of the one experiment engine, with generated fixtures
+Status: Accepted (V0.13.1)
+Decision: `animationPlayback` and `audioPlayback` use the same contract, isolation, cleanup, verdict and cancellation code as every experiment (a `prepareFixture` step and a `playAndObserve` adapter; no second engine). With no asset named the fixture is generated inside the disposable project: a typed `createAnimationClip` (one whitelisted transform property on one axis) + a one-state controller, or a synthetic 0.5 s tone WAV written before the editor opens. A named asset that does not exist REFUTES the hypothesis. TESTED: the clip's normalized time advances and the pose changes / the AudioSource has its clip and `isPlaying` becomes true. INFERRED or UNKNOWN: that it works on another rig, and that it sounds right — never claimed.
+Why: a compile is not an animation; a configured source is not audible sound.
+
+## DEC-209 — The Project card shows live scene facts or history labelled as history
+Status: Accepted (V0.13.1)
+Decision: a small subset (scene, objects, cameras, lights, broken references, Play Mode, saved/unsaved) is read from a CONNECTED editor when the card refreshes (never on a timer, never by starting an editor). Without a connection the last reading is shown dimmed with its age and "the editor is not connected, so this may be out of date"; it is never `live`, never persisted, and never shown in Compact.
+Why: stale scene facts presented as current are worse than none.
+
+## DEC-210 — Memory alone never starts work
+Status: Accepted (V0.13.1)
+Decision: a known issue that exists only as a project-memory item is PROPOSED (`needsChoice`); work starts on its own only from current truth (a recorded next step in the project's docs, the queue, a checkpoint, an unfinished or failed task).
+Why: memory is context, never the authority for what to do.
+
+## DEC-211 — Rental, cart and donation words are blocked like purchases
+Status: Accepted (V0.13.1)
+Decision: "Rent", "Rental", "Buy or Rent", "Kirala", "Add to Cart", "Join Prime", "Donate" … classify as PURCHASE (blocked, no approval path). Found while reconciling the V0.13 guard requirements: rental was classified ordinary.
+Why: the purchase / rental / subscription bypass must be closed for any site, without naming any site.
+
+## DEC-212 — A dying editor is reported at once
+Status: Accepted (V0.13.1)
+Decision: `UnityService.prepare` waits for the bridge in 2-second slices and fails immediately, with the editor's output tail, when the process exits (a batch-mode compile error used to hang for the full connect timeout).
+Why: found by the Input System live test (a C# error in the bridge).
+
+## DEC-213 — Roadmap unchanged
+Status: Accepted (V0.13.1)
+Decision: V0.13.1 is a closure / stability milestone. V0.14 (adaptive learning & controlled self-improvement) → V0.15 (presence, personality & visual intelligence) → V1.0 (real-world validation & stabilisation).
+Why: DEC-205.
+
+## DEC-214 — The local vision model is loaded BEFORE the picture is taken
+Status: Accepted (V0.13.1)
+Decision: `VisionProposing.prepare(label:)` runs before the window capture. Only when the first eligible provider for the query is the local model (an icon or custom-drawn control, not an OCR-readable label) is the model loaded, and never under memory pressure. The 6 s observation-age rule (`ComputerLimits.maxObservationAge`) is unchanged.
+Why: a cold load (~5 s) plus the counting check made the screenshot older than the rule, so a correct stale-screen refusal looked like a flaky icon-only press. The cause was the order of operations, not the rule.

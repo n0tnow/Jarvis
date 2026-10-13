@@ -254,3 +254,7 @@ user: "where are we?" / "continue"                                  ┌───
 * **Experiments** (`Experiments/`, `Tasks/TaskEngine+Experiment.swift`, schema v12): a bounded contract, a marker-checked disposable Unity project under `~/Library/Caches/JARVIS`, verdicts that need every check, asset facts by class. `docs/EXPERIMENTATION.md`.
 
 Authority is unchanged: approvals are HUD buttons only; memory, artifacts, checkpoints, visual output and UI text never grant anything; the proactive layer starts none of it.
+
+### V0.13.1 — closure and stability (no new layer)
+
+Same orchestrator, same experiment engine: the Input System ops extend `UnityDevOp` (+ the optional `Jarvis.Bridge.InputSystem` assembly in the bridge package); `animationPlayback` / `audioPlayback` are kinds of `ExperimentKind` (`TaskEngine+ExperimentPlayback.swift`); `Continuity/UnitySceneFacts.swift` is a read-only live-or-history scene view for the Project card; `App/StabilitySoak.swift` is a dev-only bounded soak (`--stability-soak N`). The requirement-to-guard matrix is `docs/GUARD_MATRIX.md`.

@@ -161,6 +161,16 @@ final class LocalVLMRuntime {
         }
     }
 
+    /// Loads the model BEFORE a picture is taken (a cold start is seconds; a screenshot that waits for it would be too old to justify a click). Never under memory pressure; the idle unload restarts.
+    func warmUp() async {
+        guard pressureNormal() || host.isRunning else { return }
+        idleTask?.cancel()
+        let was = host.isRunning
+        do { try await host.ensureStarted() } catch { return }
+        if !was { metrics.loads += 1; metrics.loadSeconds = host.lastLoadSeconds }
+        scheduleIdleUnload()
+    }
+
     func unloadNow() async { idleTask?.cancel(); guard pending.isEmpty else { return }; await host.stop() }
     func shutdownNow() { idleTask?.cancel(); failAll(LocalVLMError.unavailable("shutting down")); host.shutdownNow() }
     var residentBytes: UInt64? { host.residentBytes }

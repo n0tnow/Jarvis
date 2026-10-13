@@ -33,6 +33,12 @@ final class VisualGrounder {
         return ps
     }
 
+    /// Called BEFORE the picture is taken: when the first provider for this question is the heavy local model (an icon or a custom-drawn control — not a text label the OCR can read), it is
+    /// loaded now, so the screenshot is not already stale by the time the answer comes back. Text labels never load the model.
+    func prepare(query: VisualQuery, sensitivity: VisualSensitivity) async {
+        if let first = eligible(for: query, sensitivity: sensitivity).first as? LocalVLMProvider { await first.runtime.warmUp() }
+    }
+
     func answer(image: CGImage, query: VisualQuery, sensitivity: VisualSensitivity) async -> VisualAnswer {
         lastTrace = []
         guard let png = VisualImageCoding.png(image) else { var a = VisualAnswer(); a.abstainReason = "the picture could not be encoded"; return a }
@@ -73,6 +79,8 @@ final class GroundedVisionProposer: VisionProposing, @unchecked Sendable {
     let sensitivity: VisualSensitivity
     var name: String { "General visual grounding" }
     @MainActor init(grounder: VisualGrounder, sensitivity: VisualSensitivity = .desktop) { self.grounder = grounder; self.sensitivity = sensitivity }
+
+    func prepare(label: String) async { await grounder.prepare(query: .locate(label), sensitivity: sensitivity) }
 
     func propose(label: String, image: CGImage, scale: CGFloat) async -> [VisionProposal] {
         let answer = await grounder.answer(image: image, query: .locate(label), sensitivity: sensitivity)

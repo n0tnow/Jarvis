@@ -293,6 +293,8 @@ extension Array {
 struct ScriptedVision: VisionProposing {
     var name = "scripted vision"
     var boxes: [String: [CGRect]]
+    var onPrepare: (@Sendable (String) async -> Void)?
+    func prepare(label: String) async { await onPrepare?(label) }
     func propose(label: String, image: CGImage, scale: CGFloat) async -> [VisionProposal] {
         (boxes[ComputerText.menuKey(label)] ?? []).map { VisionProposal(label: label, box: $0, reason: "scripted", source: name) }
     }

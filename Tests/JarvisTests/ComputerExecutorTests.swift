@@ -485,6 +485,20 @@ struct ComputerExecutorTests {
         #expect(r.count("click") == 1 && r.did("capture"))
     }
 
+    @Test("vision: the provider is prepared BEFORE the window picture is taken (a cold model must not age the screenshot)")
+    func visionPreparedBeforeCapture() async {
+        final class Seen: @unchecked Sendable { var labels: [String] = []; var rig: CURig?; var capturesAtPrepare = -1 }
+        let seen = Seen()
+        var vision = ScriptedVision(boxes: ["launch": [CGRect(x: 100, y: 100, width: 80, height: 30)]])
+        vision.onPrepare = { label in await MainActor.run { seen.labels.append(label); seen.capturesAtPrepare = seen.rig?.count("capture") ?? -1 } }
+        let r = CURig(vision: vision); r.visionOn = true; seen.rig = r
+        _ = canvasApp(r)
+        let res = await r.ex.perform(visionAction("Launch"))
+        #expect(res.status == .verified, "\(res.detail)")
+        #expect(seen.labels == ["Launch"], "prepared once with the label: \(seen.labels)")
+        #expect(seen.capturesAtPrepare == 0, "no picture existed yet when the provider was prepared")
+    }
+
     @Test("vision is off by default and does nothing when off")
     func visionOff() async {
         let r = CURig(vision: ScriptedVision(boxes: ["launch": [CGRect(x: 10, y: 10, width: 20, height: 20)]])); _ = canvasApp(r)

@@ -617,9 +617,12 @@ Description: the first vision query after the helper has been unloaded loads the
 Status: By design
 Description: live visual tests need the permissions the V0.11 test already needs; JARVIS never grants them to itself and says so when missing.
 
-### JARVIS-V13-7 — The V0.11 live test has an intermittent Accessibility check
-Status: Open · NON-BLOCKING · FLAKY TEST
-Description: `CONTEXT: with “in the Inspector” … is pressed` failed in 5 of 9 V0.13 runs (the press registered once, then the executor's retry hit "the element does not support this") and passed in the others; V0.12's binary passed it 2 of 2 times but failed a different check (`RESTART (part 1)`) both times. The Computer layer is byte-identical to V0.12. Treated as a timing-sensitive fixture-focus flake; not diagnosed to root cause. Re-run `--computer-live-test` if it fails.
+### JARVIS-V13-7 — The V0.11 live test had an intermittent Accessibility check
+Status: MITIGATED (V0.13.1) — production flaw fixed and unit-tested; the ENVIRONMENTAL trigger was never identified, so this is not called "resolved"; reopen if it recurs
+Description: `CONTEXT: with “in the Inspector” … is pressed` failed in 5 of 9 V0.13 runs. V0.13.1 captured the failing state: the fixture HAD counted the click (the handler ran) while `AXUIElementPerformAction(AXPress)` returned an "unsupported" class error, so the executor reported a failure on the return code (attempts = 1, no duplicate press). That is a real defect in the executor, not a test race: an AX return code is not the outcome of the action.
+Fix (DEC-206): on `unsupported` the executor makes one read-only cross-check (≤ 1.5 s) of the expected state — seen ⇒ VERIFIED ("took effect, not repeated"), not seen ⇒ FAILED; never a second press. Stale-screen, restart and target-fingerprint rules are unchanged; no sleep, retry or weakened assertion was added. Unit tests: `unsupportedAnswerButEffect` / `unsupportedAnswerNoEffect`.
+What was NOT found: why the application answered "unsupported" in the failing window (≈ 22:37–22:55 on the dev Mac) and not afterwards — the error class stopped reproducing even before further changes. Evidence after the fix on the final code: 40/40 focused CONTEXT runs, 10/10 full `--computer-live-test` runs (95/0/2 each), 10/10 safe-task restart cycles; earlier on the same fix: 150/150 and 40/40 focused, 8/8 full, 30/30 repro. Before: 5 failures in 9 V0.13 runs. V0.12's binary failing `RESTART (part 1)` instead was a child-data-directory contamination of that check, fixed in the test (V0.13.1 restart cycle).
+Two further test-side flaws found by the same repetition and fixed at the cause (not masked): the full-test "RESTART SAFE CYCLE" used a `.stateChanged` check on a label that already read the target value; and an icon-only press with a COLD vision model aged its own screenshot past the 6 s rule (model load ≈ 5 s) — the model is now loaded BEFORE the picture is taken (`VisionProposing.prepare`), the 6 s rule is unchanged.
 
 ### JARVIS-V13-8 — A real model-planned Unity graph needs enough evidence for its reviewer
 Status: Resolved (V0.13)
@@ -648,3 +651,15 @@ Description: the real continuation of "fix add()" ran `delegateResearch → anal
 ### JARVIS-V13-14 — Cloud vision is not integrated
 Status: By design
 Description: a Claude Code image probe works over the user's subscription but would send screen content out. Documented as an option; not implemented (docs/VISUAL_GROUNDING.md).
+
+### JARVIS-V13-15 — Experiments judge "plays", never "sounds right"
+Status: By design
+Description: the audio experiment proves `isPlaying` in Play Mode and that the configured clip is the generated tone; JARVIS cannot hear. "Sounds right" is UNKNOWN in every report.
+
+### JARVIS-V13-16 — Input System operations need the package in the project
+Status: By design
+Description: the bridge never installs or upgrades a package. Without `com.unity.inputsystem` the operations answer "package missing". Unity 6000.5.1f1 was the only version tested.
+
+### JARVIS-V13-17 — A cold local vision model is ~5 s on first use
+Status: Mitigated (V0.13.1)
+Description: the model loads before the picture is taken, so the stale-screen rule is not hit; the first icon-only press after idle still costs the load time.

@@ -39,3 +39,11 @@ Typed JARVIS operation > structured data > controlled CLI > browser DOM > Access
 ## 7. Tests
 
 Automated: `UnityOperatorTests`, `UnityOperatorEngineTests` (simulated editor), parity + boundary tests. Real: `--operator-live-test` (real Unity 6000.5.1f1 on a disposable fixture; 83 checks for the operations, plus the correction and experiment sections). Evidence labels: REAL · ENGINE (real engine, scripted planner) · POLICY.
+
+## 8. V0.13.1 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED, Unity 6000.5.1f1 on a disposable fixture)
+
+**Input System (typed, DEC-207).** `inspectInput` (package presence + version, `.inputactions` assets, maps, actions, bindings, control schemes) · `createInputAsset` · `createInputMap` · `createInputAction` (type: Button / Value / PassThrough) · `addInputBinding` · `changeInputBinding` · `removeInputBinding`. Rules: the bridge never installs or upgrades a package — a project without `com.unity.inputsystem` gets a clear "package missing" answer (the optional assembly `Jarvis.Bridge.InputSystem` compiles only when the package exists, via `defineConstraints` + `versionDefines`); edits go through `InputActionAsset.FromJson/ToJson` plus API calls, never text editing of the JSON; control paths are validated (`<Keyboard>/space`, `<Gamepad>/buttonSouth`, composites with `&`); a duplicate name or an identical binding is refused; **a binding the user made is never changed or removed** — only bindings JARVIS created (ids kept in `Library/JarvisBridge/input-owned.json`); every edit is verified by reloading the asset and reading it back. Capability: inspect → `inspectUnity`, edits → `editUnityAssets`.
+
+**Animation clips.** `createAnimationClip(assetPath, property, axis, from, to, duration, loop)` — a deterministic clip for a transform property, used by the animation experiment and by users who ask for a simple clip. No keyframe scripting, no C#.
+
+Real test: `--operator-live-test` section `input` copies the fixture, adds the bundled Input System 1.19.0 (offline) and runs 20+ checks including user-binding protection, duplicate / conflict refusal and the package-missing answer. A dying editor now fails a prepare at once with the output tail (it used to wait the full connect timeout).

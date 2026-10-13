@@ -133,3 +133,11 @@ Generic Accessibility first; small adapters only record what is known (`Computer
 ## V0.13 additions
 
 The vision rung is now **general visual grounding** (`docs/VISUAL_GROUNDING.md`): Apple Vision OCR first for text-like labels, then a local Qwen3-VL helper for icon-only / custom-drawn controls. Proposals still pass the V0.11 executor checks (fresh observation, window-relative bounds, occlusion, calm user, policy on the worst of model label / printed text / requested label). REAL TESTED: an icon-only control found and verified, two identical icons refused as AMBIGUOUS, a "Buy now" control blocked, and a Safari measurement (visual box vs Accessibility's own frame).
+
+## V0.13.1 additions (DEC-206)
+
+**An Accessibility return code is not the outcome.** `AXUIElementPerformAction(AXPress)` can answer "unsupported" although the application's handler ran (found by JARVIS-V13-7: the fixture counted the click, the executor reported a failure and a retry then hit a changed screen). On `BackendError.unsupported` the executor now performs ONE read-only cross-check (≤ 1.5 s) of the action's expected state: seen ⇒ VERIFIED (detail says the press took effect and was not repeated); not seen ⇒ FAILED. The press is **never repeated**. Stale-screen, restart and target-fingerprint rules are unchanged. The failure detail now carries polls, timing and hash before/after, and the AX press path logs the raw error class.
+
+**The vision model is loaded before the picture is taken.** A cold local model needs ~5 s; a screenshot that waited for it was already older than the 6 s rule (`ComputerLimits.maxObservationAge`) and was refused as stale. `VisionProposing.prepare(label:)` loads the model first — only when the first eligible provider for the query is the local model (text labels the OCR can read never load it; never under memory pressure). The 6 s rule itself is unchanged.
+
+**Purchase words.** Rent / rental / cart / basket / pre-order / donate (and Turkish kirala / sepete / bağış) are consequence words alongside buy (BLOCKED, no approval path; DEC-211).
