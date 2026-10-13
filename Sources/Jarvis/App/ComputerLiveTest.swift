@@ -192,7 +192,7 @@ enum ComputerLiveTest {
         (v, _) = await runTask("Press Apply", [step("Pressing Apply", press("Apply", window: "Fixture Main"))])
         check("AMBIGUITY: two identical “Apply” buttons (Sidebar, Inspector) → the task stops as AMBIGUOUS, nothing is pressed", v.task.state == .failed && v.task.failureCategory == .ambiguousTarget && st().count("applySidebar") == 0 && st().count("applyInspector") == 0, "\(v.task.failureReason?.prefix(120) ?? "")")
         (v, _) = await runTask("Press Apply in the Inspector", [step("Pressing Apply (Inspector)", press("Apply", within: "Inspector", window: "Fixture Main"))])
-        check("CONTEXT: with “in the Inspector” from the user's words the right one is pressed", v.task.state == .completed && st().count("applyInspector") == 1 && st().count("applySidebar") == 0, "state \(v.task.state.rawValue) · inspector×\(st().count("applyInspector")) sidebar×\(st().count("applySidebar")) · \(v.task.failureReason?.prefix(200) ?? "")")
+        check("CONTEXT: with “in the Inspector” from the user's words the right one is pressed", v.task.state == .completed && st().count("applyInspector") == 1 && st().count("applySidebar") == 0, "state \(v.task.state.rawValue) · inspector×\(st().count("applyInspector")) sidebar×\(st().count("applySidebar")) · \(v.task.failureReason?.prefix(200) ?? "") · actions \(actions(v).map { "\($0.status)/attempts \($0.attempts)/\(($0.detail ?? "").prefix(220))" })")
         (v, _) = await runTask("Press Apply in Document B", [step("Pressing Apply in Document B", press("Apply", window: "Document B", checks: [.elementExists(bundleID: fixtureBundle, role: "statictext", title: "Applied 1")]))])
         check("MULTI-WINDOW: two similar windows are told apart by TITLE, not z-order — only Document B's Apply was pressed", v.task.state == .completed && st().count("applyDocB") == 1 && st().count("applyDocA") == 0, "A×\(st().count("applyDocA")) B×\(st().count("applyDocB"))")
         (v, _) = await runTask("Press Apply in Document", [step("Pressing Apply", press("Apply", window: "Document"))])
@@ -546,6 +546,44 @@ enum ComputerLiveTest {
                 }
             }
         } else { skip("REAL BLENDER TEST", "Blender is not installed") }
+
+        // ------------------------------------------------------------ 15b. Safari (V0.13): an application JARVIS has no adapter for. Open it, then measure the general visual grounding AGAINST Accessibility's own truth. Nothing is typed, clicked or read from a page; the picture stays in memory.
+        if let safari = await backend.installedBundleID(for: AppRef(bundleID: "com.apple.Safari")) {
+            let already = (await backend.runningApplications()).contains { $0.bundleID == safari }
+            let tSaf = Date()
+            (v, dur) = await runTask("Open Safari", ComputerGoalParser.classify("Open Safari", context: GoalContext()).computerSteps)
+            let sApp = (await backend.runningApplications()).first { $0.bundleID == safari }
+            if let sApp, !already { launchedByUs.append(sApp.pid) }
+            check("REAL SAFARI: launched / activated through the typed actions and verified frontmost", v.task.state == .completed && sApp != nil, "\(fmt(dur)) ms; \(v.task.failureReason ?? "")")
+            perf.append(("Safari launch + activate (verified)", "\(fmt(ms(tSaf))) ms"))
+            try? await Task.sleep(for: .seconds(2))
+            if let sApp {
+                let sw = await backend.windows(pid: sApp.pid)
+                let ss = try? await backend.snapshot(pid: sApp.pid, scope: .frontWindow, budget: AXBudget())
+                info("Safari: \(sw.count) window(s); AX tree \(ss?.nodeCount ?? 0) nodes in \(fmt(ss?.durationMS ?? 0)) ms (truncated: \(ss?.truncated ?? false))")
+                check("REAL SAFARI: the Accessibility tree is bounded (the user's own tabs are never read)", (ss?.nodeCount ?? 0) <= ComputerLimits.maxTreeNodes)
+                let truth = ss?.elements.first { ($0.role == "AXTextField" || $0.role == "AXComboBox") && $0.frame != nil && !$0.isSecure }
+                if screenOK, let truth, let tf = truth.frame, prefs.visualGroundingMode != .off {
+                    let visual = context.visual
+                    prefs.computerVisionEnabled = true
+                    defer { prefs.computerVisionEnabled = false }
+                    let exS = runtime.makeExecutor(token: ComputerStopToken(), taskID: UUID())
+                    let capS = await exS.perform(ComputerAction(kind: .captureWindow, target: ActionTarget(app: AppRef(bundleID: safari)), summary: "Capture Safari"))
+                    if capS.status == .verified, let id = exS.lastScreen?.cgWindowID, let wf = exS.lastScreen?.windowFrame, let img = try? await backend.captureWindow(cgWindowID: id, windowFrame: wf) {
+                        let tG = Date()
+                        let a = await visual.answer(image: img.image, query: .locate("the address and search field in the toolbar at the top of the window"), sensitivity: .desktop)
+                        let size = CGSize(width: CGFloat(img.image.width) / img.scale, height: CGFloat(img.image.height) / img.scale)
+                        let expected = CGRect(x: tf.minX - wf.minX, y: tf.minY - wf.minY, width: tf.width, height: tf.height)
+                        let boxes = a.candidates.map { $0.region.rect(inWindow: size) }
+                        func iou(_ r: CGRect, _ q: CGRect) -> Double { let i = r.intersection(q); if i.isNull { return 0 }; let u = r.width * r.height + q.width * q.height - i.width * i.height; return u > 0 ? Double(i.width * i.height / u) : 0 }
+                        let best = boxes.map { iou($0, expected) }.max() ?? 0
+                        info("Safari visual grounding: provider \(a.provider.isEmpty ? "none" : a.provider), \(a.candidates.count) candidate(s), ambiguous \(a.ambiguous), best overlap with Accessibility's own frame \(fmt(best * 100, "%.0f")) % in \(fmt(ms(tG))) ms (picture hash \(a.pictureHash.prefix(8)); the picture itself was not stored)")
+                        perf.append(("Safari window capture + visual grounding (vs AX truth)", "\(fmt(ms(tG))) ms, overlap \(fmt(best * 100, "%.0f")) %"))
+                        check("GENERAL VISUAL GROUNDING on an unknown, real application: the located address field overlaps the field Accessibility reports (≥ 30 % IoU) — or the provider honestly abstains", best >= 0.3 || a.candidates.isEmpty || a.ambiguous, "overlap \(fmt(best * 100, "%.0f")) %, \(a.abstainReason ?? "")")
+                    } else { info("Safari window capture did not succeed (\(capS.status.rawValue)): \(capS.detail.prefix(120))") }
+                } else { info("Safari visual grounding comparison skipped (needs Screen Recording, an AX address field and the visual provider)") }
+            }
+        } else { skip("REAL SAFARI TEST", "Safari is not installed") }
 
         // ------------------------------------------------------------ 16. Unity (resolver preference; GUI only to activate)
         func delegated(_ s: String) -> ComputerMechanism? { if case .delegate(let c) = ComputerGoalParser.classify(s, context: GoalContext()) { return c.mechanism }; return nil }

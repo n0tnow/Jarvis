@@ -650,6 +650,23 @@ enum SmokeTest {
             await resetWorld()
         }
 
+        // --- V0.13 Project operator: wired but idle. Continuity answers from current truth without a model, the Unity operator is a closed typed set, visual grounding is local and unloaded, experiments live outside the data folder, Compact stays 392×448.
+        do {
+            check("V0.13 the operator layer is wired (schema v12, continuity service, experiments root in Caches, bounds 30 min · 12 · 2 · 2 · 2)", (context.database?.schemaVersion ?? 0) >= 12 && context.taskEngine.experimentsRoot.map { !$0.path.contains("/Library/Application Support/JARVIS") } == true && ContinuationBounds.standard.summary.contains("30 min") && ContinuationBounds.standard.maxExperiments == 2)
+            check("V0.13 IDLE: no experiment environment, no vision helper process, no Unity editor started by JARVIS, no continuation running", ((try? FileManager.default.contentsOfDirectory(atPath: context.taskEngine.experimentsRoot?.path ?? "/nonexistent")) ?? []).isEmpty && { if case .running = context.visionRuntime.state { return false }; if case .starting = context.visionRuntime.state { return false }; return true }() && UnityProcessScanner.editors().allSatisfy { $0.projectPath?.contains("/experiments-") != true } && context.taskEngine.runners.isEmpty)
+            check("V0.13 status and continue phrases are recognised deterministically (EN + TR) and “yes” is never a decision", ContinuityIntent.recognize("Hamam projesinde ne durumdayız?") == .status(project: "hamam", detailed: false) && ContinuityIntent.recognize("Tamam. Kaldığımız yerden devam et.") == .continueProject(project: nil) && ContinuityIntent.recognize("yes, approve") == nil)
+            check("V0.13 the Unity operator is a closed typed set (23 operations) that cannot carry code, a menu item, a shell line or a URL", UnityComponentSchema.table.keys.contains("light") && (try? UnityDevOp.configure(UnityTarget(path: "X"), kind: "light", settings: ["executeMenuItem": .string("Assets/Delete All")])) == nil)
+            check("V0.13 visual grounding is on-device: no cloud provider is registered and a purchase / credential label is worse than any model label", !VisualProviderClass.subscription.mayReceive(.desktop, cloudAllowed: true) && !VisualProviderClass.freeCloud.mayReceive(.project, cloudAllowed: true) && VisualOutputValidator.safety(label: "Save", printedText: "Buy now", requested: "Save") == .purchase)
+            check("V0.13 experiments: a contract naming a real project, a command or an unbounded budget is refused; an inconclusive run never confirms", !ExperimentValidator.validate(ExperimentSpec(question: "q", hypothesis: "h", kind: .assetImport, acquisitionID: UUID(), successCriteria: ["rm -rf ~"], failureCriteria: ["x"])).isEmpty && TaskEngine.judge(spec: ExperimentSpec(question: "q", hypothesis: "h", kind: .materialRender, successCriteria: ["a"], failureCriteria: ["b"]), facts: [], inconclusive: nil, seconds: 0, deleted: true, hashes: [], untouched: true).verdict == .inconclusive)
+            check("V0.13 asset facts keep their class: an unknown licence is never safe", AssetEvaluator.evaluate(AssetEvaluationInput(name: "x", sourceURL: "https://example.org", candidate: nil, acquisition: nil, project: nil)).recommendation.contains("licence is unknown") || AssetEvaluator.evaluate(AssetEvaluationInput(name: "x", sourceURL: "https://example.org", candidate: nil, acquisition: nil, project: nil)).facts(.unknown).contains { $0.statement == "Licence" })
+            w.showCompactHUD(); _ = await waitUntil { w.isCompactHUDOpen }
+            context.store.log("Operator · Project · Continuing · Editing", kind: .info)
+            await settle(200)
+            check("V0.13 the Compact HUD stays 392×448 with operator activity logged", compactWindow()?.frame.size == CompactHUDLayout.size)
+            w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- Native text editing (V0.2.1): real key events through the real responder chain into the focused composer.
         // DEV TOOL ONLY: saves and restores the general pasteboard around the test; the product reads it only on user paste.
         print("INFO  main menu installed: \(NSApp.mainMenu != nil), has Paste: \(NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true } ?? false)")
