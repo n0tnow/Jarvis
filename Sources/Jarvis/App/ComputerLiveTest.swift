@@ -6,6 +6,9 @@ import AppKit
 /// deleted, signed in or granted; no credential is typed; no user project is modified; no model request is made; no network request is made.
 /// If Accessibility is not allowed for the process running this test it reports BLOCKED — ACCESSIBILITY PERMISSION REQUIRED and does not weaken anything.
 /// Prints `REAL TESTED PASS/FAIL`, `SKIP`, `INFO` lines and measurements; exits non-zero on failure. Not part of verify.sh.
+/// The fixture's icon canvas geometry (view coordinates) — mirrored from `Sources/JarvisFixture/main.swift`.
+enum IconCanvasRects { static let plus = CGRect(x: 40, y: 23, width: 50, height: 50) }
+
 @MainActor
 enum ComputerLiveTest {
     static let fixtureBundle = "com.jarvis.fixture"
@@ -327,6 +330,34 @@ enum ComputerLiveTest {
             let pts2 = (st().lists["canvasPoints"] ?? []).compactMap { s -> CGPoint? in let p = s.split(separator: ",").compactMap { Double($0) }; return p.count == 2 ? CGPoint(x: p[0], y: p[1]) : nil }
             let inside2 = pts2.last.map { CGRect(x: 40, y: 30, width: 180, height: 60).contains($0) } ?? false
             check("STALE → RE-OBSERVE: acting again re-captured the MOVED window and the click still landed inside the control (no click from the old picture)", v.task.state == .completed && st().count("canvasClicks") == 2 && inside2 && st().count("canvasMisses") == 0, "clicks \(st().count("canvasClicks")), misses \(st().count("canvasMisses")), last view point \(pts2.last.map { "(\(Int($0.x)),\(Int($0.y)))" } ?? "none")")
+            // 8e. V0.13 GENERAL visual grounding on controls with no text, no Accessibility element and no label to read: an icon-only button, two identical icons, a purchase button.
+            let vlmReady = context.visionRuntime.isInstalled
+            let savedGrounding = prefs.visualGroundingMode
+            prefs.visualGroundingMode = .auto
+            func iconPress(_ title: String, status: String) -> ComputerAction {
+                ComputerAction(kind: .visionPress, target: ActionTarget(app: AppRef(bundleID: fixtureBundle), windowTitle: "Fixture Main", title: title), checks: [.elementExists(bundleID: fixtureBundle, role: "statictext", title: status)], summary: "Press \(title)")
+            }
+            func iconPoints() -> [CGPoint] { (st().lists["iconPoints"] ?? []).compactMap { s -> CGPoint? in let p = s.split(separator: ",").compactMap { Double($0) }; return p.count == 2 ? CGPoint(x: p[0], y: p[1]) : nil } }
+            if vlmReady {
+                _ = await backend.activateApplication(pid: fixturePID); try? await Task.sleep(for: .milliseconds(400))
+                let tIcon = Date()
+                (v, dur) = await runTask("Press the plus icon", [GoalStep(title: "Pressing the plus icon", actions: [iconPress("the plus icon", status: "Status: icon plus")])], timeout: 120)
+                let lastIcon = iconPoints().last
+                let acts = actions(v)
+                check("ICON-ONLY: a circled plus with NO text, NO Accessibility element and NO label was found by the on-device model; ONE click landed inside it and the result was verified from the UI", v.task.state == .completed && st().count("iconPlus") == 1 && (lastIcon.map { IconCanvasRects.plus.contains($0) } ?? false), "state \(v.task.state.rawValue) · click \(lastIcon.map { "(\(Int($0.x)),\(Int($0.y)))" } ?? "none") · \(v.task.failureReason?.prefix(160) ?? "")")
+                check("MECHANISM: it is recorded as the LAST rung (window-relative coordinates) with the grounding provider named", acts.first?.mechanism.hasPrefix("G") == true, acts.first?.provider ?? "?")
+                perf.append(("icon-only visual press (capture + local model + validate + click + verify)", "\(fmt(ms(tIcon))) ms"))
+                // two identical icons: AMBIGUOUS — nothing is guessed
+                let beforeStars = st().count("iconStarA") + st().count("iconStarB")
+                (v, _) = await runTask("Press the star icon", [GoalStep(title: "Pressing the star icon", actions: [iconPress("the star icon", status: "Status: icon star")])], timeout: 120)
+                check("AMBIGUOUS VISUAL: two identical star icons are NOT guessed between — the task stops, no click lands on either", v.task.state == .failed && st().count("iconStarA") + st().count("iconStarB") == beforeStars && (v.task.failureCategory == .ambiguousTarget || (v.task.failureReason ?? "").localizedCaseInsensitiveContains("ambigu")), "\(v.task.failureCategory?.rawValue ?? "?") · \(v.task.failureReason?.prefix(140) ?? "")")
+            } else { skip("ICON-ONLY / AMBIGUOUS VISUAL", "the local vision model is not installed (scripts/setup_vision_ai.sh)") }
+            // a purchase-labelled control is BLOCKED by policy before any click (whatever grounds it)
+            let buyBefore = st().count("iconBuy")
+            (v, _) = await runTask("Press Buy now", [GoalStep(title: "Pressing Buy now", actions: [iconPress("Buy now", status: "Status: icon buy")])], timeout: 120)
+            check("PURCHASE: a control labelled “Buy now” is blocked by the consequence policy — no click, no approval path", st().count("iconBuy") == buyBefore && v.task.state == .failed && v.task.failureCategory == .securityBlocked, "\(v.task.failureCategory?.rawValue ?? "?") · \(v.task.failureReason?.prefix(140) ?? "")")
+            prefs.visualGroundingMode = savedGrounding
+
             // 8d2. MULTIPLE DISPLAYS: the fixture is moved onto the other displays (different scale factors, negative global coordinates) and the same vision click must still land inside the control
             let layoutNow = backend.displays()
             if layoutNow.displays.count > 1 {

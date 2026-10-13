@@ -51,6 +51,47 @@ final class CanvasView: NSView {
     }
 }
 
+// V0.13: icon-only, identical and purchase-labelled custom-drawn controls (none of them is visible to Accessibility) for the general visual grounding live test.
+final class IconCanvasView: NSView {
+    override var isFlipped: Bool { true }
+    override func isAccessibilityElement() -> Bool { false }
+    override func accessibilityChildren() -> [Any]? { nil }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    static let plus = NSRect(x: 40, y: 23, width: 50, height: 50)
+    static let starA = NSRect(x: 110, y: 23, width: 50, height: 50)
+    static let starB = NSRect(x: 180, y: 23, width: 50, height: 50)
+    static let buy = NSRect(x: 245, y: 29, width: 90, height: 38)
+    func star(in r: NSRect) -> NSBezierPath {
+        let p = NSBezierPath(), c = NSPoint(x: r.midX, y: r.midY)
+        for i in 0..<10 {
+            let a = CGFloat(i) * .pi / 5 - .pi / 2, rad = i % 2 == 0 ? r.width / 2 : r.width / 4.2
+            let pt = NSPoint(x: c.x + cos(a) * rad, y: c.y + sin(a) * rad)
+            i == 0 ? p.move(to: pt) : p.line(to: pt)
+        }
+        p.close(); return p
+    }
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor(calibratedWhite: 0.12, alpha: 1).setFill(); bounds.fill()
+        NSColor.white.setStroke()
+        let ring = NSBezierPath(ovalIn: Self.plus.insetBy(dx: 2, dy: 2)); ring.lineWidth = 3; ring.stroke()
+        let m = NSBezierPath(); m.lineWidth = 4
+        m.move(to: NSPoint(x: Self.plus.midX - 12, y: Self.plus.midY)); m.line(to: NSPoint(x: Self.plus.midX + 12, y: Self.plus.midY))
+        m.move(to: NSPoint(x: Self.plus.midX, y: Self.plus.midY - 12)); m.line(to: NSPoint(x: Self.plus.midX, y: Self.plus.midY + 12)); m.stroke()
+        NSColor.systemYellow.setFill(); star(in: Self.starA).fill(); star(in: Self.starB).fill()
+        NSColor.systemOrange.setFill(); NSBezierPath(roundedRect: Self.buy, xRadius: 8, yRadius: 8).fill()
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 15, weight: .bold), .foregroundColor: NSColor.black]
+        let t = "Buy now" as NSString, sz = t.size(withAttributes: attrs)
+        t.draw(at: NSPoint(x: Self.buy.midX - sz.width / 2, y: Self.buy.midY - sz.height / 2), withAttributes: attrs)
+    }
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        state.lists["iconPoints", default: []].append(String(format: "%.0f,%.0f", p.x, p.y))
+        let label = (NSApp.delegate as? AppDelegate)?.statusLabel
+        if Self.plus.contains(p) { state.bump("iconPlus"); label?.stringValue = "Status: icon plus" } else if Self.starA.contains(p) { state.bump("iconStarA"); label?.stringValue = "Status: icon star" } else if Self.starB.contains(p) { state.bump("iconStarB"); label?.stringValue = "Status: icon star" }
+        else if Self.buy.contains(p) { state.bump("iconBuy"); label?.stringValue = "Status: icon buy" } else { state.bump("iconMisses") }
+    }
+}
+
 // MARK: App
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSTabViewDelegate, NSTextFieldDelegate {
@@ -165,6 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTabViewDelegate, NST
 
         // custom-drawn canvas
         let canvas = CanvasView(frame: NSRect(x: 400, y: 400, width: 340, height: 130)); c.addSubview(canvas)
+        let icons = IconCanvasView(frame: NSRect(x: 400, y: 536, width: 340, height: 96)); c.addSubview(icons)
     }
 
     func buildDocuments() {
