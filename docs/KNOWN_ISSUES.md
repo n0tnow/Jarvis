@@ -535,3 +535,57 @@ Description: when a field does not accept a direct value, `typeText` posts 8 cha
 ### JARVIS-V11-18 — Pre-existing Swift 6 warnings
 Status: Open · NON-BLOCKING
 Description: unchanged from V0.10 (older live-test code); none in the Computer layer.
+
+## V0.12 — Advanced multi-agent orchestration (JARVIS-V12-*)
+
+### JARVIS-V12-1 — Templates cover the common shapes only
+Status: Open · NON-BLOCKING
+Description: `fix-flow`, `investigation`, `investigation-research`, `asset-suitability` and the single QA/Computer/Research routes need no planner model. Everything else (and every Unity scene goal) costs one planner-model call, and the quality of a model-proposed graph depends on that model even though JARVIS validates it structurally (roles, ordering, gates, limits). Workaround: rephrase the goal more specifically; V1.0 may add templates after real use.
+
+### JARVIS-V12-2 — Role benchmarks are tiny and not deterministic across runs
+Status: Open · NON-BLOCKING
+Description: 11 cases, one sample per case. The same free model scored security 0/2 in one live run and 2/2 in another; routing evidence is therefore a snapshot, not a rating. Security-relevant routing uses COMPLETE evidence only (DEC-181), so a flaky model is excluded until it passes both cases again. Do not generalise from these tables.
+
+### JARVIS-V12-3 — Review independence needs a second eligible provider
+Status: Open · NON-BLOCKING
+Description: when the free model is the only eligible engine (Claude/Codex not ready, or an explicit single-provider choice), the writer also reviews; the routing record says `sameProvider`. By design: the review is never skipped and diversity is never forced.
+
+### JARVIS-V12-4 — Final synthesis is deterministic
+Status: Open · NON-BLOCKING
+Description: reports and conversation summaries are assembled from graph state and validated artifacts; no model rewrites them (DEC-184), so the wording is correct but plain. Model-rendered summaries (restating validated facts only) are a V1.0 polish candidate.
+
+### JARVIS-V12-5 — The research question for a compound goal is a heuristic clause
+Status: Open · NON-BLOCKING
+Description: `researchQuestion(from:)` takes the clause(s) with a research cue, plus the goal's first clause when short. The V0.9 pipeline filters sources by subject relevance, so a vague clause can yield “nothing readable” (the optional branch then fails and the task ends PARTIAL, honestly). Mention the subject in the research clause (“…and check the latest official Unity BoxCollider documentation”).
+
+### JARVIS-V12-6 — Computer / Unity nodes inside graphs are exercised mostly with fixtures
+Status: Open · NON-BLOCKING · MANUAL TEST REQUIRED
+Description: a Computer child inside a graph is tested against the virtual macOS (unit tests) and its ladder/plan-time checks are live-tested; a real Finder/Xcode/Blender run INSIDE a graph, and any real Unity editor run inside a V0.12 graph, were not part of the V0.12 live test (V0.6/V0.11 have their own live tests). Xcode was not installed; no Unity editor ran.
+
+### JARVIS-V12-7 — Memory authority gate is pattern-based
+Status: Open · NON-BLOCKING
+Description: the V0.10 gate refuses authority-shaped statements with regular expressions (now including agent-targeted grants). A cleverly phrased grant may still be STORED; it still cannot act (contracts, policy, validators and the scheduler never read memory), and the Context Builder presents memory as context, not instruction. Over-refusal of a legitimate fact containing “without asking” is possible; rephrase.
+
+### JARVIS-V12-8 — Fixed freshness and limits
+Status: Open · NON-BLOCKING
+Description: research reuse window 24 h, 2 structural revisions, 3 delegates, 12 nodes, 2 parallel readers, 1 review cycle, provider invocations ≤ 4 per node are constants chosen conservatively for a 16 GB MacBook Air; none is user-tunable (DEC-182).
+
+### JARVIS-V12-9 — The V0.10 embedding helper stays resident up to 120 s after a task
+Status: Open · NON-BLOCKING
+Description: finished tasks ingest memory, which loads the embedding helper; it unloads itself after its 120 s idle timer (V0.10). The orchestration layer owns no process; the live test waits for this unload before measuring idle.
+
+### JARVIS-V12-10 — Graph UI is a list; Compact line truncates
+Status: Open · NON-BLOCKING
+Description: nodes are listed with dependencies named, not drawn; parallel groups are implicit. Long role+model names truncate in the one-line Compact summary (the Full HUD shows everything).
+
+### JARVIS-V12-11 — Soak and long-run evidence is bounded
+Status: Open · NON-BLOCKING · MANUAL TEST REQUIRED
+Description: the automated soak is a few minutes of scripted tasks on the real engine/DB; multi-hour real-provider runs, battery impact and real-quota behaviour belong to V1.0 / manual testing.
+
+### JARVIS-V12-12 — Pre-existing race fixed: a dependent of two parallel readers could start twice
+Status: Resolved (V0.12)
+Description: found by the V0.12 live test. `scheduleLoop` did not exclude nodes already in flight, so a node whose last two dependencies finished at nearly the same time could be started twice (two attempts, two provider runs). Now a started node is never started again; regression-tested (`every node ran exactly once`).
+
+### JARVIS-V12-13 — Pause does not exist
+Status: By design
+Description: a provider/tool state cannot be suspended truthfully (DEC-032 unchanged). Stop, Resume after interruption and approvals are the controls.

@@ -136,3 +136,6 @@ The Unity descriptor (version, render pipeline, test framework, packages) is rea
 
 ## V0.11 — Unity and the GUI
 The V0.6 bridge stays primary. `CapabilityResolver` claims every Unity scene/component/compile/test/Console goal for it before Computer Use sees it. Computer Use may only **activate** a running Unity Editor ("switch to Unity" — verified frontmost) or look at a harmless dialog; it never launches an editor (the placeholder bundle id `com.unity3d.UnityEditor5.x` matches any running `com.unity3d.UnityEditor*`), never presses inside the editor, never types into the Console. Not live-tested against a running editor in V0.11 (none was open); the resolver preference is tested.
+
+## V0.12 — Unity inside an orchestrated graph
+The Unity role is the V0.6 typed bridge only: `unityInspect/Edit/Compile/Test/PlayMode/Validate` nodes run alone (mutation lock unchanged); a Unity scene/component/prefab goal is planned by the planner model with the typed Unity step types (never a template, never a Computer node); the fix-flow template adds `unityCompile` after a code change in a Unity project. Computer Use hands every Unity mutation back to V0.6 (live-tested at the resolver level). No Unity editor was launched by V0.12 tests; no real game is touched.

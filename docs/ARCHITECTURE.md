@@ -217,3 +217,15 @@ Conversation / voice ─▶ GoalIntake (ComputerGoalParser: capability ladder fi
 ```
 
 `ComputerRuntime` owns the backend, permissions (truthful, never prompting), vision gating (setting + permission + memory pressure), the timeline and the emergency-stop sampler (running only while a session runs). `Computer/` knows nothing about memory content, approvals' decisions or providers; `TaskEngine+Computer` is the only caller of the executor. Details, limits and measurements: `GENERAL_COMPUTER_USE.md`.
+
+## Multi-agent orchestration (V0.12 — DEC-157…190; details `MULTI_AGENT_ORCHESTRATION.md`)
+```
+ConversationService (typed │ voice) ─► GoalIntake / compound-goal detection ─► TaskEngine.submit
+   planPhase: OrchestrationPlanner (deterministic route │ template │ planner MODEL) ─► PlanValidator + GraphValidator ─► role graph (task_steps + depends_on, ≤ 12 nodes, DAG)
+   scheduler: ConcurrencyPolicy (read-only pairs, 1 under pressure) ─► node: orchestrationRefusal (role contract) ─► specialist
+        analysis/coding/review ─► runJob ─► ModelRouter/Supervisor/Resources (V0.3.1) ─► routing_decisions (sentence, sizes, cost class)
+        build/test ─► QA tools · unity* ─► V0.6 · delegateResearch ─► child V0.9 task · delegateComputer ─► child V0.11 task · approvalGate ─► HUD decision
+   ─► AgentArtifact (sanitized, bounded, trust-labelled) ─► HandoffBuilder (ancestors only, fenced data) ─► next node ─► deterministic validation outranks claims
+   ─► TaskOutcome (SUCCESS │ PARTIAL │ …) ─► report from graph state ─► Tasks graph view · Agents (roles) · Compact line · status questions
+```
+`Sources/Jarvis/Orchestration/`: `AgentRole` (roles, contracts, limits) · `TaskGraph` (graph, `GraphValidator`, `ConcurrencyPolicy`, `TaskOutcome`) · `OrchestrationPlanner` (cues, templates, revision, planner prompt) · `Artifacts` (artifacts, trust, handoff) · `RoleRouting` (ledger, independence, explainer, scoreboard, failure/escalation vocabulary, role evidence) · `RoleBenchmarks` · `OrchestrationStatus` · `OrchestrationViewModel`; `Tasks/TaskEngine+Orchestration.swift`; `Persistence/OrchestrationRepository.swift` (schema v10); UI `TaskGraphView`; live test `App/OrchestrationLiveTest.swift`.

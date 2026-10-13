@@ -66,3 +66,6 @@ Acquisitions that reached READY_FOR_IMPORT, and imports, become asset-decision m
 
 ## V0.11 — quarantine and Computer Use
 Nothing in the quarantine (`acquisitions/`) is ever opened by Computer Use (`ComputerPathPolicy` refuses the quarantine root and every executable/installer type — `.app .pkg .dmg .sh .scpt .command …`, even outside it), and Finder's menu cannot open, trash or duplicate files. Import still goes only through `AssetImporter` (an approval-gated V0.4 task); installing downloaded software has no code path.
+
+## V0.12 — asset questions
+“Check this asset: licence and URP compatibility — is it suitable?” becomes Research → Unity compatibility analysis → recommendation. Acquisition and import are never graph nodes (`AgentContracts.violations` refuses `acquire` / `importAsset`); a request that also asks to download/install/import is not routed to this template. The import stays a separate, approval-gated V0.4 task.

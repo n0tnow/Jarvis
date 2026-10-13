@@ -106,3 +106,6 @@ The proactive layer may *propose* a research ("the task failed with an unknown A
 
 ## V0.11 — the proactive layer and Computer Use
 V0.5 may *notice* ("Xcode seems to need attention") but it can never start GUI control: `OpportunityPolicy` maps any assessment that requires `controlComputer`/`captureWindow` to **requireApproval** (reason `computerUse`), `TaskEngine.submitComputer` refuses `TaskOrigin.proactiveAutoAction`, and observation exists only during a user-authorized computer task (no watching the screen for opportunities). The proactive layer never imports the Computer layer (verify.sh).
+
+## V0.12 — the proactive layer and orchestration
+No change of authority: V0.5 may propose a compound task but gets no special graph rights. Scoped proactive tasks (a `TaskScope`) never use the orchestration templates (the V0.5 scope-bound planner path is kept); computer capabilities still become approval decisions; the engine still refuses `proactiveAutoAction` for Computer Use. Child tasks of a graph never reach the proactive layer on their own (the finished-task hook returns early for a parent-owned task); the parent's outcome does.

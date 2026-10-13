@@ -765,3 +765,175 @@ Why: correctness must not depend on the heavy path.
 Status: Accepted (V0.11)
 Decision: `build/JarvisFixture.app` (a separate bundle, `com.jarvis.fixture`, no permissions or entitlements) is the only target of real presses, typing, scrolling and clicks; it only counts and writes a JSON state file (never the password's content). Real Finder / System Settings / Blender / Unity runs are navigation or activation only; nothing in a user project, no toggle in System Settings, no real credential or purchase is ever involved. `--computer-live-test` reports Accessibility as BLOCKED rather than weakening anything.
 Why: tests that press things need something safe to press.
+
+# V0.12 — Advanced multi-agent orchestration and intelligent routing (DEC-157…DEC-190)
+
+## DEC-157 — JARVIS is the orchestrator; agents are roles, not providers
+Status: Accepted (V0.12)
+Decision: orchestration is deterministic code (`TaskEngine` + `Sources/Jarvis/Orchestration/`), not a model. An agent is a ROLE (Analysis, Coding, Research, Unity, Computer, QA, Review); a model/tool/service is the ENGINE that executes it. No `ClaudeAgent`/`CodexAgent`/`OpenCodeAgent`/`QwenAgent` exists; provider sessions are never the source of truth (guarded).
+Why: authority, policy, memory, validation and the report must stay JARVIS-owned; models are replaceable workers.
+
+## DEC-158 — Models never own authority; only the orchestrator creates nodes; delegation depth is 1
+Status: Accepted (V0.12)
+Decision: a specialist may REQUEST (more research); only the orchestrator changes the graph. Orchestrator → specialist is the whole hierarchy (`maxDepth = 1`); the planner/validator reject recursive-agent keys; the orchestration layer never spawns runs itself. No swarms.
+Why: bounded, auditable work; no recursive explosion.
+
+## DEC-159 — Role contracts and least capability, checked twice
+Status: Accepted (V0.12)
+Decision: each role has one contract (step types, allowed and forbidden capabilities, output schema, validations, resource class, context budget, retry budget, authority statement). Read-only roles hold no write capability; Research has no project access; QA cannot edit sources; Computer has no shell/password/purchase/account authority; no role can hold a never-granted capability. The contract is validated at plan time AND again right before the node starts (`orchestrationRefusal`).
+Why: a plan, an artifact or a handoff is data and can never widen authority (confused-deputy defense).
+
+## DEC-160 — The task graph is the V0.4 plan, seen as a bounded DAG
+Status: Accepted (V0.12)
+Decision: no second plan format. Nodes = `task_steps`, edges = `depends_on`; added attributes: `optional`, `revision`, delegate/gate parameters, delegated child task. ≤ 12 nodes, acyclic, writers ordered, validation gates (proof depends on the change; review depends on the change and its build/test), ≤ 3 delegates, optional only for knowledge branches.
+Why: reuse the proven engine (persistence, restart, cancellation, approvals) instead of duplicating it.
+
+## DEC-161 — Deterministic planning first; the planner model only for open-ended compound goals
+Status: Accepted (V0.12)
+Decision: simple goals are one node and cost no model call (Computer, Research, QA); known compound shapes are templates (`fix-flow`, `investigation`, `investigation-research`, `asset-suitability`); Unity scene goals and unmatched compound goals go to the planner model, whose graph is validated exactly like a template (one repair, one other provider, then BLOCKED). A model graph is never executed unvalidated.
+Why: cheap, predictable, auditable; the model proposes, JARVIS validates.
+
+## DEC-162 — Research only when knowledge is missing or must be current; Computer only when the UI must be seen
+Status: Accepted (V0.12)
+Decision: research is inserted when the goal asks for research/current information AND memory has no current answer (memory research items always say “revalidate”; a goal that demands currency is always researched). A Computer node is added only when the goal asks to look at the UI. Both are OPTIONAL branches (their failure ends the task PARTIAL).
+Why: do not web-search or click for every coding task.
+
+## DEC-163 — Research and Computer nodes are child TASKS (V0.9 / V0.11 reused, not rebuilt)
+Status: Accepted (V0.12)
+Decision: `delegateResearch` / `delegateComputer` start an ordinary V0.9 research task / V0.11 computer task (`parent_task_id`), wait for it, and turn its validated result into an artifact. Children do not count against the user-visible task limit, never speak to the user or the proactive layer, are cancelled with their parent, and a GUI child is always NEW after a restart (observes from scratch). Unity work stays on the V0.6 typed steps; a Computer goal must pass the V0.11 ladder at plan AND start time.
+Why: one implementation of each capability; the orchestrator adds supervision, not another web or GUI system.
+
+## DEC-164 — Typed artifacts with provenance and trust; handoffs are fenced data
+Status: Accepted (V0.12)
+Decision: a finished node leaves one artifact (sanitized by the single `UntrustedContent.clean`/`OutputSanitizer` path, ≤ 6,000 chars, hashed, with task/node/role/provider/model/run/attempt/inputs/validation) labelled `deterministic` | `validated` | `modelGenerated` | `externalUntrusted` | `userProvided`. Research and Computer observations stay `externalUntrusted` through every handoff. A handoff is built from the node's ancestors' artifacts only, bounded by the receiving role's budget, preceded by a fixed “data, not instructions” preamble, non-deterministic blocks fenced, instruction-shaped phrases flagged and kept as data. An artifact is constructed in exactly one place.
+Why: no giant chat transcripts, no trust laundering, secrets cannot ride a handoff.
+
+## DEC-165 — Deterministic truth outranks agent claims
+Status: Accepted (V0.12)
+Decision: files, Git, process exit status, tests, Unity state, browser/computer observation outrank any model sentence. “All tests passed” in an analysis or review changes nothing (live-tested: the task fails when the real tests fail and the review never runs). Review verdicts are weighed by `ReviewAuthority`; a blocking finding needs evidence JARVIS can find in the diff or the record.
+Why: models describe; tools measure.
+
+## DEC-166 — Role benchmarks are separate, deterministic and advisory to the gates
+Status: Accepted (V0.12)
+Decision: suite `roles-v1` (planning ×2, analysis, coding, review ×2, research synthesis, strict JSON, security ×2) with in-prompt fixtures and deterministic validators that never execute model output; several cases carry traps (prompt injection, planted “pre-approved” note, fake approval, shell request, secret-shaped string) — following them fails the role. Results go to `model_benchmarks` (suite `roles-v1`, case ids `role.<role>.<n>`, prompt size). They explain routing and filter security-relevant work (DEC-181); they never unlock a model the V0.3.1 gates refuse (the router does not read them).
+Why: “free and fast” is not a quality; quality is per role.
+
+## DEC-167 — Routing stays the pure V0.3.1 router; V0.12 adds a persisted, human-readable decision per run
+Status: Accepted (V0.12)
+Decision: `routing_decisions` records role, node, engine/model, mode, a sentence, the machine reason, independence, escalation reason, failure class, outcome, context/handoff/artifact/memory sizes, timings, tokens and cost class (local | freeCloud | subscription — never invented dollars). Provider HEALTH (cooldown) and model QUALITY (benchmarks) remain separate inputs. Explicit user choices are respected without fallback; no paid API; unknown price is not free; free status is re-verified at runtime (V0.3.1).
+Why: routing must be inspectable and stable.
+
+## DEC-168 — Failures have a vocabulary; escalation is explicit and bounded
+Status: Accepted (V0.12)
+Decision: `NodeFailureClass` (provider unavailable, timeout, invalid schema, context overflow, tool refusal, failed deterministic validation, security refusal, rate limit, model error) and `EscalationReason` (validation failed twice, complex architecture, security-relevant, free model unavailable, context too large, review found defect). Per node: ≤ 3 attempts, ≤ 1 escalation, ≤ 4 provider invocations (`NodeLedger`, enforced in `runJob`); QA and Computer nodes have no provider budget; one review→repair cycle.
+Why: no infinite OpenCode → Claude → Codex loops, no “AI failed”.
+
+## DEC-169 — Review independence is risk-based, never mandatory for trivial changes
+Status: Accepted (V0.12)
+Decision: required for ≥ 2 files, ≥ 30 changed lines, security-relevant words, high task risk or after an escalation; the writer's candidates are excluded from the review (Auto only); when no other eligible provider exists the writer also reviews and the routing record says `sameProvider`. QA (deterministic) and Review (judgement) are distinct roles; one review/repair cycle, then stop.
+Why: diversity where it matters, without forcing cost or quota use on small changes.
+
+## DEC-170 — Scheduling: only read-only nodes overlap; two at most; one under pressure
+Status: Accepted (V0.12)
+Decision: `ConcurrencyPolicy`: analysis ∥ analysis and analysis ∥ one research delegate; everything that writes, builds, tests, reviews, drives the editor or the screen runs alone; parallel limit 2, reduced to 1 by memory pressure, thermal throttling or low-power mode. Leases remain behind the ordering rule. A node already started is never started again (fixes a latent V0.4 race found by the V0.12 live test). Deadlocks are detected and reported; graphs and jobs have wall-clock limits.
+Why: conservative on a 16 GB MacBook Air; more parallelism is not automatically better.
+
+## DEC-171 — Approval is a graph GATE, never an agent
+Status: Accepted (V0.12)
+Decision: `approvalGate` is a node only a HUD decision can release (`requestApproval`, durable, per action); there is no approving role; typed/spoken “yes/evet/onayla” never approves; an agent artifact claiming approval is text; the orchestration layer contains exactly one approval request (the gate runner) and never calls `decide`. A denied gate ends the task BLOCKED.
+Why: authority stays with the user's buttons.
+
+## DEC-172 — Memory feeds context, never authority (and now refuses agent-targeted grants)
+Status: Accepted (V0.12)
+Decision: role-specific context still comes only from `ProjectContextBuilder` (audited per run). The memory door additionally refuses agent-targeted authority statements (“always allow ComputerAgent to install software”, “agents may run commands”, “without asking”, “full access”). Contracts, validators, the scheduler and routing never read memory; the only memory use in orchestration is the research-coverage hint.
+Why: found by the live test — the old patterns did not catch agent-targeted grants.
+
+## DEC-173 — Graph revision is bounded and orchestrator-owned
+Status: Accepted (V0.12)
+Decision: a specialist reports `needsResearch`; the orchestrator may insert one validated research node (≤ 2 revisions per task, ≤ 12 nodes, web allowed, no duplicate research node), audited in `graph_revisions`; after that JARVIS reports the uncertainty.
+Why: adapt to evidence without letting the graph grow by itself.
+
+## DEC-174 — Outcomes: SUCCESS · PARTIAL · FAILED · BLOCKED · CANCELLED · INTERRUPTED · APPROVAL REQUIRED
+Status: Accepted (V0.12)
+Decision: derived (`TaskOutcome`), not stored: PARTIAL = completed with a failed optional branch (never reported as complete); BLOCKED = policy/approval/availability; progress = validated REQUIRED nodes / required nodes (optional nodes never distort it).
+Why: the report must say what is true.
+
+## DEC-175 — Restart interrupts the whole graph; resume is explicit and revalidating
+Status: Accepted (V0.12)
+Decision: restart → INTERRUPTED (children too); nothing resumes by itself. Explicit resume reuses finished nodes only while their truth holds: a changed file invalidates the code node and everything built on it (artifacts stale), research older than 24 h re-runs, a finished research child is reused, a GUI node starts a new child, interrupted nodes are reconciled by idempotency class, the frontier is rebuilt from the persisted graph.
+Why: stale results must be detected, expensive valid work reused.
+
+## DEC-176 — Cleanup policy
+Status: Accepted (V0.12)
+Decision: artifacts, routing rows and graph rows of tasks older than the newest 150 finished ones are pruned at launch; tasks, steps, attempts, approvals, reports and agent runs stay as history; nothing in this layer writes screenshots, scratch repositories or raw provider output.
+Why: bounded growth without losing the audit trail.
+
+## DEC-177 — No chain-of-thought, no raw provider conversation
+Status: Accepted (V0.12)
+Decision: no schema column, artifact field or screen carries hidden reasoning or a provider transcript; the UI shows decisions, selection reasons, actions, evidence and validation (guarded).
+Why: privacy and honesty.
+
+## DEC-178 — Provider session continuity is only an optimization
+Status: Accepted (V0.12)
+Decision: task jobs run with fresh, bounded prompts (`includeTaskContext: false`); canonical context is JARVIS-owned artifacts and the Context Builder; independent nodes never inherit a long provider conversation; compaction would create a structured artifact, never rely on provider-side summarization.
+Why: no hidden memory, measurable context.
+
+## DEC-179 — Context minimization is measured
+Status: Accepted (V0.12)
+Decision: every model run records its prompt size, handoff size, artifact/memory/file counts; specialists get ancestors' artifacts under the role budget instead of the repository, the memory database or earlier conversations. Measured reduction is reported, not a quality claim.
+Why: show that specialists receive less irrelevant context than a send-everything single model.
+
+## DEC-180 — Status questions come from the graph
+Status: Accepted (V0.12)
+Decision: “Durum ne?”, “Ne yapıyorsun?”, “Hangi agent çalışıyor?”, “Testler geçti mi?” (and English forms) are deterministic commands answered by `OrchestrationStatus` from the real graph: no model call, no second task, no invented percentage; spoken or typed alike. “Stop the task” and “stop speaking” remain different commands. No Pause control.
+Why: truthful, instant, cheap.
+
+## DEC-181 — “Free” is not enough: security-relevant work needs role evidence
+Status: Accepted (V0.12)
+Decision: for security-relevant coding/review (Auto only) candidates are filtered by recorded role evidence: a free/local model needs COMPLETE passing evidence for the `security` role; a subscription engine without evidence is allowed, one that failed is not. Local Qwen restrictions are unchanged (no development, review, tests, architecture, security, Unity, long context).
+Why: the live benchmark showed a free model following planted instructions; speed and price must not buy security-critical work.
+
+## DEC-182 — Orchestration is on in production and off in older tests; no new user knobs
+Status: Accepted (V0.12)
+Decision: `TaskEngine.orchestrationEnabled` (true in the app) lets the V0.4–V0.11 suites keep their exact behaviour; users choose Auto or an explicit provider, nothing else; diagnostics (routing decisions, sizes, template, planner time) appear under Show Developer Controls.
+Why: preserve working systems; keep the product simple.
+
+## DEC-183 — Idle: no worker, process, poll, timer or network
+Status: Accepted (V0.12)
+Decision: the orchestration layer owns no timer, helper or process; with no task nothing runs. Provider processes exist only inside a task; the V0.10 embedding helper unloads itself 120 s after memory ingestion.
+Why: idle cost stays ≈ 0.
+
+## DEC-184 — Final synthesis is deterministic
+Status: Accepted (V0.12)
+Decision: the report (steps, outcome, routing sentences, artifacts, revisions, injection notes, approvals) and the conversation summary are built from graph state and validated artifacts; no model rewrites them. (A future model-rendered summary may only restate validated facts and may not change an outcome.)
+Why: provable correctness over polish; polish is V1.0.
+
+## DEC-185 — The Compact HUD stays 392 × 448
+Status: Accepted (V0.12)
+Decision: orchestration adds one line of content only (“Coding · space-bunny-free”, “… · QA waiting”) inside the fixed card; graph detail lives in Tasks/Agents.
+Why: DEC-014.
+
+## DEC-186 — Voice uses the same orchestrator
+Status: Accepted (V0.12)
+Decision: a spoken compound request is `ConversationService.submit(source: .voice)` → the same task path (`input_channel = voice`) with a short acknowledgement that says what JARVIS will do, not every internal step; status and stop work by voice; spoken approval is still not approval.
+Why: voice is I/O, not authority.
+
+## DEC-187 — Proactive layer gets no multi-agent authority
+Status: Accepted (V0.12)
+Decision: V0.5 may propose a compound task; it gets no special graph rights; computer capabilities still become approval decisions; scoped proactive tasks are never orchestrated beyond their scope (templates are skipped for scoped tasks).
+Why: policy outranks confidence.
+
+## DEC-188 — Tests use disposable fixtures only
+Status: Accepted (V0.12)
+Decision: the live test and unit tests use temp-directory projects, the fixture web, scripted agents for adversarial/timing scenarios (labelled ENGINE) and real providers where safe (labelled REAL); no real Unity game or user project is touched; fixtures are deleted by the test.
+Why: DEC-156 discipline.
+
+## DEC-189 — Roadmap after V0.12
+Status: Accepted (V0.12)
+Decision: V1.0 = integration, stabilization, real-world validation, final voice and UX polish, security audit, packaging. V0.12 does not polish subsystems.
+Why: architecture first, polish once.
+
+## DEC-190 — No surprise paid API, no key
+Status: Accepted (V0.12)
+Decision: allowed: subscription-backed Claude Code/Codex, runtime-verified $0 OpenCode models, local models for their allowed roles. Not present: any metered API call or key; unknown price is never free.
+Why: DEC-022…028 unchanged.

@@ -470,6 +470,18 @@ enum OrchestrationLiveTest {
             check("ENGINE", "Asset question → Research → Unity compatibility analysis → recommendation; nothing was downloaded, acquired or imported", asteps.map(\.type) == [.delegateResearch, .analysis, .analysis] && ((try? repo.count("acquisitions")) ?? 0) == acqBefore && !asteps.contains { $0.type == .acquire || $0.type == .importAsset }, asteps.map { "\($0.type.rawValue):\($0.state.rawValue)" }.joined(separator: " → "))
         } else { skip("asset flow", "fixture web unavailable") }
 
+        // ------------------------------------------------------------ 17b. REAL Computer node inside a graph (Finder, read-only: shows the fixture folder, changes nothing)
+        if context.computer.refreshPermissions().accessibility == .granted {
+            let cp = await makeProject(); projects.append(cp)
+            let before = (try? FileManager.default.contentsOfDirectory(atPath: cp).sorted()) ?? []
+            let planComputer = "{\"summary\":\"look\",\"steps\":[{\"id\":\"s1\",\"title\":\"Inspect\",\"type\":\"analysis\",\"dependsOn\":[]},{\"id\":\"s2\",\"title\":\"Show the project folder in Finder\",\"type\":\"delegateComputer\",\"dependsOn\":[\"s1\"],\"optional\":true,\"params\":{\"goal\":\"Open Finder and show the project folder\"}}]}"
+            let (cID, _) = await runScripted("Tidy up the calculator module", project: cp, script: { job, i in job.type == "PlannerAgent" ? .text(planComputer) : await standard(job, i) })
+            let cSteps2 = cID.map(steps) ?? []
+            let child = cSteps2.last?.delegatedTaskID.flatMap { try? repo.engineTask($0) } ?? nil
+            let after = (try? FileManager.default.contentsOfDirectory(atPath: cp).sorted()) ?? []
+            check("REAL", "A Computer node inside a graph ran as a V0.11 child task against the real Finder (Accessibility): it completed, held only controlComputer, left an external·untrusted artifact, and changed no file", child?.kind == .computer && child?.state == .completed && child?.capabilities.granted == [.controlComputer] && (cID.map { arts($0).contains { $0.kind == .computer && $0.trust == .externalUntrusted } } ?? false) && before == after, "child \(child?.state.rawValue ?? "none"): \(child?.failureReason ?? child?.summary ?? "")")
+        } else { skip("REAL Computer node inside a graph", "Accessibility is not allowed for this build (JARVIS never grants it to itself)") }
+
         // ------------------------------------------------------------ 18. idle + stability + cleanup
         engine.agents = realRunner
         await engine.waitUntilIdle()
@@ -494,6 +506,42 @@ enum OrchestrationLiveTest {
         let idleCPU = (ProcessTree.cpuSeconds(of: me) ?? 0) - cpu0
         check("REAL", "IDLE: no orchestration work, no provider/tool process (the memory helper unloaded by itself), no polling loop (CPU \(fmt(idleCPU, "%.2f")) s in 8 s, RSS \((ProcessTree.residentBytes(of: me) ?? 0) / 1_048_576) MB)", gone && engine.activeCount == 0 && engine.runners.isEmpty && context.hub.activeRuns.isEmpty && idleCPU < 0.5, "left: \(leftAfter)")
         perf.append(("idle CPU over 8 s / RSS", "\(fmt(idleCPU, "%.2f")) s / \((ProcessTree.residentBytes(of: me) ?? 0) / 1_048_576) MB"))
+        if soakMinutes > 0 {
+            info("soak: bounded stability loop for \(fmt(soakMinutes)) min (scripted agents, real engine/DB)…")
+            let rss0 = ProcessTree.residentBytes(of: me) ?? 0
+            let db0 = (try? FileManager.default.attributesOfItem(atPath: context.paths.database.path)[.size] as? Int) ?? 0
+            let sp = await makeProject(); projects.append(sp)
+            let end = Date().addingTimeInterval(soakMinutes * 60); var n = 0
+            while Date() < end {
+                TaskDemo.resetFixture(sp)
+                let (sid, _) = await runScripted(fixGoal, project: sp, script: standard)
+                if sid.flatMap({ engine.view($0)?.task.state }) != .completed { break }
+                n += 1
+                if n % 10 == 0 { _ = try? repo.pruneOrchestration(keepTasks: 20) }
+            }
+            let rss1 = ProcessTree.residentBytes(of: me) ?? 0
+            let db1 = (try? FileManager.default.attributesOfItem(atPath: context.paths.database.path)[.size] as? Int) ?? 0
+            let orphans = ProcessTree.descendants(of: me).filter { pid in var b = [CChar](repeating: 0, count: 256); proc_name(pid, &b, 256); let n = String(cString: b); return n.contains("python") || n.contains("opencode") || n.contains("claude") || n.contains("codex") }.count
+            check("ENGINE", "SOAK: \(n) orchestrated tasks in \(fmt(soakMinutes)) min with no runaway", n > 3 && orphans == 0 && rss1 < rss0 + 120 * 1_048_576, "RSS \(rss0 / 1_048_576)→\(rss1 / 1_048_576) MB, DB \(db0 / 1024)→\(db1 / 1024) KB, provider/tool processes left \(orphans), artifact rows \((try? repo.count("agent_artifacts")) ?? 0), \(fmt(Double(n) / soakMinutes))/min")
+            perf.append(("soak throughput", "\(n) tasks in \(fmt(soakMinutes)) min"))
+        }
+
+        // ------------------------------------------------------------ report tables
+        print("\nROLE BENCHMARK TABLE (suite \(RoleBenchmarkSuite.id); small samples — do not over-generalise)")
+        let roleNames = RoleBenchmarkSuite.roles
+        print("provider/model".padding(toLength: 34, withPad: " ", startingAt: 0) + roleNames.map { $0.padding(toLength: 10, withPad: " ", startingAt: 0) }.joined() + "median first-output")
+        for row in benchRows {
+            func cell(_ role: String) -> String {
+                let cs = row.outcomes.filter { RoleScoreboard.roleOf($0.caseID) == role }
+                return cs.isEmpty ? "—" : "\(cs.filter(\.passed).count)/\(cs.count)"
+            }
+            let lat = row.outcomes.compactMap(\.latencyMS).sorted()
+            print(row.who.padding(toLength: 34, withPad: " ", startingAt: 0) + roleNames.map { cell($0).padding(toLength: 10, withPad: " ", startingAt: 0) }.joined() + (lat.isEmpty ? "—" : "\(Int(lat[lat.count / 2])) ms"))
+        }
+        if let tel = (try? repo.routingTelemetry()) {
+            print("ROUTING TELEMETRY: \(tel.totalRuns) recorded model runs, \(tel.escalations) escalation(s)")
+            for r in tel.rows { print("  \(r.role) · \(r.engine)\(r.model.map { "/\($0)" } ?? ""): \(r.successes)/\(r.runs) passed · avg \(Int(r.avgRunMS ?? 0)) ms · avg context \(Int(r.avgContextChars ?? 0)) chars") }
+        }
         // (the cleanup policy runs last so the telemetry above still sees every recorded run)
         let pruned = (try? repo.pruneOrchestration(keepTasks: 3)) ?? 0
         check("POLICY", "Cleanup policy: artifacts/routing rows of old finished tasks are pruned (history of tasks, steps, runs stays)", pruned > 0 && ((try? repo.count("agent_artifacts")) ?? 0) < 60, "pruned \(pruned) task(s)")
