@@ -599,7 +599,9 @@ extension TaskEngine {
             let r = try await run.conn.perform(.createGameObject(name: name, scene: scene, parent: parentTarget, primitive: prim, position: pos, rotation: rot, scale: sc, ifAbsent: ifAbsent), session: run.session)
             guard let obj = (r.result["object"] as? [String: Any]).flatMap(UnityObjectRef.init(json:)) else { return ("create \(name)", false) }
             let again = try? await run.conn.perform(.inspectGameObject(UnityTarget(obj), depth: 0, maxChildren: 0), session: run.session)
-            return ("\(r.result["alreadyExists"] as? Bool == true ? "\(name) already existed" : "created \(name)") at \(obj.indexedPath ?? obj.path)", again != nil)
+            func vec(_ k: String) -> String? { (again?.result[k] as? [NSNumber]).map { "(" + $0.map { String(format: "%.2f", $0.doubleValue) }.joined(separator: ", ") + ")" } }
+            let placed = [vec("localPosition").map { "local position " + $0 }, vec("worldPosition").map { "world position " + $0 }].compactMap { $0 }.joined(separator: ", ")        // read back from the editor, so a reviewer sees WHERE it is
+            return ("\(r.result["alreadyExists"] as? Bool == true ? "\(name) already existed" : "created \(name)") at \(obj.indexedPath ?? obj.path)\(placed.isEmpty ? "" : " (" + placed + ")")", again != nil)
         case .deleteGameObject(let t):
             let ref: UnityObjectRef
             do { ref = try await resolveUnityTarget(t, run) }
@@ -634,7 +636,9 @@ extension TaskEngine {
     func proposeUnityActions(_ ctx: TaskContext, _ step: TaskStepRecord, _ run: UnityRun) async -> StepOutcome {
         let inspection = ctx.steps.filter { $0.type == .unityInspect && $0.state == .passed }.compactMap { ctx.results[$0.key] }
         let analysis = ctx.steps.filter { $0.type == .analysis && $0.state == .passed }.compactMap { ctx.results[$0.key] }
-        let prompt = UnityPrompts.edit(goal: ctx.record.goal, step: step, inspection: inspection, analysis: analysis, allowDelete: ctx.record.destructiveRequested)
+        // What earlier edit steps ALREADY changed, with the real paths the editor reported (an object created two steps ago lives at its parent's path, not at the root): the model cannot guess them.
+        let earlier = ctx.steps.filter { $0.type == .unityEdit && $0.state == .passed && $0.key != step.key }.compactMap { $0.validationEvidence }.map { String($0.prefix(400)) }
+        let prompt = UnityPrompts.edit(goal: ctx.record.goal, step: step, inspection: inspection, analysis: analysis, earlier: earlier, allowDelete: ctx.record.destructiveRequested)
         let box = ValidationBox<Bool>()
         var excluded: Set<RoutingCandidate> = []
         var problems: [String] = []
@@ -692,7 +696,7 @@ enum UnityPrompts {
         """
     }
 
-    static func edit(goal: String, step: TaskStepRecord, inspection: [String], analysis: [String], allowDelete: Bool) -> String {
+    static func edit(goal: String, step: TaskStepRecord, inspection: [String], analysis: [String], earlier: [String] = [], allowDelete: Bool) -> String {
         """
         You are the Unity component of JARVIS, an autonomous task engine. Propose the typed Unity Editor operations that achieve ONE step. You cannot run code: JARVIS validates each operation, applies it through a fixed list of editor operations, and verifies the result in the editor.
 
@@ -700,7 +704,7 @@ enum UnityPrompts {
         Current step: \(step.title)
         Step details: \(step.details)
         Expected outcome: \(step.expected)
-        \(inspection.isEmpty ? "" : "\nWhat JARVIS read from the editor:\n" + inspection.joined(separator: "\n---\n") + "\n")\(analysis.isEmpty ? "" : "\nAnalysis so far:\n" + analysis.joined(separator: "\n---\n") + "\n")
+        \(inspection.isEmpty ? "" : "\nWhat JARVIS read from the editor:\n" + inspection.joined(separator: "\n---\n") + "\n")\(analysis.isEmpty ? "" : "\nAnalysis so far:\n" + analysis.joined(separator: "\n---\n") + "\n")\(earlier.isEmpty ? "" : "\nAlready done by earlier steps (these paths are real — use them exactly, a created object keeps the path of its parent):\n" + earlier.joined(separator: "\n") + "\n")
         Reply with ONE JSON object and nothing else:
         {"summary": "one sentence", "actions": [ ... at most 8 ... ]}
         Each action is one of:

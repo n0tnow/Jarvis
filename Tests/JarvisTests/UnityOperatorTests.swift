@@ -329,3 +329,16 @@ struct UnityOperatorResultTests {
         }
     }
 }
+
+
+@Suite("Unity operator · later edit steps see what earlier ones changed")
+struct UnityEditPromptTests {
+    @Test("the edit prompt carries the real paths the editor reported for objects created by earlier steps (found by the real model-planned run: the model guessed a root path for a child)")
+    func earlierEvidence() {
+        let step = TaskStepRecord(id: UUID(), taskID: UUID(), index: 2, key: "s3", title: "Configure the light", type: .unityEdit, validation: .unityState)
+        let withEvidence = UnityPrompts.edit(goal: "Add a light above Mover", step: step, inspection: [], analysis: [], earlier: ["Unity edit: created KeyLight at Mover#0/KeyLight#0; saved Assets/Scenes/FixtureScene.unity — verified in the editor"], allowDelete: false)
+        #expect(withEvidence.contains("Already done by earlier steps") && withEvidence.contains("Mover#0/KeyLight#0") && withEvidence.contains("a created object keeps the path of its parent"))
+        let without = UnityPrompts.edit(goal: "Add a light above Mover", step: step, inspection: [], analysis: [], allowDelete: false)
+        #expect(!without.contains("Already done by earlier steps"))
+    }
+}

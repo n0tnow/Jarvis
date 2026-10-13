@@ -122,7 +122,7 @@ enum UnityDevVerifier {
             let value = res["value"] as? String
             let ok = asset == nil ? (value == nil || value?.isEmpty == true) : (value == asset || value == (asset?.components(separatedBy: "::").last) || value == (asset as NSString?)?.lastPathComponent)
             return (ok, "\(c).\(path) on \(t.display) → \(value ?? "nothing")")
-        case .configureComponent(let t, let kind, let s): return (res["verified"] as? Bool ?? false, "\(b("alreadyApplied") ? "\(kind) already as requested on" : "configured \(kind) on") \(t.display) (\(s.keys.sorted().joined(separator: ", ")))")
+        case .configureComponent(let t, let kind, let s): return (res["verified"] as? Bool ?? false, "\(b("alreadyApplied") ? "\(kind) already as requested on" : "configured \(kind) on") \(t.display) (\(String(s.keys.sorted().map { "\($0)=\(s[$0]?.description ?? "…")" }.joined(separator: ", ").prefix(220))) — read back from the editor)")
         case .instantiatePrefab(let p, _, _, let n, _, _, _, _): return ((b("created") || b("alreadyExists")) && res["object"] != nil, "\(b("alreadyExists") ? "prefab instance already existed:" : "instantiated") \(p)\(n.map { " as \($0)" } ?? "")")
         case .revertPrefabOverrides(let t): return (res["reverted"] != nil, "reverted \(res["reverted"] as? Int ?? 0) JARVIS override(s) on \(t.display); \(res["protectedUserOverrides"] as? Int ?? 0) user override(s) left untouched")
         case .applyPrefabOverrides(let t): return (res["applied"] != nil, "applied \(res["applied"] as? Int ?? 0) JARVIS override(s) of \(t.display) to the prefab; \(res["protectedUserOverrides"] as? Int ?? 0) user override(s) left untouched")
