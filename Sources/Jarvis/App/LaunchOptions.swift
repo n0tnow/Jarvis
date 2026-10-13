@@ -62,6 +62,8 @@ struct LaunchOptions {
     var computerRepo: String?
     var orchestrationLiveTest = false
     var operatorLiveTest = false
+    var visualBenchmark = false
+    var visualCases: String?
     var operatorSections: Set<String> = []
     var orchestrationChild: String?      // internal: "start" | "check" (restart test)
     var orchestrationSoakMinutes = 0.0
@@ -110,6 +112,8 @@ struct LaunchOptions {
             case "--computer-repo": computerRepo = it.next()
             case "--orchestration-live-test": orchestrationLiveTest = true
             case "--operator-live-test": operatorLiveTest = true
+            case "--visual-benchmark": visualBenchmark = true
+            case "--visual-cases": visualCases = it.next()
             case "--operator-section": if let v = it.next() { operatorSections.insert(v) }
             case "--orchestration-child": orchestrationChild = it.next()
             case "--orchestration-soak": orchestrationSoakMinutes = it.next().flatMap(Double.init) ?? 2

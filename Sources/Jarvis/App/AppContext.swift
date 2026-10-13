@@ -49,6 +49,9 @@ final class AppContext {
     let orchestrationModel: OrchestrationViewModel
     /// V0.13: project continuity — status questions and “continue” resolved against current project truth; checkpoints when tasks finish. Derived view, no execution path of its own.
     let continuity: ProjectContinuity
+    /// V0.13: general visual grounding (perception only; its proposals pass through the same Computer Use validation as everything else).
+    let visual: VisualGrounder
+    let visionRuntime: LocalVLMRuntime
     let operatorModel: ProjectOperatorViewModel
     // V0.5 proactive layer: decides (never executes) — approved/auto actions become normal V0.4 tasks
     let opportunities: OpportunityEngine
@@ -149,6 +152,14 @@ final class AppContext {
         computer.enabled = { [weak computerPrefs] in computerPrefs?.computerUseEnabled ?? true }
         computer.visionEnabled = { [weak computerPrefs] in computerPrefs?.computerVisionEnabled ?? false }
         computer.pressureNormal = { [weak computerResources] in (computerResources?.pressure.memory ?? .normal) == .normal }
+        // V0.13 general visual grounding: Apple text recognition + the local vision model (on demand, unloaded when idle or under memory pressure). Stubbed runs get no providers.
+        let visionPrefs = preferences
+        visionRuntime = LocalVLMRuntime(config: .standard(paths: runtimePaths, model: preferences.visualModel))
+        visionRuntime.pressureNormal = { [weak computerResources] in (computerResources?.pressure.memory ?? .normal) == .normal }
+        visual = VisualGrounder(providers: stubIntelligence ? [] : [AppleVisionProvider(), LocalVLMProvider(runtime: visionRuntime)])
+        visual.mode = { [weak visionPrefs] in visionPrefs?.visualGroundingMode ?? .auto }
+        visual.pressureNormal = { [weak computerResources] in (computerResources?.pressure.memory ?? .normal) == .normal }
+        if !stubIntelligence { computer.vision = GroundedVisionProposer(grounder: visual) }
         taskEngine.computer = computer
         taskEngine.computerAllowed = { [weak computerPrefs] in computerPrefs?.computerUseEnabled ?? true }
         computerModel = ComputerViewModel(runtime: computer, engine: taskEngine, preferences: preferences)
@@ -224,7 +235,7 @@ final class AppContext {
         conversationService.stopSpeech = { [weak self] in self?.voice.stopSpeaking() ?? false }
         voice.onEvent = { [weak store] message, kind in store?.log(message, kind: kind) }
         whisper.onEvent = { [weak store] message in store?.log(message, kind: .info) }
-        resources.observePressureRise { [weak self] _ in Task { @MainActor in await self?.whisper.unload(); await self?.neuralVoice.unload(); self?.research?.browser?.releaseUnderPressure(); self?.memory.onMemoryPressure(); self?.computer.onMemoryPressure() } }          // the small wake sentinel stays
+        resources.observePressureRise { [weak self] _ in Task { @MainActor in await self?.whisper.unload(); await self?.neuralVoice.unload(); self?.research?.browser?.releaseUnderPressure(); self?.memory.onMemoryPressure(); self?.computer.onMemoryPressure(); await self?.visual.unloadHeavyProviders() } }          // the small wake sentinel stays
         handsFree.settings = { stubIntelligence ? VoiceSettings(enabled: false) : voicePrefs.voiceSettings }
         handsFree.onEvent = { [weak store] message, kind in store?.log(message, kind: kind) }
         sentinel.onEvent = { [weak store] message in store?.log(message, kind: .info) }
@@ -303,7 +314,7 @@ final class AppContext {
     }
 
     /// Normal termination / SIGTERM: stop scheduling, persist the interrupted state + checkpoints, release leases (processes are killed by `ProcessRegistry`).
-    func prepareForTermination() { taskEngine.prepareForTermination(); research?.browser?.shutdown(); memory.shutdown(); unity.forgetOwnedEditors(); handsFree.shutdown(); voice.shutdown() }
+    func prepareForTermination() { visionRuntime.shutdownNow(); taskEngine.prepareForTermination(); research?.browser?.shutdown(); memory.shutdown(); unity.forgetOwnedEditors(); handsFree.shutdown(); voice.shutdown() }
 
     /// User-triggered runs (benchmark, local test) whose Task can be cancelled from the Observatory.
     @ObservationIgnored fileprivate var userTasks: [UUID: Task<Void, Never>] = [:]

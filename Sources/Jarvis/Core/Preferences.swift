@@ -24,6 +24,8 @@ final class Preferences {
         static let voiceEnabled = "prefs.voice.enabled"
         static let webResearch = "prefs.web.research"
         static let projectContinuation = "prefs.operator.continuation"
+        static let visualMode = "prefs.operator.visualMode"
+        static let visualModel = "prefs.operator.visualModel"
         static let webBrowser = "prefs.web.browser"
         static let memoryEnabled = "prefs.memory.enabled"
         static let memorySemantic = "prefs.memory.semantic"
@@ -94,6 +96,9 @@ final class Preferences {
     var webResearchEnabled: Bool { didSet { defaults.set(webResearchEnabled, forKey: Key.webResearch) } }
     /// V0.13: project status questions and “continue” (bounded sessions). Off = those phrases are ordinary chat again.
     var projectContinuationEnabled: Bool { didSet { defaults.set(projectContinuationEnabled, forKey: Key.projectContinuation) } }
+    /// V0.13 general visual grounding: on-device only (Apple text recognition + the local vision model when installed), or off.
+    var visualGroundingMode: VisualGroundingMode { didSet { defaults.set(visualGroundingMode.rawValue, forKey: Key.visualMode) } }
+    var visualModel: LocalVLMModel { didSet { defaults.set(visualModel.rawValue, forKey: Key.visualModel) } }
     /// V0.9: allow the rendered-page (browser) tier for pages that need JavaScript. Off = plain HTTP only.
     var webBrowserTierEnabled: Bool { didSet { defaults.set(webBrowserTierEnabled, forKey: Key.webBrowser) } }
     /// V0.10: Project Memory (derived, provenance-backed knowledge about a project). Off = no memory is read, written or injected; everything else works unchanged.
@@ -166,6 +171,8 @@ final class Preferences {
         voiceEnabled = defaults.object(forKey: Key.voiceEnabled) as? Bool ?? false
         webResearchEnabled = defaults.object(forKey: Key.webResearch) as? Bool ?? true
         projectContinuationEnabled = defaults.object(forKey: Key.projectContinuation) as? Bool ?? true
+        visualGroundingMode = (defaults.string(forKey: Key.visualMode)).flatMap(VisualGroundingMode.init(rawValue:)) ?? .auto
+        visualModel = (defaults.string(forKey: Key.visualModel)).flatMap(LocalVLMModel.init(rawValue:)) ?? .qwen3VL4B
         webBrowserTierEnabled = defaults.object(forKey: Key.webBrowser) as? Bool ?? true
         projectMemoryEnabled = defaults.object(forKey: Key.memoryEnabled) as? Bool ?? true
         memorySemanticEnabled = defaults.object(forKey: Key.memorySemantic) as? Bool ?? true
