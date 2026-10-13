@@ -415,3 +415,27 @@ DEC-127 … DEC-156.
 ### Remaining Work
 User manual test (README 584–703). V0.12 only with approval. No tag.
 
+## 2026-10-13 — V0.12 Advanced Multi-Agent Orchestration & Intelligent Routing
+
+### Goal
+Make V0.1–V0.11 work as one coherent system: JARVIS orchestrates role-bounded specialists over a validated task graph, routes each node explainably, hands results over as typed trusted-labelled artifacts, validates deterministically, and never widens authority.
+
+### Changes
+`Sources/Jarvis/Orchestration/` (roles + contracts + limits, task graph + `GraphValidator` + `ConcurrencyPolicy` + `TaskOutcome`, deterministic planner/templates/revision/planner prompt, artifacts + trust + fenced handoffs, routing explanations / node ledger / review independence / failure + escalation vocabulary / role evidence, role benchmarks, graph status, view model) · `Tasks/TaskEngine+Orchestration.swift` (orchestrated planning, authority check at node start, artifacts/handoffs, routing records, delegated research/computer nodes, approval gates, bounded revision, invalidation, review→repair cycle, status/Compact helpers, report lines) · `TaskEngine`/`+Planning`/`+Execution`/`+Lifecycle` hooks (policy-driven scheduler, optional nodes, deadlock + time limits, child tasks, cancel cascade, handoff injection, review independence, role-evidence jobs, graph-aware resume) · new step types/validations (`delegateResearch`, `delegateComputer`, `approvalGate`) · schema v10 + `OrchestrationRepository` · `TaskGraphView`, role-labelled Agents, Compact line · status intents (`showAgentStatus`, `showTestStatus`) · memory authority patterns · `BenchmarkRunner` generalised for the role suite · `--orchestration-live-test` (+ child restart modes, soak) · `OrchestrationScriptRunner` (dev only) · 20 verify.sh guards · 68 tests.
+
+### Research (details in `docs/MULTI_AGENT_ORCHESTRATION.md`)
+Design choice: the graph IS the V0.4 plan (no second plan format) so persistence, restart, cancellation and approvals are inherited; delegated research/computer nodes reuse V0.9/V0.11 as child tasks; parallelism limited by measured machine constraints (16 GB MacBook Air) to two read-only nodes; provider session continuity rejected as a source of truth (fresh bounded prompts); role quality measured by small deterministic benchmarks with traps instead of self-rating.
+
+### Real findings (found by the live runs; all fixed)
+* A dependent of two parallel readers could start twice (latent V0.4 race) → started nodes are excluded from the ready list.
+* Memory accepted “always allow ComputerAgent to install software” → agent-targeted authority patterns.
+* The free model followed planted instructions (security role 0/2 in one run, 2/2 in another) → role evidence filter for security-relevant work.
+* A compound goal mentioning “research” was taken by the research intake → compound detection first.
+* Child research tasks are newer than their parent → root-task selection; child hook returns early.
+* A research clause needs its own subject for the V0.9 relevance filter.
+
+### Results
+See `docs/MULTI_AGENT_ORCHESTRATION.md` §14 and `PROJECT_STATE.md` (Tested). Unit 1326/188; verify PASSED; smoke 139/0/2; live 61/0/0; idle 0.01 CPU-s/8 s at 73 MB.
+
+### Open
+`docs/KNOWN_ISSUES.md` JARVIS-V12-1…13. MANUAL TEST REQUIRED: README 704–823.

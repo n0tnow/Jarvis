@@ -1,21 +1,39 @@
 # Current Task
 
 Version:
-V0.11 — General Computer Use — **READY FOR MANUAL TEST** (committed on `main`). Base: V0.10 (44966ba), V0.9, V0.8, V0.7, V0.6, V0.5, V0.4, V0.3.2, V0.3.1, V0.3, V0.2.1.
+V0.12 — Advanced Multi-Agent Orchestration & Intelligent Routing — **READY FOR MANUAL TEST** (committed on `main`). Base: V0.11 (304e981), V0.10, V0.9, V0.8, V0.7, V0.6, V0.5, V0.4, V0.3.2, V0.3.1, V0.3, V0.2.1.
 
 Task:
-Typed, observable, bounded, policy-controlled, verifiable and cancelable interaction with ordinary macOS applications when no stronger structured mechanism exists. A capability LADDER decides first (V0.4 project tools > V0.6 Unity bridge > controlled CLI > V0.9 browser DOM > macOS Accessibility > window-scoped on-device vision > window-relative coordinates); Computer Use is an ordinary V0.4 task (`TaskKind.computer`) and never an authority of its own. NOT V0.12 (advanced multi-agent / routing). No tag, no COMPLETE.
+Make the capabilities of V0.1–V0.11 work together as one system with JARVIS as the ORCHESTRATOR: specialist ROLES (Analysis, Coding, Research, Unity, Computer, QA, Review) over a validated, bounded task graph; deterministic planning first (a model only for open-ended compound goals); least-capability role contracts re-checked at node start; typed, sanitized, trust-labelled artifacts and fenced handoffs; per-role routing reasons, benchmarks and risk-based review independence; bounded retry/escalation/revision; approval gates; PARTIAL/BLOCKED outcomes; status questions from the graph; cancel cascade; revalidating resume. NOT V1.0. No tag, no COMPLETE.
 
 State:
-IMPLEMENTED · AUTOMATED TESTED (1258 unit tests / 176 suites, 120 of them Computer tests on a virtual macOS; `scripts/verify.sh` PASSED; smoke 132/0/2; idle 0.02 CPU-s per 8 s at 73 MB) · REAL TESTED (`--computer-live-test`, release build: 88 passed / 0 failed / 2 skipped — real Accessibility against the JARVIS-owned fixture app, a real on-device-OCR vision click on three displays incl. Retina, real Finder / System Settings / Blender navigation, cancel + emergency-stop + hard-kill/resume, secure-field / purchase / terminal / injection fixtures, spoken-equivalent route) · **MANUAL TEST REQUIRED** (README 584–703). Docs: `docs/GENERAL_COMPUTER_USE.md`, DEC-127…156, KNOWN_ISSUES JARVIS-V11-1…18. Not validated: Xcode (not installed), a running Unity Editor, model vision (does not exist), the physical ⌃⌥⌘ chord, model-assisted planning on a real model.
+IMPLEMENTED · AUTOMATED TESTED (1326 unit tests / 188 suites, 68 of them orchestration; `scripts/verify.sh` PASSED; smoke 139/0/2; 20 new guards; idle 0.01 CPU-s per 8 s at 73 MB) · REAL TESTED (`--orchestration-live-test --orchestration-soak 2`, release build: 61 passed / 0 failed / 0 skipped — real OpenCode FREE / Claude Code / Codex role benchmarks and tasks on disposable fixtures, a real research child, a real Finder Computer node, review independence, STOP with real agents, hard-kill + explicit resume, soak 371 tasks) · **MANUAL TEST REQUIRED** (README 704–823). Docs: `docs/MULTI_AGENT_ORCHESTRATION.md`, DEC-157…190, KNOWN_ISSUES JARVIS-V12-1…13. Not validated: any human use, a real Unity editor / Xcode inside a graph, multi-hour runs, model-planned graphs with a real planner model on hard goals, battery.
 
 Next Step:
-Wait for the user's manual test. Do NOT start V0.12 without explicit approval. Accessibility must be allowed by the user for `Jarvis.app` (System Settings → Privacy & Security → Accessibility); JARVIS never grants it to itself.
+Wait for the user's manual test. Do NOT start V1.0 without explicit approval. Use a throw-away project copy (never the real game).
 
 Blocked By:
 Nothing.
 
 Notes:
 - Git: main only, no tags, no AI co-author trailers (the user's brief overrides the harness attribution reminder).
-- Nothing in the Computer layer runs while idle: no AX traversal, no capture, no clipboard read; the only timer is the ⌃⌥⌘ emergency sampler during a session.
-- The live test needs the session that runs it to have Accessibility (and Screen Recording for the vision part): it reports `BLOCKED — ACCESSIBILITY PERMISSION REQUIRED` otherwise and weakens nothing.
+- Nothing in the orchestration layer runs while idle: no timer, poll, helper, provider process or network; the V0.10 embedding helper unloads itself 120 s after a task.
+- `TaskEngine.orchestrationEnabled` is true in the app and false in the V0.4–V0.11 suites.
+
+### Real findings (found by the live runs / new scenarios; all fixed)
+* A node whose last two dependencies finished at nearly the same time could be STARTED TWICE (pre-existing V0.4 scheduler race, only visible with parallel readers) → started nodes are excluded from the ready list; regression-tested.
+* The memory authority gate did not refuse agent-targeted grants (“always allow ComputerAgent to install software”) → patterns extended (agents, “without asking”, “full access”, Turkish); structurally memory could never act, but it could be stored and shown as context.
+* The free OpenCode model followed the planted instructions of the security role cases in one run (0/2; 2/2 in another) → role evidence is now a routing filter for security-relevant coding/review (a free model needs COMPLETE passing evidence; explicit choices are respected).
+* A compound goal containing “research” was taken by the research intake and lost its code scan → compound-goal detection (two distinct jobs, verbs only) now precedes the research intake for project goals.
+* A research child is created after its parent → the live test (and any “latest task” logic) must pick root tasks; the finished-task hook ignores children.
+* The research clause of a compound goal needs its own subject (“…check the latest official Unity BoxCollider documentation”): the V0.9 relevance filter otherwise finds nothing (the optional branch then fails and the task ends PARTIAL, honestly).
+* Structural guards caught: deny-list words in the new orchestration files (narrow exemptions), `source: .voice` and `String(contentsOf` in the live test, a secret-shaped literal in the benchmark trap (assembled at run time), `\bMemoryItem` vs `maxMemoryItems`.
+
+### Results
+Unit 1326 (188 suites; 68 orchestration) · `scripts/verify.sh` PASSED · smoke 139/0/2 · idle 0.01 CPU-s/8 s, 73 MB · `--orchestration-live-test` (release) 61/0/0 — numbers in `docs/MULTI_AGENT_ORCHESTRATION.md` §14.
+
+### Decisions
+DEC-157 … DEC-190.
+
+### Remaining Work
+User manual test (README 704–823). V1.0 only with approval. No tag.

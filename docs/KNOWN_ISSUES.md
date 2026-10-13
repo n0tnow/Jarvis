@@ -580,7 +580,7 @@ Description: nodes are listed with dependencies named, not drawn; parallel group
 
 ### JARVIS-V12-11 — Soak and long-run evidence is bounded
 Status: Open · NON-BLOCKING · MANUAL TEST REQUIRED
-Description: the automated soak is a few minutes of scripted tasks on the real engine/DB; multi-hour real-provider runs, battery impact and real-quota behaviour belong to V1.0 / manual testing.
+Description: the automated soak is a few minutes of scripted tasks on the real engine/DB; multi-hour real-provider runs, battery impact and real-quota behaviour belong to V1.0 / manual testing. Measured: 371 scripted tasks in 2 minutes → RSS 104→114 MB, no provider process left, but the database grew ≈ 24 KB per task (tasks, steps, attempts, agent runs, events are history and are never pruned; only artifacts/routing/graph rows are). A real day of use is far smaller; a pruning/archival policy for task history is a V1.0 question.
 
 ### JARVIS-V12-12 — Pre-existing race fixed: a dependent of two parallel readers could start twice
 Status: Resolved (V0.12)

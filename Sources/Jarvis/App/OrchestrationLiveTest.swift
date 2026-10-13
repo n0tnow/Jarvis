@@ -378,6 +378,27 @@ enum OrchestrationLiveTest {
             _ = kids0
         } else { check("ENGINE", "long task reached the coding node", false) }
 
+        // ------------------------------------------------------------ 11b. REAL stop: real providers + a research child running, then STOP — every process must go
+        let rs = await makeProject(); projects.append(rs)
+        prefs.projectRoot = rs; engine.agents = realRunner
+        let prevStop = latestTaskID()
+        svc.submit("Investigate the calculator module and research the current official Unity Mathf.Clamp documentation.")
+        _ = await waitUntil(8) { latestTaskID() != prevStop }
+        if let stopID = latestTaskID(), stopID != prevStop {
+            let active = await waitUntil(90) { !context.hub.activeRuns.isEmpty || engine.contexts.values.contains { $0.record.parentTaskID == stopID } }
+            let procsBefore = ProcessTree.descendants(of: me).count
+            let agentsBefore = context.hub.activeRuns.count
+            let tStop2 = Date()
+            engine.cancel(stopID)
+            await engine.waitUntilFinished(stopID)
+            let stopMs2 = Date().timeIntervalSince(tStop2) * 1000
+            let children = ((try? repo.childTasks(of: stopID)) ?? [])
+            let gone = await waitUntil(15) { ProcessTree.descendants(of: me).filter { pid in var b = [CChar](repeating: 0, count: 256); proc_name(pid, &b, 256); let n = String(cString: b); return n.contains("opencode") || n.contains("claude") || n.contains("codex") }.isEmpty && context.hub.activeRuns.isEmpty }
+            let sv2 = (try? repo.engineTask(stopID)) ?? nil
+            check("REAL", "STOP with real agents running (\(agentsBefore) active, \(procsBefore) process(es) under JARVIS): the task is CANCELLED, delegated children are stopped, no agent run or provider process remains, no lease stays", active && (sv2?.state == .cancelled || sv2?.state == .completed) && children.allSatisfy { $0.state.isTerminal } && gone && context.leases.activeCount == 0, "state \(sv2?.state.rawValue ?? "?"), children \(children.map { $0.state.rawValue }), latency \(fmt(stopMs2, "%.0f")) ms")
+            perf.append(("STOP with real agents + research child → all terminal", "\(fmt(stopMs2, "%.0f")) ms"))
+        } else { skip("real STOP", "no task was created") }
+
         // ------------------------------------------------------------ 12. restart (hard kill) + explicit resume (child processes)
         let rproj = await makeProject(); projects.append(rproj)
         let exe = Bundle.main.executablePath ?? CommandLine.arguments[0]
@@ -483,6 +504,26 @@ enum OrchestrationLiveTest {
         } else { skip("REAL Computer node inside a graph", "Accessibility is not allowed for this build (JARVIS never grants it to itself)") }
 
         // ------------------------------------------------------------ 18. idle + stability + cleanup
+        if soakMinutes > 0 {
+            info("soak: bounded stability loop for \(fmt(soakMinutes)) min (scripted agents, real engine/DB)…")
+            let rss0 = ProcessTree.residentBytes(of: me) ?? 0
+            let db0 = (try? FileManager.default.attributesOfItem(atPath: context.paths.database.path)[.size] as? Int) ?? 0
+            let sp = await makeProject(); projects.append(sp)
+            let end = Date().addingTimeInterval(soakMinutes * 60); var n = 0
+            while Date() < end {
+                TaskDemo.resetFixture(sp)
+                let (sid, _) = await runScripted(fixGoal, project: sp, script: standard)
+                if sid.flatMap({ engine.view($0)?.task.state }) != .completed { break }
+                n += 1
+                if n % 10 == 0 { _ = try? repo.pruneOrchestration(keepTasks: 20) }
+            }
+            let rss1 = ProcessTree.residentBytes(of: me) ?? 0
+            let db1 = (try? FileManager.default.attributesOfItem(atPath: context.paths.database.path)[.size] as? Int) ?? 0
+            let orphans = ProcessTree.descendants(of: me).filter { pid in var b = [CChar](repeating: 0, count: 256); proc_name(pid, &b, 256); let n = String(cString: b); return n.contains("opencode") || n.contains("claude") || n.contains("codex") }.count
+            check("ENGINE", "SOAK: \(n) orchestrated tasks in \(fmt(soakMinutes)) min with no runaway", n > 3 && orphans == 0 && rss1 < rss0 + 120 * 1_048_576, "RSS \(rss0 / 1_048_576)→\(rss1 / 1_048_576) MB, DB \(db0 / 1024)→\(db1 / 1024) KB, provider processes left \(orphans), artifact rows \((try? repo.count("agent_artifacts")) ?? 0), \(fmt(Double(n) / soakMinutes))/min")
+            perf.append(("soak throughput", "\(n) tasks in \(fmt(soakMinutes)) min"))
+        }
+
         engine.agents = realRunner
         await engine.waitUntilIdle()
         func providerChildren() -> [pid_t] {
@@ -506,24 +547,25 @@ enum OrchestrationLiveTest {
         let idleCPU = (ProcessTree.cpuSeconds(of: me) ?? 0) - cpu0
         check("REAL", "IDLE: no orchestration work, no provider/tool process (the memory helper unloaded by itself), no polling loop (CPU \(fmt(idleCPU, "%.2f")) s in 8 s, RSS \((ProcessTree.residentBytes(of: me) ?? 0) / 1_048_576) MB)", gone && engine.activeCount == 0 && engine.runners.isEmpty && context.hub.activeRuns.isEmpty && idleCPU < 0.5, "left: \(leftAfter)")
         perf.append(("idle CPU over 8 s / RSS", "\(fmt(idleCPU, "%.2f")) s / \((ProcessTree.residentBytes(of: me) ?? 0) / 1_048_576) MB"))
-        if soakMinutes > 0 {
-            info("soak: bounded stability loop for \(fmt(soakMinutes)) min (scripted agents, real engine/DB)…")
-            let rss0 = ProcessTree.residentBytes(of: me) ?? 0
-            let db0 = (try? FileManager.default.attributesOfItem(atPath: context.paths.database.path)[.size] as? Int) ?? 0
-            let sp = await makeProject(); projects.append(sp)
-            let end = Date().addingTimeInterval(soakMinutes * 60); var n = 0
-            while Date() < end {
-                TaskDemo.resetFixture(sp)
-                let (sid, _) = await runScripted(fixGoal, project: sp, script: standard)
-                if sid.flatMap({ engine.view($0)?.task.state }) != .completed { break }
-                n += 1
-                if n % 10 == 0 { _ = try? repo.pruneOrchestration(keepTasks: 20) }
-            }
-            let rss1 = ProcessTree.residentBytes(of: me) ?? 0
-            let db1 = (try? FileManager.default.attributesOfItem(atPath: context.paths.database.path)[.size] as? Int) ?? 0
-            let orphans = ProcessTree.descendants(of: me).filter { pid in var b = [CChar](repeating: 0, count: 256); proc_name(pid, &b, 256); let n = String(cString: b); return n.contains("python") || n.contains("opencode") || n.contains("claude") || n.contains("codex") }.count
-            check("ENGINE", "SOAK: \(n) orchestrated tasks in \(fmt(soakMinutes)) min with no runaway", n > 3 && orphans == 0 && rss1 < rss0 + 120 * 1_048_576, "RSS \(rss0 / 1_048_576)→\(rss1 / 1_048_576) MB, DB \(db0 / 1024)→\(db1 / 1024) KB, provider/tool processes left \(orphans), artifact rows \((try? repo.count("agent_artifacts")) ?? 0), \(fmt(Double(n) / soakMinutes))/min")
-            perf.append(("soak throughput", "\(n) tasks in \(fmt(soakMinutes)) min"))
+        // ------------------------------------------------------------ micro-benchmarks of the pure parts
+        do {
+            func avgMS(_ n: Int, _ f: () -> Void) -> Double { let t = Date(); for _ in 0..<n { f() }; return Date().timeIntervalSince(t) * 1000 / Double(n) }
+            let pc = PlanningContext(hasBuildCommand: true, hasTestCommand: true, isUnityProject: false, webAllowed: true, computerAllowed: false)
+            let planMS = avgMS(200) { _ = OrchestrationPlanner.route(goal: fixGoal, kind: .development, context: pc) }
+            guard case .graph(let g) = OrchestrationPlanner.route(goal: fixGoal, kind: .development, context: pc) else { check("POLICY", "planner micro-benchmark", false); finish() }
+            let caps = CapabilitySet.development
+            let validateMS = avgMS(200) { _ = PlanValidator.validate(g.plan, kind: .development, capabilities: caps); _ = GraphValidator.validate(g.plan, capabilities: caps) }
+            let tid = UUID()
+            let arts = (0..<4).map { AgentArtifact.make(taskID: tid, nodeKey: "s\($0)", role: .analysis, kind: .analysis, trust: .validated, validation: "ok", content: String(repeating: "finding ", count: 400)) }
+            let st = TaskStepRecord(id: UUID(), taskID: tid, index: 4, key: "s4", title: "Fix", type: .codeChange, dependsOn: ["s3"], validation: .changedFiles)
+            let handoffMS = avgMS(200) { _ = HandoffBuilder.build(for: st, artifacts: arts, ancestors: Set(arts.map(\.nodeKey))) }
+            let sched = TaskGraph(plan: g.plan)
+            let policyMS = avgMS(2000) { _ = sched.frontier(done: ["s1"], started: []); _ = ConcurrencyPolicy.canStart(.analysis, alongside: [.analysis]) }
+            perf.append(("deterministic planning (route + template)", "\(fmt(planMS, "%.3f")) ms"))
+            perf.append(("plan + graph validation (7 nodes)", "\(fmt(validateMS, "%.3f")) ms"))
+            perf.append(("handoff build (4 artifacts, ≈3 KB each)", "\(fmt(handoffMS, "%.3f")) ms"))
+            perf.append(("graph scheduling decision (frontier + policy)", "\(fmt(policyMS, "%.4f")) ms"))
+            check("POLICY", "Planning, validation, handoff and scheduling are cheap (all under 5 ms)", planMS < 5 && validateMS < 5 && handoffMS < 5 && policyMS < 5, "plan \(fmt(planMS, "%.3f")) · validate \(fmt(validateMS, "%.3f")) · handoff \(fmt(handoffMS, "%.3f")) · schedule \(fmt(policyMS, "%.4f")) ms")
         }
 
         // ------------------------------------------------------------ report tables
@@ -592,13 +634,14 @@ enum OrchestrationLiveTest {
             }
         })
         engine.agents = runner
+        let tResume = Date()
         guard engine.resume(t.id) else { say("FAIL resume refused"); exit(8) }
         let end = Date().addingTimeInterval(90)
         while Date() < end, !(engine.view(t.id)?.task.state.isTerminal ?? false) { try? await Task.sleep(for: .milliseconds(50)) }
         let after = engine.view(t.id)
         let fixed = FileManager.default.contents(atPath: project + "/calc.py").flatMap { String(data: $0, encoding: .utf8) }?.contains("return a + b") == true
         let ok2 = after?.task.state == .completed && runner.count("AnalysisAgent") == 0 && runner.count("CodingAgent") == 1 && fixed
-        say("\(ok2 ? "PASS" : "FAIL") resume-reuses (final \(after?.task.state.rawValue ?? "?"), analysis calls after resume \(runner.count("AnalysisAgent")), coding calls \(runner.count("CodingAgent")), fixed on disk \(fixed))")
+        say("\(ok2 ? "PASS" : "FAIL") resume-reuses (\(Int(Date().timeIntervalSince(tResume) * 1000)) ms from Resume to completed; final \(after?.task.state.rawValue ?? "?"), analysis calls after resume \(runner.count("AnalysisAgent")), coding calls \(runner.count("CodingAgent")), fixed on disk \(fixed))")
         exit(ok2 ? 0 : 9)
     }
 }

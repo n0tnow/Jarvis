@@ -1,6 +1,6 @@
 # Multi-agent orchestration (V0.12)
 
-Status: IMPLEMENTED · AUTOMATED TESTED (≈80 orchestration unit tests, engine scenarios on isolated fixtures) · REAL TESTED (`--orchestration-live-test`, see §14) · **MANUAL TEST REQUIRED** (README 704–823).
+Status: IMPLEMENTED · AUTOMATED TESTED (68 orchestration unit/engine tests, 1326 in the suite, engine scenarios on isolated fixtures) · REAL TESTED (`--orchestration-live-test`, see §14) · **MANUAL TEST REQUIRED** (README 704–823).
 Decisions: DEC-157…190 (`docs/DECISIONS.md`). Known issues: JARVIS-V12-1… (`docs/KNOWN_ISSUES.md`).
 
 > V0.12 does not add another capability. It makes the capabilities of V0.1–V0.11 work together as one system: **JARVIS is the orchestrator**; specialist **roles** do bounded work; **models and tools are the engines** that execute those roles. JARVIS keeps the task, the authority, the plan, the memory, the capabilities, the resources, the validation, the retry/escalation budget, the approvals and the report.
@@ -128,4 +128,31 @@ See `docs/KNOWN_ISSUES.md` JARVIS-V12-*. In short: templates cover the common sh
 
 ## 14. Measurements
 
-(see the table appended by the final live run in `docs/DEVELOPMENT_LOG.md` V0.12 entry)
+`Jarvis --orchestration-live-test --orchestration-soak 2` (release build, this MacBook Air, final run: **61 passed / 0 failed / 0 skipped**). Labels: REAL = real providers/Finder/web; ENGINE = real engine with scripted agent answers; POLICY = pure code.
+
+| What | Result |
+|---|---|
+| Deterministic planning (route + template) | 0.18 ms |
+| Plan + graph validation (7 nodes) | 0.38 ms |
+| Handoff build (4 artifacts ≈ 3 KB each) | 3.9 ms |
+| Scheduling decision (frontier + policy) | 0.0003 ms |
+| “Run project tests” → 1-node graph, real tests, 0 model calls | 95–130 ms |
+| Compound fix task, REAL OpenCode FREE (analysis → QA → coding → QA → review, JARVIS applied the edit, project tests pass) | 10–15 s |
+| Two independent read-only nodes + one dependent (0.7 s each) | 1.7 s vs ≥ 2.1 s sequential; peak concurrency 2; under injected memory pressure peak 1 |
+| Status question (“Durum ne?”, conversation → graph → sentence) | 0.5 ms |
+| STOP (scripted blocked agent) → CANCELLED | 11–18 ms |
+| STOP with a real graph + research child → all tasks terminal, no provider process, no lease | 78 ms |
+| Hard kill → relaunch → INTERRUPTED (no node ran) → explicit Resume reusing the finished analysis | passed; Resume → completed in 209 ms (analysis not repeated) |
+| Soak: orchestrated tasks (scripted agents, real engine/DB) in 2 min | 371 tasks (≈ 185/min); RSS 104 → 114 MB; provider processes left 0; DB 14 → 23 MB (history rows ≈ 24 KB per task; artifacts/routing rows pruned) |
+| Idle after the last task | JARVIS 0.00 CPU-s in 8 s, 114 MB; the V0.10 embedding helper left by itself after 120.2 s; `verify.sh` idle 0.01 CPU-s / 73 MB |
+| Context efficiency (380 KB fixture project): each specialist prompt ≤ 3.2 KB (largest 114× smaller than the project; the three prompts together 42× smaller) | measured size reduction only — no quality claim |
+| REAL research child (official Unity docs via the live web): 11–12 claims verified from 20–21 sources, delivered as an external·untrusted artifact | passed |
+| REAL Computer node inside a graph (Finder revealed the fixture folder through Accessibility, no file changed) | passed |
+
+Role benchmark (suite `roles-v1`, 11 cases, one sample each — **do not over-generalise**; the same free model scored security 0/2 in one run and 2/2 in the next):
+
+| Provider / model | planning | analysis | coding | review | research | json | security | median first output |
+|---|---|---|---|---|---|---|---|---|
+| OpenCode FREE · space-bunny-free (runtime-verified $0) | 0–1/2 | 1/1 | 1/1 | 2/2 | 1/1 | 1/1 | 0–2/2 | ≈ 2.9–3.2 s |
+| Claude Code (subscription) | 2/2 | 1/1 | 1/1 | 2/2 | 1/1 | 1/1 | 2/2 | ≈ 2.4–2.7 s |
+| Codex (subscription) | 2/2 | 1/1 | 1/1 | 2/2 | 1/1 | 1/1 | 2/2 | ≈ 5.9–6.4 s |
