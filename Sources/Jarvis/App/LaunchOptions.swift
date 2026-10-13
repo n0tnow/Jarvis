@@ -12,6 +12,7 @@ import Foundation
 ///   --intelligence-live-test  REAL tests of the V0.3.1 stack (SQLite, local Qwen, OpenCode free model, routing, lifecycle); opt-in
 ///   --task-live-test        REAL end-to-end test of the V0.4 task engine on isolated fixture projects (OpenCode free preferred); opt-in
 ///   --proactive-live-test   REAL test of the V0.5 proactive layer (opportunities, policy, proposals, auto action, denial, restart) on isolated fixtures; opt-in
+///   --computer-live-test    REAL test of V0.11 General Computer Use: real Accessibility, a JARVIS-owned fixture app, window-scoped capture + on-device OCR, Finder/System Settings/Blender navigation, cancel/stop/restart; opt-in
 ///   --voice-live-test       REAL test of the V0.7 voice stack with SYNTHETIC speech (system voices): recognisers, benchmark, TTS, stop, E2E through the typed pipeline, resources; opt-in
 ///   --voice-audible         (with the above) let JARVIS speak aloud during the TTS checks (default: real playback at volume 0)
 ///   --voice-no-whisper      (with the above) skip the local Whisper helper
@@ -53,6 +54,10 @@ struct LaunchOptions {
     var unityFixture: String?
     var researchLiveTest = false
     var memoryLiveTest = false
+    var computerLiveTest = false
+    var computerChild: String?           // internal: "start" | "check" (restart test)
+    var computerFixtureState: String?    // internal: the fixture's state file (restart test children)
+    var computerRepo: String?
     var memoryChild: String?             // internal: "quit" (helper cleanup test)
     var memoryRepo: String?              // the project whose own docs are bootstrapped (default: the JARVIS checkout this app was built from)
     var researchChild: String?           // internal: "start" | "check" (restart test)
@@ -92,6 +97,10 @@ struct LaunchOptions {
             case "--unity-fixture": unityFixture = it.next()
             case "--research-live-test": researchLiveTest = true
             case "--memory-live-test": memoryLiveTest = true
+            case "--computer-live-test": computerLiveTest = true
+            case "--computer-child": computerChild = it.next()
+            case "--computer-fixture-state": computerFixtureState = it.next()
+            case "--computer-repo": computerRepo = it.next()
             case "--memory-child": memoryChild = it.next()
             case "--memory-repo": memoryRepo = it.next()
             case "--research-child": researchChild = it.next()

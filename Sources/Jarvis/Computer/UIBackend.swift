@@ -94,7 +94,14 @@ protocol UIBackend: AnyObject {
     func postKey(_ chord: KeyChord, toPID pid: Int32) async throws
     func typeText(_ text: String, toPID pid: Int32, shouldContinue: @escaping @Sendable () -> Bool) async throws
     func postScroll(direction: ScrollDirection, lines: Int, atGlobal p: CGPoint, toPID pid: Int32) async throws
-    func postClick(atGlobal p: CGPoint, toPID pid: Int32) async throws
+    /// A click at a global point. macOS delivers synthetic MOUSE events only through the system event stream (verified on this Mac: events aimed at a process are ignored by AppKit),
+    /// so this is the one place a pointer moves: it is a single down/up pair, the pointer is put back afterwards, and the executor has already proved that the point is inside the
+    /// target window, that the window is the topmost one there, that the observation is fresh and that the user is not using the mouse.
+    func postClick(atGlobal p: CGPoint) async throws
+    /// The topmost on-screen window at a global point (occlusion check before any coordinate click).
+    func topWindowID(atGlobal p: CGPoint) async -> UInt32?
+    /// Scrolls a scroll area through its own scroll bar. Returns the new position 0…1, or throws `unsupported` (the caller then uses wheel events).
+    func scrollBy(_ h: ElementHandle, direction: ScrollDirection, step: Double) async throws -> Double
 
     // workspace
     func openFile(path: String, withBundleID bundleID: String?) async throws

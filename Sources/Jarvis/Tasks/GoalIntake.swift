@@ -69,6 +69,14 @@ protocol ResearchSubmitting: AnyObject {
     func submitResearch(goal: String, channel: InputSource) async -> TaskSubmission
 }
 
+/// V0.11: requests to operate native macOS applications. The classification is deterministic (EN/TR) and consults the capability ladder FIRST: anything a stronger
+/// mechanism owns (project tools, the Unity bridge, web research, Git) is NOT taken by Computer Use. Voice and typed text take this same path.
+@MainActor
+protocol ComputerSubmitting: AnyObject {
+    func classifyComputer(_ text: String) -> GoalClassification
+    func submitComputer(goal: String, channel: InputSource) async -> TaskSubmission
+}
+
 @MainActor
 protocol EngineTaskControlling: AnyObject {
     func stopTask(_ id: UUID)
@@ -84,7 +92,7 @@ extension TaskEngine: EngineTaskControlling {
 
 /// Production `TaskSubmitting`: the project folder comes from the user's Settings choice; everything else is the engine.
 @MainActor
-final class TaskIntake: TaskSubmitting, ResearchSubmitting {
+final class TaskIntake: TaskSubmitting, ResearchSubmitting, ComputerSubmitting {
     private let engine: TaskEngine
     private let preferences: Preferences
     init(engine: TaskEngine, preferences: Preferences) { self.engine = engine; self.preferences = preferences }
@@ -121,6 +129,23 @@ final class TaskIntake: TaskSubmitting, ResearchSubmitting {
         let request = ResearchIntake.parse(goal: goal, project: facts)
         let preference = preferences.providerPreference
         switch await engine.submitResearch(request, preference: preference == .auto ? nil : preference, inputChannel: channel) {
+        case .success(let id): return .started(title: engine.view(id)?.task.title ?? goal)
+        case .failure(let e): return .rejected(e.description)
+        }
+    }
+
+    // MARK: Computer Use (V0.11)
+
+    func classifyComputer(_ text: String) -> GoalClassification {
+        guard engine.computer != nil, preferences.computerUseEnabled else { return .notComputer }
+        let root = hasProject ? preferences.projectRoot : nil
+        return ComputerGoalParser.classify(text, context: GoalContext(projectRoot: root, unityProjectOpen: root.map { UnityProjectDetector.isUnityProject(root: $0) } ?? false, visionEnabled: preferences.computerVisionEnabled))
+    }
+
+    func submitComputer(goal: String, channel: InputSource) async -> TaskSubmission {
+        guard case .computer(let parsed) = classifyComputer(goal) else { return .rejected("That is not something Computer Use does.") }
+        let preference = preferences.providerPreference
+        switch await engine.submitComputer(goal: goal, steps: parsed.steps, capability: parsed.capability, apps: parsed.apps, preference: preference == .auto ? nil : preference, inputChannel: channel) {
         case .success(let id): return .started(title: engine.view(id)?.task.title ?? goal)
         case .failure(let e): return .rejected(e.description)
         }

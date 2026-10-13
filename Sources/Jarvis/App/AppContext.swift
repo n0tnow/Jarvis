@@ -43,6 +43,9 @@ final class AppContext {
     /// V0.10: derived, provenance-backed project knowledge (decisions, constraints, failures, research/asset decisions) with hybrid retrieval and a bounded agent context.
     let memory: ProjectMemory
     let memoryModel: MemoryViewModel
+    /// V0.11: General Computer Use (Accessibility / NSWorkspace / window-scoped vision) as an ordinary V0.4 task kind. Stubbed runs get a backend that can reach nothing.
+    let computer: ComputerRuntime
+    let computerModel: ComputerViewModel
     // V0.5 proactive layer: decides (never executes) — approved/auto actions become normal V0.4 tasks
     let opportunities: OpportunityEngine
     let proposalService: ProposalService
@@ -132,6 +135,20 @@ final class AppContext {
         memoryModel = MemoryViewModel(memory: memory, preferences: preferences)
         memory.start()
         taskEngine.memory = memory
+        // V0.11 Computer Use (nothing is observed or operated until a task you started needs it; the emergency-stop sampler exists only while a session runs)
+        computer = ComputerRuntime(backend: stubIntelligence ? DisabledUIBackend() : AXBackend(), repository: repo, workspacePath: p.researchWorkspace.path)
+        computer.isStubbed = stubIntelligence
+        computer.quarantineRoot = p.acquisitions.path
+        let computerPrefs = preferences, computerResources = resources
+        computer.enabled = { [weak computerPrefs] in computerPrefs?.computerUseEnabled ?? true }
+        computer.visionEnabled = { [weak computerPrefs] in computerPrefs?.computerVisionEnabled ?? false }
+        computer.pressureNormal = { [weak computerResources] in (computerResources?.pressure.memory ?? .normal) == .normal }
+        taskEngine.computer = computer
+        taskEngine.computerAllowed = { [weak computerPrefs] in computerPrefs?.computerUseEnabled ?? true }
+        computerModel = ComputerViewModel(runtime: computer, engine: taskEngine, preferences: preferences)
+        let engineRef = taskEngine
+        computer.onEmergencyStop = { [weak engineRef] in engineRef?.cancelComputerTasks(reason: "emergency stop") }
+        computer.onEvent = { [weak engineRef] id, e in engineRef?.note(e.summary, e.isWarning ? .warning : .info, taskID: id) }
         opportunities = OpportunityEngine(repository: repo, audit: audit, tasks: taskEngine)
         proposalService = ProposalService(repository: repo, engine: opportunities)
         whisper = WhisperRuntime(config: .standard(paths: runtimePaths, modelPath: stubIntelligence ? "/nonexistent/jarvis-stub-whisper" : preferences.whisperModelPath))
@@ -163,7 +180,7 @@ final class AppContext {
         // (The closed-loop natural voice test answers from a script: non-command turns must never reach a real model or spend quota.)
         conversationService = ConversationService(store: store, conversation: conversation, windows: windowManager, resolver: voiceRig != nil ? ScriptedAnswerResolver() : coordinator)
         // Autonomous work is only enabled for the real app: stubbed automated runs never start tasks (and never reach providers).
-        if !stubIntelligence { conversationService.taskSubmitter = taskIntake; conversationService.researchSubmitter = taskIntake }
+        if !stubIntelligence { conversationService.taskSubmitter = taskIntake; conversationService.researchSubmitter = taskIntake; conversationService.computerSubmitter = taskIntake }
         conversationService.memoryHandler = memory                         // V0.10: remember / correct / forget / "what did we decide…" — typed and spoken text alike
         memory.onActivity = { [weak store] message, kind in store?.log(message, kind: kind, persist: false) }
         memory.modelCall = { [weak self] task, prompt in
@@ -194,7 +211,7 @@ final class AppContext {
         conversationService.stopSpeech = { [weak self] in self?.voice.stopSpeaking() ?? false }
         voice.onEvent = { [weak store] message, kind in store?.log(message, kind: kind) }
         whisper.onEvent = { [weak store] message in store?.log(message, kind: .info) }
-        resources.observePressureRise { [weak self] _ in Task { @MainActor in await self?.whisper.unload(); await self?.neuralVoice.unload(); self?.research?.browser?.releaseUnderPressure(); self?.memory.onMemoryPressure() } }          // the small wake sentinel stays
+        resources.observePressureRise { [weak self] _ in Task { @MainActor in await self?.whisper.unload(); await self?.neuralVoice.unload(); self?.research?.browser?.releaseUnderPressure(); self?.memory.onMemoryPressure(); self?.computer.onMemoryPressure() } }          // the small wake sentinel stays
         handsFree.settings = { stubIntelligence ? VoiceSettings(enabled: false) : voicePrefs.voiceSettings }
         handsFree.onEvent = { [weak store] message, kind in store?.log(message, kind: kind) }
         sentinel.onEvent = { [weak store] message in store?.log(message, kind: .info) }
@@ -250,6 +267,7 @@ final class AppContext {
             // Restart reconciliation: stale RUNNING tasks → INTERRUPTED (resumed only by the user); leases of the dead process → stale;
             // tasks that were waiting for an approval wait again.
             let r = taskEngine.reconcileOnLaunch()
+            _ = try? repository?.reconcileComputerAfterRestart()                       // V0.11: GUI sessions are INTERRUPTED, never resumed silently
             if let repo = self.repository {                                            // V0.9: in-flight research/downloads are INTERRUPTED, never resumed silently
                 _ = try? repo.reconcileResearchAfterRestart()
                 if let web = research, let active = try? repo.acquisitions(states: [.verifying, .approved, .downloading, .downloaded, .inspecting]) { for rec in web.acquisition.reconcile(active) { web.persistence?.save(rec) } }

@@ -66,6 +66,8 @@ final class ConversationService {
     @ObservationIgnored weak var taskSubmitter: (any TaskSubmitting)?
     /// V0.9: web research tasks (same entry point for typed and spoken requests). nil = research requests stay ordinary conversation.
     @ObservationIgnored weak var researchSubmitter: (any ResearchSubmitting)?
+    /// V0.11: operate native macOS applications (typed and spoken requests alike). nil = such requests stay ordinary conversation.
+    @ObservationIgnored weak var computerSubmitter: (any ComputerSubmitting)?
     /// V0.10: Project Memory (remember / correct / forget / "what did we decide…"). Typed and spoken text take this same path; nil = memory is not wired (stubbed runs).
     @ObservationIgnored weak var memoryHandler: (any MemoryConversing)?
     /// Called at the start of every accepted submission (V0.7: a typed message silences speech that is still playing).
@@ -141,6 +143,7 @@ final class ConversationService {
             }
 
         case .reasoningRequired(let prompt, let lang):
+            if computerSubmitter != nil, handleComputerIfAny(prompt, language: lang, channel: source) { return decision }
             // "Research this error / find a free animation / compare these libraries" is a web RESEARCH task (read-only, bounded, cited).
             if researchSubmitter != nil, ResearchIntake.isResearchRequest(prompt) {
                 handleResearchRequest(prompt, language: lang, channel: source)
@@ -152,6 +155,7 @@ final class ConversationService {
             }
 
         case .workerRequired(let prompt, let lang):
+            if computerSubmitter != nil, handleComputerIfAny(prompt, language: lang, channel: source) { return decision }
             if taskSubmitter != nil { handleTaskRequest(prompt, intent: GoalIntake.development(for: prompt), language: lang, channel: source) }
             else { handleProviderRequest(.worker, prompt: prompt, language: lang, origin: origin, presentation: source == .voice ? .voiceConversation : .text) }
 
@@ -205,6 +209,30 @@ final class ConversationService {
                 _ = self.dispatch(original, origin: origin, source: source)           // memory was not confident: the question goes the normal way
                 self.announceLatestReply()
             }
+        }
+    }
+
+    /// The capability ladder decides: a goal a stronger mechanism owns (project tools, Unity bridge, research, Git) continues down the normal path; only what is left is Computer Use.
+    private func handleComputerIfAny(_ prompt: String, language: ReplyLanguage, channel: InputSource) -> Bool {
+        guard let submitter = computerSubmitter else { return false }
+        switch submitter.classifyComputer(prompt) {
+        case .notComputer, .delegate: return false
+        case .refused(let why):
+            conversation.appendJarvis(why, tone: .notice, route: .local)
+            return true
+        case .computer:
+            pendingTaskAcks += 1
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer { self.pendingTaskAcks -= 1 }
+                switch await submitter.submitComputer(goal: prompt, channel: channel) {
+                case .started(let title): self.conversation.appendJarvis(Phrasebook.computerStarted(title, language), route: .worker)
+                case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
+                case .rejected(let why): self.conversation.appendJarvis(why, tone: .notice, route: .worker)
+                }
+                self.announceLatestReply()
+            }
+            return true
         }
     }
 

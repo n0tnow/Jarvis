@@ -247,7 +247,7 @@ final class MemoryIngestor: @unchecked Sendable {
                                                                .approvalDenied, .capabilityDenied, .unityUnavailable, .unsafeEditorState, .unityTimeout, .interactionRequired]
 
     func taskCandidates(task: TaskRecord, report: TaskReport?) -> [MemoryCandidate] {
-        guard !task.kind.isWebTask else { return [] }                  // research/acquisition are remembered from their own validated records
+        guard !task.kind.usesEmptyWorkspace else { return [] }                  // research/acquisition are remembered from their own validated records
         let taskSource = MemorySource(kind: .task, ref: task.id.uuidString, label: "Task: " + MemoryText.clip(task.title, 50))
         var out: [MemoryCandidate] = []
         let area = Self.area(for: task.title + " " + task.goal)

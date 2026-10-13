@@ -98,6 +98,7 @@ struct SettingsView: View {
             VoiceSettingsSection()
             WebResearchSettingsSection()
             MemorySettingsSection()
+            ComputerSettingsSection()
             Section {
                 LabeledContent("Version", value: "\(AppInfo.version) (\(AppInfo.milestone))")
                 LabeledContent("Permissions", value: app.preferences.voiceEnabled ? "Microphone (only while you hold Push-to-Talk)" : "None requested")
@@ -105,6 +106,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480, height: 940)
+        .frame(width: 480, height: 1100)
     }
 }

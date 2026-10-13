@@ -117,6 +117,8 @@ extension TaskEngine {
     func planPhase(_ ctx: TaskContext) async -> Bool {
         // V0.9: web tasks have a deterministic plan (research type → fixed bounded steps); no model is asked to plan, nothing can be "browsed until satisfied".
         if ctx.record.kind.isWebTask || ctx.research?.importSource != nil { return planWebTask(ctx) }
+        // V0.11: computer tasks have a deterministic plan from the user's own words (a model may only propose the NEXT short batch, inside a step).
+        if ctx.record.kind == .computer { return planComputerTask(ctx) }
         let tree = (try? ctx.tools.projectTree(maxEntries: 160)) ?? ""
         let prompt = PlannerPrompt.build(goal: ctx.record.goal, kind: ctx.record.kind, projectTree: tree, buildCommand: ctx.profiles.build?.display,
                                          testCommand: ctx.profiles.test?.display, constraints: ctx.record.constraints, allowDelete: ctx.record.destructiveRequested, scopeNotes: ctx.record.scope?.promptNotes,
@@ -175,6 +177,7 @@ extension TaskEngine {
             var rec = TaskStepRecord(id: UUID(), taskID: ctx.record.id, index: i, key: s.id, title: s.title, details: s.description, type: s.type,
                                      dependsOn: s.dependsOn, expected: s.expected, validation: s.validation, risk: max(s.risk, s.type.defaultRisk), weight: 1)
             rec.unity = s.unity
+            rec.computer = s.computer
             steps.append(rec)
         }
         try? repository?.insertSteps(steps)

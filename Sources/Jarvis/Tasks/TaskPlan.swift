@@ -15,6 +15,8 @@ struct PlanStep: Codable, Equatable, Sendable {
     var targets: [String] = []
     /// Only for Unity steps: bounded, typed parameters (V0.6).
     var unity: UnityStepParams?
+    /// Only for computer steps: the typed actions (V0.11). Built by JARVIS' own parser/planner and validated before they are scheduled.
+    var computer: ComputerStepParams?
 }
 
 struct TaskPlan: Codable, Equatable, Sendable {

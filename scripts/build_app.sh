@@ -19,4 +19,13 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 codesign --force --sign - "$APP" >/dev/null
 codesign --verify --strict "$APP"
 
-echo "Built $APP ($CONFIG)"
+# V0.11: the JARVIS-owned test fixture for Computer Use (a separate bundle with its own identifier; never part of Jarvis.app).
+FIX="build/JarvisFixture.app"
+rm -rf "$FIX"
+mkdir -p "$FIX/Contents/MacOS" "$FIX/Contents/Resources"
+cp "$BIN_DIR/JarvisFixture" "$FIX/Contents/MacOS/JarvisFixture"
+cp Resources/FixtureInfo.plist "$FIX/Contents/Info.plist"
+codesign --force --sign - "$FIX" >/dev/null
+codesign --verify --strict "$FIX"
+
+echo "Built $APP ($CONFIG) and $FIX"

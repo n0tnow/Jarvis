@@ -44,6 +44,7 @@ enum CommandRouter {
         "system": (.section(.system), .en), "sistem": (.section(.system), .tr), "sistemi": (.section(.system), .tr), "sisteme": (.section(.system), .tr),
         "memory": (.section(.memory), .en), "memories": (.section(.memory), .en),
         "hafiza": (.section(.memory), .tr), "hafizayi": (.section(.memory), .tr), "hafizaya": (.section(.memory), .tr), "bellek": (.section(.memory), .tr), "bellegi": (.section(.memory), .tr), "bellege": (.section(.memory), .tr),
+        "computer use": (.section(.computer), .en), "computer control": (.section(.computer), .en), "bilgisayar kontrolu": (.section(.computer), .tr),
         "dashboard": (.section(.dashboard), .en), "dashboardu": (.section(.dashboard), .tr), "home": (.section(.dashboard), .en), "overview": (.section(.dashboard), .en),
         "ana ekran": (.section(.dashboard), .tr), "ana ekrana": (.section(.dashboard), .tr), "ana sayfa": (.section(.dashboard), .tr), "kontrol paneli": (.section(.dashboard), .tr), "panel": (.section(.dashboard), .tr),
         "ana ekrani": (.section(.dashboard), .tr), "ana sayfayi": (.section(.dashboard), .tr), "kontrol panelini": (.section(.dashboard), .tr), "paneli": (.section(.dashboard), .tr),

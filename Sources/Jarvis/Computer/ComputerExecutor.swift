@@ -23,14 +23,20 @@ final class ComputerStopToken: @unchecked Sendable {
 /// Permission-free reading of "is the user typing/clicking right now?" (seconds since the last real input event of the session).
 protocol UserActivityProbe: Sendable {
     func secondsSinceKeyOrClick() -> TimeInterval
+    /// Includes plain pointer movement (a coordinate click moves the pointer, so it must not happen while the user is using the mouse).
+    func secondsSinceAnyPointerOrKeyInput() -> TimeInterval
 }
 struct SystemActivityProbe: UserActivityProbe {
+    func secondsSinceAnyPointerOrKeyInput() -> TimeInterval {
+        let s = CGEventSourceStateID.combinedSessionState
+        return [CGEventType.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel, .mouseMoved, .leftMouseDragged].map { CGEventSource.secondsSinceLastEventType(s, eventType: $0) }.min() ?? .infinity
+    }
     func secondsSinceKeyOrClick() -> TimeInterval {
         let s = CGEventSourceStateID.combinedSessionState
         return [CGEventType.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel].map { CGEventSource.secondsSinceLastEventType(s, eventType: $0) }.min() ?? .infinity
     }
 }
-struct NoUserActivity: UserActivityProbe { func secondsSinceKeyOrClick() -> TimeInterval { .infinity } }
+struct NoUserActivity: UserActivityProbe { func secondsSinceKeyOrClick() -> TimeInterval { .infinity }; func secondsSinceAnyPointerOrKeyInput() -> TimeInterval { .infinity } }
 
 struct ComputerApprovalRequest: Sendable {
     var action: ComputerAction
@@ -57,6 +63,9 @@ final class ComputerExecutor {
     var launchTimeout = ComputerLimits.launchTimeout
     var windowTimeout = ComputerLimits.windowTimeout
     var verifyTimeout = ComputerLimits.verifyTimeout
+    /// Metadata hooks for the session record (counts and sizes only).
+    var observed: (AXSnapshot) -> Void = { _ in }
+    var screenObserved: (ScreenObservation) -> Void = { _ in }
     var interferenceGrace: TimeInterval = 0.35
     var interferenceWait: TimeInterval = 2.5
 
@@ -119,9 +128,11 @@ final class ComputerExecutor {
         var approvalID: UUID?
         var textClass: TextClass?
         var textLength: Int?
+        var category: FailureCategory?
     }
 
     private func finish(_ r: inout Run, _ status: ActionStatus, detail: String, category: FailureCategory? = nil) -> ActionResult {
+        r.category = category
         let risk = r.assessment?.risk ?? .low
         if status == .verified, let v = r.verification { events(.verificationPassed(r.action.summary)); _ = v }
         else if status == .notVerified { events(.verificationFailed(r.action.summary)) }
@@ -129,7 +140,7 @@ final class ComputerExecutor {
         return ActionResult(action: r.action, status: status, mechanism: r.mechanism, risk: risk, resolution: r.resolution, verification: r.verification,
                             detail: OutputSanitizer.sanitize(String(detail.prefix(500))), attempts: r.attempts, durationMS: Date().timeIntervalSince(r.started) * 1000, approvalID: r.approvalID,
                             app: r.app?.name, window: r.window.map { OutputSanitizer.sanitize(String($0.prefix(80))) }, targetDescription: OutputSanitizer.sanitize(String((r.target.isEmpty ? r.action.target.description : r.target).prefix(120))),
-                            textClass: r.textClass, textLength: r.textLength)
+                            textClass: r.textClass, textLength: r.textLength, category: r.category)
     }
 
     // MARK: Waiting (conditions, never fixed sleeps)
@@ -201,7 +212,24 @@ final class ComputerExecutor {
         let s = try await backend.snapshot(pid: app.pid, scope: scope, budget: AXBudget())
         lastSnapshot = s
         events(.observed(app: app.name, windows: s.windows.count, nodes: s.nodeCount, truncated: s.truncated))
+        observed(s)
         return s
+    }
+
+    /// Which window to look at: the one the user named (several similar windows are told apart by title, never by z-order), else the dialog / front window.
+    private func scope(for app: ApplicationSnapshot, windowTitle: String?) async -> (scope: SnapshotScope, state: ResolutionState?, reason: String?) {
+        guard let t = windowTitle, !t.isEmpty else { return (.modalFirst, nil, nil) }
+        let res = TargetResolver.resolveWindow(title: t, in: await backend.windows(pid: app.pid))
+        guard res.state.isActionable, let w = res.window else { return (.modalFirst, res.state, res.reason) }
+        return (.window(index: w.index), res.state, nil)
+    }
+
+    /// Would an action based on `obs` still be legal right now? (the live test and the vision path use the same answer)
+    func checkStale(_ obs: ScreenObservation) async -> StaleVerdict {
+        var fp: UInt64?
+        if let cid = obs.cgWindowID { fp = (try? await backend.captureWindow(cgWindowID: cid, windowFrame: obs.windowFrame))?.fingerprint }
+        let wins = await backend.windows(pid: obs.pid)
+        return StaleCheck.validate(obs, currentWindow: wins.first { $0.cgWindowID == obs.cgWindowID } ?? wins.first { $0.title == obs.windowTitle }, frontmostPID: await backend.frontmostApplication()?.pid, currentFingerprint: fp)
     }
 
     private func observe(_ r: inout Run) async -> ActionResult {
@@ -223,6 +251,16 @@ final class ComputerExecutor {
         let wins = s.windows.prefix(4).map { "“\($0.title.prefix(40))”\($0.isModal ? " (dialog)" : "")\($0.isMinimized ? " (minimized)" : "")" }.joined(separator: ", ")
         let controls = s.elements.filter { ["button", "radiobutton", "checkbox", "tab", "popupbutton", "menubutton"].contains(ComputerPolicy.shortRole($0.role)) && !$0.title.isEmpty }.prefix(10).map { $0.title.prefix(24) }.joined(separator: ", ")
         return "\(s.app.name): \(s.windows.count) window\(s.windows.count == 1 ? "" : "s") [\(wins)]; \(s.nodeCount) elements\(s.truncated ? " (bounded)" : "")" + (controls.isEmpty ? "" : "; controls: \(controls)")
+    }
+
+    /// What a planning model may see: window titles and control LABELS (bounded). No document text, no values of text fields, nothing from secure fields.
+    func planningObservation(_ s: AXSnapshot) -> String {
+        var l = [summary(of: s)]
+        let interesting = s.elements.filter { !$0.isSecure && !$0.title.isEmpty && ["button", "radiobutton", "checkbox", "tab", "popupbutton", "menubutton", "row", "outlinerow", "textfield", "link", "statictext", "menuitem", "disclosuretriangle"].contains(ComputerPolicy.shortRole($0.role)) }
+        for e in interesting.prefix(60) {
+            l.append("- \(ComputerPolicy.shortRole(e.role)) “\(e.title.prefix(40))”\(e.selected ? " [selected]" : "")\(e.enabled ? "" : " [disabled]")\(e.inModal ? " [in dialog]" : "")\(e.ancestorTitles.first.map { " (in \($0.prefix(24)))" } ?? "")")
+        }
+        return l.joined(separator: "\n")
     }
 
     // MARK: Window actions
@@ -329,7 +367,9 @@ final class ComputerExecutor {
             if stop.isStopped { return finish(&r, .cancelled, detail: "stopped") }
             r.attempts = attempt
             let snap: AXSnapshot
-            do { snap = try await snapshot(of: app) }
+            let sc = await scope(for: app, windowTitle: a.target.windowTitle)
+            if let st = sc.state, !st.isActionable { r.resolution = st; return finish(&r, st == .ambiguous ? .ambiguous : .notFound, detail: sc.reason ?? "the window was not found") }
+            do { snap = try await snapshot(of: app, scope: sc.scope) }
             catch let e as BackendError { return finish(&r, e == .timedOut ? .appUnresponsive : e == .permissionDenied ? .permissionRequired : .failed, detail: "\(e)") }
             catch { return finish(&r, .failed, detail: "\(error)") }
             r.window = snap.window?.title
@@ -382,7 +422,7 @@ final class ComputerExecutor {
             guard await yieldToUser(&r, app: app) else { return finish(&r, .userInterference, detail: "you were typing or clicking in \(app.name); JARVIS stepped back") }
             // fingerprint: still the same control right before acting?
             let fp = ActionFingerprint.of(el, in: snap)
-            if let fresh = try? await backend.snapshot(pid: app.pid, scope: .modalFirst, budget: AXBudget()), let again = TargetResolver.resolve(target, in: fresh).element {
+            if let fresh = try? await backend.snapshot(pid: app.pid, scope: sc.scope, budget: AXBudget()), let again = TargetResolver.resolve(target, in: fresh).element {
                 if case .stale(let why) = fp.stillValid(in: fresh, element: again) { events(.targetResolved("\(el.title)", .stale)); lastError = why; if attempt <= maxRetries { continue }; return finish(&r, .stale, detail: why) }
                 lastSnapshot = fresh
                 return await actOnElement(&r, app: app, element: again, before: fresh, assessment: assessment)
@@ -412,7 +452,7 @@ final class ComputerExecutor {
                 return finish(&r, e == .timedOut ? .appUnresponsive : e == .permissionDenied ? .permissionRequired : .failed, detail: "\(e)")
             } catch { return finish(&r, .failed, detail: "\(error)") }
             events(.actionExecuted(a.summary, .accessibility))
-            let v = await verify(checks, app: app, before: currentBefore)
+            let v = await verify(checks, app: app, before: currentBefore, windowTitle: a.target.windowTitle)
             r.verification = v
             if v.passed { return finish(&r, .verified, detail: "pressed “\(el.title.prefix(40))” and verified") }
             if stop.isStopped { return finish(&r, .cancelled, detail: "stopped") }
@@ -421,7 +461,7 @@ final class ComputerExecutor {
             guard let fresh = try? await snapshot(of: app), let again = TargetResolver.resolve(a.target, in: fresh).element, ActionFingerprint.of(el, in: before).stillValid(in: fresh, element: again) == .fresh else {
                 return finish(&r, .notVerified, detail: v.detail + " (the control changed, so JARVIS did not repeat the action)")
             }
-            if idem == .verifyFirst, await verify(checks, app: app, before: currentBefore, timeout: 0.01).passed { r.verification = VerificationResult(passed: true, checks: v.checks, detail: "the state had already changed"); return finish(&r, .verified, detail: "verified") }
+            if idem == .verifyFirst, await verify(checks, app: app, before: currentBefore, timeout: 0.01, windowTitle: a.target.windowTitle).passed { r.verification = VerificationResult(passed: true, checks: v.checks, detail: "the state had already changed"); return finish(&r, .verified, detail: "verified") }
             currentElement = again; currentBefore = fresh
         }
     }
@@ -474,7 +514,7 @@ final class ComputerExecutor {
             events(.actionExecuted(a.summary, .accessibility))
         } catch let e as BackendError { return finish(&r, e == .timedOut ? .appUnresponsive : e == .permissionDenied ? .permissionRequired : e == .elementGone ? .notFound : .failed, detail: "\(e)") }
         catch { return finish(&r, .failed, detail: "\(error)") }
-        let v = await verify(effectiveChecks(a), app: app, before: before)
+        let v = await verify(effectiveChecks(a), app: app, before: before, windowTitle: a.target.windowTitle)
         r.verification = v
         return v.passed ? finish(&r, .verified, detail: "chose \(r.target)") : finish(&r, .notVerified, detail: v.detail)
     }
@@ -494,7 +534,9 @@ final class ComputerExecutor {
         let a = r.action
         guard let app = await findApp(a.target.app) else { _ = finish(&r, .notFound, detail: "\(a.target.app.display) is not running"); return nil }
         r.app = app
-        guard let snap = try? await snapshot(of: app) else { return nil }
+        let sc = await scope(for: app, windowTitle: a.target.windowTitle)
+        if let st = sc.state, !st.isActionable { r.resolution = st; return nil }
+        guard let snap = try? await snapshot(of: app, scope: sc.scope) else { return nil }
         r.window = snap.window?.title
         let res = TargetResolver.resolve(a.target, in: snap)
         r.resolution = res.state
@@ -591,7 +633,7 @@ final class ComputerExecutor {
         r.attempts = 1
         do { try await backend.postKey(chord, toPID: app.pid) } catch let e as BackendError { return finish(&r, .failed, detail: "\(e)") } catch { return finish(&r, .failed, detail: "\(error)") }
         events(.actionExecuted(a.summary, .accessibility))
-        let v = await verify(effectiveChecks(a), app: app, before: before)
+        let v = await verify(effectiveChecks(a), app: app, before: before, windowTitle: a.target.windowTitle)
         r.verification = v
         return v.passed ? finish(&r, .verified, detail: "pressed \(chord.display)") : finish(&r, .notVerified, detail: v.detail)
     }
@@ -605,7 +647,9 @@ final class ComputerExecutor {
         let spec = a.scroll ?? ScrollSpec()
         let limit = min(max(1, spec.maxAttempts), ComputerLimits.maxScrollAttempts)
         var snap: AXSnapshot
-        do { snap = try await snapshot(of: app) } catch { return finish(&r, .failed, detail: "\(error)") }
+        let sc = await scope(for: app, windowTitle: a.target.windowTitle)
+        if let st = sc.state, !st.isActionable { r.resolution = st; return finish(&r, st == .ambiguous ? .ambiguous : .notFound, detail: sc.reason ?? "the window was not found") }
+        do { snap = try await snapshot(of: app, scope: sc.scope) } catch { return finish(&r, .failed, detail: "\(error)") }
         r.window = snap.window?.title
         func area(_ s: AXSnapshot) -> UIElementSnapshot? {
             if let t = a.target.within {
@@ -618,34 +662,72 @@ final class ComputerExecutor {
         r.target = "scroll area"
         // what are we looking for? (a labelled element becoming visible, or simply "the content moved")
         let wantTitle = a.target.title
+        /// An element that exists in the tree is not necessarily VISIBLE: it must lie (mostly) inside the scroll area's current frame.
+        func visible(_ e: UIElementSnapshot, in s: AXSnapshot) -> Bool {
+            guard let ef = e.frame else { return true }
+            guard let af = (area(s)?.frame) ?? scrollArea.frame else { return true }
+            let overlap = ef.intersection(af)
+            return !overlap.isNull && overlap.height >= ef.height * 0.6 && overlap.width >= min(ef.width, af.width) * 0.3
+        }
         func found(_ s: AXSnapshot) -> UIElementSnapshot? {
+            guard let t = wantTitle else { return nil }
+            var tgt = a.target; tgt.title = t; tgt.within = nil
+            let res = TargetResolver.resolve(tgt, in: s)
+            guard res.state.isActionable, let e = res.element, visible(e, in: s) else { return nil }
+            return e
+        }
+        /// The element exists but is scrolled out of view: ask the application to bring it into view natively first (AXScrollToVisible).
+        func existsOffscreen(_ s: AXSnapshot) -> UIElementSnapshot? {
             guard let t = wantTitle else { return nil }
             var tgt = a.target; tgt.title = t; tgt.within = nil
             let res = TargetResolver.resolve(tgt, in: s)
             return res.state.isActionable ? res.element : nil
         }
-        if let hit = found(snap) { try? await backend.perform(.scrollToVisible, on: hit.handle); r.verification = VerificationResult(passed: true, checks: ["“\(hit.title.prefix(30))” is present"], detail: "already present"); r.attempts = 0; return finish(&r, .verified, detail: "already visible") }
+        if let hit = found(snap) { r.verification = VerificationResult(passed: true, checks: ["“\(hit.title.prefix(30))” is visible"], detail: "already visible"); r.attempts = 0; return finish(&r, .verified, detail: "already visible") }
         guard await yieldToUser(&r, app: app) else { return finish(&r, .userInterference, detail: "you were scrolling or typing; JARVIS stepped back") }
+        // 1. the native way: the element exists but is scrolled out of view → move the scroll area's own scroll bar by the distance the geometry says (one jump, then verify)
+        func extent(_ s: AXSnapshot, _ a: UIElementSnapshot) -> CGFloat? {
+            guard !a.title.isEmpty else { return nil }
+            let inside = s.elements.filter { $0.id != a.id && $0.ancestorTitles.contains(a.title) }.compactMap(\.frame)
+            guard let lo = inside.map(\.minY).min(), let hi = inside.map(\.maxY).max() else { return nil }
+            return hi - lo
+        }
+        if !snap.truncated, let off = existsOffscreen(snap), let ef = off.frame, let content = extent(snap, scrollArea), content > frame.height {     // (a bounded tree cannot tell how long the content is)
+            r.attempts = 1
+            let needed = Double((ef.midY - frame.midY) / (content - frame.height))
+            if abs(needed) > 0.001, (try? await backend.scrollBy(scrollArea.handle, direction: needed > 0 ? .down : .up, step: abs(needed))) != nil {
+                events(.actionExecuted("Scroll “\(off.title.prefix(24))” into view", .accessibility))
+                var seen: UIElementSnapshot?
+                let ok = await waitUntil(verifyTimeout) { if let s2 = try? await self.snapshot(of: app, scope: sc.scope), let e = found(s2) { seen = e; return true }; return false }
+                if ok, let seen { r.verification = VerificationResult(passed: true, checks: ["“\(seen.title.prefix(30))” is visible"], detail: "scrolled into view through the scroll bar"); return finish(&r, .verified, detail: "the scroll bar brought “\(seen.title.prefix(30))” into view") }
+            }
+        }
         let centre = CGPoint(x: frame.midX, y: frame.midY)
-        var lastHash = snap.stateHash
+        var lastHash = snap.hash(includeFrames: true)
         for i in 1...limit {
             if stop.isStopped { return finish(&r, .cancelled, detail: "stopped") }
             r.attempts = i
-            do { try await backend.postScroll(direction: spec.direction, lines: 8, atGlobal: centre, toPID: app.pid) } catch { return finish(&r, .failed, detail: "\(error)") }
+            // the native way first: the scroll area's own scroll bar; synthetic wheel events only when it has none
+            var scrolledNatively = false
+            if let ar = area(snap) {
+                if let _ = try? await backend.scrollBy(ar.handle, direction: spec.direction, step: 0.12) { scrolledNatively = true }
+            }
+            if !scrolledNatively {
+                do { try await backend.postScroll(direction: spec.direction, lines: 8, atGlobal: centre, toPID: app.pid) } catch { return finish(&r, .failed, detail: "\(error)") }
+            }
             events(.actionExecuted("Scroll \(spec.direction.rawValue) \(i)/\(limit)", .accessibility))
             await pause(0.15)
-            guard let now = try? await snapshot(of: app) else { return finish(&r, .failed, detail: "could not observe after scrolling") }
+            guard let now = try? await snapshot(of: app, scope: sc.scope) else { return finish(&r, .failed, detail: "could not observe after scrolling") }
             snap = now
             if let hit = found(now) {
-                try? await backend.perform(.scrollToVisible, on: hit.handle)
                 r.verification = VerificationResult(passed: true, checks: ["“\(hit.title.prefix(30))” found after \(i) scroll(s)"], detail: "found")
                 return finish(&r, .verified, detail: "found after \(i) scroll\(i == 1 ? "" : "s")")
             }
-            if now.stateHash == lastHash {                                      // nothing moved: the end of the content — stop, do not keep scrolling
+            if now.hash(includeFrames: true) == lastHash {                                      // nothing moved: the end of the content — stop, do not keep scrolling
                 r.verification = VerificationResult(passed: wantTitle == nil && i > 1, checks: ["the content stopped moving"], detail: "the end of the content")
                 return wantTitle == nil ? finish(&r, i > 1 ? .verified : .notVerified, detail: "reached the end of the content") : finish(&r, .notFound, detail: "“\(wantTitle ?? "")” was not found before the content ended")
             }
-            lastHash = now.stateHash
+            lastHash = now.hash(includeFrames: true)
         }
         if wantTitle == nil { r.verification = VerificationResult(passed: true, checks: ["scrolled \(limit) time(s)"], detail: "scrolled"); return finish(&r, .verified, detail: "scrolled \(limit) times") }
         return finish(&r, .notFound, detail: "“\(wantTitle ?? "")” was not found within \(limit) scroll steps")
@@ -716,6 +798,7 @@ final class ComputerExecutor {
         let obs = ScreenObservation(pid: app.pid, bundleID: app.bundleID, windowTitle: w.title, windowFrame: w.frame, cgWindowID: id, scale: cap.scale,
                                     pixelSize: CGSize(width: cap.image.width, height: cap.image.height), capturedAt: cap.capturedAt, fingerprint: cap.fingerprint, generation: (lastScreen?.generation ?? 0) + 1)
         lastScreen = obs
+        screenObserved(obs)
         return (obs, cap)
     }
 
@@ -781,10 +864,17 @@ final class ComputerExecutor {
             let verdict = StaleCheck.validate(obs, currentWindow: windowsNow.first { $0.cgWindowID == obs.cgWindowID } ?? windowsNow.first { $0.title == obs.windowTitle },
                                               frontmostPID: await backend.frontmostApplication()?.pid, currentFingerprint: nowFingerprint)
             if case .stale(let why) = verdict { events(.targetResolved(label, .stale)); r.resolution = .stale; lastWhy = why; continue }
-            guard await yieldToUser(&r, app: app) else { return finish(&r, .userInterference, detail: "you were typing or clicking; JARVIS stepped back") }
+            // occlusion: the click goes to whatever window is on top at that point — it must be the one that was captured
+            if let expected = obs.cgWindowID, await backend.topWindowID(atGlobal: global) != expected {
+                events(.targetResolved(label, .stale)); r.resolution = .stale; lastWhy = "another window covers that part of \(app.name)"; continue
+            }
+            // a coordinate click moves the pointer: not while the user is using the mouse or the keyboard
+            var calm = false
+            for _ in 0..<Int(interferenceWait / 0.15) + 1 { if activity.secondsSinceAnyPointerOrKeyInput() >= interferenceGrace { calm = true; break }; if stop.isStopped { break }; events(.userInterference("you are using the mouse or keyboard")); await pause(0.15) }
+            guard calm else { return finish(&r, stop.isStopped ? .cancelled : .userInterference, detail: stop.isStopped ? "stopped" : "you were using the mouse or keyboard; JARVIS stepped back") }
             if stop.isStopped { return finish(&r, .cancelled, detail: "stopped") }
             r.mechanism = .rawCoordinates
-            do { try await backend.postClick(atGlobal: global, toPID: app.pid) } catch { return finish(&r, .failed, detail: "\(error)") }
+            do { try await backend.postClick(atGlobal: global) } catch { return finish(&r, .failed, detail: "\(error)") }
             events(.actionExecuted(a.summary, .rawCoordinates))
             // verify: the declared postcondition, or at least that the window changed
             let beforeSnap = lastSnapshot
@@ -807,7 +897,7 @@ final class ComputerExecutor {
 
     // MARK: Verification
 
-    func verify(_ checks: [Check], app: ApplicationSnapshot?, before: AXSnapshot?, timeout: TimeInterval? = nil) async -> VerificationResult {
+    func verify(_ checks: [Check], app: ApplicationSnapshot?, before: AXSnapshot?, timeout: TimeInterval? = nil, windowTitle: String? = nil) async -> VerificationResult {
         guard !checks.isEmpty else { return VerificationResult(passed: true, checks: [], detail: "no postcondition declared") }
         let beforeTitles = Set((before?.windows ?? []).map(\.title))
         let beforeCount = before?.windows.count ?? 0
@@ -815,40 +905,48 @@ final class ComputerExecutor {
         var failures: [String] = []
         let ok = await waitUntil(timeout ?? verifyTimeout) {
             failures = []
-            for c in checks { if !(await self.evaluate(c, app: app, beforeTitles: beforeTitles, beforeCount: beforeCount, beforeHash: beforeHash)) { failures.append(c.summary) } }
+            for c in checks { if !(await self.evaluate(c, app: app, beforeTitles: beforeTitles, beforeCount: beforeCount, beforeHash: beforeHash, windowTitle: windowTitle)) { failures.append(c.summary) } }
             return failures.isEmpty
         }
         return VerificationResult(passed: ok, checks: checks.map(\.summary), detail: ok ? "all postconditions hold" : "not observed: " + failures.joined(separator: "; "))
     }
 
-    private func evaluate(_ c: Check, app: ApplicationSnapshot?, beforeTitles: Set<String>, beforeCount: Int, beforeHash: Int?) async -> Bool {
+    private func evaluate(_ c: Check, app: ApplicationSnapshot?, beforeTitles: Set<String>, beforeCount: Int, beforeHash: Int?, windowTitle: String?) async -> Bool {
+        /// element checks look at the SAME window the action was about (an application can have several)
+        func look(_ a: ApplicationSnapshot) async -> AXSnapshot? {
+            let sc = await scope(for: a, windowTitle: windowTitle)
+            return try? await snapshot(of: a, scope: sc.state.map { $0.isActionable } == false ? .modalFirst : sc.scope)
+        }
+        // a check that names no bundle id means "the application this step is about"
+        func target(_ b: String) async -> ApplicationSnapshot? { b.isEmpty ? app : await findApp(AppRef(bundleID: b)) }
         switch c {
-        case .appRunning(let b): return await findApp(AppRef(bundleID: b)) != nil
-        case .appFrontmost(let b): return await backend.frontmostApplication().map { AppRef(bundleID: b).matches($0) } ?? false
+        case .appRunning(let b): return await target(b) != nil
+        case .appFrontmost(let b): return await backend.frontmostApplication().map { f in b.isEmpty ? f.pid == app?.pid : AppRef(bundleID: b).matches(f) } ?? false
         case .windowExists(let b, let t):
-            guard let a = await findApp(AppRef(bundleID: b)) else { return false }
+            guard let a = await target(b) else { return false }
             return (await backend.windows(pid: a.pid)).contains { ComputerText.fold($0.title).contains(ComputerText.fold(t)) }
         case .windowGone(let b, let t):
-            guard let a = await findApp(AppRef(bundleID: b)) else { return true }
+            guard let a = await target(b) else { return true }
             return !(await backend.windows(pid: a.pid)).contains { ComputerText.fold($0.title).contains(ComputerText.fold(t)) }
         case .elementExists(let b, let role, let title):
-            guard let a = await findApp(AppRef(bundleID: b)), let s = try? await snapshot(of: a) else { return false }
+            guard let a = await target(b), let s = await look(a) else { return false }
             return TargetResolver.resolve(ActionTarget(app: AppRef(bundleID: b), role: role, title: title), in: s).state != .notFound
         case .elementValue(let b, let role, let title, let equals):
-            guard let a = await findApp(AppRef(bundleID: b)), let s = try? await snapshot(of: a) else { return false }
+            guard let a = await target(b), let s = await look(a) else { return false }
             let res = TargetResolver.resolve(ActionTarget(app: AppRef(bundleID: b), role: role, title: title), in: s)
             guard let e = res.element, !e.isSecure else { return false }
             if e.value == equals { return true }
             let live = (try? await backend.readValue(e.handle)) ?? nil
             return live == equals
         case .elementSelected(let b, let role, let title):
-            guard let a = await findApp(AppRef(bundleID: b)), let s = try? await snapshot(of: a) else { return false }
-            return TargetResolver.resolve(ActionTarget(app: AppRef(bundleID: b), role: role, title: title), in: s).element?.selected ?? false
+            guard let a = await target(b), let s = await look(a) else { return false }
+            let e = TargetResolver.resolve(ActionTarget(app: AppRef(bundleID: b), role: role, title: title), in: s).element
+            return (e?.selected ?? false) || e?.value == "1"
         case .stateChanged:
-            guard let a = app, let s = try? await snapshot(of: a), let h = beforeHash else { return true }
+            guard let a = app, let s = await look(a), let h = beforeHash else { return true }
             return s.stateHash != h
         case .newWindow(let b):
-            guard let a = await findApp(AppRef(bundleID: b)) else { return false }
+            guard let a = await target(b) else { return false }
             let now = await backend.windows(pid: a.pid)
             return now.count > beforeCount || now.contains { !beforeTitles.contains($0.title) }
         case .finderShows(let name):

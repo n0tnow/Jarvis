@@ -160,7 +160,7 @@ struct ComputerStepParams: Codable, Equatable, Sendable {
 enum ComputerLimits {
     static let maxActionsPerBatch = 5
     static let maxRounds = 4
-    static let maxScrollAttempts = 6
+    static let maxScrollAttempts = 8
     static let maxRetries = 2
     static let maxTextLength = 2_000
     static let maxTreeNodes = 250
@@ -260,11 +260,16 @@ struct AXSnapshot: Sendable {
     var nodeCount: Int { elements.count }
 
     /// A cheap fingerprint of what is visible (labels/values/focus), for "did anything change?" checks. Contains no text.
-    var stateHash: Int {
+    var stateHash: Int { hash(includeFrames: false) }
+    /// With frames: also notices content that MOVED (scrolling) without any label changing.
+    func hash(includeFrames: Bool) -> Int {
         var h = Hasher()
         h.combine(windows.count)
         for w in windows { h.combine(w.title); h.combine(w.isFocused); h.combine(w.isMinimized); h.combine(Int(w.frame.origin.x)); h.combine(Int(w.frame.origin.y)) }
-        for e in elements { h.combine(e.role); h.combine(e.title); h.combine(e.value); h.combine(e.selected); h.combine(e.enabled); h.combine(e.focused) }
+        for e in elements {
+            h.combine(e.role); h.combine(e.title); h.combine(e.value); h.combine(e.selected); h.combine(e.enabled); h.combine(e.focused)
+            if includeFrames, let f = e.frame { h.combine(Int(f.minX)); h.combine(Int(f.minY)) }
+        }
         return h.finalize()
     }
 }
@@ -346,6 +351,8 @@ struct ActionResult: Sendable {
     var targetDescription: String
     var textClass: TextClass?
     var textLength: Int?
+    /// Why a blocked/failed action failed, when a more specific reason than the status implies is known (secure field → interaction required).
+    var category: FailureCategory? = nil
 }
 
 // MARK: - Events (bounded; never AX dumps or text)

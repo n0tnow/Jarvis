@@ -11,15 +11,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
-        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.memoryLiveTest && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
+        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.memoryLiveTest && !options.computerLiveTest && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
         let liveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true)
             : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true)
             : (options.proactiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-proactive", isDirectory: true)
             : (options.unityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-unity", isDirectory: true)
+            : (options.computerLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.computerChild != nil ? "live-test-computer-child" : "live-test-computer", isDirectory: true)
             : (options.memoryLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.memoryChild != nil ? "live-test-memory-child" : "live-test-memory", isDirectory: true)
             : (options.researchLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.researchChild != nil ? "live-test-research-child" : "live-test-research", isDirectory: true)
             : (options.voiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.voiceQuitChild ? "live-test-voice-child" : "live-test-voice", isDirectory: true)
-            : (options.naturalVoiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.naturalChild ? "live-test-natural-child" : "live-test-natural", isDirectory: true) : nil)))))))
+            : (options.naturalVoiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.naturalChild ? "live-test-natural-child" : "live-test-natural", isDirectory: true) : nil))))))))
         // The natural-voice live test runs the real stack in a closed acoustic loop (scripted microphone + simulated speaker); nothing else ever gets a rig.
         let rig: VoiceTestRig? = options.naturalVoiceLiveTest ? VoiceTestRig() : nil
         context = AppContext(stubIntelligence: stubbed, dataDirectory: liveData, voiceRig: rig)
@@ -89,6 +90,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if options.memoryChild == "quit" { Task { await MemoryLiveTest.runQuitChild(context: context) } }
             else { Task { await MemoryLiveTest.run(context: context, captureDirectory: dir, repoRoot: repo) } }
         }
+        if options.computerLiveTest {
+            let context = context!, dir = options.liveDirectory ?? "captures", repo = options.computerRepo, child = options.computerChild, statePath = options.computerFixtureState ?? ""
+            if child == "start" { Task { await ComputerLiveTest.runChildStart(context: context, statePath: statePath) } }
+            else if child == "check" { Task { await ComputerLiveTest.runChildCheck(context: context, statePath: statePath) } }
+            else { Task { await ComputerLiveTest.run(context: context, captureDirectory: dir, repoRoot: repo) } }
+        }
         if options.researchLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures", child = options.researchChild
             if child == "start" { Task { await ResearchLiveTest.runChildStart(context: context) } }
@@ -124,7 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await DevCapture.run(directory: directory, context: context) }
         }
         // Find out which engines are actually usable (event-driven, once; no polling). Stubbed runs never touch real providers.
-        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.voiceLiveTest && !options.naturalVoiceLiveTest {
+        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.computerLiveTest && !options.voiceLiveTest && !options.naturalVoiceLiveTest {
             let context = context!
             Task { await context.refreshIntelligence(includeOpenCode: false) }     // OpenCode is read lazily (may start its background service)
         }

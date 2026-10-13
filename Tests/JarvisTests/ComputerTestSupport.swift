@@ -231,7 +231,16 @@ final class FakeUI: UIBackend, @unchecked Sendable {
     }
     var onScroll: ((FakeUI, Int32) -> Void)?
     var onClick: ((FakeUI, CGPoint, Int32) -> Void)?
-    func postClick(atGlobal p: CGPoint, toPID pid: Int32) async throws { beforeCall?("click"); record("click \(Int(p.x)),\(Int(p.y)) → \(pid)"); onClick?(self, p, pid) }
+    func postClick(atGlobal p: CGPoint) async throws { beforeCall?("click"); let pid = frontmost ?? 0; record("click \(Int(p.x)),\(Int(p.y)) → \(pid)"); onClick?(self, p, pid) }
+    /// Topmost window at a point: the front application's windows containing it (a test may override it to simulate occlusion).
+    var topWindowOverride: UInt32??
+    func topWindowID(atGlobal p: CGPoint) async -> UInt32? {
+        if let o = topWindowOverride { return o }
+        guard let f = frontmost, let a = apps[f] else { return nil }
+        for (i, w) in a.windows.enumerated() where !w.isMinimized && w.frame.contains(p) { return w.cgID ?? UInt32(1000 + Int(f) * 10 + i) }
+        return nil
+    }
+    func scrollBy(_ h: ElementHandle, direction: ScrollDirection, step: Double) async throws -> Double { throw BackendError.unsupported("the fake has no scroll bar") }
 
     // MARK: Workspace
 

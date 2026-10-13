@@ -57,6 +57,10 @@ final class TaskEngine {
     var unity: UnityService?
     /// V0.9: web research + acquisition services (nil = research/acquisition steps fail truthfully with "not available").
     var web: ResearchServices?
+    /// V0.11: Computer Use (nil = computer steps fail truthfully with "not available"). Owns the backend, the emergency stop and the session timeline.
+    var computer: ComputerRuntime?
+    /// Settings → Computer Use: the master switch (a closure so a change applies to the next task at once).
+    @ObservationIgnored var computerAllowed: () -> Bool = { true }
     /// Settings → Web research: the master switch and the browser tier switch (closures so a change applies to the next task at once).
     @ObservationIgnored var webAllowed: () -> Bool = { true }
     @ObservationIgnored var browserTierAllowed: () -> Bool = { true }
@@ -130,6 +134,8 @@ final class TaskEngine {
         var unityProposalRuns: [String: UUID] = [:]
         /// V0.9: research / acquisition state of a web task (nil for every other task).
         var research: ResearchRuntime?
+        /// V0.11: the live state of a computer task (executor, stop token, session bookkeeping); nil for every other task.
+        var computer: ComputerTaskState?
 
         init(record: TaskRecord, steps: [TaskStepRecord], workspace: WorkspaceGuard, tools: ProjectTools, profiles: ProjectProfiles) {
             self.record = record; self.steps = steps; self.workspace = workspace; self.tools = tools; self.profiles = profiles
@@ -162,13 +168,13 @@ final class TaskEngine {
         if let id, (try? repository.engineTask(id)) != nil { return .success(id) }
         if activeCount >= limits.maxActiveTasks { return .failure(.tooManyActiveTasks(activeCount)) }
         let ws: WorkspaceGuard
-        do { ws = kind.isWebTask ? try WorkspaceGuard(researchRoot: workspacePath) : try WorkspaceGuard(rootPath: workspacePath) } catch { return .failure(.workspace(String(describing: error))) }
+        do { ws = kind.usesEmptyWorkspace ? try WorkspaceGuard(researchRoot: workspacePath) : try WorkspaceGuard(rootPath: workspacePath) } catch { return .failure(.workspace(String(describing: error))) }
 
         let profile = TaskClassifier.profile(for: goal)
         var record = TaskRecord(id: id ?? UUID(), title: Self.makeTitle(title ?? goal), goal: String(goal.prefix(1500)), kind: kind)
         record.origin = origin; record.originTaskID = originTaskID; record.originOpportunityID = originOpportunityID; record.autonomyDepth = autonomyDepth; record.scope = scope
         record.inputChannel = inputChannel
-        record.category = kind == .development ? .repositoryModification : .research
+        record.category = kind == .development ? .repositoryModification : (kind == .computer ? .classification : .research)
         record.risk = destructiveRequested ? .high : (kind == .development || kind == .acquisition ? .medium : .low)
         record.destructiveRequested = destructiveRequested && kind == .development
         record.privacy = profile.privacy
@@ -417,6 +423,7 @@ final class TaskEngine {
             return
         }
         ctx.cancelRequested = true
+        ctx.computer?.token.stop("stopped by the user")                       // V0.11: an in-flight action sends nothing more, at once
         mutate(ctx) { $0.cancelRequested = true; $0.activity = "Stopping…" }
         // Waiting approvals resolve as cancelled.
         if let pending = (try? repository?.approvals(taskID: taskID))?.filter({ $0.state == .pending }) {

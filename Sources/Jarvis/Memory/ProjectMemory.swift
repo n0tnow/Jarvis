@@ -232,12 +232,13 @@ final class ProjectMemory: MemoryConversing {
     func taskFinished(_ v: TaskView, report: TaskReport?) async {
         guard isEnabled, prefs.memoryAutoLearnEnabled else { return }
         let t = v.task
-        let root: String? = t.kind.isWebTask ? prefs.projectRoot : (t.workspaceRoot ?? prefs.projectRoot)
+        let root: String? = t.kind.usesEmptyWorkspace ? prefs.projectRoot : (t.workspaceRoot ?? prefs.projectRoot)
         guard let project = await identity(forRoot: root) else { return }
         var rep = IngestReport()
         switch t.kind {
         case .research: if t.state == .completed { rep = ingestor.ingestResearch(sessionID: t.id, projectKey: project.key) }
         case .acquisition: rep = ingestor.ingestAcquisitions(projectKey: project.key)
+        case .computer: break                                   // V0.11: what an app looked like at a moment is a session observation, never project memory
         default:
             rep = ingestor.ingestTask(task: t, report: report, projectKey: project.key, projectRoot: project.rootPath)
             if t.kind == .development, t.state == .completed, prefs.memoryModelLearningEnabled, let r = report, r.filesChanged.count >= 2, let call = modelCall {

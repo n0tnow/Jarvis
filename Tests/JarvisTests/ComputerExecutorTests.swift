@@ -317,7 +317,7 @@ struct ComputerExecutorTests {
 
     @Test("the user typing in the same app: JARVIS steps back instead of fighting")
     func interference() async {
-        struct Busy: UserActivityProbe { func secondsSinceKeyOrClick() -> TimeInterval { 0.01 } }
+        struct Busy: UserActivityProbe { func secondsSinceKeyOrClick() -> TimeInterval { 0.01 }; func secondsSinceAnyPointerOrKeyInput() -> TimeInterval { 0.01 } }
         let r = CURig(); _ = FakeUI.demoApp(r.ui); r.ex.activity = Busy()
         let res = await r.act(.pressElement, app: "com.demo.app", role: "button", title: "Run")
         #expect(res.status == .userInterference && r.count("press") == 0)
@@ -385,7 +385,7 @@ struct ComputerExecutorTests {
     func scrollLimit() async {
         let (r, _) = scrollRig()
         var n = 0
-        r.ui.onScroll = { ui, pid in n += 1; ui.apps[pid]!.windows[0].elements.append(.init(role: "AXStaticText", title: "Row \(n)", actions: [])) }
+        r.ui.onScroll = { ui, pid in n += 1; ui.apps[pid]!.windows[0].elements.append(.init(role: "AXStaticText", title: "Row \(n)", actions: [], frame: CGRect(x: 130, y: 210, width: 80, height: 20))) }
         let endless = await r.act(.scroll, app: "com.demo.app", title: "Row 99", scroll: ScrollSpec(direction: .down, maxAttempts: 50))
         #expect(endless.status == .notFound && r.count("scroll") == ComputerLimits.maxScrollAttempts)
     }
@@ -394,7 +394,7 @@ struct ComputerExecutorTests {
     func scrollFinds() async {
         let (r, _) = scrollRig()
         var n = 0
-        r.ui.onScroll = { ui, pid in n += 1; ui.apps[pid]!.windows[0].elements.append(.init(role: "AXStaticText", title: "Row \(n)", actions: [])) }
+        r.ui.onScroll = { ui, pid in n += 1; ui.apps[pid]!.windows[0].elements.append(.init(role: "AXStaticText", title: "Row \(n)", actions: [], frame: CGRect(x: 130, y: 210, width: 80, height: 20))) }
         let hit = await r.act(.scroll, app: "com.demo.app", title: "Row 3", scroll: ScrollSpec(direction: .down, maxAttempts: 6))
         #expect(hit.status == .verified && r.count("scroll down") == 3)
     }

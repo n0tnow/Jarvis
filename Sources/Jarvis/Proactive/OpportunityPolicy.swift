@@ -49,6 +49,11 @@ enum OpportunityPolicy {
             reasons = ["webAcquisitionOrImport", "separateDecisionRequired"]
             decision = .requireApproval
         }
+        // 1c. COMPUTER USE (V0.11, DEC-153): driving other applications is never started by the proactive layer — at most it ASKS ("Xcode seems to need attention").
+        else if !a.requiredCapabilities.isDisjoint(with: [.controlComputer, .captureWindow]) {
+            reasons = ["computerUse", "separateDecisionRequired"]
+            decision = .requireApproval
+        }
         else if a.requiredCapabilities.contains(.researchWeb) {
             reasons = ["webResearch", "proposedNeverAutomatic"]
             decision = .propose

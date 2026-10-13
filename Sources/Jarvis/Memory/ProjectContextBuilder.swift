@@ -2,12 +2,12 @@ import Foundation
 
 /// Who the context is for. Each kind gets DIFFERENT memory, in a bounded budget (DEC-120/121).
 enum ContextAgentKind: String, Sendable, CaseIterable {
-    case coding, analysis, review, planner, research, unity, conversation, proactive
+    case coding, analysis, review, planner, research, unity, conversation, proactive, computer
 
     static func from(agentType: String) -> ContextAgentKind {
         switch agentType {
         case "CodingAgent": .coding; case "AnalysisAgent": .analysis; case "ReviewAgent": .review; case "PlannerAgent": .planner; case "ResearchAgent": .research
-        case "UnityAgent": .unity; case "OpportunityAssessor": .proactive; default: .conversation
+        case "UnityAgent": .unity; case "OpportunityAssessor": .proactive; case "ComputerAgent": .computer; default: .conversation
         }
     }
 }
@@ -86,6 +86,7 @@ final class ProjectContextBuilder: @unchecked Sendable {
         case .research: Profile(maxChars: 2_400, maxItems: 8, includeTruth: true, sections: [("earlier research (revalidate before use)", [.researchFinding], 4), ("asset decisions", [.assetDecision], 3), ("requirements and preferences", [.preference, .constraint], 3)])
         case .unity: Profile(maxChars: 3_000, maxItems: 9, includeTruth: true, sections: [("constraints to respect", [.constraint], 3), ("decisions that apply", [.decision, .architecture], 2), ("known issues and failures", [.knownIssue, .failure], 3), ("asset decisions", [.assetDecision], 2), ("project facts", [.projectFact], 3)])
         case .conversation: Profile(maxChars: 2_000, maxItems: 6, includeTruth: false, sections: [("what the records say", MemoryType.allCases, 6)], includeInference: true)
+        case .computer: Profile(maxChars: 1_800, maxItems: 5, includeTruth: false, sections: [("constraints to respect", [.constraint, .preference], 3), ("decisions that apply", [.decision], 2)])
         case .proactive: Profile(maxChars: 1_500, maxItems: 4, includeTruth: false, sections: [("constraints (context only)", [.constraint], 2), ("decisions (context only)", [.decision], 2)])
         }
     }

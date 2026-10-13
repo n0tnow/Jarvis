@@ -34,6 +34,7 @@ extension TaskEngine {
     private func finish(_ ctx: TaskContext, report: TaskReport, cleanup: String? = nil) {
         leases.release(taskID: ctx.record.id)
         unity?.lock.release(taskID: ctx.record.id)
+        finishComputerSession(ctx, state: ctx.record.state, detail: ctx.record.failureReason)
         if ctx.unityProject { unity?.taskFinished(activeUnityTasks: contexts.values.filter { $0.unityProject && $0.record.id != ctx.record.id && $0.record.state.isActive }.count) }
         var final = report
         final.state = ctx.record.state.rawValue
@@ -59,15 +60,19 @@ extension TaskEngine {
         if let failure { t.failureCategory = failure.0; t.failureReason = failure.1 }
         let attempts = (try? repository?.attempts(taskID: t.id)) ?? []
         let approvals = (try? repository?.approvals(taskID: t.id)) ?? []
-        return TaskReport.build(task: t, steps: ctx.steps, attempts: attempts, changes: ctx.changes, approvals: approvals, cleanup: cleanup)
+        var r = TaskReport.build(task: t, steps: ctx.steps, attempts: attempts, changes: ctx.changes, approvals: approvals, cleanup: cleanup)
+        if t.kind == .computer { r.computer = computerReportLines(taskID: t.id) }
+        return r
     }
 
     /// The structured report of a task (after a restart it is rebuilt from the database).
     func report(for id: UUID) -> TaskReport? {
         guard let repository, let t = (try? repository.engineTask(id)) ?? nil else { return nil }
         let steps = (try? repository.steps(taskID: id)) ?? []
-        return TaskReport.build(task: t, steps: steps, attempts: (try? repository.attempts(taskID: id)) ?? [], changes: (try? repository.taskFileChanges(taskID: id)) ?? [],
-                                approvals: (try? repository.approvals(taskID: id)) ?? [])
+        var r = TaskReport.build(task: t, steps: steps, attempts: (try? repository.attempts(taskID: id)) ?? [], changes: (try? repository.taskFileChanges(taskID: id)) ?? [],
+                                 approvals: (try? repository.approvals(taskID: id)) ?? [])
+        if t.kind == .computer { r.computer = computerReportLines(taskID: id) }
+        return r
     }
 
     // MARK: Checkpoints (recovery points at coherent boundaries)
@@ -143,6 +148,16 @@ extension TaskEngine {
     func restoreWaitingTasks() {
         guard let repository, let waiting = try? repository.engineTasks(states: [.waitingForApproval], limit: 20) else { return }
         for t in waiting where contexts[t.id] == nil {
+            // GUI automation never resumes by itself after a restart (DEC-150): the task becomes INTERRUPTED and an explicit Resume re-observes from scratch.
+            if t.kind == .computer {
+                var rec = t; rec.state = .interrupted; rec.updatedAt = Date(); rec.activity = "Interrupted — JARVIS restarted while waiting for your approval; Resume observes everything again"
+                rec.recovery = "interrupted by an application restart while awaiting approval"
+                try? repository.update(rec)
+                for var a in ((try? repository.approvals(taskID: t.id)) ?? []) where a.state == .pending { a.state = .cancelled; a.decidedAt = Date(); a.decidedBy = "restart"; try? repository.update(a) }
+                for var s in ((try? repository.steps(taskID: t.id)) ?? []) where s.state == .waitingForApproval || s.state == .running { s.state = .interrupted; s.finishedAt = Date(); try? repository.update(s) }
+                if var row = (try? repository.computerSession(t.id)) ?? nil { row.status = .interrupted; row.finishedAt = Date(); row.failure = "interrupted by an application restart"; try? repository.upsert(row) }
+                continue
+            }
             guard let ctx = loadContext(t) else { continue }
             for s in ctx.steps where s.state == .waitingForApproval {
                 if s.type != .delete {                                              // the edits it was about are gone: supersede and re-run the step
@@ -160,7 +175,7 @@ extension TaskEngine {
 
     /// Rebuilds the in-memory context of a persisted task.
     func loadContext(_ t: TaskRecord) -> TaskContext? {
-        guard let root = t.workspaceRoot, let ws = try? (t.kind.isWebTask ? WorkspaceGuard(researchRoot: root) : WorkspaceGuard(rootPath: root)), let repository else {
+        guard let root = t.workspaceRoot, let ws = try? (t.kind.usesEmptyWorkspace ? WorkspaceGuard(researchRoot: root) : WorkspaceGuard(rootPath: root)), let repository else {
             var failed = t; failed.state = .failed; failed.failureCategory = .workspaceViolation; failed.failureReason = "The project folder is no longer available."
             failed.finishedAt = Date(); try? self.repository?.update(failed)
             return nil
@@ -233,6 +248,7 @@ extension TaskEngine {
         for (id, ctx) in contexts where ctx.record.state.isActive || ctx.record.state == .waitingForApproval {
             let waiting = ctx.record.state == .waitingForApproval
             ctx.terminating = true
+            ctx.computer?.token.stop("JARVIS is quitting")
             runners[id]?.cancel()
             writeCheckpoint(ctx, reason: "application is quitting")
             if !waiting {
@@ -241,7 +257,9 @@ extension TaskEngine {
             }
             leases.release(taskID: id)
             unity?.lock.release(taskID: id)
+            if ctx.record.kind == .computer { finishComputerSession(ctx, state: .interrupted, detail: "interrupted: JARVIS quit") }
         }
+        computer?.shutdown()
         for (_, cont) in decisions { cont.resume(returning: false) }
         decisions.removeAll()
     }

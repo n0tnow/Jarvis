@@ -32,6 +32,8 @@ struct TaskReport: Codable, Equatable, Sendable {
     /// V0.6: facts from the Unity steps (deterministic evidence only) and non-blocking reviewer advice. Optional so older reports still decode.
     var unity: [String]?
     var advisories: [String]?
+    /// V0.11: applications, capability, actions with their verification and approvals, fallbacks and the final state (never typed text). Optional so older reports still decode.
+    var computer: [String]?
 
     // MARK: Build
 
@@ -122,6 +124,8 @@ struct TaskReport: Codable, Equatable, Sendable {
     /// One short paragraph for the conversation / announcement. Only facts present in the records.
     var userSummary: String {
         switch state {
+        case TaskState.completed.rawValue where kind == TaskKind.computer.label:
+            return "\(title) — done. \(stepsPassed)/\(stepsTotal) step\(stepsTotal == 1 ? "" : "s"), each action observed and verified."
         case TaskState.completed.rawValue:
             var s = "\(title) — completed. \(stepsPassed)/\(stepsTotal) steps validated."
             if !filesChanged.isEmpty { s += " \(filesChanged.count) file\(filesChanged.count == 1 ? "" : "s") changed." }
@@ -149,6 +153,7 @@ struct TaskReport: Codable, Equatable, Sendable {
         if !approvals.isEmpty { l += ["", "## Approvals"] + approvals.map { "- \($0)" } }
         if repairAttempts + escalations > 0 { l += ["", "Repairs: \(repairAttempts) · Escalations: \(escalations)"] }
         if let u = unity, !u.isEmpty { l += ["", "## Unity"] + u.map { "- \($0)" } }
+        if let c = computer, !c.isEmpty { l += ["", "## Computer Use"] + c.map { "- \($0)" } }
         if let a = advisories, !a.isEmpty { l += ["", "## Reviewer advice (did not change the validated result)"] + a.map { "- \($0)" } }
         if !warnings.isEmpty { l += ["", "## Warnings"] + warnings.map { "- \($0)" } }
         if let f = failure { l += ["", "## Failure", "- \(f.category): \(f.reason)", f.failedStep.map { "- Failed step: \($0)" } ?? "", "- Next: \(f.suggestedNext)"] }

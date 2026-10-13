@@ -16,6 +16,7 @@ enum Phrasebook {
         case .report: pick(l, "Opening the report.", "Raporu açıyorum.")
         case .system: pick(l, "Opening system.", "Sistemi açıyorum.")
         case .memory: pick(l, "Opening memory.", "Belleği açıyorum.")
+        case .computer: pick(l, "Opening Computer Use.", "Bilgisayar kontrolünü açıyorum.")
         }
     }
     static func openingSettings(_ l: ReplyLanguage) -> String { pick(l, "Opening settings.", "Ayarları açıyorum.") }
@@ -52,6 +53,10 @@ enum Phrasebook {
     static func researchStarted(_ title: String, _ l: ReplyLanguage) -> String {
         pick(l, "Researching. I created the task “\(title)”: I will search, read the sources and write a cited report — nothing is downloaded, imported or bought. Follow it on the Research screen; say “stop” to cancel.",
              "Araştırıyorum. “\(title)” görevini oluşturdum: arayıp kaynakları okuyacak ve kaynaklı bir rapor yazacağım — hiçbir şey indirilmez, içe aktarılmaz ya da satın alınmaz. Research ekranından izleyebilirsiniz; iptal için “durdur” deyin.")
+    }
+    static func computerStarted(_ title: String, _ l: ReplyLanguage) -> String {
+        pick(l, "On it — I'm operating your Mac for this (“\(title)”): I look at the app, act, and check the result at every step. Say “stop” any time, or hold ⌃⌥⌘.",
+             "Tamam — bunun için Mac'inizi kullanıyorum (“\(title)”): uygulamaya bakar, hareket eder, her adımda sonucu doğrularım. İstediğiniz an “durdur” deyin ya da ⌃⌥⌘ tuşlarına basılı tutun.")
     }
     static func needsProject(_ l: ReplyLanguage) -> String {
         pick(l, "That is project work, so I need a project folder first. Open Tasks and choose one (Choose folder…), then ask again. Nothing was started.",

@@ -12,12 +12,16 @@ enum TaskKind: String, Codable, Sendable {
     case research
     /// V0.9: download ONE verified public artifact into the quarantine and inspect it. Authority level ACQUISITION; never imports, never executes.
     case acquisition
+    /// V0.11: operate native macOS applications through Accessibility when no stronger structured mechanism exists. Authority level COMPUTER (observe + act, policy-checked per action).
+    case computer
 
     var label: String {
-        switch self { case .development: "Development"; case .readOnlyAnalysis: "Analysis"; case .research: "Research"; case .acquisition: "Acquisition" }
+        switch self { case .development: "Development"; case .readOnlyAnalysis: "Analysis"; case .research: "Research"; case .acquisition: "Acquisition"; case .computer: "Computer" }
     }
     /// Tasks that have no project: they run in JARVIS' own empty research workspace.
     var isWebTask: Bool { self == .research || self == .acquisition }
+    /// Web and computer tasks anchor on JARVIS' own permanently empty workspace (no project capability, nothing can be read or written through it).
+    var usesEmptyWorkspace: Bool { isWebTask || self == .computer }
 }
 
 enum RiskClass: String, Codable, Sendable, Comparable {
@@ -37,6 +41,10 @@ enum TaskCapability: String, Codable, Sendable, CaseIterable {
     // `downloadToQuarantine` = store ONE public artifact in the quarantine; `importIntoProject` = copy a quarantined, inspected artifact into the project
     // (granted only to an import task the user approved). `useNetwork`/`useBrowser` stay ungrantable: they would mean unrestricted access.
     case researchWeb, downloadToQuarantine, importIntoProject
+    // V0.11 (DEC-127…): `controlComputer` = observe and operate native applications through typed, policy-checked actions (Accessibility / NSWorkspace);
+    // `captureWindow` = take a WINDOW-scoped screenshot for the local vision fallback (needs Screen Recording; granted only when the user turned the fallback on).
+    // Neither grants a shell, a script, a purchase, an account action or a project write — those capabilities simply do not exist for this kind.
+    case controlComputer, captureWindow
 
     static let unityInspection: Set<TaskCapability> = [.inspectUnity, .readUnityConsole]
     static let unityDevelopment: Set<TaskCapability> = [.inspectUnity, .readUnityConsole, .modifyUnityScene, .saveUnityScene, .createUnityPrefab, .runUnityCompile, .runUnityTests, .controlUnityPlayMode]
@@ -48,6 +56,7 @@ struct CapabilitySet: Codable, Equatable, Sendable {
     static let readOnly = CapabilitySet(granted: [.readProject])
     static let research = CapabilitySet(granted: [.researchWeb])
     static let acquisition = CapabilitySet(granted: [.researchWeb, .downloadToQuarantine])
+    static let computer = CapabilitySet(granted: [.controlComputer])
     static let development = CapabilitySet(granted: [.readProject, .writeProject, .runBuild, .runTests])
     /// Never grantable in V0.4 (documented in DEC-034): there is no code path that could honour them.
     static let neverGranted: Set<TaskCapability> = [.useNetwork, .useBrowser, .gitCommit, .gitPush, .purchase]
@@ -56,12 +65,12 @@ struct CapabilitySet: Codable, Equatable, Sendable {
     func allows(_ c: TaskCapability) -> Bool { granted.contains(c) }
     func allows(all cs: Set<TaskCapability>) -> Bool { cs.isSubset(of: granted) }
     static func `for`(_ kind: TaskKind) -> CapabilitySet {
-        switch kind { case .development: .development; case .readOnlyAnalysis: .readOnly; case .research: .research; case .acquisition: .acquisition }
+        switch kind { case .development: .development; case .readOnlyAnalysis: .readOnly; case .research: .research; case .acquisition: .acquisition; case .computer: .computer }
     }
     /// A Unity project adds the typed Unity operations: inspection only for analysis tasks, bounded edit/compile/test/play for development.
     static func `for`(_ kind: TaskKind, unityProject: Bool) -> CapabilitySet {
         let base = Self.for(kind)
-        guard unityProject, !kind.isWebTask else { return base }
+        guard unityProject, !kind.usesEmptyWorkspace else { return base }
         return CapabilitySet(granted: base.granted.union(kind == .development ? TaskCapability.unityDevelopment : TaskCapability.unityInspection))
     }
 }
@@ -182,7 +191,10 @@ enum StepType: String, Codable, Sendable, CaseIterable {
     case unityInspect, unityEdit, unityCompile, unityTest, unityPlayMode, unityValidate
     // V0.9 research / acquisition steps: typed, deterministic JARVIS tools (models are only called INSIDE them, through the router, for validated JSON).
     case researchSearch, researchRead, researchExtract, researchVerify, researchReport, acquire, importAsset
+    // V0.11: one typed step = a short batch (1–5) of typed computer actions, each observed → acted → verified; a model may only propose them.
+    case computerAct
 
+    var isComputer: Bool { self == .computerAct }
     var isResearch: Bool { switch self { case .researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport: true; default: false } }
     var isWeb: Bool { isResearch || self == .acquire }
 
@@ -212,6 +224,7 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport: [.researchWeb]
         case .acquire: [.researchWeb, .downloadToQuarantine]
         case .importAsset: [.readProject, .writeProject, .importIntoProject]
+        case .computerAct: [.controlComputer]
         }
     }
     /// Provider-executed (an agent run with a model) vs. deterministic JARVIS tool.
@@ -224,6 +237,7 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport: "ResearchAgent"
         case .acquire: "AcquisitionTool"
         case .importAsset: "AssetImportTool"
+        case .computerAct: "ComputerAgent"
         }
     }
     var defaultRisk: RiskClass { self == .delete || self == .importAsset ? .high : (self == .codeChange || self == .unityEdit || self == .acquire) ? .medium : .low }
@@ -237,6 +251,7 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .researchSearch, .researchRead, .researchExtract, .researchVerify, .researchReport: .retryable
         case .acquire: .retryable             // a partial download is deleted; a restart never resumes it silently (the user resumes explicitly)
         case .importAsset: .manual            // writes into a project: never replayed automatically
+        case .computerAct: .inspectFirst      // a resumed step re-observes from scratch; an action whose postcondition already holds is not repeated
         }
     }
     var label: String {
@@ -246,6 +261,7 @@ enum StepType: String, Codable, Sendable, CaseIterable {
         case .unityPlayMode: "Unity Play Mode"; case .unityValidate: "Unity validation"
         case .researchSearch: "Search"; case .researchRead: "Read sources"; case .researchExtract: "Extract"; case .researchVerify: "Verify"; case .researchReport: "Report"
         case .acquire: "Download to quarantine"; case .importAsset: "Import asset"
+        case .computerAct: "Computer action"
         }
     }
 }
@@ -279,6 +295,8 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
     case researchReported      // a report exists, facts carry evidence
     case artifactAcquired      // the file is in the quarantine, hashed, type-checked and inspected
     case assetImported         // every file was copied with a matching hash and provenance was written
+    // V0.11: every action's declared postcondition was OBSERVED afterwards (dispatching an event is never success).
+    case computerVerified
 
     static func allowed(for type: StepType) -> Set<ValidationKind> {
         switch type {
@@ -295,6 +313,7 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
         case .unityPlayMode: [.unityPlayObserved]
         case .researchSearch: [.researchSearched]; case .researchRead: [.researchRead]; case .researchExtract: [.researchExtracted]
         case .researchVerify: [.researchVerified]; case .researchReport: [.researchReported]; case .acquire: [.artifactAcquired]; case .importAsset: [.assetImported]
+        case .computerAct: [.computerVerified]
         }
     }
     static func `default`(for type: StepType) -> ValidationKind {
@@ -305,6 +324,7 @@ enum ValidationKind: String, Codable, Sendable, CaseIterable {
         case .unityTest: .unityTestsPass; case .unityPlayMode: .unityPlayObserved
         case .researchSearch: .researchSearched; case .researchRead: .researchRead; case .researchExtract: .researchExtracted
         case .researchVerify: .researchVerified; case .researchReport: .researchReported; case .acquire: .artifactAcquired; case .importAsset: .assetImported
+        case .computerAct: .computerVerified
         }
     }
     /// Plain-language aliases an LLM planner may use (the examples in the product spec) → the real validation.
@@ -406,6 +426,8 @@ struct TaskStepRecord: Equatable, Sendable, Identifiable {
     var validationEvidence: String?
     /// V0.6: typed parameters of a Unity step (nil for every other step type).
     var unity: UnityStepParams?
+    /// V0.11: the typed actions of a computer step (nil for every other step type).
+    var computer: ComputerStepParams?
     var idempotency: Idempotency { type.idempotency }
 }
 

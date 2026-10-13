@@ -19,6 +19,11 @@ final class AXBackend: UIBackend, @unchecked Sendable {
     private var generation = 0
     private var elements: [ElementHandle: AXUIElement] = [:]
     private var secureHandles: Set<ElementHandle> = []
+    /// How many times the backend was asked anything (diagnostics: proves that nothing is observed while idle).
+    private let counter = NSLock()
+    private var calls = 0
+    var callCount: Int { counter.lock(); defer { counter.unlock() }; return calls }
+    private func tick() { counter.lock(); calls += 1; counter.unlock() }
 
     init() {}
 
@@ -37,10 +42,12 @@ final class AXBackend: UIBackend, @unchecked Sendable {
     // MARK: Queue helpers
 
     private func run<T>(_ body: @escaping () -> T) async -> T {
-        await withCheckedContinuation { (cont: CheckedContinuation<T, Never>) in queue.async { cont.resume(returning: body()) } }
+        tick()
+        return await withCheckedContinuation { (cont: CheckedContinuation<T, Never>) in queue.async { cont.resume(returning: body()) } }
     }
     private func runThrowing<T>(_ body: @escaping () throws -> T) async throws -> T {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<T, Error>) in
+        tick()
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<T, Error>) in
             queue.async { do { cont.resume(returning: try body()) } catch { cont.resume(throwing: error) } }
         }
     }
@@ -220,7 +227,9 @@ final class AXBackend: UIBackend, @unchecked Sendable {
             var focusIndex: Int?
             if let (win, root) = chosen {
                 struct Item { var el: AXUIElement; var depth: Int; var parent: Int?; var ancestors: [String]; var modal: Bool }
-                var frontier: [Item] = [Item(el: root, depth: 0, parent: nil, ancestors: [], modal: win.isModal && win.isSheet)]
+                // a dialog-type window (alert, panel) is modal as a whole; a normal window with a sheet is modal only below the sheet
+                let wholeWindowModal = win.isModal && win.subrole != "AXStandardWindow"
+                var frontier: [Item] = [Item(el: root, depth: 0, parent: nil, ancestors: [], modal: wholeWindowModal)]
                 var head = 0
                 while head < frontier.count {
                     if out.count >= budget.maxNodes || Date().timeIntervalSince(t0) > budget.timeBudget { truncated = true; break }
@@ -251,7 +260,9 @@ final class AXBackend: UIBackend, @unchecked Sendable {
                     if title.isEmpty, let ui = self.attr(it.el, kAXTitleUIElementAttribute), CFGetTypeID(ui) == AXUIElementGetTypeID() {
                         title = String((self.str(ui as! AXUIElement, kAXValueAttribute) ?? self.str(ui as! AXUIElement, kAXTitleAttribute) ?? "").prefix(120))
                     }
-                    let kids = self.children(it.el)
+                    // a very large container exposes what is on screen when the application says so (AXVisibleChildren); otherwise only the first children are read
+                    var kids = self.children(it.el)
+                    if kids.count > budget.maxChildrenPerNode, let visible = self.attr(it.el, "AXVisibleChildren") as? [AXUIElement], !visible.isEmpty { kids = visible }
                     let index = out.count
                     let handle = ElementHandle(pid: pid, generation: gen, index: index)
                     self.elements[handle] = it.el
@@ -260,7 +271,7 @@ final class AXBackend: UIBackend, @unchecked Sendable {
                     let focused = self.bool(it.el, kAXFocusedAttribute) ?? false
                     if focused, focusIndex == nil { focusIndex = index }
                     out.append(UIElementSnapshot(id: index, role: role, subrole: sub, title: String(title.prefix(160)), help: String(help.prefix(160)), value: value, valueLength: valueLength,
-                                                 enabled: self.bool(it.el, kAXEnabledAttribute) ?? true, focused: focused, selected: self.bool(it.el, kAXSelectedAttribute) ?? false,
+                                                 enabled: self.bool(it.el, kAXEnabledAttribute) ?? true, focused: focused, selected: (self.bool(it.el, kAXSelectedAttribute) ?? false) || ((role == "AXRadioButton" || role == "AXCheckBox") && value == "1"),
                                                  identifier: self.str(it.el, kAXIdentifierAttribute), actions: self.actionNames(it.el), frame: self.frame(it.el), parent: it.parent, depth: it.depth,
                                                  childCount: kids.count, isSecure: secure, ancestorTitles: it.ancestors, handle: handle, inModal: it.modal || isSheet))
                     if it.depth < budget.maxDepth, !Self.skipDescending.contains(role) {
@@ -438,14 +449,43 @@ final class AXBackend: UIBackend, @unchecked Sendable {
         e.postToPid(pid)
     }
 
-    func postClick(atGlobal p: CGPoint, toPID pid: Int32) async throws {
+    func postClick(atGlobal p: CGPoint) async throws {
         guard AXIsProcessTrusted() else { throw BackendError.permissionDenied }
-        let src = CGEventSource(stateID: .privateState)
+        let src = CGEventSource(stateID: .hidSystemState)
+        let before = CGEvent(source: nil)?.location                  // where the user's pointer is now
         for type in [CGEventType.leftMouseDown, .leftMouseUp] {
             guard let e = CGEvent(mouseEventSource: src, mouseType: type, mouseCursorPosition: p, mouseButton: .left) else { throw BackendError.actionFailed("could not build the mouse event") }
             e.setIntegerValueField(.mouseEventClickState, value: 1)
-            e.postToPid(pid)
-            try await Task.sleep(nanoseconds: 30_000_000)
+            e.post(tap: .cghidEventTap)
+            try await Task.sleep(nanoseconds: 40_000_000)
+        }
+        if let before { CGWarpMouseCursorPosition(before) }          // the pointer goes back where the user had it (no decorative cursor movement)
+    }
+
+    func topWindowID(atGlobal p: CGPoint) async -> UInt32? {
+        await run {
+            guard let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return nil }      // front-to-back
+            for d in info {
+                guard let id = d[kCGWindowNumber as String] as? UInt32, let b = d[kCGWindowBounds as String] as? [String: CGFloat], (d[kCGWindowAlpha as String] as? Double ?? 1) > 0.05 else { continue }
+                let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
+                if r.contains(p) { return id }
+            }
+            return nil
+        }
+    }
+
+    func scrollBy(_ h: ElementHandle, direction: ScrollDirection, step: Double) async throws -> Double {
+        try await runThrowing {
+            guard let el = self.elements[h] else { throw BackendError.elementGone }
+            let name = (direction == .up || direction == .down) ? "AXVerticalScrollBar" : "AXHorizontalScrollBar"
+            guard let bar = self.attr(el, name), CFGetTypeID(bar) == AXUIElementGetTypeID() else { throw BackendError.unsupported("the scroll area has no \(name)") }
+            let barEl = bar as! AXUIElement
+            guard let current = (self.attr(barEl, kAXValueAttribute) as? NSNumber)?.doubleValue else { throw BackendError.unsupported("the scroll bar has no value") }
+            let delta = (direction == .down || direction == .right) ? step : -step
+            let next = min(1, max(0, current + delta))
+            if next == current { return current }
+            try Self.check(AXUIElementSetAttributeValue(barEl, kAXValueAttribute as CFString, next as CFNumber))
+            return next
         }
     }
 

@@ -12,6 +12,11 @@ let package = Package(
             name: "Jarvis",
             path: "Sources/Jarvis"
         ),
+        // A tiny deterministic macOS app used ONLY by the Computer Use tests (--computer-live-test). It does nothing but count button presses.
+        .executableTarget(
+            name: "JarvisFixture",
+            path: "Sources/JarvisFixture"
+        ),
         .testTarget(
             name: "JarvisTests",
             dependencies: ["Jarvis"],

@@ -36,6 +36,7 @@ extension TaskEngine {
         case .researchReport: outcome = await runResearchReport(ctx, key)
         case .acquire: outcome = await runAcquire(ctx, key)
         case .importAsset: outcome = await runImportAsset(ctx, key)
+        case .computerAct: outcome = await runComputerAct(ctx, key)
         }
         leases.release(owner: Self.leaseOwner(step))
         unity?.lock.release(owner: Self.leaseOwner(step))

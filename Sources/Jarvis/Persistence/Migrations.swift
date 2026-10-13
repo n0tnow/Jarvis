@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7, v8]
+    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7, v8, v9]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -411,5 +411,34 @@ struct Migration: Sendable {
         """,
         "CREATE INDEX idx_memory_context_run ON memory_context_uses(run_id)",
         "CREATE INDEX idx_memory_context_task ON memory_context_uses(task_id)",
+    ])
+
+    /// V9 — General Computer Use (V0.11). Bounded session metadata only: the goal, the typed actions with their risk / mechanism / verification, and observation
+    /// METADATA (counts, sizes, a few-bytes hash). Never an Accessibility dump, never a screenshot, never typed text (class + length only), never clipboard contents.
+    static let v9 = Migration(version: 9, name: "general computer use", statements: [
+        "ALTER TABLE task_steps ADD COLUMN computer_params TEXT",
+        """
+        CREATE TABLE computer_sessions (
+            id TEXT PRIMARY KEY, task_id TEXT NOT NULL, goal TEXT NOT NULL, status TEXT NOT NULL, target_apps TEXT, plan_summary TEXT, capability TEXT,
+            vision_enabled INTEGER NOT NULL DEFAULT 0, started_at REAL NOT NULL, finished_at REAL, failure TEXT, resume_count INTEGER NOT NULL DEFAULT 0,
+            memory_ids TEXT, origin TEXT
+        )
+        """,
+        "CREATE INDEX idx_computer_sessions_status ON computer_sessions(status)",
+        """
+        CREATE TABLE computer_actions (
+            id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES computer_sessions(id) ON DELETE CASCADE, seq INTEGER NOT NULL, at REAL NOT NULL,
+            kind TEXT NOT NULL, mechanism TEXT NOT NULL, app TEXT, window TEXT, target TEXT, risk TEXT NOT NULL, status TEXT NOT NULL, resolution TEXT,
+            verification TEXT, detail TEXT, approval_id TEXT, text_class TEXT, text_length INTEGER, duration_ms REAL, attempts INTEGER NOT NULL DEFAULT 1, provider TEXT
+        )
+        """,
+        "CREATE INDEX idx_computer_actions_session ON computer_actions(session_id, seq)",
+        """
+        CREATE TABLE computer_observations (
+            id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES computer_sessions(id) ON DELETE CASCADE, at REAL NOT NULL, kind TEXT NOT NULL, app TEXT, window TEXT,
+            nodes INTEGER, windows INTEGER, truncated INTEGER, duration_ms REAL, width INTEGER, height INTEGER, fingerprint TEXT, provider TEXT, persisted INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX idx_computer_observations_session ON computer_observations(session_id, at)",
     ])
 }

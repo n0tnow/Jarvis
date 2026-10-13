@@ -28,6 +28,9 @@ final class Preferences {
         static let memorySemantic = "prefs.memory.semantic"
         static let memoryAutoLearn = "prefs.memory.autolearn"
         static let memoryModelLearn = "prefs.memory.modellearn"
+        static let computerEnabled = "prefs.computer.enabled"
+        static let computerVision = "prefs.computer.vision"
+        static let computerDiagnostics = "prefs.computer.diagnostics"
         static let voicePTT = "prefs.voice.pushToTalk"
         static let voiceSpeak = "prefs.voice.speakResponses"
         static let voiceLanguage = "prefs.voice.language"
@@ -98,6 +101,12 @@ final class Preferences {
     var memoryAutoLearnEnabled: Bool { didSet { defaults.set(memoryAutoLearnEnabled, forKey: Key.memoryAutoLearn) } }
     /// V0.10: after a meaningful task, ask ONE small model for proposed lessons (grounded in the report; never authoritative). Off by default: it spends a model request.
     var memoryModelLearningEnabled: Bool { didSet { defaults.set(memoryModelLearningEnabled, forKey: Key.memoryModelLearn) } }
+    /// V0.11: Computer Use master switch (ON by default, but it only ever acts inside a task you started, and only if macOS Accessibility permission exists).
+    var computerUseEnabled: Bool { didSet { defaults.set(computerUseEnabled, forKey: Key.computerEnabled) } }
+    /// V0.11: the window-scoped vision fallback (needs the screen-capture permission). OFF until you turn it on.
+    var computerVisionEnabled: Bool { didSet { defaults.set(computerVisionEnabled, forKey: Key.computerVision) } }
+    /// V0.11: show counts/durations of the last observation on the Computer screen (never the tree itself, never persisted).
+    var computerDiagnosticsEnabled: Bool { didSet { defaults.set(computerDiagnosticsEnabled, forKey: Key.computerDiagnostics) } }
     var voicePushToTalk: Bool { didSet { defaults.set(voicePushToTalk, forKey: Key.voicePTT) } }
     var voiceSpeakResponses: Bool { didSet { defaults.set(voiceSpeakResponses, forKey: Key.voiceSpeak) } }
     var voiceLanguage: VoiceLanguage { didSet { defaults.set(voiceLanguage.rawValue, forKey: Key.voiceLanguage) } }
@@ -158,6 +167,9 @@ final class Preferences {
         memorySemanticEnabled = defaults.object(forKey: Key.memorySemantic) as? Bool ?? true
         memoryAutoLearnEnabled = defaults.object(forKey: Key.memoryAutoLearn) as? Bool ?? true
         memoryModelLearningEnabled = defaults.object(forKey: Key.memoryModelLearn) as? Bool ?? false
+        computerUseEnabled = defaults.object(forKey: Key.computerEnabled) as? Bool ?? true
+        computerVisionEnabled = defaults.object(forKey: Key.computerVision) as? Bool ?? false
+        computerDiagnosticsEnabled = defaults.object(forKey: Key.computerDiagnostics) as? Bool ?? false
         voicePushToTalk = defaults.object(forKey: Key.voicePTT) as? Bool ?? true
         voiceSpeakResponses = defaults.object(forKey: Key.voiceSpeak) as? Bool ?? true
         voiceLanguage = defaults.string(forKey: Key.voiceLanguage).flatMap(VoiceLanguage.init(rawValue:)) ?? .auto
