@@ -1,21 +1,20 @@
 # Current Task
 
 Version:
-V0.10 — Project Memory — **READY FOR MANUAL TEST** (committed on `main`). Base: V0.9 (459468f), V0.8, V0.7, V0.6, V0.5, V0.4, V0.3.2, V0.3.1, V0.3, V0.2.1.
+V0.11 — General Computer Use — **IN PROGRESS** (on `main`, not yet READY). Base: V0.10 (44966ba), V0.9, V0.8, V0.7, V0.6, V0.5, V0.4, V0.3.2, V0.3.1, V0.3, V0.2.1.
 
 Task:
-Derived, provenance-backed, queryable project knowledge (decisions, constraints, failures, lessons, research/asset decisions, facts) with contradiction / supersession / staleness handling, hybrid Turkish/English retrieval on a rebuildable local index, a bounded per-agent Context Builder, remember / correct / forget / pin, a Memory screen and bootstrap from the project's own docs. Memory is DERIVED (history stays history), current project truth outranks it, and it is never authority. NOT V0.11 (computer use). No tag, no COMPLETE.
+Typed, observable, policy-controlled, verifiable, cancelable interaction with ordinary macOS applications when no stronger structured mechanism exists: capability ladder (typed JARVIS capability → structured integration → controlled CLI → V0.9 browser DOM → macOS Accessibility → window-scoped vision → window-relative coordinates), observe → act → verify, semantic target resolution, consequence-based risk, secure-field/clipboard/terminal/quarantine protections, stale-screen protection, emergency stop. NOT V0.12. No tag, no COMPLETE.
 
-State:
-IMPLEMENTED · AUTOMATED TESTED (1138 unit tests / 159 suites, `scripts/verify.sh` PASSED, smoke 125/0/2) · REAL TESTED (`--memory-live-test` 73/73: real SQLite, the real local embedding helper, the actual JARVIS repository as corpus (321 memories in 2.3 s), real TR/EN/mixed questions, contradiction / correction / forget / secret / web-poison fixtures, index rebuild / cancel / corruption, restart, memory pressure, idle, quit cleanup) · **MANUAL TEST REQUIRED** (README 464–583). Docs: `docs/PROJECT_MEMORY.md`, DEC-104…126, KNOWN_ISSUES JARVIS-V10-1…10.
+State (checkpoint 1):
+IMPLEMENTED · AUTOMATED TESTED (82 tests): `Sources/Jarvis/Computer/` — model, policy (consequence classifier, shortcuts, paths, text), capability resolver + EN/TR goal parser, target resolver, coordinates/stale checks, AX backend, window-scoped capture + on-device OCR vision, executor (virtual-macOS tested). NOT YET: task-engine integration, persistence (schema v9), UI, settings, fixture app, live test, verify.sh guards, docs.
 
 Next Step:
-Wait for the user's manual test. Do NOT start V0.11 without explicit approval. Optional one-time setup for meaning-based search: `scripts/setup_memory_ai.sh` (Project Memory works without it, with keyword + structured search).
+Task-engine integration (TaskKind.computer, step type, capabilities, persistence, restart → INTERRUPTED), conversation/voice route, Computer screen + Settings, fixture app, `--computer-live-test`, guards, docs.
 
 Blocked By:
-Nothing.
+Nothing. (Accessibility and Screen Recording are granted to the session that runs the live tests; JARVIS never grants itself anything.)
 
 Notes:
 - Git: main only, no tags, no AI co-author trailers (the user's brief overrides the harness attribution reminder).
-- Memory never runs while idle: no timers, no re-embedding; the embedding helper starts on demand and unloads after 120 s idle / under memory pressure.
-- Selected embedding model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 @ e8f8c211226b894fcb81acc59f3b34ba3efd5f42 (Apache-2.0, int8 ONNX, 118 MB), chosen by measurement among 5 ONNX candidates + Apple NaturalLanguage.
+- Decisions will be recorded as DEC-127… in docs/DECISIONS.md at the docs checkpoint.

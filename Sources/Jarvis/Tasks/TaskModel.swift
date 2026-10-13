@@ -154,6 +154,8 @@ enum FailureCategory: String, Codable, Sendable {
     case unityUnavailable, ambiguousTarget, unsafeEditorState, compileFailed, unityTimeout
     // V0.9
     case networkUnavailable, blockedByNetworkPolicy, noSources, acquisitionRefused, downloadFailed, interactionRequired
+    // V0.11
+    case permissionRequired, computerActionFailed, computerTimeout
 
     var label: String {
         switch self {
@@ -166,6 +168,7 @@ enum FailureCategory: String, Codable, Sendable {
         case .compileFailed: "Unity compilation failed"; case .unityTimeout: "Unity timed out"
         case .networkUnavailable: "network unavailable"; case .blockedByNetworkPolicy: "blocked by the network policy"; case .noSources: "no readable sources"
         case .acquisitionRefused: "acquisition refused"; case .downloadFailed: "download failed"; case .interactionRequired: "user interaction required"
+        case .permissionRequired: "permission required"; case .computerActionFailed: "the action could not be completed"; case .computerTimeout: "the application did not respond in time"
         }
     }
 }
