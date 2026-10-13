@@ -446,3 +446,23 @@ Recovered V0.12 (957f95e, clean, in sync; baseline 1326 tests green). Added `Sou
 
 ## V0.13 — checkpoint 4: experiments, asset suitability, correction loop (in progress)
 Added schema v12 (`experiments`, `experiment_steps`, `visual_observations`, `asset_evaluations`; upsert, not REPLACE, so step rows survive a status update), the `experiment` step (contract validated at plan time and again at start, marker-checked disposable workspace, orphan reconcile at launch, always-cleanup, real-project fingerprint before/after, verdict `CONFIRMED / REFUTED / INCONCLUSIVE` where nothing tested ⇒ INCONCLUSIVE), `AssetEvaluator` (VERIFIED / TESTED / SUPPORTED BY SOURCE / INFERRED / UNKNOWN / INCOMPATIBLE), the bounded `unityCorrection` loop (aim the camera / add or raise light / raise ambient; taste words are SUBJECTIVE and never corrected). 17 new tests; full suite green apart from two source-level guards that were widened narrowly for the three new engine files. Not yet real-tested.
+
+
+## V0.13 — final (READY FOR MANUAL TEST)
+Checkpoints: continuity (40ba1fc) · Unity operator (9a341bb) · visual grounding (ec2b59c) · experiments / asset suitability / correction loop · live-verified fixes · continuity live test · UI · icon-only / ambiguous visual tests · real asset experiment · real model-planned graph · Safari measurement · soak / pressure · verify guards, docs, 163 manual checks.
+
+### What the real tests found (and fixed)
+* The workspace guard refuses the JARVIS data folder, so asset imports could never run there → experiments root moved to `~/Library/Caches/JARVIS` (found by the real asset run).
+* A refuted experiment was first evaluated as "technically fine" → the evaluator now follows the verdict.
+* A compile-only run first CONFIRMED a render hypothesis → every check the kind needs must be made (INCONCLUSIVE otherwise).
+* `INSERT OR REPLACE` on `experiments` cascaded away the step log → upsert.
+* A single box from the local model was not proof of a single match (two identical icons were clicked) → the helper counts matches first.
+* A real model-planned Unity graph failed at the independent Review node: evidence lacked positions / values and a later step guessed a child's path → prompts carry earlier steps' real paths, evidence carries read-back values.
+* A retry that failed too was restarted through the same recorded next step → exhausted work is never re-offered automatically; the status reports the newest unfollowed failure.
+* Live tests leaked a started editor on an early `finish()` → they kill registered children before exit; `crash-*` sections are explicit-only.
+
+### Results
+Unit 1446 / 210 suites; verify PASSED (smoke 147/0/2; idle 0.01 CPU-s / 8 s at 73 MB); operator live 97/0/0 (+ soak 5, model-planned 7, asset-experiment 10, crash 3 + 6); continuity live 21/0/0 (+ 4 + 8); computer live 95/0/2; visual benchmark 15/16 (2B, 4B, chain).
+
+### Open
+`docs/KNOWN_ISSUES.md` JARVIS-V13-1…14. MANUAL TEST REQUIRED: README 824–986.

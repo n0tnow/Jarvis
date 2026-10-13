@@ -1,20 +1,22 @@
 # Current Task
 
 Version:
-V0.13 — Autonomous Project Operator & General Visual Grounding — **IN PROGRESS** (not READY). Base: V0.12 (957f95e, READY FOR MANUAL TEST), V0.11 … V0.1.
+V0.13 — Autonomous Project Operator & General Visual Grounding — **READY FOR MANUAL TEST** (not complete, not tagged). Base: V0.12 (957f95e), V0.11 … V0.1.
 
 Task:
-Make JARVIS an operator that can resume a real project, work inside its development environment, inspect the result, correct itself and leave a validated continuation state — WITHOUT a second orchestrator (V0.12 stays the only one) and WITHOUT self-improvement (V0.14) or the final personality / whiteboard (V0.15). Parts: (1) Project Continuity (status, “continue”, reconciliation, bounded sessions, checkpoints); (2) Unity development operator (typed scene / prefab / material / lighting / animation / audio / camera / physics / UI operations, Play Mode observation, camera capture); (3) general visual grounding (typed, benchmarked, never an authority); (4) bounded Experiments and asset suitability; (5) the observe → act → inspect → correct loop.
+Make JARVIS an operator that can resume a real project, work inside its development environment, inspect the result, correct itself and leave a validated continuation state — WITHOUT a second orchestrator (V0.12 stays the only one) and WITHOUT self-improvement (V0.14) or the final personality / whiteboard (V0.15).
 
 State:
-* CHECKPOINT 1 — Project Continuity: IMPLEMENTED · AUTOMATED TESTED (45 new tests; the V0.12 baseline of 1326 tests still passes). Derived view (tasks · Git · last checkpoint · memory · docs · Unity descriptor), reconciliation (current truth wins; JARVIS-written files are not “interference”), selection (interrupted → failed-once → recorded next → known issue; several ⇒ ask; design-sensitive ⇒ propose), bounded sessions (30 min / 12 nodes / 2 revisions / 2 correction rounds / 2 experiments), checkpoints per finished task (schema v11), Project panel in Tasks, Compact “Hamam · Continuing · Editing” line, Settings switch.
-* CHECKPOINT 2 — Unity development operator: IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (`--operator-live-test`, real Unity 6000.5.1f1 on a disposable fixture: 83 checks passed).
-* CHECKPOINT 3 — Visual grounding: IMPLEMENTED · AUTOMATED TESTED · REAL BENCHMARKED (16 cases; Apple OCR 7/16, Qwen3-VL-2B 15/16, 4B 15/16; local, offline, no key).
-* CHECKPOINT 4 — Experiments, asset suitability, correction loop (schema v12): IMPLEMENTED · AUTOMATED TESTED (17 new tests; `experiment` plan steps parse and validate their contract). NOT yet real-tested.
-* Next: real tests (visual correction, disposable-project experiment, continuation/restart/drift), Full/Compact HUD for operator + experiment + visual diagnostics, guards in `verify.sh`, docs, 150+ manual checks.
+* Project Continuity (`docs/PROJECT_OPERATOR.md`): IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (`--continuity-live-test` 21/0/0 + two-launch hard kill).
+* Unity development operator (`docs/UNITY_DEVELOPMENT_OPERATOR.md`): IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (`--operator-live-test` 97/0/0, real Unity 6000.5.1f1; model-planned graph 7/0; soak 5/0).
+* General visual grounding (`docs/VISUAL_GROUNDING.md`): IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (benchmark 15/16 ×3; computer live test 95/0/2 incl. icon-only / ambiguous / purchase / Safari).
+* Experiments and asset suitability (`docs/EXPERIMENTATION.md`): IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (disposable-project experiments, a real Poly Haven asset REFUTED honestly, cancel, hard-kill recovery, soak).
+* UI: Project continuity card, Experiments card, Settings → Project operator, Compact operator line (392×448): IMPLEMENTED · captured (`tasks_operator.png`) · MANUAL TEST REQUIRED.
+* `scripts/verify.sh`: VERIFY PASSED (1446 tests / 210 suites, smoke 147/0/2, idle 0.01 CPU-s / 8 s, 28 new guards).
+* MANUAL TEST REQUIRED: README 824–986.
 
 Next Step:
-Continue the V0.13 plan; the final report is owed only when everything is verified. No tag, no V0.14.
+Wait for the user's manual V0.13 test. Do not start V0.14 / V0.15 / V1.0 without approval. No tag.
 
 Blocked By:
 Nothing.
@@ -22,4 +24,5 @@ Nothing.
 Notes:
 * Git: main only, no tags, no AI co-author trailers (the user's brief overrides the harness attribution reminder).
 * Automated tests never touch the user's real Hamam / Unity game; Unity live tests use a disposable fixture copy.
-* Nothing in continuity runs while idle: no timer, poll or watcher; it runs when asked and when a task finishes.
+* Nothing in continuity, experiments or visual grounding runs while idle: no timer, poll or watcher; the vision helper is on demand and unloads after 45 s.
+* Known issues: `docs/KNOWN_ISSUES.md` JARVIS-V13-1…14 (one intermittent V0.11 live check, JARVIS-V13-7).
