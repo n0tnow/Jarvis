@@ -220,6 +220,10 @@ struct ProjectContinuityView: Equatable, Sendable {
     var unity: ContinuityUnity?
     var lastContinuationAt: Date?
     var pendingApprovals = 0
+    /// Titles whose retry also failed: they are never started a third time without the user's direction.
+    var exhausted: [String] = []
+    /// The newest failure that nothing has followed (shown by the status even when it is not retriable).
+    var lastFailure: TaskDigest?
 }
 
 // MARK: Project documents (conventional files that name the milestone / goal)

@@ -30,6 +30,8 @@ struct ContinuityIntentTests {
     func status() {
         #expect(ContinuityIntent.recognize("Hamam projesinde ne durumdayız?") == .status(project: "hamam", detailed: false))
         #expect(ContinuityIntent.recognize("Jarvis, hamam projesinde ne durumdayız") == .status(project: "hamam", detailed: false))
+        #expect(ContinuityIntent.recognize("Where do we stand on this project?") == .status(project: nil, detailed: false))
+        #expect(ContinuityIntent.recognize("Where do we stand?") == .status(project: nil, detailed: false))
         #expect(ContinuityIntent.recognize("Nerede kalmıştık?") == .status(project: nil, detailed: false))
         #expect(ContinuityIntent.recognize("Where did we leave off?") == .status(project: nil, detailed: false))
         #expect(ContinuityIntent.recognize("What's the status of the Hamam project?") == .status(project: "hamam", detailed: false))
@@ -126,6 +128,26 @@ struct ContinuitySelectionTests {
         #expect(!v2.failed.contains { $0.id == f.id }, "already retried once")
         let goal = ContinuationGoal.build(.retryFailed(f), view: v, drift: ReconciliationReport())
         #expect(goal?.contains("2 tests failed") == true && goal?.contains("do not repeat the same approach") == true)
+    }
+
+    @Test("a retry that failed too is EXHAUSTED: the same recorded next step is not started a third time — JARVIS reports it and waits for direction")
+    func exhausted() {
+        let f = digest("Add a mul test", .failed, category: "providerFailed", reason: "the provider failed", ago: 600)
+        var retry = digest("Add a mul test", .failed, category: "providerFailed", reason: "the provider failed again", origin: f.id, ago: 60)
+        retry.isContinuation = true
+        let v = ContinuityBuilder.build(inputs(tasks: [retry, f], docs: ProjectDocsSummary(next: ["Add a mul test"])))
+        #expect(v.exhausted == ["Add a mul test"] && v.failed.isEmpty)
+        #expect(v.candidates.isEmpty, "neither as a retry nor as the same recorded next step")
+        guard case .nothingToContinue(let why) = ContinuationSelector.decide(v, drift: ReconciliationReport()) else { Issue.record("expected nothingToContinue"); return }
+        #expect(why.contains("failed twice") && why.contains("without your direction"))
+        // a different next step is still offered; a later success clears the exhaustion
+        let other = ContinuityBuilder.build(inputs(tasks: [retry, f], docs: ProjectDocsSummary(next: ["Add a mul test", "Polish the README"])))
+        #expect(other.candidates.map(\.title) == ["Polish the README"])
+        let done = digest("Add a mul test", .completed, ago: 5)
+        #expect(ContinuityBuilder.build(inputs(tasks: [done, retry, f])).exhausted.isEmpty)
+        // the status says so, even though nothing is retriable
+        let said = ContinuityStatus.lastDone(v, language: .en, now: t0)
+        #expect(said.contains("failed") && said.contains("Add a mul test"))
     }
 
     @Test("old failures and failures that need a decision are not retried; they are blockers")

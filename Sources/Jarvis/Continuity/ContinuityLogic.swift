@@ -69,8 +69,18 @@ enum ContinuityBuilder {
                 && !userDecisionFailures.contains(t.failureCategory ?? "") && !(t.isContinuation && t.originTaskID != nil)
         }
         v.failed = retriable
+        // A retry that failed too (or a goal already retried the maximum number of times) is EXHAUSTED: it is not started a third time on its own, whether it comes back as a failed task or as the same recorded next step.
+        func key(_ s: String) -> String { ResearchText.fold(s).filter { $0.isLetter || $0.isNumber } }
+        let failedAll = mine.filter { $0.state == .failed && now(i, $0) <= ContinuityLimits.failedRetryWindow }
+        let exhaustedTasks = failedAll.filter { t in
+            !userDecisionFailures.contains(t.failureCategory ?? "") && ((t.isContinuation && t.originTaskID != nil) || (followedBy[t.id] ?? []).count >= ContinuityLimits.maxRetriesPerGoal)
+                && !mine.contains { $0.state == .completed && key($0.title) == key(t.title) && ($0.finishedAt ?? $0.updatedAt) > (t.finishedAt ?? t.updatedAt) }
+        }
+        var seenExhausted = Set<String>()
+        v.exhausted = exhaustedTasks.map(\.title).filter { seenExhausted.insert(key($0)).inserted }
+        v.lastFailure = failedAll.first { f in (followedBy[f.id] ?? []).isEmpty && (i.checkpoint.map { ($0.createdAt) < (f.finishedAt ?? f.updatedAt) } ?? true) }
         let blocked = mine.filter { $0.state == .failed && userDecisionFailures.contains($0.failureCategory ?? "") && (followedBy[$0.id] ?? []).isEmpty && now(i, $0) <= ContinuityLimits.failedRetryWindow }
-        v.blockers = blocked.prefix(2).map { "“\($0.title)” needs your decision (\($0.failureCategory ?? "blocked"))" } + (i.pendingApprovals > 0 ? ["\(i.pendingApprovals) approval(s) waiting in the HUD"] : [])
+        v.blockers = blocked.prefix(2).map { "“\($0.title)” needs your decision (\($0.failureCategory ?? "blocked"))" } + v.exhausted.prefix(1).map { "“\($0)” failed twice — I will not try it a third time without your direction" } + (i.pendingApprovals > 0 ? ["\(i.pendingApprovals) approval(s) waiting in the HUD"] : [])
 
         let live = i.memory
         v.openIssues = live.filter { $0.type == .knownIssue }.sorted { ($0.importance, $0.updatedAt) > ($1.importance, $1.updatedAt) }.prefix(5).map { MemoryText.clip($0.summary, 140) }
@@ -142,9 +152,10 @@ enum ContinuationSelector {
     static func candidates(_ v: ProjectContinuityView) -> [NextCandidate] {
         var out: [NextCandidate] = []
         var seen = Set<String>()
+        let exhaustedKeys = Set(v.exhausted.map { ResearchText.fold($0).filter { $0.isLetter || $0.isNumber } })
         func add(_ c: NextCandidate) {
             let k = ResearchText.fold(c.title).filter { $0.isLetter || $0.isNumber }
-            guard !k.isEmpty, seen.insert(k).inserted else { return }
+            guard !k.isEmpty, !exhaustedKeys.contains(k), seen.insert(k).inserted else { return }
             var c = c; c.designSensitive = MajorDesign.isMajor(c.title + " " + c.detail)
             out.append(c)
         }
@@ -241,6 +252,7 @@ enum ContinuityStatus {
         if let u = v.unity { parts.append(tr(l, "Unity \(u.version ?? "?") · \(u.renderPipeline)\(u.editor.map { " · editor \($0.lowercased())" } ?? "").", "Unity \(u.version ?? "?") · \(u.renderPipeline)\(u.editor.map { " · editor \($0.lowercased())" } ?? "").")) }
         if let t = v.running.first { parts.append(tr(l, "Right now: “\(t.title)” is running.", "Şu an “\(t.title)” çalışıyor.")) }
         for t in v.interrupted.prefix(2) { parts.append(tr(l, "Unfinished: “\(t.title)” was interrupted.", "Yarım kalan: “\(t.title)” kesintiye uğradı.")) }
+        if v.failed.isEmpty, let f = v.lastFailure { parts.append(tr(l, "Failed: “\(f.title)” (\(MemoryText.clip(f.failureReason ?? f.failureCategory ?? "unknown", 80))).", "Başarısız: “\(f.title)” (\(MemoryText.clip(f.failureReason ?? f.failureCategory ?? "bilinmiyor", 80))).")) }
         for t in v.failed.prefix(1) { parts.append(tr(l, "Failed: “\(t.title)” (\(MemoryText.clip(t.failureReason ?? t.failureCategory ?? "unknown", 80))).", "Başarısız: “\(t.title)” (\(MemoryText.clip(t.failureReason ?? t.failureCategory ?? "bilinmiyor", 80))).")) }
         for b in v.blockers.prefix(1) { parts.append(tr(l, "Waiting on you: \(b).", "Sizden bekleyen: \(b).")) }
         if let next = v.candidates.first(where: { $0.source == .checkpoint }) ?? v.candidates.first(where: { $0.source == .knownIssue }) {
@@ -260,8 +272,9 @@ enum ContinuityStatus {
     }
 
     static func lastDone(_ v: ProjectContinuityView, language l: ReplyLanguage, now: Date = Date()) -> String {
-        guard let c = v.checkpoint else { return tr(l, "\(v.name): nothing is recorded as done yet.", "\(v.name): henüz kayıtlı bir iş yok.") }
-        var s = tr(l, "\(v.name): last \(c.outcome.lowercased()) — “\(c.title)”, \(ago(c.createdAt, now: now, l)).", "\(v.name): son durum \(c.outcome.lowercased()) — “\(c.title)”, \(ago(c.createdAt, now: now, l)).")
+        let failedLine: String? = v.lastFailure.map { f in tr(l, "\(v.name): the latest attempt, “\(f.title)”, failed (\(MemoryText.clip(f.failureReason ?? f.failureCategory ?? "unknown", 80))), \(ago(f.finishedAt ?? f.updatedAt, now: now, l)).", "\(v.name): son deneme “\(f.title)” başarısız oldu (\(MemoryText.clip(f.failureReason ?? f.failureCategory ?? "bilinmiyor", 80))), \(ago(f.finishedAt ?? f.updatedAt, now: now, l)).") }
+        guard let c = v.checkpoint else { return failedLine ?? tr(l, "\(v.name): nothing is recorded as done yet.", "\(v.name): henüz kayıtlı bir iş yok.") }
+        var s = (failedLine.map { $0 + " " } ?? "") + tr(l, "\(failedLine == nil ? "\(v.name): " : "")last \(c.outcome.lowercased()) — “\(c.title)”, \(ago(c.createdAt, now: now, l)).", "\(v.name): son durum \(c.outcome.lowercased()) — “\(c.title)”, \(ago(c.createdAt, now: now, l)).")
         if !c.changed.isEmpty { s += tr(l, " Changed: \(c.changed.prefix(4).joined(separator: ", "))\(c.changed.count > 4 ? " +\(c.changed.count - 4)" : "").", " Değişenler: \(c.changed.prefix(4).joined(separator: ", "))\(c.changed.count > 4 ? " +\(c.changed.count - 4)" : "").") }
         if !c.validated.isEmpty { s += tr(l, " Validated: \(c.validated.prefix(3).joined(separator: "; ")).", " Doğrulanan: \(c.validated.prefix(3).joined(separator: "; ")).") }
         if !c.remaining.isEmpty { s += tr(l, " Remaining: \(c.remaining.prefix(3).joined(separator: "; ")).", " Kalan: \(c.remaining.prefix(3).joined(separator: "; ")).") }
@@ -380,11 +393,11 @@ enum ContinuityIntent: Equatable, Sendable {
         if nextPhrases.contains(where: { t.contains($0) }) { return .next(project: project) }
 
         // Status: needs a project cue, or the unmistakable "ne durumdayiz" / "where are we".
-        let statusPhrases = ["ne durumdayiz", "durumdayiz", "ne durumda", "projenin durumu", "proje durumu", "project status", "status of the project", "status of the", "status of our", "where are we on", "where are we with", "where are we at", "how is the project", "how far are we",
+        let statusPhrases = ["ne durumdayiz", "durumdayiz", "ne durumda", "projenin durumu", "proje durumu", "project status", "status of the project", "status of the", "status of our", "where do we stand", "where we stand", "state of the project", "where are we on", "where are we with", "where are we at", "how is the project", "how far are we",
                              "how is the project going", "nasil gidiyor", "neredeyiz", "ne asamadayiz", "ne asamada"]
         if statusPhrases.contains(where: { t.contains($0) }) {
             // "durum ne?" / "what are you doing?" stay the V0.12 TASK status; this is about the PROJECT.
-            if mentionsProject || project != nil || t.contains("durumdayiz") || t.contains("where are we") || t.contains("neredeyiz") || t.contains("asamadayiz") || t.contains("how far are we") { return .status(project: project, detailed: t.contains("detay") || t.contains("detail")) }
+            if mentionsProject || project != nil || t.contains("durumdayiz") || t.contains("where are we") || t.contains("where do we stand") || t.contains("where we stand") || t.contains("neredeyiz") || t.contains("asamadayiz") || t.contains("how far are we") { return .status(project: project, detailed: t.contains("detay") || t.contains("detail")) }
         }
         return nil
     }

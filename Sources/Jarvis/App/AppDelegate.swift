@@ -11,12 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
-        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.memoryLiveTest && !options.computerLiveTest && !options.orchestrationLiveTest && !options.operatorLiveTest && !options.visualBenchmark && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
+        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.memoryLiveTest && !options.computerLiveTest && !options.orchestrationLiveTest && !options.operatorLiveTest && !options.continuityLiveTest && !options.visualBenchmark && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
         let liveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true)
             : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true)
             : (options.proactiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-proactive", isDirectory: true)
             : (options.unityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-unity", isDirectory: true)
-            : ((options.operatorLiveTest || options.visualBenchmark) ? JarvisPaths.standard().root.appendingPathComponent("live-test-operator", isDirectory: true)
+            : (options.continuityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-continuity", isDirectory: true) : (options.operatorLiveTest || options.visualBenchmark) ? JarvisPaths.standard().root.appendingPathComponent("live-test-operator", isDirectory: true)
             : (options.orchestrationLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.orchestrationChild != nil ? "live-test-orchestration-child" : "live-test-orchestration", isDirectory: true)
             : (options.computerLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.computerChild != nil ? "live-test-computer-child" : "live-test-computer", isDirectory: true)
             : (options.memoryLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.memoryChild != nil ? "live-test-memory-child" : "live-test-memory", isDirectory: true)
@@ -102,6 +102,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let context = context!, dir = options.liveDirectory ?? "captures", cases = options.visualCases
             Task { await VisualBenchmark.run(context: context, captureDirectory: dir, casesDirectory: cases) }
         }
+        if options.continuityLiveTest {
+            let context = context!, sections = options.continuitySections
+            Task { await ContinuityLiveTest.run(context: context, sections: sections) }
+        }
         if options.operatorLiveTest {
             let context = context!, dir = options.liveDirectory ?? "captures", sections = options.operatorSections
             Task { await OperatorLiveTest.run(context: context, captureDirectory: dir, sections: sections) }
@@ -147,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await DevCapture.run(directory: directory, context: context) }
         }
         // Find out which engines are actually usable (event-driven, once; no polling). Stubbed runs never touch real providers.
-        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.computerLiveTest && !options.orchestrationLiveTest && !options.operatorLiveTest && !options.visualBenchmark && !options.voiceLiveTest && !options.naturalVoiceLiveTest {
+        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.computerLiveTest && !options.orchestrationLiveTest && !options.operatorLiveTest && !options.continuityLiveTest && !options.visualBenchmark && !options.voiceLiveTest && !options.naturalVoiceLiveTest {
             let context = context!
             Task { await context.refreshIntelligence(includeOpenCode: false) }     // OpenCode is read lazily (may start its background service)
         }
