@@ -47,6 +47,9 @@ final class AppContext {
     let computer: ComputerRuntime
     let computerModel: ComputerViewModel
     let orchestrationModel: OrchestrationViewModel
+    /// V0.13: project continuity — status questions and “continue” resolved against current project truth; checkpoints when tasks finish. Derived view, no execution path of its own.
+    let continuity: ProjectContinuity
+    let operatorModel: ProjectOperatorViewModel
     // V0.5 proactive layer: decides (never executes) — approved/auto actions become normal V0.4 tasks
     let opportunities: OpportunityEngine
     let proposalService: ProposalService
@@ -150,6 +153,10 @@ final class AppContext {
         taskEngine.computerAllowed = { [weak computerPrefs] in computerPrefs?.computerUseEnabled ?? true }
         computerModel = ComputerViewModel(runtime: computer, engine: taskEngine, preferences: preferences)
         orchestrationModel = OrchestrationViewModel(repository: repo)
+        continuity = ProjectContinuity(repository: repo, engine: taskEngine, memory: memory, preferences: preferences)
+        continuity.enabled = { [weak webPrefs] in webPrefs?.projectContinuationEnabled ?? true }
+        continuity.unityEditorState = { [weak unity] root in unity?.existingConnection(for: root)?.state.label }
+        operatorModel = ProjectOperatorViewModel(continuity: continuity, preferences: preferences)
         let engineRef = taskEngine
         computer.onEmergencyStop = { [weak engineRef] in engineRef?.cancelComputerTasks(reason: "emergency stop") }
         computer.onEvent = { [weak engineRef] id, e in engineRef?.note(e.summary, e.isWarning ? .warning : .info, taskID: id) }
@@ -186,6 +193,7 @@ final class AppContext {
         // Autonomous work is only enabled for the real app: stubbed automated runs never start tasks (and never reach providers).
         if !stubIntelligence { conversationService.taskSubmitter = taskIntake; conversationService.researchSubmitter = taskIntake; conversationService.computerSubmitter = taskIntake }
         conversationService.graphStatus = { [weak taskEngine] focus, lang in taskEngine?.graphStatusText(focus, lang) }
+        if !stubIntelligence { conversationService.continuityHandler = continuity }       // V0.13: stubbed automated runs never start continuation tasks
         conversationService.memoryHandler = memory                         // V0.10: remember / correct / forget / "what did we decide…" — typed and spoken text alike
         memory.onActivity = { [weak store] message, kind in store?.log(message, kind: kind, persist: false) }
         memory.modelCall = { [weak self] task, prompt in
@@ -261,6 +269,7 @@ final class AppContext {
             self.taskBridge.finished(v)
             let finishedReport = self.taskEngine.report(for: v.id)
             Task { @MainActor in await self.memory.taskFinished(v, report: finishedReport) }          // V0.10: only meaningful outcomes become memory
+            Task { @MainActor in await self.continuity.taskFinished(v, report: finishedReport) }       // V0.13: the checkpoint this task leaves behind (Git HEAD, file hashes, validated / remaining)
             // V0.12: a child task (research / computer node of a graph) reports to its PARENT's graph — it never speaks to the user or triggers the proactive layer on its own.
             if v.task.parentTaskID != nil { return }
             Task { @MainActor in await self.opportunities.taskFinished(v) }          // event-driven post-task reflection (bounded; no polling)

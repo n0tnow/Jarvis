@@ -439,3 +439,7 @@ See `docs/MULTI_AGENT_ORCHESTRATION.md` §14 and `PROJECT_STATE.md` (Tested). Un
 
 ### Open
 `docs/KNOWN_ISSUES.md` JARVIS-V12-1…13. MANUAL TEST REQUIRED: README 704–823.
+
+
+## V0.13 — checkpoint 1: Project Continuity (in progress)
+Recovered V0.12 (957f95e, clean, in sync; baseline 1326 tests green). Added `Sources/Jarvis/Continuity/` (derived project view, reconciler, selector, status answers, intents, the effectful `ProjectContinuity` service), schema v11 (`project_continuity`, `project_checkpoints`), the Project card, the Compact operator line and a Settings switch. “Continue” resolves against current truth and becomes an ordinary bounded V0.4/V0.12 task; nothing new may approve, buy, push, redesign or run while idle.

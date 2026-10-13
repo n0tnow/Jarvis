@@ -45,4 +45,29 @@ enum GitTool {
                            head: (head?.exitCode == 0) ? head?.output.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
                            dirtyPaths: dirty.sorted(), untrackedPaths: untracked.sorted(), capturedAt: now)
     }
+
+    /// V0.13 project continuity: the same read-only facts as the baseline plus the HEAD commit subject, as one value. Nothing is changed.
+    static func continuity(at dir: String) async -> ContinuityGit {
+        guard let inside = await run(["rev-parse", "--is-inside-work-tree"], in: dir), inside.exitCode == 0, inside.output.trimmingCharacters(in: .whitespacesAndNewlines) == "true" else { return .none }
+        func out(_ r: ManagedProcess.RunResult?) -> String? { (r?.exitCode == 0) ? r?.output.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").first.map(String.init) : nil }
+        let prefix = (await run(["rev-parse", "--show-prefix"], in: dir))?.output.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let status = await run(["status", "--porcelain=v1", "--untracked-files=all"], in: dir)
+        var dirty: [String] = [], untracked: [String] = []
+        for line in (status?.output ?? "").split(separator: "\n") where line.count > 3 {
+            var path = String(line.dropFirst(3))
+            if let arrow = path.range(of: " -> ") { path = String(path[arrow.upperBound...]) }
+            path = path.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            if !prefix.isEmpty { guard path.hasPrefix(prefix) else { continue }; path = String(path.dropFirst(prefix.count)) }
+            if line.prefix(2) == "??" { untracked.append(path) } else { dirty.append(path) }
+        }
+        return ContinuityGit(isRepository: true, branch: out(await run(["rev-parse", "--abbrev-ref", "HEAD"], in: dir)), head: out(await run(["rev-parse", "HEAD"], in: dir)),
+                             subject: out(await run(["log", "-1", "--format=%s"], in: dir)).map { OutputSanitizer.sanitize(String($0.prefix(120))) }, dirtyPaths: dirty.sorted(), untrackedPaths: untracked.sorted())
+    }
+
+    /// Paths that changed between two commits (read-only `git diff --name-only`). Used to say WHAT an external commit touched after the last checkpoint.
+    static func changedFiles(from old: String, to new: String, at dir: String) async -> [String] {
+        guard old.range(of: "^[0-9a-f]{7,40}$", options: .regularExpression) != nil, new.range(of: "^[0-9a-f]{7,40}$", options: .regularExpression) != nil,
+              let r = await run(["diff", "--name-only", "\(old)..\(new)"], in: dir), r.exitCode == 0 else { return [] }
+        return r.output.split(separator: "\n").prefix(200).map { String($0).trimmingCharacters(in: CharacterSet(charactersIn: "\"")) }.sorted()
+    }
 }

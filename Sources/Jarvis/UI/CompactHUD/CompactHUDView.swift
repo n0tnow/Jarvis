@@ -147,7 +147,7 @@ struct CompactHUDView: View {
             if let step = task.currentStep, let number = task.currentStepNumber {
                 HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.s) {
                     Text("STEP \(number)/\(task.steps.count)").jarvisLabel(Theme.Opacity.textTertiary)
-                    Text(task.engine?.agentLine ?? step.title).font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary).lineLimit(1)
+                    Text(task.engine?.operatorLine.map { $0 + (task.engine?.agentLine.map { " · " + $0 } ?? "") } ?? task.engine?.agentLine ?? step.title).font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary).lineLimit(1)
                 }
             }
 

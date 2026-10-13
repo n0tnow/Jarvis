@@ -79,6 +79,8 @@ struct EngineTaskInfo: Codable, Hashable, Sendable {
     /// V0.12: "Coding · space-bunny-free" and the next waiting role ("QA waiting") of an orchestrated task; nil otherwise. One short line each — Compact stays 392×448.
     var agentLine: String? = nil
     var waitingLine: String? = nil
+    /// V0.13: “Hamam · Continuing · Editing” while a continuation session runs (a truthful phase word, no percentage); nil otherwise.
+    var operatorLine: String? = nil
 }
 
 /// UI-facing task representation. Plain Codable value type so a SQLite (or any)

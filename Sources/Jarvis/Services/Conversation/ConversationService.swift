@@ -72,6 +72,8 @@ final class ConversationService {
     @ObservationIgnored var graphStatus: ((StatusFocus, ReplyLanguage) -> String?)? { didSet { executor.graphStatus = graphStatus } }
     /// V0.10: Project Memory (remember / correct / forget / "what did we decide…"). Typed and spoken text take this same path; nil = memory is not wired (stubbed runs).
     @ObservationIgnored weak var memoryHandler: (any MemoryConversing)?
+    /// V0.13: project continuity (“where are we on the Hamam project?”, “continue”). Typed and spoken text take this same path; nil = not wired (stubbed runs).
+    @ObservationIgnored weak var continuityHandler: (any ContinuityConversing)?
     /// Called at the start of every accepted submission (V0.7: a typed message silences speech that is still playing).
     @ObservationIgnored var onSubmit: ((InputSource) -> Void)?
     /// "stop talking" also silences speech that is playing (V0.7): returns true when something was being spoken.
@@ -113,6 +115,12 @@ final class ConversationService {
             conversation.appendJarvis(ApprovalGuard.notice(lang), tone: .notice, route: .local)
             return .localResponse(.approvalNeedsHUD, lang)
         }
+        // Project continuity: project status questions and “continue” are resolved against CURRENT project truth (no model, no invention); “continue” becomes an ordinary bounded task.
+        if let continuity = continuityHandler, let intent = continuity.recognizes(text) {
+            let lang = InputNormalizer.normalize(text).language
+            handleContinuity(intent, language: lang, source: source)
+            return .localResponse(.continuity, lang)
+        }
         // Project Memory: explicit remember / correct / forget and direct questions about the project's history are answered from RECORDS (no model, no invention).
         if let memory = memoryHandler {
             let command = memory.recognizes(text)
@@ -141,7 +149,7 @@ final class ConversationService {
             case .greeting: conversation.appendJarvis(Phrasebook.greeting(lang), route: .local)
             case .thanks: conversation.appendJarvis(Phrasebook.thanks(lang), route: .local)
             case .approvalNeedsHUD: conversation.appendJarvis(ApprovalGuard.notice(lang), tone: .notice, route: .local)
-            case .memory: break                                   // answered by handleMemoryCommand
+            case .memory, .continuity: break                      // answered by handleMemoryCommand / handleContinuity
             }
 
         case .reasoningRequired(let prompt, let lang):
@@ -200,6 +208,18 @@ final class ConversationService {
             case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
             case .rejected(let why): self.conversation.appendJarvis(why, tone: .notice, route: .worker)
             }
+            self.announceLatestReply()
+        }
+    }
+
+    private func handleContinuity(_ intent: ContinuityIntent, language: ReplyLanguage, source: InputSource) {
+        guard let continuity = continuityHandler else { return }
+        pendingTaskAcks += 1
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.pendingTaskAcks -= 1 }
+            let reply = await continuity.reply(to: intent, language: language, channel: source)
+            self.conversation.appendJarvis(reply, route: .local)
             self.announceLatestReply()
         }
     }

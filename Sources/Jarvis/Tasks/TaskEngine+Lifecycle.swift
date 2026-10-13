@@ -191,6 +191,7 @@ extension TaskEngine {
             if let u = cp.unity { ctx.unityBaseline = u.baseline; ctx.unityFacts = u.facts; ctx.unityApprovedDirty = Set(u.approvedDirtyScenes) }
         }
         ctx.evidence = steps.filter { $0.state == .passed }.compactMap { $0.validationEvidence }
+        if t.constraints.contains(ContinuationMarker.constraint) { ctx.continuation = .standard }          // V0.13: a resumed continuation session keeps its bounds
         // V0.12: an orchestrated task keeps its graph, its typed artifacts and its revision count across a restart.
         if let g = (try? repository.taskGraph(t.id)) ?? nil {
             ctx.orchestrated = true; ctx.graphTemplate = g.template; ctx.revisionCount = g.revisions

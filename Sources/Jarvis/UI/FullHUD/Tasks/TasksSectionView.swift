@@ -15,6 +15,7 @@ struct TasksSectionView: View {
         ScrollView {
             VStack(spacing: Theme.Spacing.m) {
                 ProjectBar()
+                ProjectOperatorCard()
                 ProposalsGroup()
                 if noTasks { emptyState }
                 if !attention.isEmpty { group("NEEDS YOUR ATTENTION", attention) }

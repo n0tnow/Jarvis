@@ -48,6 +48,8 @@ extension JarvisRepository {
          .text(t.origin.rawValue), .opt(t.originTaskID?.uuidString), .opt(t.originOpportunityID?.uuidString), .int(Int64(t.autonomyDepth)), .opt(t.scope.map { js($0) }), .text(t.inputChannel.rawValue), .opt(t.parentTaskID?.uuidString)]
     }
 
+    static func taskRow(_ r: SQLRow) -> TaskRecord? { task(r) }
+
     private static func task(_ r: SQLRow) -> TaskRecord? {
         guard let id = Self.uid(r.string("id")), let title = r.string("title"), let kind = r.string("kind").flatMap(TaskKind.init(rawValue:)),
               let state = r.string("status").flatMap(TaskState.init(rawValue:)), let created = r.date("created_at") else { return nil }

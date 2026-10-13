@@ -99,6 +99,7 @@ struct SettingsView: View {
             WebResearchSettingsSection()
             MemorySettingsSection()
             ComputerSettingsSection()
+            OperatorSettingsSection()
             Section {
                 LabeledContent("Version", value: "\(AppInfo.version) (\(AppInfo.milestone))")
                 LabeledContent("Permissions", value: app.preferences.voiceEnabled ? "Microphone (only while you hold Push-to-Talk)" : "None requested")

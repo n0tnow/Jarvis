@@ -154,6 +154,8 @@ final class TaskEngine {
         var optionalFailures: [String: String] = [:]
         var startedGraphAt = Date()
         var revisionRequests: [String: String] = [:]          // node key → what knowledge a specialist asked for (the ORCHESTRATOR decides whether to insert research)
+        /// V0.13: a continuation session is a bounded piece of work (wall clock, nodes, revisions, correction rounds); nil for every other task.
+        var continuation: ContinuationBounds?
 
         init(record: TaskRecord, steps: [TaskStepRecord], workspace: WorkspaceGuard, tools: ProjectTools, profiles: ProjectProfiles) {
             self.record = record; self.steps = steps; self.workspace = workspace; self.tools = tools; self.profiles = profiles
@@ -298,7 +300,13 @@ final class TaskEngine {
             var inflight: [String: StepType] = [:]
             while true {
                 if ctx.cancelRequested || Task.isCancelled || ctx.hardFailure != nil { break }
-                if Date().timeIntervalSince(ctx.startedGraphAt) > OrchestrationLimits.graphTimeout { ctx.hardFailure = (.resourceUnavailable, "The task exceeded its time limit."); break }
+
+                let graphLimit = ctx.continuation.map { min($0.wallClockSeconds, OrchestrationLimits.graphTimeout) } ?? OrchestrationLimits.graphTimeout
+                if Date().timeIntervalSince(ctx.startedGraphAt) > graphLimit {
+                    ctx.hardFailure = (.resourceUnavailable, ctx.continuation != nil ? "The continuation session reached its time bound (\(Int(graphLimit / 60)) min). Say “continue” again to carry on." : "The task exceeded its time limit.")
+                    break
+                }
+
                 // Which nodes may start now is ONE policy (`ConcurrencyPolicy`): two read-only nodes at most, one under any resource pressure, everything that writes/builds/tests/reviews alone.
                 let pressure = resourcePressure()
                 let limit = min(limits.maxConcurrentSteps, ConcurrencyPolicy.parallelLimit(pressure))

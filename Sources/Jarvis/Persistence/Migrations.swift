@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10]
+    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -482,5 +482,24 @@ struct Migration: Sendable {
         """,
         "CREATE INDEX idx_routing_decisions_task ON routing_decisions(task_id, created_at)",
         "CREATE INDEX idx_routing_decisions_role ON routing_decisions(role, engine, model)",
+    ])
+
+    /// V11 — project continuity (V0.13). Continuity is DERIVED (tasks, Git, memory, the Unity descriptor); only what cannot be derived cheaply is stored: one row per project
+    /// (when the last continuation session ran) and the checkpoints a finished task or session left behind (Git HEAD, dirty set, file hashes, validated / remaining / next).
+    /// No chain-of-thought, no screenshots, no raw output.
+    static let v11 = Migration(version: 11, name: "project continuity", statements: [
+        """
+        CREATE TABLE project_continuity (
+            project_key TEXT PRIMARY KEY, last_continuation_at REAL, last_task_id TEXT, sessions INTEGER NOT NULL DEFAULT 0, queue TEXT, updated_at REAL NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE project_checkpoints (
+            id TEXT PRIMARY KEY, project_key TEXT NOT NULL, task_id TEXT, created_at REAL NOT NULL, kind TEXT NOT NULL, outcome TEXT NOT NULL, title TEXT NOT NULL,
+            git_head TEXT, git_branch TEXT, payload TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_project_checkpoints_project ON project_checkpoints(project_key, created_at)",
+        "CREATE INDEX idx_tasks_workspace ON tasks(workspace_root, created_at)",
     ])
 }
