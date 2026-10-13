@@ -176,6 +176,13 @@ final class BenchmarkRunner {
         return !Set(BenchmarkSuite.all.map(\.id)).isSubset(of: done)
     }
 
+    /// True unless the model has a result for EVERY case of the V0.12 role suite.
+    func needsRoleBenchmark(_ modelID: String) -> Bool {
+        guard let results = try? repository?.benchmarks(modelID: modelID) else { return true }
+        let done = Set(results.filter { $0.suite == RoleBenchmarkSuite.id }.map(\.caseID))
+        return !Set(RoleBenchmarkSuite.all.map(\.id)).isSubset(of: done)
+    }
+
     init(repository: JarvisRepository?, artifacts: ArtifactStore?) { self.repository = repository; self.artifacts = artifacts }
 
     struct CaseOutcome: Sendable { var caseID: String; var group: BenchmarkGroup; var passed: Bool; var detail: String; var durationMS: Double; var latencyMS: Double?; var error: ProviderError? }
@@ -184,12 +191,22 @@ final class BenchmarkRunner {
     func run(modelID: String, groups: [BenchmarkGroup], makeProvider: () -> (any IntelligenceProvider)?,
              progress: ((CaseOutcome) -> Void)? = nil, onModelRemoved: (() -> Void)? = nil,
              onCaseStart: ((Int, BenchmarkSuite.Case) -> Void)? = nil) async -> [CaseOutcome] {
+        let outcomes = await run(modelID: modelID, cases: groups.flatMap { BenchmarkSuite.cases($0) }, suite: BenchmarkSuite.id, makeProvider: makeProvider, progress: progress, onModelRemoved: onModelRemoved, onCaseStart: onCaseStart)
+        updateStatus(modelID)
+        return outcomes
+    }
+
+    /// V0.12: the same runner for any list of cases (the ROLE suite). Results are recorded under `suite`; the V0.3.1 Auto gate only reads suite `v1`.
+    func run(modelID: String, cases: [BenchmarkSuite.Case], suite: String, makeProvider: () -> (any IntelligenceProvider)?,
+             progress: ((CaseOutcome) -> Void)? = nil, onModelRemoved: (() -> Void)? = nil,
+             onCaseStart: ((Int, BenchmarkSuite.Case) -> Void)? = nil) async -> [CaseOutcome] {
         var outcomes: [CaseOutcome] = []
         var removed = false
         var consecutiveProviderFailures = 0
         var caseIndex = -1
-        for group in groups {
-            for c in BenchmarkSuite.cases(group) {
+        for c in cases {
+            let group = c.group
+            do {
                 caseIndex += 1
                 if Task.isCancelled { return outcomes }                       // user pressed Stop: finish quietly between cases
                 onCaseStart?(caseIndex, c)
@@ -198,11 +215,11 @@ final class BenchmarkRunner {
                 if removed || consecutiveProviderFailures >= Self.maxConsecutiveProviderFailures {
                     let why = removed ? "skipped: model removed" : "skipped: provider failing"
                     let o = CaseOutcome(caseID: c.id, group: group, passed: false, detail: why, durationMS: 0, latencyMS: nil, error: nil)
-                    outcomes.append(o); record(modelID, c, o, malformed: false, retries: 0, artifact: nil); progress?(o); continue
+                    outcomes.append(o); record(modelID, c, o, malformed: false, retries: 0, artifact: nil, suite: suite); progress?(o); continue
                 }
                 guard let provider = makeProvider() else {
                     let o = CaseOutcome(caseID: c.id, group: group, passed: false, detail: "provider unavailable", durationMS: 0, latencyMS: nil, error: .unavailable(.openCode, "provider unavailable"))
-                    outcomes.append(o); record(modelID, c, o, malformed: false, retries: 0, artifact: nil); progress?(o); continue
+                    outcomes.append(o); record(modelID, c, o, malformed: false, retries: 0, artifact: nil, suite: suite); progress?(o); continue
                 }
                 let result = await OneShotRunner.run(provider: provider, prompt: c.prompt, timeout: c.timeout)
                 var verdict = BenchmarkSuite.Verdict(passed: false, detail: "no output")
@@ -222,18 +239,17 @@ final class BenchmarkRunner {
                 let o = CaseOutcome(caseID: c.id, group: group, passed: verdict.passed, detail: verdict.detail, durationMS: result.durationMS,
                                     latencyMS: result.firstOutputMS, error: result.error)
                 outcomes.append(o)
-                record(modelID, c, o, malformed: verdict.malformed || result.error == .malformedOutput(.openCode), retries: 0, artifact: artifactID, cancelled: result.cancelled)
+                record(modelID, c, o, malformed: verdict.malformed || result.error == .malformedOutput(.openCode), retries: 0, artifact: artifactID, cancelled: result.cancelled, suite: suite)
                 progress?(o)
             }
         }
-        updateStatus(modelID)
         return outcomes
     }
 
-    private func record(_ modelID: String, _ c: BenchmarkSuite.Case, _ o: CaseOutcome, malformed: Bool, retries: Int, artifact: UUID?, cancelled: Bool = false) {
-        try? repository?.add(BenchmarkResultRecord(modelID: modelID, suite: BenchmarkSuite.id, caseID: c.id, category: c.group, passed: o.passed, validation: o.detail,
+    private func record(_ modelID: String, _ c: BenchmarkSuite.Case, _ o: CaseOutcome, malformed: Bool, retries: Int, artifact: UUID?, cancelled: Bool = false, suite: String = BenchmarkSuite.id) {
+        try? repository?.add(BenchmarkResultRecord(modelID: modelID, suite: suite, caseID: c.id, category: c.group, passed: o.passed, validation: o.detail,
                                                    latencyMS: o.latencyMS, durationMS: o.durationMS, retries: retries, malformed: malformed, cancelled: cancelled,
-                                                   artifactID: artifact))
+                                                   artifactID: artifact, contextChars: suite == BenchmarkSuite.id ? nil : c.prompt.count))
     }
 
     /// Derives the model's overall benchmark status from recorded results only.

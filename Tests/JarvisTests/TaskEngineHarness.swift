@@ -83,11 +83,11 @@ enum Scripts {
     static func operators(_ ops: [String]) -> (Int) -> String { { i in addEdit(from: ops[min(i, ops.count - 2)], to: ops[min(i + 1, ops.count - 1)]) } }
 
     /// The happy path: every job type answers correctly. `coding` supplies the n-th CodingAgent answer.
-    static func standard(plan: String = planFiveSteps, coding: @escaping (Int) -> String = { _ in TaskFixtures.fixEdit }) -> (AgentJob, Int) async -> ScriptedRunner.Answer {
+    static func standard(plan: String = planFiveSteps, coding: @escaping (Int) -> String = { _ in TaskFixtures.fixEdit }, analysisText: String = Scripts.analysis) -> (AgentJob, Int) async -> ScriptedRunner.Answer {
         { job, index in
             switch job.type {
             case "PlannerAgent": return .text(plan)
-            case "AnalysisAgent": return .text(Scripts.analysis)
+            case "AnalysisAgent": return .text(analysisText)
             case "CodingAgent": return .text(coding(index))
             case "ReviewAgent": return .text(reviewPass)
             default: return .fail(.generic)

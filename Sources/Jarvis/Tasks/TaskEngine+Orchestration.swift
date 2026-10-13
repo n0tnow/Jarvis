@@ -181,7 +181,7 @@ extension TaskEngine {
         let reasons = RoutingExplainer.parse(rec?.selectionReason)
         let key = job.nodeKey
         var independence: ReviewIndependence.Outcome?
-        if let key, role == .review, let writers = ctx.reviewWriters[key] {
+        if let key, role == .review, cand != nil, let writers = ctx.reviewWriters[key] {
             independence = ReviewIndependence.outcome(required: true, writers: writers, reviewer: cand ?? rec.map { RoutingCandidate(engine: $0.engine, model: $0.model) })
             ctx.independence[key] = independence
         }
@@ -366,7 +366,7 @@ extension TaskEngine {
         var affected: Set<String> = [key]
         var changed = true
         while changed { changed = false; for n in graph.nodes where !affected.contains(n.key) && n.dependsOn.contains(where: affected.contains) { affected.insert(n.key); changed = true } }
-        for k in affected { if let s = ctx.step(k), s.state == .passed || s.state == .failed || s.state == .skipped { resetStep(ctx, k) } }
+        for k in affected { if let s = ctx.step(k), [.passed, .failed, .skipped, .interrupted].contains(s.state) { resetStep(ctx, k) } }
         try? repository?.markArtifactsStale(taskID: ctx.record.id, nodeKeys: Array(affected))
         for i in ctx.artifacts.indices where affected.contains(ctx.artifacts[i].nodeKey) { ctx.artifacts[i].status = .stale }
         note("Orchestrator · \(affected.count) node(s) will run again: \(why)", .warning, taskID: ctx.record.id)

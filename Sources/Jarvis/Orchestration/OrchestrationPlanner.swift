@@ -53,6 +53,10 @@ enum GoalCues {
     static func investigate(_ raw: String) -> Bool {
         has(tokens(raw), prefixes: ["analy", "inspect", "investigat", "diagnos", "audit", "find", "look", "examin", "incele", "analiz", "bul", "tespit", "arastir", "kontrol"]) || hasPhrase(raw, ["sorun", "hata", "bug", "problem", "issue"])
     }
+    /// Only the VERBS (a noun like “problem” describes the subject, it is not a second job).
+    static func investigateVerb(_ raw: String) -> Bool {
+        has(tokens(raw), prefixes: ["analy", "inspect", "investigat", "diagnos", "audit", "examin", "incele", "analiz", "tespit", "arastir"]) || has(tokens(raw), prefixes: ["find", "bul"])
+    }
     static func tests(_ raw: String) -> Bool {
         has(tokens(raw), prefixes: ["test", "dogrula", "verify", "validate"]) || hasPhrase(raw, ["unit test", "testleri"])
     }
@@ -76,7 +80,7 @@ enum GoalCues {
     static func wantsImport(_ raw: String) -> Bool { hasPhrase(raw, ["import it", "add it to the project", "projeye ekle", "indir", "download", "install", "kur"]) }
     /// Two or more distinct jobs in one goal (investigate / research / fix / test / review): the orchestrator decides which specialists are needed.
     static func isCompound(_ raw: String) -> Bool {
-        let n = [investigate(raw), needsResearch(raw), fix(raw), tests(raw), review(raw)].filter { $0 }.count
+        let n = [investigateVerb(raw), needsResearch(raw), fix(raw), tests(raw), review(raw)].filter { $0 }.count
         return n >= 2 && !assetQuestion(raw)
     }
     static func runTestsOnly(_ raw: String) -> Bool {
@@ -203,7 +207,17 @@ enum OrchestrationPlanner {
     }
 
     /// The research child gets a clean question: the user's own words, bounded (the child re-derives its plan from it through the V0.9 intake).
-    static func researchQuestion(from goal: String) -> String { String(goal.trimmingCharacters(in: .whitespacesAndNewlines).prefix(400)) }
+    /// A compound goal ("fix the throw system and check the latest Unity docs for the changed API") contains ONE knowledge question; the research task gets that clause (plus the subject of
+    /// the goal when the clause is too short to stand alone), not the whole job description.
+    static func researchQuestion(from goal: String) -> String {
+        let g = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clauses = g.split(whereSeparator: { ",.;".contains($0) }).flatMap { $0.components(separatedBy: " and ") }.flatMap { $0.components(separatedBy: " ve ") }.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let cue = clauses.filter { GoalCues.needsResearch($0) }
+        guard !cue.isEmpty else { return String(g.prefix(400)) }
+        var q = cue.joined(separator: ", ")
+        if q.split(separator: " ").count < 6, let first = clauses.first, first != cue.first { q = first + " — " + q }
+        return String(q.prefix(400))
+    }
 }
 
 // MARK: - Graph revision (bounded)

@@ -142,11 +142,14 @@ extension TaskEngine {
             let job = AgentJob(type: "PlannerAgent", title: "Plan · \(ctx.record.title)", prompt: prompt, profile: jobProfile(ctx, nil, promptChars: prompt.count),
                                taskID: ctx.record.id,
                                validator: { text in
-                                   var r = PlanValidator.check(text, kind: kind, capabilities: caps, allowDestructive: allowDestructive)
-                                   if orchestrating, r.plan != nil {                       // V0.12: the graph rules (roles, optional nodes, ordering, validation gates) on top of V0.4's
-                                       let g = GraphValidator.check(text, kind: kind, capabilities: pc.map { TaskEngine.graphCapabilities(caps, plan: r.plan!, web: $0.webAllowed, computer: $0.computerAllowed) } ?? caps, allowDestructive: allowDestructive,
-                                                                    delegateCheck: dcheck)
-                                       if g.plan == nil { r = (nil, r.issues + g.issues.map { PlanIssue.prohibitedOperation(step: "graph", phrase: $0) }) }
+                                   // V0.12: a delegated node's capability exists on the task only if the user's settings allow it AND the validated plan contains such a node.
+                                   let planCaps = pc.map { CapabilitySet(granted: caps.granted.union($0.webAllowed ? [.researchWeb] : []).union($0.computerAllowed ? [.controlComputer] : [])) } ?? caps
+                                   var r = PlanValidator.check(text, kind: kind, capabilities: planCaps, allowDestructive: allowDestructive)
+                                   var graphPolicy = false
+                                   if orchestrating, r.plan != nil {                       // the graph rules (roles, optional nodes, ordering, validation gates) on top of V0.4's
+                                       let g = GraphValidator.check(text, kind: kind, capabilities: planCaps, allowDestructive: allowDestructive, delegateCheck: dcheck)
+                                       graphPolicy = g.policy
+                                       if g.plan == nil { r = (nil, g.issues.map { graphPolicy ? PlanIssue.prohibitedOperation(step: "graph", phrase: $0) : PlanIssue.missingField(step: "graph", field: $0) }) }
                                    }
                                    if let plan = r.plan, let scope {                      // V0.5: a proactive task's plan may not exceed what was approved
                                        let over = scope.planViolations(plan)
