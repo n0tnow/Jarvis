@@ -597,7 +597,7 @@ enum OperatorLiveTest {
 
         // ------------------------------------------------------------ 10. crash cleanup: a hard kill mid-experiment (run `crash-start`, then `crash-recover` as a SEPARATE launch)
         func editorsUnderExperimentsRoot() -> Int { UnityProcessScanner.editors().filter { $0.projectPath?.hasPrefix(UnityProcessScanner.canonical(expRoot.path) + "/") == true }.count }
-        if wants("crash-start") {
+        if sections.contains("crash-start") {
             await unity.shutdownOwnedEditors()
             _ = await waitUntil(60) { conn.transport.currentStatus() == nil }
             let eng = scriptedEngine(expPlan)
@@ -610,7 +610,7 @@ enum OperatorLiveTest {
             fflush(stdout)
             kill(getpid(), SIGKILL)
         }
-        if wants("crash-recover") {
+        if sections.contains("crash-recover") {
             let recs = (try? repo.recentExperiments(limit: 20)) ?? []
             check("After the crash the experiment is INTERRUPTED (it is never resumed by itself)", recs.contains { $0.status == "interrupted" }, recs.map(\.status).joined(separator: ", "))
             check("The orphaned environment was deleted at launch (marker-checked, inside the experiments root)", ((try? FileManager.default.contentsOfDirectory(atPath: expRoot.path)) ?? []).isEmpty)
