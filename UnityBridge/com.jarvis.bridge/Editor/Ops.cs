@@ -19,7 +19,7 @@ namespace Jarvis.Bridge
     /// The complete, fixed operation table. Every operation is typed, bounded and returns structured data. Anything that would let a caller
     /// supply code (eval, menu item by name, shell) does not exist here by design.
     /// </summary>
-    internal static class Ops
+    internal static partial class Ops
     {
         const int MaxObjects = 200;
         const int MaxProps = 60;
@@ -72,6 +72,7 @@ namespace Jarvis.Bridge
             R("deleteGameObject", DeleteGameObject, true);
             R("saveScene", SaveSceneOp, true);
             R("createPrefab", CreatePrefab, true);
+            RegisterOperator(R);
         }
 
         // ================================================================ small helpers
@@ -264,10 +265,10 @@ namespace Jarvis.Bridge
 
         static D GetProjectInfo(D a)
         {
-            string rp = "Built-in";
-            try { var p = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline; if (p != null) rp = p.GetType().Name; } catch (Exception) { }
+            string rp = "Built-in", rpAsset = null;
+            try { var p = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline; if (p != null) { rp = p.GetType().Name; rpAsset = AssetDatabase.GetAssetPath(p); } } catch (Exception) { }
             return Obj("unityVersion", Application.unityVersion, "projectName", Path.GetFileName(JarvisBridge.ProjectPath), "productName", Application.productName,
-                       "renderPipeline", rp, "batchMode", Application.isBatchMode, "platform", EditorUserBuildSettings.activeBuildTarget.ToString(),
+                       "renderPipeline", rp, "renderPipelineAsset", rpAsset, "colorSpace", PlayerSettings.colorSpace.ToString(), "batchMode", Application.isBatchMode, "platform", EditorUserBuildSettings.activeBuildTarget.ToString(),
                        "isPlaying", EditorApplication.isPlaying, "isCompiling", EditorApplication.isCompiling, "bridgeVersion", JarvisBridge.BridgeVersion,
                        "session", JarvisBridge.SessionId, "owned", JarvisBridge.IsOwned);
         }
@@ -469,6 +470,7 @@ namespace Jarvis.Bridge
             if (hasExpected) Require(Equal(current, expectedOld), "expectedValueMismatch", "The current value does not match the expected old value.", Obj("current", current));
             Assign(p, newValue);
             so.ApplyModifiedProperties();
+            if (PrefabUtility.IsPartOfPrefabInstance(go)) NoteTouched(comp);
             MarkDirty(go.scene);
             TryRead(so.FindProperty(path), out var after, out _);
             return Obj("changed", true, "alreadyApplied", false, "value", after, "undoRecorded", true, "target", Identity(go));
@@ -522,6 +524,7 @@ namespace Jarvis.Bridge
             string prim = Str(a, "primitive", "None");
             GameObject go;
             if (prim == "None") go = new GameObject(name);
+            else if (prim == "RectTransform") go = new GameObject(name, typeof(RectTransform));
             else
             {
                 Require(Enum.TryParse<PrimitiveType>(prim, out var pt), "invalidArguments", "Unknown primitive \"" + prim + "\".");
@@ -550,6 +553,7 @@ namespace Jarvis.Bridge
             }
             var c = Undo.AddComponent(go, type);
             Require(c != null, "addComponentFailed", "Unity refused to add " + type.Name + " to \"" + go.name + "\" (conflicting or disallowed component).");
+            if (PrefabUtility.IsPartOfPrefabInstance(go)) NoteTouched(c);
             MarkDirty(go.scene);
             return Obj("added", true, "alreadyPresent", false, "undoRecorded", true, "count", go.GetComponents(type).Length, "target", Identity(go));
         }

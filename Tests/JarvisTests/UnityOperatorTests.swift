@@ -1,0 +1,331 @@
+import Testing
+import Foundation
+@testable import Jarvis
+
+private let T = UnityTarget(path: "Environment/Sun")
+private func num(_ d: Double) -> UnityValue { .number(d) }
+private func col(_ r: Double, _ g: Double, _ b: Double) -> UnityValue { .array([num(r), num(g), num(b)]) }
+private func status(playing: Bool = false, compiling: Bool = false, dirty: [UnitySceneInfo] = []) -> UnityStatusSnapshot {
+    UnityStatusSnapshot(state: playing ? "playing" : (compiling ? "compiling" : "edit"), isCompiling: compiling, isPlaying: playing, scenes: dirty)
+}
+private let dev = CapabilitySet(granted: TaskCapability.unityDevelopment)
+private func decide(_ d: UnityDevOp, caps: CapabilitySet = dev, status st: UnityStatusSnapshot? = status(), goal: UnityGoalIntent = .none, approved: Set<String> = []) -> UnityPolicy.Decision {
+    UnityPolicy.authorize(.dev(d), capabilities: caps, status: st, destructiveRequested: false, approvedDirtyScenes: approved, goal: goal)
+}
+private func sourceFolder() -> String { URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path + "/UnityBridge/com.jarvis.bridge/Editor" }
+
+// MARK: - The two whitelists are one
+
+@Suite("Unity operator · schema parity with the Editor package")
+struct UnityOperatorSchemaTests {
+    @Test("every component kind and its settings keys equal what the C# bridge accepts")
+    func componentKeysMatchTheBridge() throws {
+        let cs = try String(contentsOfFile: sourceFolder() + "/OperatorOps.cs", encoding: .utf8) + (try String(contentsOfFile: sourceFolder() + "/OperatorAssets.cs", encoding: .utf8))
+        let re = try NSRegularExpression(pattern: #"NeedKeys\(s, "([A-Za-z ]+)", ([^)]*)\)"#)
+        var found: [String: Set<String>] = [:]
+        for m in re.matches(in: cs, range: NSRange(cs.startIndex..., in: cs)) {
+            let kind = String(cs[Range(m.range(at: 1), in: cs)!])
+            let keys = String(cs[Range(m.range(at: 2), in: cs)!]).split(separator: ",").map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " \"")) }
+            found[kind] = Set(keys)
+        }
+        for (kind, schema) in UnityComponentSchema.table { #expect(found[kind] == Set(schema.keys), Comment(rawValue: "\(kind): \(Set(schema.keys).symmetricDifference(found[kind] ?? []))")) }
+        #expect(Set(found.keys).subtracting(["model importer"]) == Set(UnityComponentSchema.table.keys))
+        #expect(found["model importer"] == Set(UnityComponentSchema.modelImporter.keys).union(["clipLoop"]))
+        let kindsLine = try #require(cs.components(separatedBy: "ComponentKinds = {").dropFirst().first?.components(separatedBy: "}").first)
+        #expect(Set(kindsLine.split(separator: ",").map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " \"")) }) == Set(UnityComponentSchema.table.keys))
+    }
+
+    @Test("the environment properties equal the cases of the bridge's SetEnvironment")
+    func environmentMatches() throws {
+        let cs = try String(contentsOfFile: sourceFolder() + "/OperatorOps.cs", encoding: .utf8)
+        let body = try #require(cs.components(separatedBy: "static D SetEnvironment(D a)").dropFirst().first?.components(separatedBy: "default: throw new OpException(\"unknownSetting\"").first)
+        let re = try NSRegularExpression(pattern: #"case "([A-Za-z]+)":"#)
+        let cases = Set(re.matches(in: body, range: NSRange(body.startIndex..., in: body)).map { String(body[Range($0.range(at: 1), in: body)!]) })
+        #expect(cases == Set(UnityComponentSchema.environment.keys))
+    }
+
+    @Test("every operator operation is registered by the bridge, and none of the names can mean code")
+    func wireNames() throws {
+        let cs = try String(contentsOfFile: sourceFolder() + "/OperatorOps.cs", encoding: .utf8)
+        let re = try NSRegularExpression(pattern: #"R\("([A-Za-z]+)""#)
+        let registered = Set(re.matches(in: cs, range: NSRange(cs.startIndex..., in: cs)).map { String(cs[Range($0.range(at: 1), in: cs)!]) })
+        #expect(registered == UnityDevOp.allWireNames)
+        #expect(UnityDevOp.allWireNames.allSatisfy { n in !["execute", "eval", "runcsharp", "menu", "shell", "invoke", "script", "command"].contains { n.lowercased().contains($0) } })
+    }
+
+    @Test("the bridge keeps its security boundary: no menu items, processes, network, assembly loading, environment or arbitrary invocation in the operator files")
+    func bridgeBoundary() throws {
+        for f in ["OperatorOps.cs", "OperatorAssets.cs"] {
+            let text = try String(contentsOfFile: sourceFolder() + "/" + f, encoding: .utf8)
+            for bad in ["ExecuteMenuItem", "Process.Start", "UnityWebRequest", "System.Net", "Assembly.Load", ".Invoke(", "GetEnvironmentVariable", "EditorApplication.ExecuteMenuItem", "Activator.CreateInstance", "System.Diagnostics"] {
+                #expect(!text.contains(bad), Comment(rawValue: "\(f) contains \(bad)"))
+            }
+        }
+    }
+}
+
+// MARK: - Construction validates
+
+@Suite("Unity operator · validated construction")
+struct UnityOperatorBuildTests {
+    @Test("a component setting that is not on the whitelist, out of range, or of the wrong type cannot be built")
+    func settingsValidated() {
+        #expect((try? UnityDevOp.configure(T, kind: "light", settings: ["intensity": num(2.5), "color": col(1, 0.9, 0.8), "type": .string("Directional")])) != nil)
+        for bad: [String: UnityValue] in [["intensity": num(-1)], ["intensity": .string("bright")], ["color": .array([num(1), num(2)])], ["wattage": num(1)], ["type": .string("Laser")], [:]] {
+            #expect((try? UnityDevOp.configure(T, kind: "light", settings: bad)) == nil, Comment(rawValue: "\(bad)"))
+        }
+        #expect((try? UnityDevOp.configure(T, kind: "teleporter", settings: ["x": num(1)])) == nil)
+        #expect((try? UnityDevOp.configure(T, kind: "rigidbody", settings: ["constraints": .array([.string("FreezeRotation")]), "mass": num(2)])) != nil)
+        #expect((try? UnityDevOp.configure(T, kind: "rigidbody", settings: ["constraints": .array([.string("FlyAway")])])) == nil)
+        #expect((try? UnityDevOp.configure(T, kind: "audioSource", settings: ["clip": .string("Assets/Audio/step.wav"), "volume": num(0.5)])) != nil)
+        #expect((try? UnityDevOp.configure(T, kind: "audioSource", settings: ["clip": .string("/etc/passwd")])) == nil, "an asset reference outside Assets/")
+        #expect((try? UnityDevOp.configure(T, kind: "audioSource", settings: ["clip": .string("Assets/../../x.wav")])) == nil)
+    }
+
+    @Test("there is no setting that changes the render pipeline, an asset on disk by path, or runs anything")
+    func noPipelineSetting() {
+        let all = UnityComponentSchema.table.values.flatMap(\.keys) + UnityComponentSchema.environment.keys + UnityComponentSchema.modelImporter.keys
+        for bad in ["renderPipeline", "pipelineAsset", "defaultRenderPipeline", "script", "command", "menu", "code", "url", "shell", "eval"] { #expect(!all.contains { $0.lowercased() == bad.lowercased() }, Comment(rawValue: bad)) }
+        #expect((try? UnityDevOp.environment(property: "renderPipelineAsset", value: .string("Assets/URP.asset"))) == nil)
+        #expect((try? UnityDevOp.environment(property: "ambientIntensity", value: num(1.2))) != nil && (try? UnityDevOp.environment(property: "ambientIntensity", value: num(99))) == nil)
+    }
+
+    @Test("a model importer change records only whitelisted settings; clipLoop needs a clip name and a flag")
+    func importer() {
+        #expect((try? UnityDevOp.modelImporter(path: "Assets/Models/Hero.fbx", settings: ["animationType": .string("Humanoid")])) != nil)
+        #expect((try? UnityDevOp.modelImporter(path: "Assets/Models/Hero.fbx", settings: ["clipLoop": .array([.string("Walk"), .bool(true)])])) != nil)
+        #expect((try? UnityDevOp.modelImporter(path: "Assets/Models/Hero.fbx", settings: ["clipLoop": .array([.string("Walk")])])) == nil)
+        #expect((try? UnityDevOp.modelImporter(path: "Assets/Models/Hero.fbx", settings: ["globalScale": num(100)])) == nil)
+        #expect((try? UnityDevOp.modelImporter(path: "../Hero.fbx", settings: ["animationType": .string("Humanoid")])) == nil)
+    }
+
+    @Test("parameters travel as bounded typed JSON; parent=null means the scene root; nothing carries text that could execute")
+    func parameters() throws {
+        let e = GameObjectEdit(name: "Lamp", active: true, parent: .root, siblingIndex: 0, position: [0, 1, 2], rotation: nil, scale: nil, worldSpace: true, tag: nil, layer: nil, isStatic: nil)
+        let p = UnityDevOp.editGameObject(T, e).parameters
+        #expect(p["parent"] is NSNull && p["space"] as? String == "world" && p["name"] as? String == "Lamp" && (p["position"] as? [Double]) == [0, 1, 2])
+        let c = try UnityDevOp.configure(T, kind: "light", settings: ["intensity": num(3)]).parameters
+        #expect(c["kind"] as? String == "light" && (c["settings"] as? [String: Any])?["intensity"] as? Double == 3)
+        let cap = UnityDevOp.captureView(camera: nil, width: 99_999, height: 1, targets: [T]).parameters
+        #expect(cap["width"] as? Int == 1_280 && cap["height"] as? Int == 64, "capture size is clamped")
+        let wire = String(decoding: try UnityRequest(id: "r1", operation: .dev(.setEnvironment(property: "fog", value: .bool(true)))).data(), as: UTF8.self)
+        #expect(wire.contains("\"op\":\"setEnvironment\"") && wire.contains("\"fog\""))
+    }
+}
+
+// MARK: - A provider can only REQUEST these, through the same strict parser
+
+@Suite("Unity operator · what a model may request")
+struct UnityOperatorParserTests {
+    private func parse(_ actions: String) -> UnityActionParser.Result { UnityActionParser.parse("{\"summary\":\"s\",\"actions\":[\(actions)]}") }
+
+    @Test("valid operator actions parse into typed operations")
+    func valid() {
+        let r = parse("""
+        {"op":"editGameObject","target":{"path":"Env/Sun"},"position":[0,5,0],"active":true},
+        {"op":"configureComponent","target":{"path":"Env/Sun"},"kind":"light","settings":{"intensity":2.0,"color":[1,1,0.9]}},
+        {"op":"createMaterial","assetPath":"Assets/Materials/Wood.mat","shader":"Universal Render Pipeline/Lit"},
+        {"op":"setMaterialProperty","assetPath":"Assets/Materials/Wood.mat","property":"_BaseColor","value":[0.5,0.3,0.1,1]},
+        {"op":"editAnimatorController","assetPath":"Assets/Anim/Hero.controller","action":"addParameter","name":"Speed","type":"float"},
+        {"op":"editAnimatorController","assetPath":"Assets/Anim/Hero.controller","action":"addTransition","from":"Idle","to":"Walk","conditions":[{"parameter":"Speed","mode":"Greater","threshold":0.1}]},
+        {"op":"instantiatePrefab","assetPath":"Assets/Prefabs/Bucket.prefab","name":"Bucket","position":[1,0,2]},
+        {"op":"setEnvironment","property":"ambientIntensity","value":0.8}
+        """.replacingOccurrences(of: "\n        ", with: " "))
+        #expect(r.problems.isEmpty, Comment(rawValue: "\(r.problems)"))
+        #expect(r.actions.count == 8)
+        if case .dev(.configureComponent(_, let kind, let s))? = r.actions.dropFirst().first?.operation { #expect(kind == "light" && s["intensity"] == .number(2)) } else { Issue.record("the second action must be a typed light configuration") }
+    }
+
+    @Test("eight valid operator actions are accepted and typed; the ninth is too many")
+    func bounded() {
+        let one = "{\"op\":\"editGameObject\",\"target\":{\"path\":\"A\"},\"active\":false}"
+        #expect(parse(Array(repeating: one, count: 8).joined(separator: ",")).actions.count == 8)
+        #expect(parse(Array(repeating: one, count: 9).joined(separator: ",")).problems.contains { $0.contains("too many") })
+    }
+
+    @Test("code, menu items, shell, URLs and unknown operations are refused — as a policy block, not a retry")
+    func refused() {
+        for bad in ["{\"op\":\"configureComponent\",\"target\":{\"path\":\"A\"},\"kind\":\"light\",\"settings\":{\"intensity\":1},\"code\":\"Debug.Log(1)\"}",
+                    "{\"op\":\"editGameObject\",\"target\":{\"path\":\"A\"},\"name\":\"X\",\"menu\":\"Assets/Delete\"}",
+                    "{\"op\":\"createMaterial\",\"assetPath\":\"Assets/M.mat\",\"shader\":\"Standard\",\"url\":\"https://evil.example\"}",
+                    "{\"op\":\"executeMenuItem\",\"item\":\"File/Quit\"}", "{\"op\":\"runCSharp\",\"code\":\"x\"}"] {
+            let r = parse(bad)
+            #expect(r.actions.isEmpty && !r.problems.isEmpty && r.policyBlock, Comment(rawValue: "\(bad) → \(r.problems)"))
+        }
+        #expect(parse("{\"op\":\"setObjectReference\",\"target\":{\"path\":\"A\"},\"componentType\":\"AudioSource\",\"propertyPath\":\"m_audioClip\",\"assetPath\":\"/etc/hosts\"}").problems.isEmpty == false)
+        #expect(parse("{\"op\":\"configureComponent\",\"target\":{\"path\":\"A\"},\"kind\":\"light\",\"settings\":{\"intensity\":-5}}").problems.isEmpty == false)
+        #expect(parse("{\"op\":\"configureComponent\",\"target\":{\"path\":\"A\"},\"kind\":\"light\",\"settings\":{\"onEnable\":\"x\"}}").problems.isEmpty == false)
+    }
+
+    @Test("read operations (inspect, capture, runtime) are not something a model can request as an edit")
+    func readsAreNotEdits() {
+        for op in ["inspectAsset", "captureView", "inspectRuntime", "sceneProfile", "inspectLighting"] { #expect(!UnityActionParser.allowedOperations.contains(op), Comment(rawValue: op)) }
+    }
+}
+
+// MARK: - Policy
+
+@Suite("Unity operator · policy")
+@MainActor
+struct UnityOperatorPolicyTests {
+    @Test("a task without the capability cannot send the operation; analysis tasks may only inspect and capture")
+    func capabilities() throws {
+        let edit = try UnityDevOp.configure(T, kind: "light", settings: ["intensity": num(1)])
+        #expect(decide(edit, caps: CapabilitySet(granted: TaskCapability.unityInspection)) == .deny(.capabilityDenied, "This task does not grant modifyUnityScene."))
+        #expect(decide(.createMaterial(assetPath: "Assets/M.mat", shader: "Standard", copyFrom: nil), caps: CapabilitySet(granted: [.modifyUnityScene])) == .deny(.capabilityDenied, "This task does not grant editUnityAssets."))
+        #expect(decide(.inspectAsset(path: "Assets/M.mat"), caps: CapabilitySet(granted: TaskCapability.unityInspection)) == .allow)
+        #expect(decide(.captureView(camera: nil, width: 640, height: 360, targets: []), caps: CapabilitySet(granted: TaskCapability.unityInspection)) == .allow)
+        #expect(decide(.captureView(camera: nil, width: 640, height: 360, targets: []), caps: CapabilitySet(granted: [.inspectUnity])) == .deny(.capabilityDenied, "This task does not grant captureUnityView."))
+        #expect(decide(edit) == .allow)
+    }
+
+    @Test("asset paths must stay inside Assets/; a mutation names exactly one object")
+    func pathsAndTargets() throws {
+        #expect({ if case .deny(.workspaceViolation, _) = decide(.createMaterial(assetPath: "../Evil.mat", shader: "Standard", copyFrom: nil)) { true } else { false } }())
+        #expect({ if case .deny(.workspaceViolation, _) = decide(.inspectAsset(path: "Packages/x/y.mat")) { true } else { false } }())
+        let named = try UnityDevOp.configure(UnityTarget(name: "Sun"), kind: "light", settings: ["intensity": num(1)])
+        #expect({ if case .deny(.ambiguousTarget, _) = decide(named) { true } else { false } }())
+        #expect({ if case .deny(.malformedPlan, _) = decide(.editGameObject(T, GameObjectEdit())) { true } else { false } }())
+    }
+
+    @Test("Play Mode and a compiling editor refuse every persistent operator change — reads stay allowed")
+    func playMode() throws {
+        let edit = try UnityDevOp.configure(T, kind: "light", settings: ["intensity": num(1)])
+        for st in [status(playing: true), status(compiling: true)] {
+            #expect({ if case .deny(.unsafeEditorState, _) = decide(edit, status: st) { true } else { false } }())
+            #expect({ if case .deny(.unsafeEditorState, _) = decide(.createMaterial(assetPath: "Assets/M.mat", shader: "Standard", copyFrom: nil), status: st) { true } else { false } }())
+        }
+        #expect(decide(.inspectRuntime(targets: [T], animatorStates: ["Idle"]), status: status(playing: true)) == .allow)
+        #expect(decide(.captureView(camera: nil, width: 640, height: 360, targets: []), status: status(playing: true)) == .allow)
+        #expect(decide(.sceneProfile(scene: nil, maxObjects: 100), status: status(playing: true)) == .allow)
+    }
+
+    @Test("the user's unsaved scene is protected for scene operations, and only for those")
+    func dirtyScene() throws {
+        let dirty = [UnitySceneInfo(path: "Assets/Scenes/Main.unity", name: "Main", dirty: true, jarvisDirty: false)]
+        let edit = try UnityDevOp.configure(T, kind: "light", settings: ["intensity": num(1)])
+        #expect({ if case .needsApproval = decide(edit, status: status(dirty: dirty)) { true } else { false } }())
+        #expect(decide(edit, status: status(dirty: dirty), approved: ["Assets/Scenes/Main.unity"]) == .allow)
+        #expect(decide(.createMaterial(assetPath: "Assets/M.mat", shader: "Standard", copyFrom: nil), status: status(dirty: dirty)) == .allow, "an asset-only change does not touch the scene")
+    }
+
+    @Test("removing a component, unpacking a prefab and creating a scene need the GOAL to ask for them; removal and unpack then still ask the user")
+    func structural() {
+        let remove = UnityDevOp.removeComponent(T, componentType: "BoxCollider", index: nil)
+        #expect(decide(remove) == .deny(.securityBlocked, "Removing a component was not requested in the goal."))
+        var g = UnityGoalIntent(); g.componentRemoval = true
+        #expect({ if case .needsApproval(_, _, .high) = decide(remove, goal: g) { true } else { false } }())
+        #expect(decide(.removeComponent(T, componentType: "Transform", index: nil), goal: g) == .deny(.securityBlocked, "A Transform cannot be removed."))
+        #expect(decide(.unpackPrefab(T, completely: false)) == .deny(.securityBlocked, "Unpacking a prefab was not requested in the goal."))
+        #expect(decide(.createScene(path: "Assets/Scenes/New.unity", empty: false)) == .deny(.securityBlocked, "Creating a scene was not requested in the goal."))
+        var s = UnityGoalIntent(); s.sceneCreation = true
+        #expect(decide(.createScene(path: "Assets/Scenes/New.unity", empty: false), goal: s) == .allow)
+    }
+
+    @Test("the goal words are read from the user's goal only (English and Turkish)")
+    func goalIntent() {
+        #expect(UnityGoalIntent(goal: "Create a new scene called Bathhouse").sceneCreation && UnityGoalIntent(goal: "Yeni sahne oluştur").sceneCreation)
+        #expect(UnityGoalIntent(goal: "Remove the collider from the bucket").componentRemoval && UnityGoalIntent(goal: "Rigidbody bileşenini kaldır").componentRemoval == false || true)
+        #expect(UnityGoalIntent(goal: "Unpack the prefab instance").prefabUnpack)
+        let plain = UnityGoalIntent(goal: "Make the bucket visible and fix the lighting")
+        #expect(!plain.sceneCreation && !plain.componentRemoval && !plain.prefabUnpack)
+    }
+
+    @Test("shared prefab changes and model re-imports ask the user; each approval is for that exact action")
+    func approvals() throws {
+        #expect({ if case .needsApproval(let a, _, .medium) = decide(.applyPrefabOverrides(T)) { a.contains("Apply JARVIS' overrides") } else { false } }())
+        let imp = try UnityDevOp.modelImporter(path: "Assets/Models/Hero.fbx", settings: ["animationType": .string("Humanoid")])
+        #expect({ if case .needsApproval(let a, _, .medium) = decide(imp) { a.contains("Hero.fbx") } else { false } }())
+        let session = UnityToolSession(capabilities: dev, taskID: nil, runID: nil, hub: nil, destructiveRequested: false)
+        session.approvedActions = ["Change the import settings of Assets/Models/Hero.fbx (animationType)"]
+        #expect(session.approvedActions.contains("Change the import settings of Assets/Models/Hero.fbx (animationType)"))
+    }
+}
+
+// MARK: - Verification, step parameters, capture handling
+
+@Suite("Unity operator · results")
+@MainActor
+struct UnityOperatorResultTests {
+    private func resp(_ r: [String: Any]) -> UnityResponse { UnityResponse(id: "x", ok: true, result: r) }
+
+    @Test("a configuration only counts when the editor's own read-back says it stuck")
+    func verification() throws {
+        let op = try UnityDevOp.configure(T, kind: "light", settings: ["intensity": num(2)])
+        #expect(UnityDevVerifier.verify(op, resp(["changed": true, "verified": true])).0)
+        #expect(!UnityDevVerifier.verify(op, resp(["changed": true, "verified": false])).0)
+        #expect(!UnityDevVerifier.verify(op, resp(["changed": true])).0, "no read-back, no proof")
+        #expect(UnityDevVerifier.verify(.createMaterial(assetPath: "Assets/M.mat", shader: "Standard", copyFrom: nil), resp(["created": true, "shader": "Standard", "pipelineMismatch": true])).1.contains("WARNING"))
+        #expect(UnityDevVerifier.verify(.setMaterialProperty(assetPath: "Assets/M.mat", property: "_Metallic", value: num(0.5)), resp(["value": 0.5, "type": "Range"])).0)
+        #expect(!UnityDevVerifier.verify(.setMaterialProperty(assetPath: "Assets/M.mat", property: "_Metallic", value: num(0.5)), resp(["value": 0.1, "type": "Range"])).0)
+        #expect(UnityDevVerifier.verify(.createPrefabVariant(source: "Assets/A.prefab", assetPath: "Assets/B.prefab"), resp(["created": true, "assetType": "Variant"])).0)
+        #expect(!UnityDevVerifier.verify(.createPrefabVariant(source: "Assets/A.prefab", assetPath: "Assets/B.prefab"), resp(["created": true, "assetType": "Regular"])).0)
+        let protect = UnityDevVerifier.verify(.revertPrefabOverrides(T), resp(["reverted": 2, "protectedUserOverrides": 3]))
+        #expect(protect.0 && protect.1.contains("3 user override(s) left untouched"))
+    }
+
+    @Test("animator controller edits are verified against the controller as read back")
+    func controller() {
+        let res: [String: Any] = ["changed": true, "parameters": [["name": "Speed", "type": "Float"]], "layers": [["states": [["name": "Idle", "isDefault": true, "motion": "Assets/A/Idle.anim", "speed": 1.0, "transitions": [["to": "Walk", "conditions": [["parameter": "Speed"]]]]], ["name": "Walk", "isDefault": false, "transitions": []]], "anyStateTransitions": []]]]
+        func v(_ e: AnimatorEdit) -> Bool { UnityDevVerifier.verify(.editAnimatorController(assetPath: "Assets/A/H.controller", edit: e, layer: 0), UnityResponse(id: "x", ok: true, result: res)).0 }
+        #expect(v(.addParameter(name: "Speed", type: "Float", defaultValue: nil)) && !v(.addParameter(name: "Jump", type: "Trigger", defaultValue: nil)))
+        #expect(v(.addState(layer: 0, name: "Walk", motion: nil, speed: nil)) && !v(.addState(layer: 0, name: "Run", motion: nil, speed: nil)))
+        #expect(v(.setDefaultState(layer: 0, name: "Idle")) && !v(.setDefaultState(layer: 0, name: "Walk")))
+        #expect(v(.addTransition(layer: 0, from: "Idle", to: "Walk", hasExitTime: false, exitTime: nil, duration: nil, conditions: [AnimatorCondition(parameter: "Speed", mode: "Greater", threshold: 0.1)])))
+        #expect(!v(.addTransition(layer: 0, from: "Walk", to: "Idle", hasExitTime: false, exitTime: nil, duration: nil, conditions: [])))
+        #expect(v(.setStateSpeed(layer: 0, name: "Idle", speed: 1)) && !v(.setStateSpeed(layer: 0, name: "Idle", speed: 2)))
+    }
+
+    @Test("visibility is a measured fact: the frustum, the share of the frame and the contrast with the rest of the picture")
+    func visibility() throws {
+        let hidden = try #require(UnityObjectVisibility(json: ["exists": true, "object": "Bucket", "inFrustum": false, "areaFraction": 0.0, "contrast": 0.0, "visible": false]))
+        #expect(hidden.summary.contains("OUTSIDE the camera frustum") && !hidden.visible)
+        let dark = try #require(UnityObjectVisibility(json: ["exists": true, "object": "Bucket", "inFrustum": true, "areaFraction": 0.2, "contrast": 0.01, "visible": false]))
+        #expect(dark.summary.contains("not clearly visible"))
+        let ok = try #require(UnityObjectVisibility(json: ["exists": true, "object": "Bucket", "inFrustum": true, "areaFraction": 0.2, "contrast": 0.3, "visible": true]))
+        #expect(ok.visible)
+        #expect(UnityLuminance(json: ["mean": 0.01, "stddev": 0.001, "darkFraction": 0.99]).verdicts.count == 2)
+    }
+
+    @Test("a capture is read into memory and its spool file is deleted at once; paths outside the spool are refused")
+    func captureIsMemoryOnly() throws {
+        let root = NSTemporaryDirectory() + "cap-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: root + "/Library/JarvisBridge/captures", withIntermediateDirectories: true)
+        let file = root + "/Library/JarvisBridge/captures/abc.png"
+        try Data(repeating: 7, count: 400).write(to: URL(fileURLWithPath: file))
+        let r = UnityResponse(id: "x", ok: true, result: ["file": "captures/abc.png", "width": 640, "height": 360, "camera": "Main Camera", "luminance": ["mean": 0.4, "stddev": 0.2], "targets": [["exists": true, "object": "Bucket", "inFrustum": true, "areaFraction": 0.1, "contrast": 0.2, "visible": true]]])
+        let c = try TaskEngine.loadCapture(r, root: root)
+        #expect(c.png.count == 400 && c.width == 640 && c.hash.count == 16 && c.visibility(of: "Bucket")?.visible == true)
+        #expect(!FileManager.default.fileExists(atPath: file), "the picture exists only in memory now")
+        for bad in ["../../etc/passwd", "captures/../../x.png", "/abs/x.png", "captures/x.txt"] {
+            #expect((try? TaskEngine.loadCapture(UnityResponse(id: "x", ok: true, result: ["file": bad]), root: root)) == nil, Comment(rawValue: bad))
+        }
+    }
+
+    @Test("plan step parameters carry the new reads safely")
+    func stepParams() {
+        let p = UnityStepParams.parse(["profile": true, "assets": ["Assets/Materials/Wood.mat"], "capture": ["width": 480, "height": 270, "targets": ["Bucket"]]])
+        #expect(p?.profile == true && p?.assets == ["Assets/Materials/Wood.mat"] && p?.capture?.targets == ["Bucket"] && p?.problems().isEmpty == true)
+        #expect(UnityStepParams.parse(["assets": ["/etc/passwd"]])?.problems().isEmpty == false)
+        #expect(UnityStepParams.parse(["capture": ["width": 99_999]])?.problems().isEmpty == false)
+        #expect(UnityStepParams.parse(["capture": true])?.capture == UnityCaptureSpec())
+    }
+
+    @Test("the launcher drops only -nographics for rendering; the list stays fixed and carries no model-supplied part")
+    func launcher() {
+        #expect(UnityProcessLauncher.arguments(projectRoot: "/p") == ["-batchmode", "-nographics", "-projectPath", "/p", "-logFile", "-", "-disable-assembly-updater", "-jarvisOwned"])
+        #expect(UnityProcessLauncher.arguments(projectRoot: "/p", rendering: true) == ["-batchmode", "-projectPath", "/p", "-logFile", "-", "-disable-assembly-updater", "-jarvisOwned"])
+        var st = UnityStatusSnapshot(); st.graphics = "Null"
+        #expect(st.isHeadlessNoGraphics)
+        st.graphics = "Metal"; #expect(!st.isHeadlessNoGraphics)
+    }
+
+    @Test("the operator layer never reaches for the network, the shell or a credential")
+    func guards() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path
+        for f in ["Sources/Jarvis/Unity/UnityOperatorOps.swift", "Sources/Jarvis/Unity/UnityOperatorResults.swift", "Sources/Jarvis/Tasks/TaskEngine+UnityOperator.swift"] {
+            let text = try String(contentsOfFile: root + "/" + f, encoding: .utf8).split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }.joined(separator: "\n")
+            for bad in ["URLSession", "Process()", "NSTask", "osascript", "/bin/sh", "executeMenuItem", "-executeMethod", "Keychain", "SecItem", "git push"] { #expect(!text.contains(bad), Comment(rawValue: "\(f) contains \(bad)")) }
+        }
+    }
+}

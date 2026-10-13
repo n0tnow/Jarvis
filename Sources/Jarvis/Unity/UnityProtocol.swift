@@ -36,6 +36,8 @@ enum UnityOperation: Equatable, Sendable {
     case deleteGameObject(UnityTarget)
     case saveScene(scene: String)
     case createPrefab(UnityTarget, assetPath: String)
+    /// V0.13: the development-operator operations (scene, hierarchy, prefab, material, lighting, animation, audio, runtime snapshot, capture) — one closed enum of their own.
+    case dev(UnityDevOp)
 
     var wireName: String {
         switch self {
@@ -47,14 +49,15 @@ enum UnityOperation: Equatable, Sendable {
         case .enterPlayMode: "enterPlayMode"; case .exitPlayMode: "exitPlayMode"; case .runTests: "runTests"; case .cancelTests: "cancelTests"; case .shutdown: "shutdown"
         case .createGameObject: "createGameObject"; case .addComponent: "addComponent"; case .setSerializedProperty: "setSerializedProperty"
         case .deleteGameObject: "deleteGameObject"; case .saveScene: "saveScene"; case .createPrefab: "createPrefab"
+        case .dev(let d): d.wireName
         }
     }
 
     /// Every wire name the protocol defines (the C# bridge registers exactly these).
-    static let allWireNames: Set<String> = ["ping", "getProjectInfo", "listScenes", "getActiveScene", "openScene", "listRootGameObjects", "findGameObjects", "inspectGameObject",
+    static let allWireNames: Set<String> = Set(["ping", "getProjectInfo", "listScenes", "getActiveScene", "openScene", "listRootGameObjects", "findGameObjects", "inspectGameObject",
         "inspectComponents", "inspectSerializedProperties", "inspectPrefab", "readConsole", "getCompilationState", "getPlayModeState", "getTestAvailability", "getTestRun",
         "requestCompilation", "enterPlayMode", "exitPlayMode", "runTests", "cancelTests", "shutdown", "createGameObject", "addComponent", "setSerializedProperty",
-        "deleteGameObject", "saveScene", "createPrefab"]
+        "deleteGameObject", "saveScene", "createPrefab"]).union(UnityDevOp.allWireNames)
 
     /// The task capability this operation needs. A task that does not hold it cannot send the operation.
     var capability: TaskCapability {
@@ -70,6 +73,7 @@ enum UnityOperation: Equatable, Sendable {
         case .deleteGameObject: .deleteUnityObject
         case .saveScene: .saveUnityScene
         case .createPrefab: .createUnityPrefab
+        case .dev(let d): d.capability
         }
     }
 
@@ -77,14 +81,16 @@ enum UnityOperation: Equatable, Sendable {
     var isPersistentMutation: Bool {
         switch self {
         case .createGameObject, .addComponent, .setSerializedProperty, .deleteGameObject, .saveScene, .createPrefab: true
+        case .dev(let d): d.isPersistentMutation
         default: false
         }
     }
-    var isDestructive: Bool { if case .deleteGameObject = self { true } else { false } }
+    var isDestructive: Bool { if case .deleteGameObject = self { true } else if case .dev(let d) = self { d.isDestructive } else { false } }
     /// Safe to repeat after a lost response without looking first.
     var isRetryable: Bool {
         switch self {
         case .createGameObject, .addComponent, .setSerializedProperty, .deleteGameObject, .createPrefab, .runTests, .enterPlayMode, .exitPlayMode: false
+        case .dev(let d): d.isRetryable
         default: true
         }
     }
@@ -103,6 +109,7 @@ enum UnityOperation: Equatable, Sendable {
         case .deleteGameObject(let t): "delete \(t.display)"
         case .saveScene(let s): "save scene \(s)"
         case .createPrefab(let t, let p): "create prefab \(p) from \(t.display)"
+        case .dev(let d): d.summary
         case .runTests(let m, let n, let g, _): "run \(m.rawValue) tests" + (n.isEmpty && g.isEmpty ? "" : " (\((n + g).prefix(2).joined(separator: ", ")))")
         default: wireName
         }
@@ -146,6 +153,7 @@ enum UnityOperation: Equatable, Sendable {
         case .deleteGameObject(let x): return ["target": t(x)]
         case .saveScene(let s): return ["scene": s]
         case .createPrefab(let x, let p): return ["target": t(x), "assetPath": p]
+        case .dev(let d): return d.parameters
         default: return [:]
         }
     }
@@ -232,7 +240,7 @@ struct UnityEditAction: Equatable, Sendable {
 }
 
 enum UnityActionParser {
-    static let allowedOperations: Set<String> = ["createGameObject", "addComponent", "setSerializedProperty", "deleteGameObject", "createPrefab"]
+    static let allowedOperations: Set<String> = Set(["createGameObject", "addComponent", "setSerializedProperty", "deleteGameObject", "createPrefab"]).union(devOperations)
     static let maxActions = 8
     /// Keys that would turn an action into code/menu/shell execution. Present anywhere in an action ⇒ the whole answer is rejected.
     static let forbiddenKeys: Set<String> = ["code", "script", "csharp", "cs", "eval", "execute", "exec", "command", "cmd", "shell", "bash", "menu", "menuitem", "menupath",
@@ -326,7 +334,7 @@ enum UnityActionParser {
         case "createGameObject":
             guard let n = a["name"] as? String, !n.isEmpty, n.count <= 80, !n.contains("/"), !n.contains("#") else { return .failure("needs a valid name (no / or #)") }
             let prim = (a["primitive"] as? String) ?? "None"
-            guard ["None", "Cube", "Sphere", "Capsule", "Cylinder", "Plane", "Quad"].contains(prim) else { return .failure("unknown primitive") }
+            guard ["None", "RectTransform", "Cube", "Sphere", "Capsule", "Cylinder", "Plane", "Quad"].contains(prim) else { return .failure("unknown primitive") }
             return .success(.createGameObject(name: n, scene: a["scene"] as? String, parent: target(a["parent"]), primitive: prim, position: vec(a["position"]), rotation: vec(a["rotation"]),
                                               scale: vec(a["scale"]), ifAbsent: a["ifAbsent"] as? Bool ?? true))
         case "deleteGameObject":
@@ -336,9 +344,148 @@ enum UnityActionParser {
             guard let t = target(a["target"]) else { return .failure("needs a target") }
             guard let p = a["assetPath"] as? String, validAssetPath(p) else { return .failure("needs a new .prefab path under Assets/") }
             return .success(.createPrefab(t, assetPath: p))
-        default: return .failure("unsupported")
+        default: return buildDev(op, a)
         }
     }
 
-    private struct BuildProblem: Error, ExpressibleByStringLiteral, CustomStringConvertible { let description: String; init(stringLiteral v: String) { description = v } }
+    fileprivate struct BuildProblem: Error, ExpressibleByStringLiteral, CustomStringConvertible { let description: String; init(stringLiteral v: String) { description = v } }
+}
+
+
+// MARK: - Dev (operator) operations a provider may request: built through the SAME strict validation as everything else
+
+extension UnityActionParser {
+    static let devOperations: Set<String> = ["createScene", "editGameObject", "duplicateGameObject", "removeComponent", "setObjectReference", "configureComponent", "instantiatePrefab", "revertPrefabOverrides",
+                                              "applyPrefabOverrides", "createPrefabVariant", "unpackPrefab", "createMaterial", "setMaterialProperty", "setEnvironment", "createAnimatorController", "editAnimatorController", "setModelImporter"]
+
+    static func validName(_ s: String) -> Bool { !s.isEmpty && s.count <= 80 && !s.contains("/") && !s.contains("#") && !s.contains("\n") }
+    static func validIdentifier(_ s: String) -> Bool { s.range(of: #"^[A-Za-z_][A-Za-z0-9_]{0,80}$"#, options: .regularExpression) != nil }
+
+    private static func values(_ any: Any?) -> [String: UnityValue]? {
+        guard let d = any as? [String: Any] else { return nil }
+        var out: [String: UnityValue] = [:]
+        for (k, v) in d { guard let u = UnityValue(any: v) else { return nil }; out[k] = u }
+        return out
+    }
+
+    fileprivate static func buildDev(_ op: String, _ a: [String: Any]) -> Swift.Result<UnityOperation, BuildProblem> {
+        func target() -> UnityTarget? { UnityActionParser.target(a["target"]) }
+        func ref(_ k: String) -> String? { (a[k] as? String).flatMap { UnityDevOp.validAssetReference($0) ? $0 : nil } }
+        func path(_ k: String, _ ext: String) -> String? { (a[k] as? String).flatMap { UnityDevOp.validAssetPath($0, ext: ext) ? $0 : nil } }
+        func fail(_ s: String) -> Swift.Result<UnityOperation, BuildProblem> { .failure(BuildProblem(stringLiteral: s)) }
+        do {
+            switch op {
+            case "createScene":
+                guard let p = path("path", ".unity") else { return fail("needs a new .unity path under Assets/") }
+                return .success(.dev(.createScene(path: p, empty: (a["template"] as? String) == "empty")))
+            case "editGameObject":
+                guard let t = target() else { return fail("needs a target") }
+                var e = GameObjectEdit()
+                if let n = a["name"] as? String { guard validName(n) else { return fail("invalid name") }; e.name = n }
+                e.active = a["active"] as? Bool
+                if a.keys.contains("parent") { if a["parent"] is NSNull { e.parent = .root } else if let p = UnityActionParser.target(a["parent"]) { e.parent = .to(p) } else { return fail("invalid parent") } }
+                if let i = (a["siblingIndex"] as? NSNumber)?.intValue { guard i >= 0, i < 100_000 else { return fail("invalid siblingIndex") }; e.siblingIndex = i }
+                for (k, set) in [("position", { (v: [Double]) in e.position = v }), ("rotation", { (v: [Double]) in e.rotation = v }), ("scale", { (v: [Double]) in e.scale = v })] as [(String, ([Double]) -> Void)] where a[k] != nil {
+                    guard let v = vec(a[k]) else { return fail("\(k) must be [x, y, z]") }
+                    set(v)
+                }
+                e.worldSpace = (a["space"] as? String) == "world"
+                if let tg = a["tag"] as? String { guard validIdentifier(tg.replacingOccurrences(of: " ", with: "_")), tg.count <= 64 else { return fail("invalid tag") }; e.tag = tg }
+                if let ly = a["layer"] as? String { guard ly.count <= 64, !ly.contains("\n") else { return fail("invalid layer") }; e.layer = ly }
+                e.isStatic = a["isStatic"] as? Bool
+                guard !e.isEmpty else { return fail("changes nothing") }
+                return .success(.dev(.editGameObject(t, e)))
+            case "duplicateGameObject":
+                guard let t = target() else { return fail("needs a target") }
+                if let n = a["name"] as? String, !validName(n) { return fail("invalid name") }
+                return .success(.dev(.duplicateGameObject(t, name: a["name"] as? String)))
+            case "removeComponent":
+                guard let t = target() else { return fail("needs a target") }
+                guard let c = a["componentType"] as? String, validComponentType(c) else { return fail("needs a valid componentType") }
+                return .success(.dev(.removeComponent(t, componentType: c, index: (a["componentIndex"] as? NSNumber)?.intValue)))
+            case "setObjectReference":
+                guard let t = target() else { return fail("needs a target") }
+                guard let c = a["componentType"] as? String, validComponentType(c) else { return fail("needs a valid componentType") }
+                guard let p = a["propertyPath"] as? String, validPropertyPath(p) else { return fail("needs a valid propertyPath") }
+                if a["assetPath"] is NSNull || a["assetPath"] == nil { return .success(.dev(.setObjectReference(t, componentType: c, index: (a["componentIndex"] as? NSNumber)?.intValue, propertyPath: p, assetPath: nil))) }
+                guard let r = ref("assetPath") else { return fail("assetPath must be an asset inside Assets/") }
+                return .success(.dev(.setObjectReference(t, componentType: c, index: (a["componentIndex"] as? NSNumber)?.intValue, propertyPath: p, assetPath: r)))
+            case "configureComponent":
+                guard let t = target() else { return fail("needs a target") }
+                guard let k = a["kind"] as? String, let st = values(a["settings"]) else { return fail("needs a kind and settings") }
+                return .success(.dev(try UnityDevOp.configure(t, kind: k, settings: st)))
+            case "instantiatePrefab":
+                guard let p = path("assetPath", ".prefab") else { return fail("needs a .prefab under Assets/") }
+                if let n = a["name"] as? String, !validName(n) { return fail("invalid name") }
+                for k in ["position", "rotation", "scale"] where a[k] != nil && vec(a[k]) == nil { return fail("\(k) must be [x, y, z]") }
+                return .success(.dev(.instantiatePrefab(assetPath: p, scene: (a["scene"] as? String).flatMap { UnityPolicy.isSafeProjectPath($0) && $0.hasSuffix(".unity") ? $0 : nil }, parent: UnityActionParser.target(a["parent"]), name: a["name"] as? String,
+                                                        position: vec(a["position"]), rotation: vec(a["rotation"]), scale: vec(a["scale"]), ifAbsent: a["ifAbsent"] as? Bool ?? true)))
+            case "revertPrefabOverrides": guard let t = target() else { return fail("needs a target") }; return .success(.dev(.revertPrefabOverrides(t)))
+            case "applyPrefabOverrides": guard let t = target() else { return fail("needs a target") }; return .success(.dev(.applyPrefabOverrides(t)))
+            case "unpackPrefab": guard let t = target() else { return fail("needs a target") }; return .success(.dev(.unpackPrefab(t, completely: (a["mode"] as? String) == "completely")))
+            case "createPrefabVariant":
+                guard let s = path("sourceAssetPath", ".prefab"), let p = path("assetPath", ".prefab") else { return fail("needs a source .prefab and a new .prefab under Assets/") }
+                return .success(.dev(.createPrefabVariant(source: s, assetPath: p)))
+            case "createMaterial":
+                guard let p = path("assetPath", ".mat") else { return fail("needs a new .mat under Assets/") }
+                let sh = (a["shader"] as? String).flatMap { $0.range(of: #"^[A-Za-z0-9_ ./()-]{1,120}$"#, options: .regularExpression) != nil ? $0 : nil }
+                let cp = ref("copyFrom")
+                guard (sh != nil) != (cp != nil) else { return fail("needs exactly one of shader or copyFrom") }
+                return .success(.dev(.createMaterial(assetPath: p, shader: sh, copyFrom: cp)))
+            case "setMaterialProperty":
+                guard let p = path("assetPath", ".mat") else { return fail("needs a .mat under Assets/") }
+                guard let n = a["property"] as? String, validIdentifier(n) else { return fail("needs a valid property name") }
+                guard a.keys.contains("value"), let v = UnityValue(any: a["value"]) else { return fail("needs a representable value") }
+                if case .string(let s) = v, !s.isEmpty, !UnityDevOp.validAssetReference(s) { return fail("a texture value must be an asset path inside Assets/") }
+                return .success(.dev(.setMaterialProperty(assetPath: p, property: n, value: v)))
+            case "setEnvironment":
+                guard let pn = a["property"] as? String, a.keys.contains("value"), let v = UnityValue(any: a["value"]) else { return fail("needs a property and a value") }
+                return .success(.dev(try UnityDevOp.environment(property: pn, value: v)))
+            case "createAnimatorController":
+                guard let p = path("assetPath", ".controller") else { return fail("needs a new .controller under Assets/") }
+                return .success(.dev(.createAnimatorController(assetPath: p)))
+            case "editAnimatorController":
+                guard let p = path("assetPath", ".controller") else { return fail("needs a .controller under Assets/") }
+                let layer = (a["layer"] as? NSNumber)?.intValue ?? 0
+                guard (0...7).contains(layer) else { return fail("layer must be 0–7") }
+                func nm(_ k: String) -> String? { (a[k] as? String).flatMap { validName($0) ? $0 : nil } }
+                func mo(_ k: String) -> String? { ref(k) }
+                switch a["action"] as? String {
+                case "addParameter"?:
+                    guard let n = nm("name"), let ty = a["type"] as? String, ["Float", "Int", "Bool", "Trigger"].contains(where: { $0.caseInsensitiveCompare(ty) == .orderedSame }) else { return fail("addParameter needs a name and a type (Float, Int, Bool, Trigger)") }
+                    return .success(.dev(.editAnimatorController(assetPath: p, edit: .addParameter(name: n, type: ty.prefix(1).uppercased() + ty.dropFirst().lowercased(), defaultValue: a.keys.contains("default") ? UnityValue(any: a["default"]) : nil), layer: layer)))
+                case "addState"?:
+                    guard let n = nm("name") else { return fail("addState needs a name") }
+                    if a["motion"] != nil, mo("motion") == nil { return fail("motion must be an asset inside Assets/") }
+                    return .success(.dev(.editAnimatorController(assetPath: p, edit: .addState(layer: layer, name: n, motion: mo("motion"), speed: (a["speed"] as? NSNumber)?.doubleValue), layer: layer)))
+                case "setDefaultState"?: guard let n = nm("name") else { return fail("needs a name") }; return .success(.dev(.editAnimatorController(assetPath: p, edit: .setDefaultState(layer: layer, name: n), layer: layer)))
+                case "setStateSpeed"?:
+                    guard let n = nm("name"), let sp = (a["speed"] as? NSNumber)?.doubleValue, (-10...10).contains(sp) else { return fail("needs a name and a speed between -10 and 10") }
+                    return .success(.dev(.editAnimatorController(assetPath: p, edit: .setStateSpeed(layer: layer, name: n, speed: sp), layer: layer)))
+                case "setStateMotion"?:
+                    guard let n = nm("name"), let m = mo("motion") else { return fail("needs a name and a motion asset") }
+                    return .success(.dev(.editAnimatorController(assetPath: p, edit: .setStateMotion(layer: layer, name: n, motion: m), layer: layer)))
+                case "addTransition"?:
+                    guard let from = nm("from"), let to = nm("to") else { return fail("addTransition needs from and to state names") }
+                    var cs: [AnimatorCondition] = []
+                    for c in (a["conditions"] as? [[String: Any]] ?? []).prefix(6) {
+                        guard let pn = c["parameter"] as? String, validName(pn), ["If", "IfNot", "Greater", "Less", "Equals", "NotEqual"].contains(c["mode"] as? String ?? "If") else { return fail("invalid transition condition") }
+                        cs.append(AnimatorCondition(parameter: pn, mode: c["mode"] as? String ?? "If", threshold: (c["threshold"] as? NSNumber)?.doubleValue ?? 0))
+                    }
+                    return .success(.dev(.editAnimatorController(assetPath: p, edit: .addTransition(layer: layer, from: from, to: to, hasExitTime: a["hasExitTime"] as? Bool, exitTime: (a["exitTime"] as? NSNumber)?.doubleValue, duration: (a["duration"] as? NSNumber)?.doubleValue, conditions: cs), layer: layer)))
+                case "addBlendTreeState"?:
+                    guard let n = nm("name"), let pr = nm("parameter") else { return fail("addBlendTreeState needs a name and a parameter") }
+                    var ch: [(motion: String, threshold: Double)] = []
+                    for c in (a["children"] as? [[String: Any]] ?? []).prefix(8) { guard let m = (c["motion"] as? String).flatMap({ UnityDevOp.validAssetReference($0) ? $0 : nil }), let th = (c["threshold"] as? NSNumber)?.doubleValue else { return fail("a blend tree child needs a motion asset and a threshold") }; ch.append((m, th)) }
+                    guard !ch.isEmpty else { return fail("a blend tree needs at least one child") }
+                    return .success(.dev(.editAnimatorController(assetPath: p, edit: .addBlendTreeState(layer: layer, name: n, parameter: pr, children: ch), layer: layer)))
+                default: return fail("unsupported controller action")
+                }
+            case "setModelImporter":
+                guard let p = (a["assetPath"] as? String).flatMap({ UnityPolicy.isSafeProjectPath($0) ? $0 : nil }), let st = values(a["settings"]) else { return fail("needs an assetPath and settings") }
+                return .success(.dev(try UnityDevOp.modelImporter(path: p, settings: st)))
+            default: return fail("unsupported")
+            }
+        } catch { return fail("\(error)") }
+    }
 }

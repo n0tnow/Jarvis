@@ -77,7 +77,11 @@ final class UnityFileSpoolTransport: UnityTransport {
                 snapshot = UnityStatusSnapshot(json: obj)
                 if let s = snapshot, canonical(s.project) != canonical(root) { snapshot = nil }       // another project's status: never ours
             }
-        } else { lastStatusStamp = nil }
+        } else {
+            // A missing file is transient while the editor replaces it; the editor's death is reported by the process watcher, not by an absent file.
+            if lastStatus != nil, UnityProcessScanner.isUnityEditor(pid: lastStatus!.pid) { return }
+            lastStatusStamp = nil
+        }
         guard snapshot != lastStatus else { return }
         lastStatus = snapshot
         if let s = snapshot { watchProcess(s.pid) }

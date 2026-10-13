@@ -44,7 +44,7 @@ extension TaskEngine {
             mutate(ctx) { $0.activity = "Waiting for the Unity editor" }
             guard await unity.lock.acquire(root: ctx.workspace.root, taskID: ctx.record.id, owner: Self.leaseOwner(step)) else { return (nil, .cancelled) }
         }
-        var outcome = await unity.prepare(root: ctx.workspace.root, approvedInstall: ctx.unityInstallApproved, approvedUpgrade: ctx.unityUpgradeApproved,
+        var outcome = await unity.prepare(root: ctx.workspace.root, approvedInstall: ctx.unityInstallApproved, approvedUpgrade: ctx.unityUpgradeApproved, rendering: unityNeedsRendering(ctx),
                                           progress: { [weak self] m in self?.mutate(ctx) { $0.activity = m } })
         if outcome == .needsBridgeInstall {
             let ok = await requestApproval(ctx, step, action: "Install the JARVIS Unity Editor bridge into Packages/com.jarvis.bridge",
@@ -52,7 +52,7 @@ extension TaskEngine {
             if ctx.cancelRequested || Task.isCancelled { return (nil, .cancelled) }
             guard ok else { return (nil, .failed(.approvalDenied, "Installing the JARVIS Unity bridge was not approved.")) }
             ctx.unityInstallApproved = true
-            outcome = await unity.prepare(root: ctx.workspace.root, approvedInstall: true, approvedUpgrade: ctx.unityUpgradeApproved, progress: { [weak self] m in self?.mutate(ctx) { $0.activity = m } })
+            outcome = await unity.prepare(root: ctx.workspace.root, approvedInstall: true, approvedUpgrade: ctx.unityUpgradeApproved, rendering: unityNeedsRendering(ctx), progress: { [weak self] m in self?.mutate(ctx) { $0.activity = m } })
         }
         if case .needsUpgradeApproval(let declared, let candidate) = outcome {
             let ok = await requestApproval(ctx, step, action: "Open this project with Unity \(candidate) (it declares \(declared))",
@@ -60,7 +60,7 @@ extension TaskEngine {
             if ctx.cancelRequested || Task.isCancelled { return (nil, .cancelled) }
             guard ok else { return (nil, .failed(.approvalDenied, "Opening the project with a different Unity version was not approved.")) }
             ctx.unityUpgradeApproved = true
-            outcome = await unity.prepare(root: ctx.workspace.root, approvedInstall: ctx.unityInstallApproved, approvedUpgrade: true, progress: { [weak self] m in self?.mutate(ctx) { $0.activity = m } })
+            outcome = await unity.prepare(root: ctx.workspace.root, approvedInstall: ctx.unityInstallApproved, approvedUpgrade: true, rendering: unityNeedsRendering(ctx), progress: { [weak self] m in self?.mutate(ctx) { $0.activity = m } })
         }
         switch outcome {
         case .ready: break
@@ -74,6 +74,8 @@ extension TaskEngine {
         hub?.emit(runID, .toolStarted, source: "JARVIS", summary: "\(step.type.label): \(step.title)", detail: "Unity \(conn.status?.unityVersion ?? "?") · \((conn.root as NSString).lastPathComponent)")
         let session = UnityToolSession(capabilities: ctx.record.capabilities, taskID: ctx.record.id, runID: runID, hub: hub, destructiveRequested: ctx.record.destructiveRequested)
         session.approvedDirtyScenes = ctx.unityApprovedDirty
+        session.goalIntent = UnityGoalIntent(goal: ctx.record.goal)
+        session.approvedActions = ctx.unityApprovedActions
         updateStep(ctx, step.key) { $0.agentRunID = runID }
         let run = UnityRun(conn: conn, session: session, runID: runID, attempt: attempt)
         if ctx.unityBaseline == nil { await captureUnityBaseline(ctx, run) }
@@ -152,6 +154,8 @@ extension TaskEngine {
             let r = try await run.conn.perform(.inspectSerializedProperties(t, componentType: c, componentIndex: e.componentIndex, propertyPaths: [p]), session: run.session)
             guard let prop = (r.result["properties"] as? [[String: Any]])?.first, let v = UnityValue(any: prop["value"]) else { return (false, "\(e.display) ✗ (property unreadable)") }
             return (v.matches(expected), "\(e.display) \(v.matches(expected) ? "✓" : "✗ (is \(v))")")
+        case .objectVisible, .animatorInState, .animatorAdvancing, .audioPlaying:
+            return try await evaluateOperatorExpectation(e, t, run)
         }
     }
 
@@ -202,6 +206,7 @@ extension TaskEngine {
                     }
                 }
             }
+            try await unityOperatorInspection(params, run, &lines, &failures)
             let comp = try await run.conn.perform(.getCompilationState, session: run.session)
             let cs = compilationState(comp)
             lines.append(UnityRender.compilation(cs))
@@ -214,7 +219,7 @@ extension TaskEngine {
         } catch { finishUnityRun(run, passed: false, evidence: "\(error)"); return .failed(.toolFailed, "\(error)") }
 
         if ctx.cancelRequested || Task.isCancelled { finishUnityRun(run, passed: false, cancelled: true, evidence: "cancelled"); return .cancelled }
-        let rendered = String(lines.joined(separator: "\n").prefix(3500))
+        let rendered = String(lines.joined(separator: "\n").prefix(params.profile || !params.assets.isEmpty || params.capture != nil ? 6000 : 3500))
         verifying(ctx, key)
         ctx.results[key] = "Unity inspection:\n" + rendered
         if !failures.isEmpty {
@@ -606,6 +611,9 @@ extension TaskEngine {
             let ref = try await resolveUnityTarget(t, run)
             _ = try await run.conn.perform(.createPrefab(UnityTarget(ref), assetPath: assetPath), session: run.session)
             return ("created prefab \(assetPath) from \(ref.indexedPath ?? ref.path)", FileManager.default.fileExists(atPath: ctx.workspace.root + "/" + assetPath))
+        case .dev(let d):
+            guard d.isPersistentMutation else { throw UnityToolError(category: .securityBlocked, message: "\(op.wireName) is not an edit operation.") }
+            return try await applyDevAction(d, ctx, step, run)
         default:
             throw UnityToolError(category: .securityBlocked, message: "\(op.wireName) is not an edit operation.")
         }
@@ -660,6 +668,25 @@ extension TaskEngine {
 }
 
 enum UnityPrompts {
+    /// The operator operations, as the provider is told about them. Settings keys come from the same whitelist the bridge enforces.
+    static var operatorOperations: String {
+        let kinds = UnityComponentSchema.table.keys.sorted().map { "\($0): " + (UnityComponentSchema.table[$0] ?? [:]).keys.sorted().joined(separator: ", ") }.joined(separator: "\n          ")
+        return """
+        - {"op": "editGameObject", "target": {...}, "name": "...", "active": true, "parent": {...} or null (= scene root), "siblingIndex": 0, "position": [x,y,z], "rotation": [x,y,z], "scale": [x,y,z], "space": "local|world", "tag": "...", "layer": "..."}  (any subset)
+        - {"op": "duplicateGameObject", "target": {...}, "name": "Copy"}
+        - {"op": "configureComponent", "target": {...}, "kind": "light|camera|renderer|rigidbody|collider|characterController|audioSource|animator|canvas|rectTransform", "settings": {...}}
+          settings per kind (a colour is [r,g,b] or [r,g,b,a] in 0–1; a reference is an "Assets/…" path):
+          \(kinds)
+        - {"op": "setObjectReference", "target": {...}, "componentType": "MeshRenderer", "propertyPath": "...", "assetPath": "Assets/…" or null}
+        - {"op": "instantiatePrefab", "assetPath": "Assets/…prefab", "parent": {...}, "name": "...", "position": [x,y,z]}   {"op": "createPrefabVariant", "sourceAssetPath": "…prefab", "assetPath": "…prefab"}
+        - {"op": "revertPrefabOverrides", "target": {...}} (only overrides JARVIS made)   {"op": "applyPrefabOverrides", "target": {...}} (only overrides JARVIS made; the user must approve)
+        - {"op": "createMaterial", "assetPath": "Assets/…mat", "shader": "Universal Render Pipeline/Lit" or "copyFrom": "Assets/…mat"}   {"op": "setMaterialProperty", "assetPath": "Assets/…mat", "property": "_BaseColor", "value": [r,g,b,a]}  (use property names shown by an asset inspection)
+        - {"op": "setEnvironment", "property": "ambientLight|ambientIntensity|ambientMode|fog|fogColor|fogDensity|…", "value": ...}
+        - {"op": "createAnimatorController", "assetPath": "Assets/…controller"}   {"op": "editAnimatorController", "assetPath": "…controller", "action": "addParameter|addState|setDefaultState|setStateSpeed|setStateMotion|addTransition|addBlendTreeState", "layer": 0, "name": "...", "motion": "Assets/…anim" or "Assets/…fbx::ClipName", "from": "…", "to": "…", "conditions": [{"parameter": "…", "mode": "If|IfNot|Greater|Less|Equals|NotEqual", "threshold": 0}]}
+        - {"op": "setModelImporter", "assetPath": "Assets/…fbx", "settings": {"animationType": "Humanoid", "importAnimation": true, "clipLoop": ["ClipName", true]}} (the user must approve; JARVIS records the previous values)
+        """
+    }
+
     static func edit(goal: String, step: TaskStepRecord, inspection: [String], analysis: [String], allowDelete: Bool) -> String {
         """
         You are the Unity component of JARVIS, an autonomous task engine. Propose the typed Unity Editor operations that achieve ONE step. You cannot run code: JARVIS validates each operation, applies it through a fixed list of editor operations, and verifies the result in the editor.
@@ -675,7 +702,8 @@ enum UnityPrompts {
         - {"op": "addComponent", "target": {"path": "Hierarchy/Path"} or {"globalId": "..."}, "componentType": "BoxCollider"}
         - {"op": "setSerializedProperty", "target": {...}, "componentType": "Counter", "propertyPath": "startValue", "expectedOld": 1, "newValue": 5}
         - {"op": "createGameObject", "name": "Name", "parent": {"path": "..."} (optional), "primitive": "None|Cube|Sphere|Capsule|Cylinder|Plane|Quad", "position": [0,0,0] (optional)}
-        - {"op": "createPrefab", "target": {...}, "assetPath": "Assets/Prefabs/Name.prefab"}\(allowDelete ? "\n- {\"op\": \"deleteGameObject\", \"target\": {...}} (the user must approve it)" : "")
+        - {"op": "createPrefab", "target": {...}, "assetPath": "Assets/Prefabs/Name.prefab"}\(allowDelete ? "\n- {\"op\": \"deleteGameObject\", \"target\": {...}} (the user must approve it)\n- {\"op\": \"removeComponent\", \"target\": {...}, \"componentType\": \"BoxCollider\"} and {\"op\": \"unpackPrefab\", \"target\": {...}} (the user must approve each)" : "")
+        \(UnityPrompts.operatorOperations)
         Rules: identify objects by "path" (use the indexed form like "Twin#1" when several share a name) or "globalId" taken from the text above — never by name alone when the text shows more than one object with that name. Use only component types and property paths shown above or standard Unity components. Always give "expectedOld" when you change a property. Never include code, scripts, menu items, commands, URLs or anything that is not one of these operations. If the step cannot be done with these operations, reply with an empty "actions" array and explain in "summary".
         """
     }

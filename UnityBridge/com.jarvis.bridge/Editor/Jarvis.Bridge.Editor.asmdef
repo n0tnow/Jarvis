@@ -2,13 +2,41 @@
   "name": "Jarvis.Bridge.Editor",
   "rootNamespace": "Jarvis.Bridge",
   "references": [],
-  "includePlatforms": [ "Editor" ],
+  "includePlatforms": [
+    "Editor"
+  ],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
   "overrideReferences": false,
   "precompiledReferences": [],
   "autoReferenced": false,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.unity.modules.physics",
+      "expression": "",
+      "define": "JARVIS_PHYSICS"
+    },
+    {
+      "name": "com.unity.modules.audio",
+      "expression": "",
+      "define": "JARVIS_AUDIO"
+    },
+    {
+      "name": "com.unity.modules.animation",
+      "expression": "",
+      "define": "JARVIS_ANIMATION"
+    },
+    {
+      "name": "com.unity.modules.ui",
+      "expression": "",
+      "define": "JARVIS_UI"
+    },
+    {
+      "name": "com.unity.modules.imageconversion",
+      "expression": "",
+      "define": "JARVIS_IMAGECONVERSION"
+    }
+  ],
   "noEngineReferences": false
 }

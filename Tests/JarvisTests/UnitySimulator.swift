@@ -170,6 +170,57 @@ final class SimulatedUnityEditor: UnityTransport {
         publish()
     }
 
+    // MARK: V0.13 operator operations (a faithful-enough model: shapes, Play Mode blocking, dirty marking; the real editor is covered by the live test)
+
+    /// Wire name → a fixed answer a test wants instead of the default.
+    var devOverrides: [String: [String: Any]] = [:]
+    var captureVisible = true
+    private(set) var captureFiles: [String] = []
+
+    private func handleDev(_ d: UnityDevOp, _ id: String) -> UnityResponse {
+        if d.isPersistentMutation, let b = mutationBlocked(id) { return b }
+        if let o = devOverrides[d.wireName] { return ok(id, o) }
+        let scene = scenes.first?.path ?? ""
+        if d.isPersistentMutation && d.touchesScene { markDirty(scene) }
+        switch d {
+        case .configureComponent(_, _, let s): return ok(id, ["changed": true, "alreadyApplied": false, "verified": true, "applied": s.mapValues(\.any)])
+        case .editGameObject: return ok(id, ["changed": true, "verified": true])
+        case .duplicateGameObject: return ok(id, ["created": true, "object": ["name": "Copy", "path": "Copy", "scene": scene]])
+        case .instantiatePrefab(let p, _, _, let n, _, _, _, _): return ok(id, ["created": true, "object": ["name": n ?? "Instance", "path": n ?? "Instance", "scene": scene], "prefab": ["isPartOfPrefab": true, "sourceAsset": p]])
+        case .createMaterial(let p, let sh, _):
+            try? FileManager.default.createDirectory(atPath: (root + "/" + p as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: root + "/" + p, contents: Data("material".utf8))
+            return ok(id, ["created": true, "assetPath": p, "shader": sh ?? "copied", "pipelineMismatch": false])
+        case .setMaterialProperty(_, _, let v): return ok(id, ["changed": true, "value": v.any, "type": "Float"])
+        case .setObjectReference(_, _, _, _, let a): return ok(id, ["changed": true, "value": a as Any])
+        case .setEnvironment(_, let v): return ok(id, ["changed": true, "value": v.any])
+        case .applyPrefabOverrides: return ok(id, ["applied": 1, "protectedUserOverrides": 1])
+        case .revertPrefabOverrides: return ok(id, ["reverted": 1, "protectedUserOverrides": 1])
+        case .createPrefabVariant: return ok(id, ["created": true, "assetType": "Variant"])
+        case .removeComponent: return ok(id, ["removed": true])
+        case .unpackPrefab: return ok(id, ["unpacked": true])
+        case .createAnimatorController: return ok(id, ["created": true, "parameters": [], "layers": []])
+        case .setModelImporter(_, let s): return ok(id, ["changed": true, "previous": ["animationType": "Generic"], "after": ["animationType": s["animationType"]?.string ?? "Generic"]])
+        case .sceneProfile: return ok(id, ["scene": scene, "objectCount": objects.count, "cameras": 1, "lights": 0, "audioSources": 0, "animators": 0, "rigidbodies": 0, "canvases": 0, "missingScripts": 0, "missingReferences": 0])
+        case .inspectLighting: return ok(id, ["scene": scene, "lights": [], "environment": ["ambientMode": "Skybox", "ambientIntensity": 1.0], "renderPipeline": "Built-in"])
+        case .inspectAsset(let p): return ok(id, ["path": p, "type": "Material", "shader": "Standard", "properties": []])
+        case .prefabOverrides: return ok(id, ["overrides": [], "jarvisOverrides": 0, "otherOverrides": 0])
+        case .inspectRuntime(let ts, _): return ok(id, ["playing": isPlaying, "targets": ts.map { _ in ["exists": true, "object": ["path": "Hero"], "animator": ["hasController": true, "normalizedTime": 0.5, "inState": ["Walk": true], "clips": ["Walk"]], "audio": ["isPlaying": true, "clip": "Assets/Audio/step.wav"]] as [String: Any] }])
+        case .captureView(_, let w, let h, let ts):
+            let dir = root + "/Library/JarvisBridge/captures"
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            let name = "sim-\(captureFiles.count).png"
+            FileManager.default.createFile(atPath: dir + "/" + name, contents: Data(repeating: 9, count: 300))
+            captureFiles.append(name)
+            let visible = captureVisible
+            return ok(id, ["file": "captures/" + name, "width": w, "height": h, "camera": "Main Camera", "isPlaying": isPlaying,
+                           "luminance": ["mean": visible ? 0.45 : 0.01, "stddev": visible ? 0.2 : 0.002, "darkFraction": visible ? 0.1 : 0.99, "brightFraction": 0.0],
+                           "targets": ts.map { t in ["exists": true, "object": t.path ?? t.name ?? "?", "inFrustum": visible, "areaFraction": visible ? 0.12 : 0.0, "contrast": visible ? 0.3 : 0.0, "visible": visible] as [String: Any] }])
+        case .createScene(let p, _): return ok(id, ["created": true, "path": p])
+        case .editAnimatorController: return ok(id, ["changed": true, "parameters": [], "layers": []])
+        }
+    }
+
     // MARK: Operations
 
     private func handle(_ op: UnityOperation) -> UnityResponse {
@@ -296,6 +347,7 @@ final class SimulatedUnityEditor: UnityTransport {
             let was = scenes[i].dirty
             scenes[i].dirty = false; scenes[i].jarvisDirty = false; publish()
             return ok(id, ["saved": was, "wasDirty": was, "scene": scene])
+        case .dev(let d): return handleDev(d, id)
         case .createPrefab(_, let assetPath):
             if let b = mutationBlocked(id) { return b }
             let url = URL(fileURLWithPath: root + "/" + assetPath)

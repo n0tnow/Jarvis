@@ -171,8 +171,12 @@ struct UnityStatusSnapshot: Equatable, Sendable {
     var scenes: [UnitySceneInfo]
     var testRun: UnityTestRunSummary?
     var updatedAt: Date
+    /// V0.13: the editor's graphics device (“Metal”, “Null” for a `-nographics` editor, …); empty for a bridge older than 0.13.
+    var graphics = ""
 
     var userDirtyScenes: [UnitySceneInfo] { scenes.filter(\.userDirty) }
+    /// A headless editor cannot render a camera.
+    var isHeadlessNoGraphics: Bool { graphics.lowercased() == "null" }
     var isIdleEdit: Bool { state == "edit" && !isCompiling && !compileRunning && !isPlaying }
 
     init(protocolVersion: Int = 1, bridgeVersion: String = "0.6.0", pid: Int32 = 0, session: String = "", owned: Bool = false, project: String = "", projectName: String = "",
@@ -199,6 +203,7 @@ struct UnityStatusSnapshot: Equatable, Sendable {
                   isPlaying: d["isPlaying"] as? Bool ?? false, reloads: int("reloads"), compileGeneration: int("compileGeneration"), compileFailed: d["compileFailed"] as? Bool ?? false, compileRunning: d["compileRunning"] as? Bool ?? false,
                   activeScene: d["activeScene"] as? String ?? "", scenes: (d["scenes"] as? [[String: Any]] ?? []).compactMap(UnitySceneInfo.init(json:)), testRun: run,
                   updatedAt: Date(timeIntervalSince1970: Double((d["updatedAt"] as? NSNumber)?.int64Value ?? 0) / 1000))
+        graphics = d["graphics"] as? String ?? ""
     }
 }
 

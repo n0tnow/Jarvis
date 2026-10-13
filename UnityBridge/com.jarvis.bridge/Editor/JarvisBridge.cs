@@ -20,7 +20,7 @@ namespace Jarvis.Bridge
     public static class JarvisBridge
     {
         public const int ProtocolVersion = 1;
-        public const string BridgeVersion = "0.6.0";
+        public const string BridgeVersion = "0.13.0";
 
         public delegate Dictionary<string, object> Handler(Dictionary<string, object> args);
 
@@ -236,6 +236,7 @@ namespace Jarvis.Bridge
                 { "projectName", Path.GetFileName(ProjectPath) },
                 { "unityVersion", Application.unityVersion },
                 { "batchMode", Application.isBatchMode },
+                { "graphics", SystemInfo.graphicsDeviceType.ToString() },
                 { "state", state },
                 { "isCompiling", EditorApplication.isCompiling },
                 { "isPlaying", EditorApplication.isPlaying },
@@ -344,8 +345,9 @@ namespace Jarvis.Bridge
         {
             var tmp = path + ".tmp";
             File.WriteAllText(tmp, content, new UTF8Encoding(false));
-            if (File.Exists(path)) File.Delete(path);
-            File.Move(tmp, path);
+            // Replace in one step: a reader must never see the file missing between a delete and a move.
+            if (File.Exists(path)) File.Replace(tmp, path, null);
+            else File.Move(tmp, path);
         }
 
         static void TryDelete(string path) { try { File.Delete(path); } catch (Exception) { } }

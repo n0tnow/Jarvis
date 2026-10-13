@@ -99,7 +99,7 @@ enum AgentContracts {
     /// Capabilities NO role may ever hold (no code path honours them): kept in one place so a guard can assert it.
     static let neverGranted: Set<TaskCapability> = CapabilitySet.neverGranted
     private static let projectWrite: Set<TaskCapability> = [.writeProject, .destructiveFileOperation, .importIntoProject]
-    private static let unityMutation: Set<TaskCapability> = [.modifyUnityScene, .saveUnityScene, .createUnityPrefab, .controlUnityPlayMode, .deleteUnityObject]
+    private static let unityMutation: Set<TaskCapability> = [.modifyUnityScene, .saveUnityScene, .createUnityPrefab, .controlUnityPlayMode, .deleteUnityObject, .editUnityAssets]
 
     static func contract(_ role: AgentRole) -> AgentContract {
         switch role {

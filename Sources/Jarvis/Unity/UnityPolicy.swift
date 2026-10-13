@@ -15,7 +15,8 @@ enum UnityPolicy {
         !p.isEmpty && p.hasPrefix("Assets/") && !p.contains("..") && !p.contains("//") && !p.hasPrefix("/") && !p.contains("\0") && p.count <= 240
     }
 
-    static func authorize(_ op: UnityOperation, capabilities: CapabilitySet, status: UnityStatusSnapshot?, destructiveRequested: Bool, approvedDirtyScenes: Set<String> = []) -> Decision {
+    static func authorize(_ op: UnityOperation, capabilities: CapabilitySet, status: UnityStatusSnapshot?, destructiveRequested: Bool, approvedDirtyScenes: Set<String> = [], goal: UnityGoalIntent = .none) -> Decision {
+        if case .dev(let d) = op { return authorizeDev(d, capabilities: capabilities, status: status, goal: goal, destructiveRequested: destructiveRequested, approvedDirtyScenes: approvedDirtyScenes) }
         // Deletion is not a task capability: it is allowed only when the user's goal asked for it, and then per action through an approval.
         if case .deleteGameObject(let t) = op {
             guard destructiveRequested else { return .deny(.securityBlocked, "Deleting Unity objects was not requested in the goal.") }

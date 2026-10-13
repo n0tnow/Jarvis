@@ -61,6 +61,8 @@ struct LaunchOptions {
     var computerFixtureState: String?    // internal: the fixture's state file (restart test children)
     var computerRepo: String?
     var orchestrationLiveTest = false
+    var operatorLiveTest = false
+    var operatorSections: Set<String> = []
     var orchestrationChild: String?      // internal: "start" | "check" (restart test)
     var orchestrationSoakMinutes = 0.0
     var memoryChild: String?             // internal: "quit" (helper cleanup test)
@@ -107,6 +109,8 @@ struct LaunchOptions {
             case "--computer-fixture-state": computerFixtureState = it.next()
             case "--computer-repo": computerRepo = it.next()
             case "--orchestration-live-test": orchestrationLiveTest = true
+            case "--operator-live-test": operatorLiveTest = true
+            case "--operator-section": if let v = it.next() { operatorSections.insert(v) }
             case "--orchestration-child": orchestrationChild = it.next()
             case "--orchestration-soak": orchestrationSoakMinutes = it.next().flatMap(Double.init) ?? 2
             case "--memory-child": memoryChild = it.next()

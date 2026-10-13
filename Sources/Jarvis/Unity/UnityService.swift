@@ -45,6 +45,9 @@ final class UnityToolSession {
     let hub: ExecutionHub?
     let destructiveRequested: Bool
     var approvedDirtyScenes: Set<String> = []
+    /// V0.13: the user's own goal (what structural changes it asked for) and the exact actions the user approved in the HUD.
+    var goalIntent = UnityGoalIntent.none
+    var approvedActions: Set<String> = []
     private(set) var operationCount = 0
     private(set) var mutations: [String] = []
 
@@ -112,7 +115,7 @@ final class UnityConnection {
 
     func authorize(_ op: UnityOperation, session: UnityToolSession) -> UnityPolicy.Decision {
         UnityPolicy.authorize(op, capabilities: session.capabilities, status: transport.currentStatus() ?? status, destructiveRequested: session.destructiveRequested,
-                              approvedDirtyScenes: session.approvedDirtyScenes)
+                              approvedDirtyScenes: session.approvedDirtyScenes, goal: session.goalIntent)
     }
 
     /// Test hook: shortens every operation timeout. Product code never sets it.
@@ -124,6 +127,12 @@ final class UnityConnection {
         case .requestCompilation: return 60
         case .enterPlayMode, .exitPlayMode, .runTests, .saveScene, .createPrefab: return 60
         case .openScene: return 90
+        case .dev(let d):
+            switch d {
+            case .setModelImporter, .createScene: return 120
+            case .captureView, .createPrefabVariant, .applyPrefabOverrides: return 60
+            default: return 30
+            }
         default: return 30
         }
     }
@@ -134,8 +143,8 @@ final class UnityConnection {
         switch authorize(op, session: session) {
         case .allow: break
         case .deny(let cat, let why): session.note(.warning, "Refused: \(op.summary)", detail: why, severity: .warning); throw UnityToolError(category: cat, message: why)
-        case .needsApproval(_, let reason, _):
-            if !(approvedDestructive && op.isDestructive) { throw UnityToolError(category: .approvalDenied, message: "Approval is required first: \(reason)") }
+        case .needsApproval(let action, let reason, _):
+            if !((approvedDestructive && op.isDestructive) || session.approvedActions.contains(action)) { throw UnityToolError(category: .approvalDenied, message: "Approval is required first: \(reason)") }
         }
         guard transport.currentStatus() != nil else { throw UnityToolError(category: .unityUnavailable, message: "No Unity editor with the JARVIS bridge is running for this project.") }
         session.countOperation(op)
@@ -260,13 +269,19 @@ final class UnityService {
     /// Brings the project's editor to a connected state, or says exactly what is missing. Installation of the bridge and opening the project in
     /// a different editor version change the user's project: they need `approvedInstall` / `approvedUpgrade` (decided by the user through the
     /// normal approval gate before this is called again).
-    func prepare(root: String, approvedInstall: Bool, approvedUpgrade: Bool, allowLaunch: Bool = true, progress: ((String) -> Void)? = nil) async -> UnityPrepareOutcome {
+    func prepare(root: String, approvedInstall: Bool, approvedUpgrade: Bool, allowLaunch: Bool = true, rendering: Bool = false, progress: ((String) -> Void)? = nil) async -> UnityPrepareOutcome {
         idleShutdown?.cancel(); idleShutdown = nil
         let canonical = UnityProcessScanner.canonical(root)
         guard let descriptor = UnityProjectDetector.describe(root: canonical) else { return .failed(.unityUnavailable, "This folder is not a Unity project (no Assets/, ProjectSettings/ProjectVersion.txt).") }
         let conn = connection(for: canonical)
         conn.descriptor = descriptor
-        if conn.transport.currentStatus() != nil { conn.apply(status: conn.transport.currentStatus()); return .ready }
+        if let st = conn.transport.currentStatus() {
+            // A task that renders the camera needs a graphics device: an editor JARVIS started headless is restarted WITH one (a user's editor is never touched; it has graphics).
+            if rendering, st.isHeadlessNoGraphics, conn.owned != nil {
+                progress?("Restarting JARVIS' own Unity editor with a graphics device (the task renders the camera)")
+                await restartOwnedEditor(conn)
+            } else { conn.apply(status: st); return .ready }
+        }
 
         conn.setState(.discovering)
         refreshEditors()
@@ -301,7 +316,7 @@ final class UnityService {
         progress?("Starting Unity \(editor.version) (first open of a project can take a few minutes)")
         conn.setState(.connecting)
         let owned: any UnityOwnedEditor
-        do { owned = try launcher.launch(editor: editor, projectRoot: canonical) }
+        do { owned = try launcher.launch(editor: editor, projectRoot: canonical, rendering: rendering) }
         catch { conn.setState(.error, "\(error)"); return .failed(.unityUnavailable, "Unity could not be started: \(error)") }
         conn.owned = owned
         var exited = false
@@ -320,6 +335,17 @@ final class UnityService {
     }
 
     // MARK: Ownership & cleanup
+
+    /// Closes ONE editor JARVIS started itself (never a user's) so it can be started again with different launch options.
+    func restartOwnedEditor(_ conn: UnityConnection) async {
+        guard let owned = conn.owned, conn.transport.currentStatus()?.owned == true else { return }
+        let session = UnityToolSession(capabilities: CapabilitySet(granted: TaskCapability.unityInspection), taskID: nil, runID: nil, hub: nil, destructiveRequested: false)
+        _ = try? await conn.perform(.shutdown, session: session, timeout: 5)
+        for _ in 0..<30 where owned.isRunning { try? await Task.sleep(for: .milliseconds(500)) }
+        if owned.isRunning { await owned.terminate() }
+        conn.owned = nil
+        conn.apply(status: conn.transport.currentStatus())
+    }
 
     /// Closes the editors JARVIS started (graceful `shutdown` first, then the process tree). A user's editor is never touched.
     func shutdownOwnedEditors() async {

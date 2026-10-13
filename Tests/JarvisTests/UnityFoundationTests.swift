@@ -83,7 +83,7 @@ struct UnityFoundationTests {
 
     @Test func theProtocolNamesMatchTheOperationsTheEditorBridgeRegisters() throws {
         let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path + "/UnityBridge/com.jarvis.bridge"
-        let text = try String(contentsOfFile: src + "/Editor/Ops.cs", encoding: .utf8) + (try String(contentsOfFile: src + "/TestRunner/TestOps.cs", encoding: .utf8))
+        let text = try String(contentsOfFile: src + "/Editor/Ops.cs", encoding: .utf8) + (try String(contentsOfFile: src + "/Editor/OperatorOps.cs", encoding: .utf8)) + (try String(contentsOfFile: src + "/TestRunner/TestOps.cs", encoding: .utf8))
         let re = try NSRegularExpression(pattern: #"(?:R|JarvisBridge\.Register)\(\s*"([A-Za-z]+)""#)
         var registered = Set<String>()
         for m in re.matches(in: text, range: NSRange(text.startIndex..., in: text)) { registered.insert(String(text[Range(m.range(at: 1), in: text)!])) }

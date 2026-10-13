@@ -45,9 +45,12 @@ enum TaskCapability: String, Codable, Sendable, CaseIterable {
     // `captureWindow` = take a WINDOW-scoped screenshot for the local vision fallback (needs Screen Recording; granted only when the user turned the fallback on).
     // Neither grants a shell, a script, a purchase, an account action or a project write — those capabilities simply do not exist for this kind.
     case controlComputer, captureWindow
+    // V0.13 (DEC-191…): the Unity development operator. `editUnityAssets` = create / change materials, animator controllers, prefab variants and model-import settings through the typed bridge
+    // (never a script, never an overwrite); `captureUnityView` = render the Game camera to MEMORY for inspection (read-only; nothing is written into the project).
+    case editUnityAssets, captureUnityView
 
-    static let unityInspection: Set<TaskCapability> = [.inspectUnity, .readUnityConsole]
-    static let unityDevelopment: Set<TaskCapability> = [.inspectUnity, .readUnityConsole, .modifyUnityScene, .saveUnityScene, .createUnityPrefab, .runUnityCompile, .runUnityTests, .controlUnityPlayMode]
+    static let unityInspection: Set<TaskCapability> = [.inspectUnity, .readUnityConsole, .captureUnityView]
+    static let unityDevelopment: Set<TaskCapability> = [.inspectUnity, .readUnityConsole, .modifyUnityScene, .saveUnityScene, .createUnityPrefab, .runUnityCompile, .runUnityTests, .controlUnityPlayMode, .editUnityAssets, .captureUnityView]
 }
 
 struct CapabilitySet: Codable, Equatable, Sendable {

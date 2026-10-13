@@ -134,6 +134,8 @@ final class TaskEngine {
         var unityInstallApproved = false
         var unityUpgradeApproved = false
         var unityApprovedDirty: Set<String> = []
+        /// V0.13: the exact Unity actions the user approved in the HUD (apply overrides, importer change, component removal, unpack) — never inferred.
+        var unityApprovedActions: Set<String> = []
         var unityFacts: [String] = []
         var unityProposed: [String: [UnityEditAction]] = [:]
         var unityProposalRuns: [String: UUID] = [:]

@@ -3,7 +3,11 @@ import Foundation
 /// A machine-checkable statement about the editor state. The planner (a model) may PROPOSE expectations; JARVIS verifies them against
 /// the editor itself, so an expectation is evidence only when the editor confirms it.
 struct UnityExpectation: Codable, Equatable, Sendable {
-    enum Kind: String, Codable, Sendable { case objectExists, objectAbsent, componentPresent, componentAbsent, propertyEquals, componentCount }
+    enum Kind: String, Codable, Sendable {
+        case objectExists, objectAbsent, componentPresent, componentAbsent, propertyEquals, componentCount
+        /// V0.13 (evidence from the editor itself): visible in a camera capture (in the frustum, a real area, contrast against the frame) · Animator in the named state / advancing (Play Mode) · an AudioSource is playing (Play Mode).
+        case objectVisible, animatorInState, animatorAdvancing, audioPlaying
+    }
     var kind: Kind
     var target: UnityTarget?
     var componentType: String?
@@ -21,6 +25,10 @@ struct UnityExpectation: Codable, Equatable, Sendable {
         case .componentAbsent: return "\(t) has no \(componentType ?? "?")"
         case .propertyEquals: return "\(t).\(componentType ?? "?").\(propertyPath ?? "?") == \(value?.description ?? "?")"
         case .componentCount: return "\(t) has \(count ?? 0) × \(componentType ?? "?")"
+        case .objectVisible: return "\(t) is visible to the camera"
+        case .animatorInState: return "\(t) animator is in state \(value?.string ?? "?")"
+        case .animatorAdvancing: return "\(t) animation is advancing"
+        case .audioPlaying: return "\(t) audio is playing"
         }
     }
 }
@@ -39,8 +47,12 @@ struct UnityStepParams: Codable, Equatable, Sendable {
     var actionsJSON: String?
     var requireNoNewErrors = true
     var save = true
+    /// V0.13 read-side additions of `unityInspect`: asset paths to inspect, a scene/lighting profile, and a camera capture (memory only) with the named objects analysed.
+    var assets: [String] = []
+    var profile = false
+    var capture: UnityCaptureSpec?
 
-    static let maxTargets = 8, maxExpectations = 10, maxObserve = 30, maxNames = 20
+    static let maxTargets = 8, maxExpectations = 10, maxObserve = 30, maxNames = 20, maxAssets = 6
 
     /// Lenient decode of the `"unity"` object of a plan step (unknown keys are ignored here and rejected by the validator when dangerous).
     static func parse(_ raw: Any?) -> UnityStepParams? {
@@ -55,6 +67,10 @@ struct UnityStepParams: Codable, Equatable, Sendable {
         p.observeSeconds = (d["observeSeconds"] as? NSNumber)?.intValue
         p.requireNoNewErrors = d["requireNoNewErrors"] as? Bool ?? true
         p.save = d["save"] as? Bool ?? true
+        p.assets = (d["assets"] as? [Any] ?? []).compactMap { $0 as? String }
+        p.profile = d["profile"] as? Bool ?? false
+        if let c = d["capture"] as? [String: Any] { p.capture = UnityCaptureSpec(width: (c["width"] as? NSNumber)?.intValue ?? 640, height: (c["height"] as? NSNumber)?.intValue ?? 360, targets: (c["targets"] as? [Any] ?? []).compactMap { $0 as? String }) }
+        else if d["capture"] as? Bool == true { p.capture = UnityCaptureSpec() }
         if let acts = d["actions"] as? [Any], let data = try? JSONSerialization.data(withJSONObject: ["actions": acts]) { p.actionsJSON = String(decoding: data, as: UTF8.self) }
         p.expectations = (d["expectations"] as? [[String: Any]] ?? []).compactMap { e in
             guard let k = (e["kind"] as? String).flatMap(UnityExpectation.Kind.init(rawValue:)) else { return nil }
@@ -79,6 +95,9 @@ struct UnityStepParams: Codable, Equatable, Sendable {
             if let p = e.propertyPath, !UnityActionParser.validPropertyPath(p) { out.append("invalid property path in an expectation") }
             if let t = e.target { if !(t.isPrecise || t.name?.isEmpty == false) { out.append("an expectation needs a target") } } else { out.append("an expectation needs a target") }
         }
+        if assets.count > Self.maxAssets { out.append("too many assets") }
+        for a in assets where !UnityDevOp.validAssetReference(a) { out.append("invalid asset \"\(a.prefix(40))\"") }
+        if let c = capture { out += c.problems() }
         if let a = actionsJSON {
             let parsed = UnityActionParser.parse(a)
             if !parsed.problems.isEmpty { out.append("actions: " + parsed.problems.joined(separator: "; ")) }
@@ -88,4 +107,21 @@ struct UnityStepParams: Codable, Equatable, Sendable {
 
     /// True when any provider-supplied text in the parameters would turn them into code/menu/shell execution.
     func containsForbiddenContent(raw: Any?) -> String? { raw.flatMap { UnityActionParser.forbiddenContent(in: $0) } }
+}
+
+
+/// A camera capture the plan asks for. The picture is rendered by the editor, read into MEMORY and analysed; nothing is written into the project and nothing is stored.
+struct UnityCaptureSpec: Codable, Equatable, Sendable {
+    var width = 640
+    var height = 360
+    /// Objects to check for visibility (names, hierarchy paths or global ids; each is resolved to exactly one object).
+    var targets: [String] = []
+
+    func problems() -> [String] {
+        var out: [String] = []
+        if !(64...1_280).contains(width) || !(64...1_280).contains(height) { out.append("capture size must be 64–1280 pixels") }
+        if targets.count > 8 { out.append("too many capture targets") }
+        for t in targets where t.isEmpty || t.count > 160 || t.contains("..") { out.append("invalid capture target") }
+        return out
+    }
 }

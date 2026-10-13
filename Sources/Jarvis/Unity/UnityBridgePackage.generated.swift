@@ -9,14 +9,42 @@ enum UnityBridgePackage {
   "name": "Jarvis.Bridge.Editor",
   "rootNamespace": "Jarvis.Bridge",
   "references": [],
-  "includePlatforms": [ "Editor" ],
+  "includePlatforms": [
+    "Editor"
+  ],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
   "overrideReferences": false,
   "precompiledReferences": [],
   "autoReferenced": false,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.unity.modules.physics",
+      "expression": "",
+      "define": "JARVIS_PHYSICS"
+    },
+    {
+      "name": "com.unity.modules.audio",
+      "expression": "",
+      "define": "JARVIS_AUDIO"
+    },
+    {
+      "name": "com.unity.modules.animation",
+      "expression": "",
+      "define": "JARVIS_ANIMATION"
+    },
+    {
+      "name": "com.unity.modules.ui",
+      "expression": "",
+      "define": "JARVIS_UI"
+    },
+    {
+      "name": "com.unity.modules.imageconversion",
+      "expression": "",
+      "define": "JARVIS_IMAGECONVERSION"
+    }
+  ],
   "noEngineReferences": false
 }
 """###),
@@ -43,7 +71,7 @@ namespace Jarvis.Bridge
     public static class JarvisBridge
     {
         public const int ProtocolVersion = 1;
-        public const string BridgeVersion = "0.6.0";
+        public const string BridgeVersion = "0.13.0";
 
         public delegate Dictionary<string, object> Handler(Dictionary<string, object> args);
 
@@ -259,6 +287,7 @@ namespace Jarvis.Bridge
                 { "projectName", Path.GetFileName(ProjectPath) },
                 { "unityVersion", Application.unityVersion },
                 { "batchMode", Application.isBatchMode },
+                { "graphics", SystemInfo.graphicsDeviceType.ToString() },
                 { "state", state },
                 { "isCompiling", EditorApplication.isCompiling },
                 { "isPlaying", EditorApplication.isPlaying },
@@ -367,8 +396,9 @@ namespace Jarvis.Bridge
         {
             var tmp = path + ".tmp";
             File.WriteAllText(tmp, content, new UTF8Encoding(false));
-            if (File.Exists(path)) File.Delete(path);
-            File.Move(tmp, path);
+            // Replace in one step: a reader must never see the file missing between a delete and a move.
+            if (File.Exists(path)) File.Replace(tmp, path, null);
+            else File.Move(tmp, path);
         }
 
         static void TryDelete(string path) { try { File.Delete(path); } catch (Exception) { } }
@@ -640,6 +670,1350 @@ namespace Jarvis.Bridge
     }
 }
 """###),
+        ("Editor/OperatorAssets.cs", ###"""
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using Object = UnityEngine.Object;
+#if JARVIS_ANIMATION
+using UnityEditor.Animations;
+#endif
+
+namespace Jarvis.Bridge
+{
+    using D = Dictionary<string, object>;
+
+    /// <summary>
+    /// V0.13 — asset-level operations (materials, animator controllers, importers, audio), the runtime snapshot, and the camera capture. Everything is typed and bounded; assets are
+    /// only ever CREATED at new paths or modified through their typed API (never overwritten, never deleted); anything that needs a module the project does not have answers
+    /// "moduleMissing" instead of failing to compile the bridge.
+    /// </summary>
+    internal static partial class Ops
+    {
+        // ================================================================ inspectAsset
+
+        static D InspectAsset(D a)
+        {
+            string path = Str(a, "path");
+            Require(AssetPathOk(path), "invalidArguments", "path must be an asset path inside Assets/.");
+            Require(File.Exists(Abs(path)), "assetNotFound", "No asset exists at " + path + ".");
+            var main = AssetDatabase.LoadMainAssetAtPath(path);
+            Require(main != null, "assetNotFound", "Unity could not load " + path + " (is it imported yet?).");
+            var d = Obj("path", path, "type", main.GetType().Name, "name", main.name, "guid", AssetDatabase.AssetPathToGUID(path));
+            var importer = AssetImporter.GetAtPath(path);
+            if (importer != null) d["importer"] = importer.GetType().Name;
+
+            if (main is Material mat) { foreach (var kv in MaterialInfo(mat)) d[kv.Key] = kv.Value; return d; }
+            if (main is Shader sh) { d["properties"] = ShaderProps(sh); return d; }
+            if (main is Texture tex)
+            {
+                d["width"] = tex.width; d["height"] = tex.height;
+                if (importer is TextureImporter ti) { d["textureType"] = ti.textureType.ToString(); d["sRGB"] = ti.sRGBTexture; d["maxSize"] = ti.maxTextureSize; d["mipmaps"] = ti.mipmapEnabled; }
+                return d;
+            }
+#if JARVIS_AUDIO
+            if (main is AudioClip clip)
+            {
+                d["length"] = (double)clip.length; d["frequency"] = clip.frequency; d["channels"] = clip.channels; d["samples"] = clip.samples; d["loadType"] = clip.loadType.ToString();
+                d["loadState"] = clip.loadState.ToString(); d["ambisonic"] = clip.ambisonic;
+                if (importer is AudioImporter ai)
+                {
+                    var ds = ai.defaultSampleSettings;
+                    d["forceToMono"] = ai.forceToMono; d["loadInBackground"] = ai.loadInBackground; d["compression"] = ds.compressionFormat.ToString(); d["quality"] = (double)ds.quality; d["importLoadType"] = ds.loadType.ToString();
+                }
+                return d;
+            }
+            if (main is UnityEngine.Audio.AudioMixer mixer)
+            {
+                var exposed = new List<object>();
+                var so = new SerializedObject(mixer);
+                var arr = so.FindProperty("m_ExposedParameters");
+                if (arr != null && arr.isArray) for (int i = 0; i < arr.arraySize && i < 40; i++) { var n = arr.GetArrayElementAtIndex(i).FindPropertyRelative("name"); if (n != null) exposed.Add(n.stringValue); }
+                d["exposedParameters"] = exposed;
+                d["groups"] = mixer.FindMatchingGroups("").Select(g => (object)g.name).Take(40).ToList();
+                return d;
+            }
+#endif
+#if JARVIS_ANIMATION
+            if (main is AnimationClip ac)
+            {
+                foreach (var kv in ClipInfo(ac)) d[kv.Key] = kv.Value;
+                return d;
+            }
+            if (main is AnimatorController ctl) { foreach (var kv in ControllerInfo(ctl)) d[kv.Key] = kv.Value; return d; }
+#endif
+            if (main is GameObject go)
+            {
+                if (importer is ModelImporter mi) { foreach (var kv in ModelInfo(path, mi)) d[kv.Key] = kv.Value; return d; }
+                d["assetType"] = PrefabUtility.GetPrefabAssetType(go).ToString();
+                var baseAsset = PrefabUtility.GetCorrespondingObjectFromSource(go);
+                if (baseAsset != null) d["variantOf"] = AssetDatabase.GetAssetPath(baseAsset);
+                d["components"] = go.GetComponents<Component>().Where(c => c != null).Select(c => (object)c.GetType().Name).Take(20).ToList();
+                d["children"] = go.transform.childCount;
+                d["missingScripts"] = GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(go);
+                return d;
+            }
+            return d;
+        }
+
+        static List<object> ShaderProps(Shader sh)
+        {
+            var l = new List<object>();
+            int n = Math.Min(sh.GetPropertyCount(), 80);
+            for (int i = 0; i < n; i++)
+                if ((sh.GetPropertyFlags(i) & UnityEngine.Rendering.ShaderPropertyFlags.HideInInspector) == 0)
+                    l.Add(Obj("name", sh.GetPropertyName(i), "type", sh.GetPropertyType(i).ToString(), "description", sh.GetPropertyDescription(i)));
+            return l;
+        }
+
+        static D MaterialInfo(Material m)
+        {
+            var props = new List<object>();
+            var sh = m.shader;
+            int n = Math.Min(sh.GetPropertyCount(), 80);
+            for (int i = 0; i < n; i++)
+            {
+                string name = sh.GetPropertyName(i);
+                var type = sh.GetPropertyType(i);
+                object value = null;
+                switch (type)
+                {
+                    case UnityEngine.Rendering.ShaderPropertyType.Float: case UnityEngine.Rendering.ShaderPropertyType.Range: value = (double)m.GetFloat(name); break;
+                    case UnityEngine.Rendering.ShaderPropertyType.Int: value = (double)m.GetInteger(name); break;
+                    case UnityEngine.Rendering.ShaderPropertyType.Color: value = ColorList(m.GetColor(name)); break;
+                    case UnityEngine.Rendering.ShaderPropertyType.Vector: { var v = m.GetVector(name); value = new List<object> { (double)v.x, (double)v.y, (double)v.z, (double)v.w }; break; }
+                    case UnityEngine.Rendering.ShaderPropertyType.Texture: value = AssetRefOf(m.GetTexture(name)); break;
+                }
+                if ((sh.GetPropertyFlags(i) & UnityEngine.Rendering.ShaderPropertyFlags.HideInInspector) != 0) continue;
+                props.Add(Obj("name", name, "type", type.ToString(), "value", value));
+            }
+            bool srp = false;
+            try { srp = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null; } catch (Exception) { }
+            return Obj("shader", sh.name, "renderQueue", m.renderQueue, "keywords", m.enabledKeywords.Select(k => (object)k.name).Take(30).ToList(), "properties", props,
+                       "pipelineMismatch", srp && sh.name.StartsWith("Standard"), "shaderSupported", sh.isSupported);
+        }
+
+#if JARVIS_ANIMATION
+        static D ClipInfo(AnimationClip c) => Obj("length", (double)c.length, "frameRate", (double)c.frameRate, "looping", c.isLooping, "legacy", c.legacy, "humanMotion", c.isHumanMotion, "hasMotionCurves", c.hasMotionCurves,
+            "hasRootCurves", c.hasRootCurves, "empty", c.empty, "events", c.events.Length, "curves", AnimationUtility.GetCurveBindings(c).Length + AnimationUtility.GetObjectReferenceCurveBindings(c).Length, "wrapMode", c.wrapMode.ToString());
+
+        static D ControllerInfo(AnimatorController c)
+        {
+            var ps = c.parameters.Select(p => (object)Obj("name", p.name, "type", p.type.ToString(), "default", p.type == AnimatorControllerParameterType.Float ? (double)p.defaultFloat : p.type == AnimatorControllerParameterType.Int ? (double)p.defaultInt : (object)p.defaultBool)).ToList();
+            var layers = new List<object>();
+            foreach (var l in c.layers)
+            {
+                var sm = l.stateMachine;
+                var states = new List<object>();
+                foreach (var cs in sm.states.Take(60))
+                {
+                    var st = cs.state;
+                    var trans = st.transitions.Select(t => (object)TransitionInfo(st.name, t)).ToList();
+                    states.Add(Obj("name", st.name, "motion", AssetRefOf(st.motion) ?? (st.motion is BlendTree ? "BlendTree:" + st.motion.name : null), "speed", (double)st.speed, "isDefault", sm.defaultState == st, "transitions", trans));
+                }
+                layers.Add(Obj("name", l.name, "defaultState", sm.defaultState == null ? null : sm.defaultState.name, "states", states, "anyStateTransitions", sm.anyStateTransitions.Select(t => (object)TransitionInfo("Any", t)).ToList()));
+            }
+            return Obj("parameters", ps, "layers", layers);
+        }
+
+        static D TransitionInfo(string from, AnimatorStateTransition t) => Obj("from", from, "to", t.destinationState == null ? null : t.destinationState.name, "hasExitTime", t.hasExitTime, "exitTime", (double)t.exitTime, "duration", (double)t.duration,
+            "conditions", t.conditions.Select(c => (object)Obj("parameter", c.parameter, "mode", c.mode.ToString(), "threshold", (double)c.threshold)).ToList());
+#endif
+
+        static D ModelInfo(string path, ModelImporter mi)
+        {
+            var d = new D();
+            d["animationType"] = mi.animationType.ToString(); d["importAnimation"] = mi.importAnimation; d["optimizeGameObjects"] = mi.optimizeGameObjects; d["isReadable"] = mi.isReadable;
+#if JARVIS_ANIMATION
+            var all = AssetDatabase.LoadAllAssetsAtPath(path);
+            var clips = all.OfType<AnimationClip>().Where(c => !c.name.StartsWith("__preview__")).ToList();
+            var loops = (mi.clipAnimations != null && mi.clipAnimations.Length > 0 ? mi.clipAnimations : mi.defaultClipAnimations).ToDictionary(x => x.name, x => x.loopTime, StringComparer.Ordinal);
+            d["clips"] = clips.Select(c => (object)Obj("name", c.name, "length", (double)c.length, "frameRate", (double)c.frameRate, "loop", loops.TryGetValue(c.name, out var lp) && lp, "humanMotion", c.isHumanMotion)).Take(40).ToList();
+            var av = all.OfType<Avatar>().FirstOrDefault();
+            d["avatar"] = av == null ? null : Obj("name", av.name, "valid", av.isValid, "human", av.isHuman);
+#endif
+            d["meshCount"] = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Mesh>().Count();
+            return d;
+        }
+
+        // ================================================================ materials
+
+        static D CreateMaterial(D a)
+        {
+            string path = Str(a, "assetPath");
+            Require(AssetPathOk(path, ".mat"), "invalidArguments", "assetPath must be a new .mat inside Assets/.");
+            Require(!File.Exists(Abs(path)), "assetExists", "A material already exists at that path; the bridge never overwrites assets.");
+            Material mat;
+            if (Has(a, "copyFrom"))
+            {
+                var src = LoadAssetRef(S(a, "copyFrom"), "copyFrom") as Material;
+                Require(src != null, "typeMismatch", "copyFrom is not a Material.");
+                mat = new Material(src);
+            }
+            else
+            {
+                string shaderName = Str(a, "shader");
+                Require(!string.IsNullOrEmpty(shaderName), "invalidArguments", "shader (or copyFrom) is required.");
+                var shader = Shader.Find(shaderName);
+                if (shader == null)
+                {
+                    var known = ShaderUtil.GetAllShaderInfo().Select(i => i.name).Where(n => !n.StartsWith("Hidden/") && (n.StartsWith("Universal") || n.StartsWith("Standard") || n.StartsWith("Unlit") || n.StartsWith("Sprites") || n.StartsWith("HDRP") || n.StartsWith("Lit") || n.StartsWith("Particles"))).Take(20).ToList();
+                    throw new OpException("shaderNotFound", "No shader named \"" + shaderName + "\" exists in this project.", known.Cast<object>().ToList());
+                }
+                mat = new Material(shader);
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(Abs(path)));
+            AssetDatabase.CreateAsset(mat, path);
+            AssetDatabase.SaveAssets();
+            var created = AssetDatabase.LoadAssetAtPath<Material>(path);
+            Require(created != null, "createFailed", "Unity could not create the material.");
+            return Obj("created", true, "assetPath", path, "shader", created.shader.name, "pipelineMismatch", (bool)MaterialInfo(created)["pipelineMismatch"]);
+        }
+
+        static D SetMaterialProperty(D a)
+        {
+            string path = Str(a, "assetPath");
+            Require(AssetPathOk(path, ".mat"), "invalidArguments", "assetPath must be a .mat inside Assets/.");
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            Require(mat != null, "assetNotFound", "No material exists at " + path + ".");
+            string name = Str(a, "property");
+            Require(a.ContainsKey("value"), "invalidArguments", "value is required.");
+            var sh = mat.shader;
+            int idx = sh.FindPropertyIndex(name);
+            if (idx < 0) throw new OpException("propertyNotFound", "The shader \"" + sh.name + "\" has no property \"" + name + "\". Its properties are: " + string.Join(", ", Enumerable.Range(0, Math.Min(sh.GetPropertyCount(), 60)).Select(i => sh.GetPropertyName(i))) + ".");
+            var type = sh.GetPropertyType(idx);
+            var value = a["value"];
+            var before = MaterialInfo(mat)["properties"] as List<object>;
+            object old = before.OfType<D>().FirstOrDefault(p => (string)p["name"] == name)?["value"];
+            Undo.RecordObject(mat, "JARVIS material property");
+            switch (type)
+            {
+                case UnityEngine.Rendering.ShaderPropertyType.Float:
+                    Require(value is double, "invalidValue", "A number is required."); mat.SetFloat(name, (float)(double)value); break;
+                case UnityEngine.Rendering.ShaderPropertyType.Range:
+                {
+                    Require(value is double, "invalidValue", "A number is required.");
+                    var lim = sh.GetPropertyRangeLimits(idx);
+                    Require((double)value >= lim.x - 1e-6 && (double)value <= lim.y + 1e-6, "invalidValue", "\"" + name + "\" accepts values between " + lim.x + " and " + lim.y + ".");
+                    mat.SetFloat(name, (float)(double)value); break;
+                }
+                case UnityEngine.Rendering.ShaderPropertyType.Int: Require(value is double dv && dv == Math.Floor(dv), "invalidValue", "An integer is required."); mat.SetInteger(name, (int)(double)value); break;
+                case UnityEngine.Rendering.ShaderPropertyType.Color: mat.SetColor(name, ColorOf(value, name)); break;
+                case UnityEngine.Rendering.ShaderPropertyType.Vector: { var n = Nums(value, 4); mat.SetVector(name, new Vector4(n[0], n[1], n[2], n[3])); break; }
+                case UnityEngine.Rendering.ShaderPropertyType.Texture:
+                {
+                    Texture t = null;
+                    if (value is string ts && ts.Length > 0) { t = LoadAssetRef(ts, name) as Texture; Require(t != null, "typeMismatch", "The asset is not a Texture."); }
+                    mat.SetTexture(name, t); break;
+                }
+                default: throw new OpException("propertyNotRepresentable", "Properties of type " + type + " cannot be edited through the bridge.");
+            }
+            EditorUtility.SetDirty(mat);
+            AssetDatabase.SaveAssetIfDirty(mat);
+            var after = MaterialInfo(mat)["properties"] as List<object>;
+            object now = after.OfType<D>().FirstOrDefault(p => (string)p["name"] == name)?["value"];
+            bool changed = Json.Serialize(old) != Json.Serialize(now);
+            return Obj("changed", changed, "alreadyApplied", !changed, "property", name, "type", type.ToString(), "before", old, "value", now, "assetPath", path);
+        }
+
+        // ================================================================ animation
+
+        static D CreateAnimatorController(D a)
+        {
+#if JARVIS_ANIMATION
+            string path = Str(a, "assetPath");
+            Require(AssetPathOk(path, ".controller"), "invalidArguments", "assetPath must be a new .controller inside Assets/.");
+            Require(!File.Exists(Abs(path)), "assetExists", "A controller already exists at that path; the bridge never overwrites assets.");
+            Directory.CreateDirectory(Path.GetDirectoryName(Abs(path)));
+            var c = AnimatorController.CreateAnimatorControllerAtPath(path);
+            Require(c != null, "createFailed", "Unity could not create the controller.");
+            AssetDatabase.SaveAssets();
+            var d = ControllerInfo(c); d["created"] = true; d["assetPath"] = path;
+            return d;
+#else
+            throw new OpException("moduleMissing", "The Animation module is not enabled in this project.");
+#endif
+        }
+
+        static D EditAnimatorController(D a)
+        {
+#if JARVIS_ANIMATION
+            string path = Str(a, "assetPath");
+            Require(AssetPathOk(path, ".controller"), "invalidArguments", "assetPath must be a .controller inside Assets/.");
+            var c = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+            Require(c != null, "assetNotFound", "No Animator Controller exists at " + path + ".");
+            string action = Str(a, "action");
+            int layer = Int(a, "layer", 0);
+            Require(layer >= 0 && layer < c.layers.Length, "invalidArguments", "layer " + layer + " does not exist (the controller has " + c.layers.Length + ").");
+            var sm = c.layers[layer].stateMachine;
+            bool changed = true;
+            Func<string, AnimatorState> findState = n => { var s = sm.states.Select(x => x.state).FirstOrDefault(x => x.name == n); Require(s != null, "stateNotFound", "No state named \"" + n + "\" exists in layer " + layer + "."); return s; };
+            Func<string, Motion> motionOf = m => { if (string.IsNullOrEmpty(m)) return null; var o = LoadAssetRef(m, "motion"); Require(o is Motion, "typeMismatch", "\"" + m + "\" is not an animation clip or blend tree."); return (Motion)o; };
+            Func<string, AnimatorControllerParameter> param = n => { var p = c.parameters.FirstOrDefault(x => x.name == n); Require(p != null, "parameterNotFound", "The controller has no parameter named \"" + n + "\". It has: " + string.Join(", ", c.parameters.Select(x => x.name)) + "."); return p; };
+            Undo.RecordObject(c, "JARVIS edit animator controller");
+            switch (action)
+            {
+                case "addParameter":
+                {
+                    string n = Str(a, "name"); Require(!string.IsNullOrEmpty(n) && n.Length <= 60, "invalidArguments", "A parameter name is required.");
+                    if (c.parameters.Any(p => p.name == n)) { changed = false; break; }
+                    var t = EnumOf<AnimatorControllerParameterType>(Str(a, "type", "Float"), "parameter type");
+                    var p = new AnimatorControllerParameter { name = n, type = t };
+                    if (a.ContainsKey("default")) { if (t == AnimatorControllerParameterType.Float) p.defaultFloat = F(a, "default"); else if (t == AnimatorControllerParameterType.Int) p.defaultInt = (int)Num(a, "default"); else p.defaultBool = B(a, "default"); }
+                    c.AddParameter(p); break;
+                }
+                case "addState":
+                {
+                    string n = Str(a, "name"); Require(!string.IsNullOrEmpty(n) && n.Length <= 60, "invalidArguments", "A state name is required.");
+                    if (sm.states.Any(x => x.state.name == n)) { changed = false; break; }
+                    var st = sm.AddState(n);
+                    if (Has(a, "motion")) st.motion = motionOf(S(a, "motion"));
+                    if (Has(a, "speed")) { var v = F(a, "speed"); Require(v >= -10 && v <= 10, "invalidValue", "speed must be between -10 and 10."); st.speed = v; }
+                    break;
+                }
+                case "setDefaultState": { var st = findState(Str(a, "name")); if (sm.defaultState == st) { changed = false; break; } sm.defaultState = st; break; }
+                case "setStateSpeed": { var st = findState(Str(a, "name")); var v = F(a, "speed"); Require(v >= -10 && v <= 10, "invalidValue", "speed must be between -10 and 10."); if (Math.Abs(st.speed - v) < 1e-6) { changed = false; break; } st.speed = v; break; }
+                case "setStateMotion": { var st = findState(Str(a, "name")); var m = motionOf(Str(a, "motion")); if (st.motion == m) { changed = false; break; } st.motion = m; break; }
+                case "addTransition":
+                {
+                    string from = Str(a, "from"), to = Str(a, "to");
+                    var dest = findState(to);
+                    var conditions = Arr(a, "conditions") ?? new List<object>();
+                    Require(conditions.Count <= 6, "invalidArguments", "A transition takes at most 6 conditions.");
+                    bool any = from == "Any";
+                    var src = any ? null : findState(from);
+                    var existing = any ? sm.anyStateTransitions.Where(t => t.destinationState == dest) : src.transitions.Where(t => t.destinationState == dest);
+                    if (existing.Any()) { changed = false; break; }
+                    var tr = any ? sm.AddAnyStateTransition(dest) : src.AddTransition(dest);
+                    tr.hasExitTime = Bool(a, "hasExitTime", !any && conditions.Count == 0);
+                    if (Has(a, "exitTime")) tr.exitTime = F(a, "exitTime");
+                    tr.duration = Has(a, "duration") ? F(a, "duration") : 0.1f;
+                    foreach (var co in conditions.OfType<D>())
+                    {
+                        var p = param(Str(co, "parameter"));
+                        var mode = EnumOf<AnimatorConditionMode>(Str(co, "mode", p.type == AnimatorControllerParameterType.Bool || p.type == AnimatorControllerParameterType.Trigger ? "If" : "Greater"), "condition mode");
+                        tr.AddCondition(mode, Has(co, "threshold") ? F(co, "threshold") : 0f, p.name);
+                    }
+                    break;
+                }
+                case "addBlendTreeState":
+                {
+                    string n = Str(a, "name"); Require(!string.IsNullOrEmpty(n), "invalidArguments", "A state name is required.");
+                    if (sm.states.Any(x => x.state.name == n)) { changed = false; break; }
+                    var bp = param(Str(a, "parameter"));
+                    Require(bp.type == AnimatorControllerParameterType.Float, "invalidArguments", "A blend tree needs a Float parameter.");
+                    BlendTree tree;
+                    var st = c.CreateBlendTreeInController(n, out tree, layer);
+                    tree.blendType = BlendTreeType.Simple1D; tree.blendParameter = bp.name;
+                    foreach (var ch in (Arr(a, "children") ?? new List<object>()).OfType<D>().Take(8)) tree.AddChild(motionOf(Str(ch, "motion")), F(ch, "threshold"));
+                    break;
+                }
+                default: throw new OpException("unknownAction", "\"" + action + "\" is not a supported controller action. Supported: addParameter, addState, setDefaultState, setStateSpeed, setStateMotion, addTransition, addBlendTreeState.");
+            }
+            if (changed) { EditorUtility.SetDirty(c); AssetDatabase.SaveAssetIfDirty(c); }
+            var d = ControllerInfo(c); d["changed"] = changed; d["alreadyApplied"] = !changed; d["action"] = action; d["assetPath"] = path;
+            return d;
+#else
+            throw new OpException("moduleMissing", "The Animation module is not enabled in this project.");
+#endif
+        }
+
+        static D SetModelImporter(D a)
+        {
+            string path = Str(a, "assetPath");
+            Require(AssetPathOk(path), "invalidArguments", "assetPath must be a model asset inside Assets/.");
+            var mi = AssetImporter.GetAtPath(path) as ModelImporter;
+            Require(mi != null, "notAModel", path + " is not imported as a model.");
+            var s = Sub(a, "settings");
+            Require(s != null && s.Count > 0, "invalidArguments", "settings are required.");
+            NeedKeys(s, "model importer", "animationType", "importAnimation", "optimizeGameObjects", "isReadable", "clipLoop");
+            var previous = ModelInfo(path, mi);
+            bool dirty = false;
+            if (s.ContainsKey("animationType")) { var v = EnumOf<ModelImporterAnimationType>(s["animationType"], "animationType"); if (mi.animationType != v) { mi.animationType = v; dirty = true; } }
+            if (s.ContainsKey("importAnimation")) { var v = B(s, "importAnimation"); if (mi.importAnimation != v) { mi.importAnimation = v; dirty = true; } }
+            if (s.ContainsKey("optimizeGameObjects")) { var v = B(s, "optimizeGameObjects"); if (mi.optimizeGameObjects != v) { mi.optimizeGameObjects = v; dirty = true; } }
+            if (s.ContainsKey("isReadable")) { var v = B(s, "isReadable"); if (mi.isReadable != v) { mi.isReadable = v; dirty = true; } }
+            if (s.ContainsKey("clipLoop"))
+            {
+                var cl = s["clipLoop"] as List<object>;
+                Require(cl != null && cl.Count == 2 && cl[0] is string && cl[1] is bool, "invalidValue", "clipLoop needs [clip name, true|false].");
+                var clips = (mi.clipAnimations != null && mi.clipAnimations.Length > 0 ? mi.clipAnimations : mi.defaultClipAnimations).ToArray();
+                int i = Array.FindIndex(clips, x => x.name == (string)cl[0]);
+                Require(i >= 0, "clipNotFound", "The model has no clip named \"" + (string)cl[0] + "\". It has: " + string.Join(", ", clips.Select(x => x.name)) + ".");
+                if (clips[i].loopTime != (bool)cl[1]) { clips[i].loopTime = (bool)cl[1]; mi.clipAnimations = clips; dirty = true; }
+            }
+            if (dirty) mi.SaveAndReimport();                    // intentional, visible re-import
+            var after = ModelInfo(path, AssetImporter.GetAtPath(path) as ModelImporter);
+            return Obj("changed", dirty, "alreadyApplied", !dirty, "reimported", dirty, "previous", previous, "after", after, "assetPath", path);
+        }
+
+        // ================================================================ runtime snapshot (allowed in Play Mode; reads only)
+
+        static D InspectRuntime(D a)
+        {
+            var targets = Arr(a, "targets")?.OfType<D>().Take(12).ToList() ?? new List<D>();
+            Require(targets.Count > 0, "invalidArguments", "At least one target is required.");
+            var states = Arr(a, "animatorStates")?.OfType<string>().Take(12).ToList() ?? new List<string>();
+            var list = new List<object>();
+            foreach (var t in targets)
+            {
+                GameObject go = null;
+                try { go = Resolve(t, true); } catch (OpException e) when (e.Code == "targetNotFound") { list.Add(Obj("exists", false)); continue; }
+                var d = Obj("exists", true, "object", Identity(go), "pose", Pose(go), "activeInHierarchy", go.activeInHierarchy);
+                var rends = go.GetComponentsInChildren<Renderer>(false);
+                d["renderers"] = rends.Length; d["visibleToAnyCamera"] = rends.Any(r => r.isVisible);
+#if JARVIS_PHYSICS
+                var rb = go.GetComponent<Rigidbody>();
+                if (rb != null) d["rigidbody"] = Obj("velocity", Vec(rb.linearVelocity), "speed", (double)rb.linearVelocity.magnitude, "isKinematic", rb.isKinematic, "sleeping", rb.IsSleeping());
+#endif
+#if JARVIS_ANIMATION
+                var an = go.GetComponentInChildren<Animator>();
+                if (an != null)
+                {
+                    var info = Obj("enabled", an.enabled, "hasController", an.runtimeAnimatorController != null, "controller", an.runtimeAnimatorController == null ? null : an.runtimeAnimatorController.name, "speed", (double)an.speed,
+                                   "applyRootMotion", an.applyRootMotion, "isHuman", an.isHuman);
+                    if (EditorApplication.isPlaying && an.isActiveAndEnabled && an.runtimeAnimatorController != null)
+                    {
+                        var st = an.GetCurrentAnimatorStateInfo(0);
+                        var inState = new D();
+                        foreach (var n in states) inState[n] = st.IsName(n);
+                        info["normalizedTime"] = (double)st.normalizedTime; info["isInTransition"] = an.IsInTransition(0); info["inState"] = inState;
+                        info["clips"] = an.GetCurrentAnimatorClipInfo(0).Select(ci => (object)ci.clip.name).Take(6).ToList();
+                        info["parameters"] = an.parameters.Where(p => p.type != AnimatorControllerParameterType.Trigger).Take(12).Select(p => (object)Obj("name", p.name, "value", p.type == AnimatorControllerParameterType.Float ? (double)an.GetFloat(p.name) : p.type == AnimatorControllerParameterType.Int ? (double)an.GetInteger(p.name) : (object)an.GetBool(p.name))).ToList();
+                    }
+                    d["animator"] = info;
+                }
+#endif
+#if JARVIS_AUDIO
+                var au = go.GetComponentInChildren<AudioSource>();
+                if (au != null) d["audio"] = Obj("enabled", au.enabled, "isPlaying", au.isPlaying, "clip", AssetRefOf(au.clip), "volume", (double)au.volume, "mute", au.mute, "loop", au.loop, "time", (double)au.time, "spatialBlend", (double)au.spatialBlend);
+#endif
+                list.Add(d);
+            }
+            return Obj("playing", EditorApplication.isPlaying, "time", EditorApplication.isPlaying ? (double)Time.time : 0.0, "frame", EditorApplication.isPlaying ? Time.frameCount : 0, "targets", list);
+        }
+
+        // ================================================================ camera capture (a render of the Game camera; no desktop, no editor chrome)
+
+        static string CapturesDir => Path.Combine(JarvisBridge.Root, "captures");
+
+        static D CaptureView(D a)
+        {
+            int w = Math.Min(Math.Max(Int(a, "width", 640), 64), 1280), h = Math.Min(Math.Max(Int(a, "height", 360), 64), 1280);
+            Camera cam = null;
+            if (a.ContainsKey("camera") && a["camera"] is D cd) cam = Resolve(cd, true).GetComponent<Camera>();
+            else
+            {
+                cam = Camera.main;
+                if (cam == null) cam = Object.FindObjectsByType<Camera>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Where(c => c.enabled && c.targetTexture == null).OrderByDescending(c => c.depth).FirstOrDefault();
+            }
+            Require(cam != null, "noCamera", "No enabled camera exists in the loaded scenes to render.");
+            Require(SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null, "noGraphicsDevice", "This editor runs without a graphics device (-nographics); it cannot render a camera.");
+            Directory.CreateDirectory(CapturesDir);
+            try { foreach (var f in Directory.GetFiles(CapturesDir, "*.png")) if ((DateTime.UtcNow - File.GetLastWriteTimeUtc(f)).TotalMinutes > 10) File.Delete(f); } catch (Exception) { }
+
+            var prevTarget = cam.targetTexture;
+            var rt = RenderTexture.GetTemporary(w, h, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            var prevActive = RenderTexture.active;
+            Texture2D tex;
+            try
+            {
+                cam.targetTexture = rt;
+                cam.Render();
+                RenderTexture.active = rt;
+                tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+                tex.Apply();
+            }
+            finally { cam.targetTexture = prevTarget; RenderTexture.active = prevActive; RenderTexture.ReleaseTemporary(rt); }
+
+            var px = tex.GetPixels32();
+            int n = px.Length;
+            var lum = new float[n];
+            double sum = 0, sum2 = 0; int dark = 0, bright = 0;
+            for (int i = 0; i < n; i++)
+            {
+                float l = (0.2126f * px[i].r + 0.7152f * px[i].g + 0.0722f * px[i].b) / 255f;
+                lum[i] = l; sum += l; sum2 += l * l;
+                if (l < 0.05f) dark++; else if (l > 0.95f) bright++;
+            }
+            double mean = sum / n, sd = Math.Sqrt(Math.Max(0, sum2 / n - mean * mean));
+            var sorted = (float[])lum.Clone(); Array.Sort(sorted);
+            string file = Guid.NewGuid().ToString("N") + ".png";
+#if JARVIS_IMAGECONVERSION
+            File.WriteAllBytes(Path.Combine(CapturesDir, file), tex.EncodeToPNG());
+#else
+            Object.DestroyImmediate(tex);
+            throw new OpException("moduleMissing", "The Image Conversion module is not enabled in this project; the capture cannot be encoded.");
+#endif
+            Object.DestroyImmediate(tex);
+
+            var analysis = new List<object>();
+            foreach (var td in (Arr(a, "targets") ?? new List<object>()).OfType<D>().Take(8))
+            {
+                GameObject go = null;
+                try { go = Resolve(td, true); } catch (OpException e) when (e.Code == "targetNotFound") { analysis.Add(Obj("exists", false)); continue; }
+                var rs = go.GetComponentsInChildren<Renderer>(false).Where(r => r.enabled).ToList();
+                if (rs.Count == 0) { analysis.Add(Obj("exists", true, "object", HierarchyPath(go.transform, true), "renderers", 0, "inFrustum", false, "visible", false, "reason", "no enabled renderer")); continue; }
+                var b = rs[0].bounds; foreach (var r in rs.Skip(1)) b.Encapsulate(r.bounds);
+                bool inFrustum = GeometryUtility.TestPlanesAABB(GeometryUtility.CalculateFrustumPlanes(cam), b);
+                float minx = 1, miny = 1, maxx = 0, maxy = 0; bool behind = false;
+                for (int i = 0; i < 8; i++)
+                {
+                    var c = new Vector3(i % 2 == 0 ? b.min.x : b.max.x, (i / 2) % 2 == 0 ? b.min.y : b.max.y, i / 4 == 0 ? b.min.z : b.max.z);
+                    var v = cam.WorldToViewportPoint(c);
+                    if (v.z <= 0) { behind = true; continue; }
+                    minx = Math.Min(minx, v.x); maxx = Math.Max(maxx, v.x); miny = Math.Min(miny, v.y); maxy = Math.Max(maxy, v.y);
+                }
+                minx = Mathf.Clamp01(minx); maxx = Mathf.Clamp01(maxx); miny = Mathf.Clamp01(miny); maxy = Mathf.Clamp01(maxy);
+                double area = Math.Max(0, maxx - minx) * Math.Max(0, maxy - miny);
+                double region = double.NaN, rest = double.NaN, contrast = 0;
+                if (area > 0)
+                {
+                    int x0 = (int)(minx * (w - 1)), x1 = (int)(maxx * (w - 1)), y0 = (int)(miny * (h - 1)), y1 = (int)(maxy * (h - 1));
+                    double rs2 = 0; int rn = 0;
+                    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) { rs2 += lum[y * w + x]; rn++; }
+                    if (rn > 0 && n - rn > 0) { region = rs2 / rn; rest = (sum - rs2) / (n - rn); contrast = Math.Abs(region - rest); }
+                }
+                bool visible = inFrustum && area >= 0.001 && contrast >= 0.03;
+                analysis.Add(Obj("exists", true, "object", HierarchyPath(go.transform, true), "renderers", rs.Count, "inFrustum", inFrustum, "partlyBehindCamera", behind, "viewport", new List<object> { (double)minx, (double)miny, (double)maxx, (double)maxy },
+                                 "areaFraction", area, "regionLuminance", double.IsNaN(region) ? null : (object)region, "restLuminance", double.IsNaN(rest) ? null : (object)rest, "contrast", contrast, "visible", visible));
+            }
+            return Obj("file", "captures/" + file, "width", w, "height", h, "camera", HierarchyPath(cam.transform, true), "isPlaying", EditorApplication.isPlaying,
+                       "luminance", Obj("mean", mean, "stddev", sd, "p5", (double)sorted[(int)(n * 0.05)], "p50", (double)sorted[n / 2], "p95", (double)sorted[Math.Min(n - 1, (int)(n * 0.95))], "darkFraction", (double)dark / n, "brightFraction", (double)bright / n),
+                       "targets", analysis);
+        }
+    }
+}
+"""###),
+        ("Editor/OperatorOps.cs", ###"""
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using Object = UnityEngine.Object;
+
+namespace Jarvis.Bridge
+{
+    using D = Dictionary<string, object>;
+
+    /// <summary>
+    /// V0.13 — the project-operator operations (scene, hierarchy, prefab, component settings, environment). Same rules as every other operation: typed, bounded, answered
+    /// with structured data, no code/menu/shell input anywhere, mutations rejected by the dispatcher itself while Play Mode is active or the editor is busy. Component
+    /// settings are WHITELISTED per component kind (the Swift side carries the same table; a unit test keeps them equal).
+    /// </summary>
+    internal static partial class Ops
+    {
+        static void RegisterOperator(Action<string, JarvisBridge.Handler, bool> R)
+        {
+            R("createScene", CreateSceneOp, true);
+            R("sceneProfile", SceneProfile, false);
+            R("editGameObject", EditGameObject, true);
+            R("duplicateGameObject", DuplicateGameObject, true);
+            R("removeComponent", RemoveComponent, true);
+            R("setObjectReference", SetObjectReference, true);
+            R("configureComponent", ConfigureComponent, true);
+            R("instantiatePrefab", InstantiatePrefab, true);
+            R("prefabOverrides", PrefabOverrides, false);
+            R("revertPrefabOverrides", RevertPrefabOverrides, true);
+            R("applyPrefabOverrides", ApplyPrefabOverrides, true);
+            R("createPrefabVariant", CreatePrefabVariant, true);
+            R("unpackPrefab", UnpackPrefab, true);
+            R("inspectAsset", InspectAsset, false);
+            R("createMaterial", CreateMaterial, true);
+            R("setMaterialProperty", SetMaterialProperty, true);
+            R("inspectLighting", InspectLighting, false);
+            R("setEnvironment", SetEnvironment, true);
+            R("createAnimatorController", CreateAnimatorController, true);
+            R("editAnimatorController", EditAnimatorController, true);
+            R("setModelImporter", SetModelImporter, true);
+            R("inspectRuntime", InspectRuntime, false);
+            R("captureView", CaptureView, false);
+        }
+
+        // ================================================================ small shared helpers
+
+        static bool Has(D a, string k) => a.ContainsKey(k) && a[k] != null;
+        static double Num(D a, string k) { Require(a.TryGetValue(k, out var v) && v is double, "invalidValue", "\"" + k + "\" must be a number."); return (double)a[k]; }
+        static float F(D a, string k) => (float)Num(a, k);
+        static bool B(D a, string k) { Require(a.TryGetValue(k, out var v) && v is bool, "invalidValue", "\"" + k + "\" must be true or false."); return (bool)a[k]; }
+        static string S(D a, string k) { Require(a.TryGetValue(k, out var v) && v is string, "invalidValue", "\"" + k + "\" must be a string."); return (string)a[k]; }
+
+        static Color ColorOf(object v, string name)
+        {
+            var l = v as List<object>;
+            Require(l != null && (l.Count == 3 || l.Count == 4) && l.All(x => x is double), "invalidValue", "\"" + name + "\" must be an array of 3 or 4 numbers (r, g, b[, a]).");
+            var n = l.Select(x => (float)(double)x).ToArray();
+            return new Color(n[0], n[1], n[2], n.Length == 4 ? n[3] : 1f);
+        }
+        static List<object> ColorList(Color c) => new List<object> { (double)c.r, (double)c.g, (double)c.b, (double)c.a };
+
+        static T EnumOf<T>(object v, string name) where T : struct
+        {
+            Require(v is string, "invalidValue", "\"" + name + "\" must be one of: " + string.Join(", ", Enum.GetNames(typeof(T))));
+            Require(Enum.TryParse((string)v, true, out T r) && Enum.IsDefined(typeof(T), r), "invalidValue", "\"" + (string)v + "\" is not a valid " + name + ". Use one of: " + string.Join(", ", Enum.GetNames(typeof(T))));
+            return r;
+        }
+
+        static void NeedKeys(D settings, string kind, params string[] allowed)
+        {
+            foreach (var k in settings.Keys) Require(allowed.Contains(k), "unknownSetting", "\"" + k + "\" is not a supported " + kind + " setting. Supported: " + string.Join(", ", allowed));
+        }
+
+        static bool AssetPathOk(string p, string ext = null)
+        {
+            if (string.IsNullOrEmpty(p) || p.Length > 240 || !p.StartsWith("Assets/") || p.Contains("..") || p.Contains("//") || p.Contains("\\")) return false;
+            if (!p.All(ch => char.IsLetterOrDigit(ch) || " ._-/#()+".IndexOf(ch) >= 0)) return false;
+            return ext == null || p.EndsWith(ext, StringComparison.Ordinal);
+        }
+
+        static string Abs(string assetPath) => Path.Combine(JarvisBridge.ProjectPath, assetPath);
+
+        /// <summary>"Assets/x.anim" or "Assets/model.fbx::ClipName" (a sub-asset). Never anything outside Assets/.</summary>
+        static Object LoadAssetRef(string reference, string what)
+        {
+            Require(!string.IsNullOrEmpty(reference), "invalidArguments", what + " needs an asset path.");
+            string path = reference, sub = null;
+            int i = reference.IndexOf("::", StringComparison.Ordinal);
+            if (i > 0) { path = reference.Substring(0, i); sub = reference.Substring(i + 2); }
+            Require(AssetPathOk(path), "invalidArguments", what + " must be an asset path inside Assets/.");
+            Require(File.Exists(Abs(path)) || Directory.Exists(Abs(path)), "assetNotFound", "No asset exists at " + path + ".");
+            if (sub == null)
+            {
+                var main = AssetDatabase.LoadMainAssetAtPath(path);
+                Require(main != null, "assetNotFound", "Unity could not load " + path + ".");
+                return main;
+            }
+            var found = AssetDatabase.LoadAllAssetsAtPath(path).Where(o => o != null && o.name == sub && !(o is GameObject && AssetDatabase.IsMainAsset(o))).ToList();
+            Require(found.Count > 0, "assetNotFound", "No sub-asset named \"" + sub + "\" exists in " + path + ".");
+            Require(found.Count == 1 || found.Select(f => f.GetType()).Distinct().Count() > 1 ? true : true, "ambiguousAsset", "");
+            return found[0];
+        }
+
+        static string AssetRefOf(Object o)
+        {
+            if (o == null) return null;
+            var p = AssetDatabase.GetAssetPath(o);
+            if (string.IsNullOrEmpty(p)) return o.name;
+            return AssetDatabase.IsMainAsset(o) ? p : p + "::" + o.name;
+        }
+
+        // Components JARVIS changed in a prefab instance (so a later "revert/apply MY overrides" never touches the user's own overrides).
+        static string TouchKey(Object o)
+        {
+            var go = o as GameObject ?? (o as Component)?.gameObject;
+            if (go == null) return null;
+            return go.scene.path + ":" + HierarchyPath(go.transform, true) + "|" + o.GetType().Name;
+        }
+        static void NoteTouched(Object o)
+        {
+            var k = TouchKey(o);
+            if (k == null) return;
+            var set = SessionState.GetString("Jarvis.Bridge.touched", "").Split('\n').Where(x => x.Length > 0).ToList();
+            if (!set.Contains(k)) set.Add(k);
+            SessionState.SetString("Jarvis.Bridge.touched", string.Join("\n", set.Skip(Math.Max(0, set.Count - 400))));
+        }
+        static bool WasTouched(Object o)
+        {
+            var k = TouchKey(o);
+            return k != null && SessionState.GetString("Jarvis.Bridge.touched", "").Split('\n').Contains(k);
+        }
+
+        /// <summary>A reference that points at something that no longer exists (a missing asset or object), as opposed to a field that was never assigned.</summary>
+        static bool HasDanglingReference(SerializedProperty p)
+        {
+#if UNITY_6000_5_OR_NEWER
+            return p.objectReferenceEntityIdValue != EntityId.None;
+#else
+            return p.objectReferenceInstanceIDValue != 0;
+#endif
+        }
+
+        static D Pose(GameObject go)
+        {
+            var t = go.transform;
+            return Obj("localPosition", Vec(t.localPosition), "localEulerAngles", Vec(t.localEulerAngles), "localScale", Vec(t.localScale), "position", Vec(t.position), "eulerAngles", Vec(t.eulerAngles),
+                       "parent", t.parent == null ? null : HierarchyPath(t.parent, true), "siblingIndex", t.GetSiblingIndex(), "active", go.activeSelf, "tag", go.tag, "layer", LayerMask.LayerToName(go.layer));
+        }
+
+        // ================================================================ scene
+
+        static D CreateSceneOp(D a)
+        {
+            string path = Str(a, "path");
+            Require(AssetPathOk(path, ".unity"), "invalidArguments", "path must be a new .unity scene inside Assets/.");
+            Require(!File.Exists(Abs(path)), "assetExists", "A scene already exists at that path; the bridge never overwrites assets.");
+            foreach (var s in Loaded()) Require(!s.isDirty, "dirtySceneProtected", "Scene \"" + (string.IsNullOrEmpty(s.path) ? s.name : s.path) + "\" has unsaved changes; creating a scene would discard them.");
+            Directory.CreateDirectory(Path.GetDirectoryName(Abs(path)));
+            bool empty = Str(a, "template", "default") == "empty";
+            var scene = EditorSceneManager.NewScene(empty ? NewSceneSetup.EmptyScene : NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+            Require(EditorSceneManager.SaveScene(scene, path), "saveFailed", "Unity could not save the new scene.");
+            SetJarvisDirty(path, false);
+            JarvisBridge.ForceStatus();
+            var d = SceneInfo(scene); d["created"] = true; d["template"] = empty ? "empty" : "default";
+            return d;
+        }
+
+        static D SceneProfile(D a)
+        {
+            var scene = SceneFor(Str(a, "scene"));
+            int max = Math.Min(Math.Max(Int(a, "maxObjects", 2000), 10), 5000);
+            var all = AllObjects(scene).Take(max).ToList();
+            int cams = 0, lights = 0, audio = 0, anim = 0, rb = 0, col = 0, cc = 0, canv = 0, rend = 0, missing = 0;
+            var important = new List<object>();
+            var prefabs = new Dictionary<string, int>();
+            int missingRefs = 0, scanned = 0;
+            foreach (var go in all)
+            {
+                var comps = go.GetComponents<Component>();
+                bool notable = false;
+                foreach (var c in comps)
+                {
+                    if (c == null) { missing++; continue; }
+                    if (c is Camera) { cams++; notable = true; }
+                    else if (c is Light) { lights++; notable = true; }
+                    else if (c is Renderer) rend++;
+                    else if (c.GetType().Name == "AudioSource") { audio++; notable = true; }
+                    else if (c.GetType().Name == "Animator") { anim++; notable = true; }
+                    else if (c is Rigidbody) { rb++; notable = true; }
+                    else if (c is CharacterController) { cc++; notable = true; }
+                    else if (c is Collider) col++;
+                    else if (c.GetType().Name == "Canvas") { canv++; notable = true; }
+                    else if (c.GetType().Name.Contains("NetworkObject")) notable = true;
+                    if (scanned < 400 && !(c is Transform))
+                    {
+                        scanned++;
+                        try
+                        {
+                            var it = new SerializedObject(c).GetIterator();
+                            bool enter = true;
+                            int guard = 0;
+                            while (it.NextVisible(enter) && guard++ < 80)
+                            {
+                                enter = true;
+                                if (it.propertyType == SerializedPropertyType.ObjectReference && it.objectReferenceValue == null && HasDanglingReference(it)) missingRefs++;
+                            }
+                        }
+                        catch (Exception) { }
+                    }
+                }
+                if (PrefabUtility.IsOutermostPrefabInstanceRoot(go))
+                {
+                    var src = AssetDatabase.GetAssetPath(PrefabUtility.GetCorrespondingObjectFromSource(go));
+                    if (!string.IsNullOrEmpty(src)) prefabs[src] = prefabs.TryGetValue(src, out var n) ? n + 1 : 1;
+                }
+                if (notable && important.Count < 40)
+                    important.Add(Obj("path", HierarchyPath(go.transform, true), "components", comps.Where(c => c != null && !(c is Transform)).Select(c => (object)c.GetType().Name).Take(8).ToList()));
+            }
+            var tree = new List<object>();
+            foreach (var r in scene.GetRootGameObjects().Take(60))
+                tree.Add(Obj("name", r.name, "children", r.transform.childCount, "descendants", r.GetComponentsInChildren<Transform>(true).Length - 1, "active", r.activeSelf));
+            var env = Obj("ambientMode", RenderSettings.ambientMode.ToString(), "fog", RenderSettings.fog, "skybox", AssetRefOf(RenderSettings.skybox));
+            return Obj("scene", scene.path, "name", scene.name, "dirty", scene.isDirty, "jarvisDirty", IsJarvisDirty(scene.path), "rootCount", scene.rootCount, "objectCount", all.Count, "truncated", all.Count >= max,
+                       "cameras", cams, "lights", lights, "audioSources", audio, "animators", anim, "rigidbodies", rb, "colliders", col, "characterControllers", cc, "canvases", canv, "renderers", rend,
+                       "missingScripts", missing, "missingReferences", missingRefs,
+                       "prefabInstances", prefabs.OrderByDescending(p => p.Value).Take(20).Select(p => (object)Obj("asset", p.Key, "count", p.Value)).ToList(),
+                       "important", important, "roots", tree, "environment", env);
+        }
+
+        // ================================================================ hierarchy
+
+        static D EditGameObject(D a)
+        {
+            var go = Resolve(Sub(a, "target"));                 // resolved ONCE: a rename or a move changes the path the second pass would look up
+            var first = EditGameObjectCore(go, a);
+            var second = EditGameObjectCore(go, a);             // read-back by idempotence: the same edit again must change nothing
+            first["verified"] = !(second["changed"] is bool c2 && c2);
+            return first;
+        }
+
+        static D EditGameObjectCore(GameObject go, D a)
+        {
+            var changed = new List<object>();
+            var t = go.transform;
+            bool world = Str(a, "space", "local") == "world";
+            if (Has(a, "name"))
+            {
+                string n = S(a, "name");
+                Require(n.Length > 0 && n.Length <= 80 && !n.Contains("/") && !n.Contains("#"), "invalidArguments", "A valid name (no / or #) is required.");
+                if (go.name != n) { Undo.RecordObject(go, "JARVIS rename"); go.name = n; changed.Add("name"); }
+            }
+            if (Has(a, "active"))
+            {
+                bool v = B(a, "active");
+                if (go.activeSelf != v) { Undo.RecordObject(go, "JARVIS set active"); go.SetActive(v); changed.Add("active"); }
+            }
+            if (a.ContainsKey("parent"))
+            {
+                var pd = a["parent"] as D;
+                Transform np = null;
+                if (pd != null) { var p = Resolve(pd); Require(p.scene == go.scene, "invalidArguments", "The new parent is in a different scene."); Require(!p.transform.IsChildOf(t), "invalidArguments", "An object cannot become a child of itself or of one of its descendants."); np = p.transform; }
+                if (t.parent != np) { Undo.SetTransformParent(t, np, "JARVIS reparent"); changed.Add("parent"); }
+            }
+            if (Has(a, "siblingIndex"))
+            {
+                int idx = (int)Num(a, "siblingIndex");
+                int count = t.parent != null ? t.parent.childCount : go.scene.rootCount;
+                Require(idx >= 0 && idx < count, "invalidArguments", "siblingIndex must be between 0 and " + (count - 1) + ".");
+                if (t.GetSiblingIndex() != idx) { Undo.RegisterFullObjectHierarchyUndo(t.parent != null ? t.parent.gameObject : go, "JARVIS reorder"); t.SetSiblingIndex(idx); changed.Add("siblingIndex"); }
+            }
+            if (Has(a, "position")) { var v = ToVec3(a["position"]); var cur = world ? t.position : t.localPosition; if ((cur - v).sqrMagnitude > 1e-8f) { Undo.RecordObject(t, "JARVIS move"); if (world) t.position = v; else t.localPosition = v; changed.Add("position"); } }
+            if (Has(a, "rotation")) { var v = ToVec3(a["rotation"]); var cur = world ? t.rotation : t.localRotation; if (Quaternion.Angle(cur, Quaternion.Euler(v)) > 0.001f) { Undo.RecordObject(t, "JARVIS rotate"); if (world) t.eulerAngles = v; else t.localEulerAngles = v; changed.Add("rotation"); } }
+            if (Has(a, "scale")) { var v = ToVec3(a["scale"]); if ((t.localScale - v).sqrMagnitude > 1e-8f) { Undo.RecordObject(t, "JARVIS scale"); t.localScale = v; changed.Add("scale"); } }
+            if (Has(a, "tag"))
+            {
+                string tag = S(a, "tag");
+                Require(UnityEditorInternalTags().Contains(tag), "unknownTag", "The tag \"" + tag + "\" does not exist in this project. Existing tags: " + string.Join(", ", UnityEditorInternalTags()));
+                if (go.tag != tag) { Undo.RecordObject(go, "JARVIS tag"); go.tag = tag; changed.Add("tag"); }
+            }
+            if (Has(a, "layer"))
+            {
+                int layer = LayerMask.NameToLayer(S(a, "layer"));
+                Require(layer >= 0, "unknownLayer", "The layer \"" + S(a, "layer") + "\" does not exist in this project.");
+                if (go.layer != layer) { Undo.RecordObject(go, "JARVIS layer"); go.layer = layer; changed.Add("layer"); }
+            }
+            if (Has(a, "isStatic")) { bool v = B(a, "isStatic"); if (go.isStatic != v) { Undo.RecordObject(go, "JARVIS static"); go.isStatic = v; changed.Add("isStatic"); } }
+            if (PrefabUtility.IsPartOfPrefabInstance(go)) NoteTouched(t);
+            if (changed.Count > 0) MarkDirty(go.scene);
+            return Obj("changed", changed.Count > 0, "fields", changed, "object", Identity(go), "after", Pose(go), "undoRecorded", true);
+        }
+
+        static IEnumerable<string> UnityEditorInternalTags() => UnityEditorInternal.InternalEditorUtility.tags;
+
+        static D DuplicateGameObject(D a)
+        {
+            var go = Resolve(Sub(a, "target"));
+            Require(go.GetComponentsInChildren<Transform>(true).Length <= 200, "tooLarge", "The object has more than 200 descendants; duplicating it is refused.");
+            var copy = Object.Instantiate(go, go.transform.parent);
+            Undo.RegisterCreatedObjectUndo(copy, "JARVIS duplicate " + go.name);
+            copy.transform.SetSiblingIndex(go.transform.GetSiblingIndex() + 1);
+            string n = Str(a, "name");
+            if (!string.IsNullOrEmpty(n)) { Require(n.Length <= 80 && !n.Contains("/") && !n.Contains("#"), "invalidArguments", "A valid name (no / or #) is required."); copy.name = n; }
+            else copy.name = go.name + " (copy)";
+            if (go.scene != copy.scene) SceneManager.MoveGameObjectToScene(copy, go.scene);
+            MarkDirty(go.scene);
+            return Obj("created", true, "source", Identity(go), "object", Identity(copy), "undoRecorded", true);
+        }
+
+        static D RemoveComponent(D a)
+        {
+            var go = Resolve(Sub(a, "target"));
+            var comp = ResolveComponent(go, a);
+            Require(!(comp is Transform), "refused", "A Transform cannot be removed.");
+            var type = comp.GetType().Name;
+            Undo.DestroyObjectImmediate(comp);
+            MarkDirty(go.scene);
+            return Obj("removed", true, "componentType", type, "target", Identity(go), "undoRecorded", true);
+        }
+
+        static D SetObjectReference(D a)
+        {
+            var go = Resolve(Sub(a, "target"));
+            var comp = ResolveComponent(go, a);
+            string path = Str(a, "propertyPath");
+            Require(!string.IsNullOrEmpty(path), "invalidArguments", "propertyPath is required.");
+            var so = new SerializedObject(comp);
+            var p = so.FindProperty(path);
+            Require(p != null, "propertyNotFound", "\"" + path + "\" is not a serialized property of " + comp.GetType().Name + ".");
+            Require(p.propertyType == SerializedPropertyType.ObjectReference, "notAReference", "\"" + path + "\" is not an object reference (it is " + p.propertyType + ").");
+            string expected = p.type.StartsWith("PPtr<$") ? p.type.Substring(6).TrimEnd('>') : null;
+            Object asset = null;
+            if (a.TryGetValue("assetPath", out var ap) && ap is string aps && aps.Length > 0)
+            {
+                asset = LoadAssetRef(aps, "assetPath");
+                if (expected != null)
+                {
+                    bool ok = false;
+                    for (var tt = asset.GetType(); tt != null && !ok; tt = tt.BaseType) ok = tt.Name == expected;
+                    // a prefab asset is a GameObject; a component field accepts the component of that prefab: only exact-or-derived types are allowed here
+                    Require(ok, "typeMismatch", "\"" + path + "\" expects a " + expected + " but " + aps + " is a " + asset.GetType().Name + ".");
+                }
+            }
+            if (p.objectReferenceValue == asset) return Obj("changed", false, "alreadyApplied", true, "value", AssetRefOf(asset), "target", Identity(go));
+            var before = AssetRefOf(p.objectReferenceValue);
+            p.objectReferenceValue = asset;
+            so.ApplyModifiedProperties();
+            if (PrefabUtility.IsPartOfPrefabInstance(go)) NoteTouched(comp);
+            MarkDirty(go.scene);
+            return Obj("changed", true, "alreadyApplied", false, "before", before, "value", AssetRefOf(new SerializedObject(comp).FindProperty(path).objectReferenceValue), "target", Identity(go), "undoRecorded", true);
+        }
+
+        // ================================================================ component settings (whitelisted per kind)
+
+        static D ConfigureComponent(D a)
+        {
+            var go = Resolve(Sub(a, "target"));
+            string kind = Str(a, "kind");
+            var settings = Sub(a, "settings");
+            Require(settings != null && settings.Count > 0, "invalidArguments", "settings are required.");
+            var before = new D();
+            var applied = new D();
+            var comp = ApplyKind(go, kind, settings, before, applied);
+            if (PrefabUtility.IsPartOfPrefabInstance(go)) NoteTouched(comp);
+            bool changed = applied.Count > 0;
+            if (changed) { EditorUtility.SetDirty(comp); MarkDirty(go.scene); }
+            // Read-back by idempotence: applying the same settings again must change nothing, otherwise the first pass did not stick.
+            var again = new D();
+            ApplyKind(go, kind, settings, new D(), again);
+            return Obj("changed", changed, "alreadyApplied", !changed, "verified", again.Count == 0, "kind", kind, "before", before, "applied", applied, "target", Identity(go), "undoRecorded", true);
+        }
+
+        static Component ApplyKind(GameObject go, string kind, D settings, D before, D applied)
+        {
+            switch (kind)
+            {
+                case "light": return ConfigureLight(go, settings, before, applied);
+                case "camera": return ConfigureCamera(go, settings, before, applied);
+                case "renderer": return ConfigureRenderer(go, settings, before, applied);
+                case "rigidbody": return ConfigureRigidbody(go, settings, before, applied);
+                case "collider": return ConfigureCollider(go, settings, before, applied);
+                case "characterController": return ConfigureCharacterController(go, settings, before, applied);
+                case "audioSource": return ConfigureAudioSource(go, settings, before, applied);
+                case "animator": return ConfigureAnimator(go, settings, before, applied);
+                case "canvas": return ConfigureCanvas(go, settings, before, applied);
+                case "rectTransform": return ConfigureRectTransform(go, settings, before, applied);
+                default: throw new OpException("unknownKind", "\"" + kind + "\" is not a supported component kind. Supported: " + string.Join(", ", ComponentKinds));
+            }
+        }
+
+        // The wire contract: Swift (UnityComponentSchema) carries the same table; a unit test compares the two.
+        public static readonly string[] ComponentKinds = { "light", "camera", "renderer", "rigidbody", "collider", "characterController", "audioSource", "animator", "canvas", "rectTransform" };
+
+        static T Need<T>(GameObject go, string kind) where T : Component
+        {
+            var c = go.GetComponent<T>();
+            Require(c != null, "componentNotFound", "\"" + go.name + "\" has no " + kind + " component.");
+            return c;
+        }
+
+        /// <summary>Records `before` and, when the value really changes, `applied` (idempotent: an equal value changes nothing).</summary>
+        static void Track<TV>(string key, TV current, TV wanted, D before, D applied, Action set, Func<TV, object> show = null, Func<TV, TV, bool> same = null)
+        {
+            bool eq = same != null ? same(current, wanted) : EqualityComparer<TV>.Default.Equals(current, wanted);
+            if (eq) return;
+            before[key] = show != null ? show(current) : (object)current;
+            set();
+            applied[key] = show != null ? show(wanted) : (object)wanted;
+        }
+        static bool Near(float x, float y) => Math.Abs(x - y) < 1e-4f;
+        static object Show(float f) => (double)f;
+
+        static Component ConfigureLight(GameObject go, D s, D before, D applied)
+        {
+            NeedKeys(s, "light", "type", "intensity", "range", "spotAngle", "innerSpotAngle", "color", "shadows", "shadowStrength", "enabled", "bounceIntensity", "colorTemperature", "useColorTemperature");
+            var c = Need<Light>(go, "Light");
+            Undo.RecordObject(c, "JARVIS configure light");
+            if (s.ContainsKey("type")) { var v = EnumOf<LightType>(s["type"], "light type"); Track("type", c.type, v, before, applied, () => c.type = v, x => x.ToString()); }
+            if (s.ContainsKey("intensity")) { var v = F(s, "intensity"); Require(v >= 0 && v <= 100000, "invalidValue", "intensity must be between 0 and 100000."); Track("intensity", c.intensity, v, before, applied, () => c.intensity = v, Show, Near); }
+            if (s.ContainsKey("range")) { var v = F(s, "range"); Require(v > 0 && v <= 100000, "invalidValue", "range must be greater than 0."); Track("range", c.range, v, before, applied, () => c.range = v, Show, Near); }
+            if (s.ContainsKey("spotAngle")) { var v = F(s, "spotAngle"); Require(v >= 1 && v <= 179, "invalidValue", "spotAngle must be between 1 and 179."); Track("spotAngle", c.spotAngle, v, before, applied, () => c.spotAngle = v, Show, Near); }
+            if (s.ContainsKey("innerSpotAngle")) { var v = F(s, "innerSpotAngle"); Require(v >= 1 && v <= 179, "invalidValue", "innerSpotAngle must be between 1 and 179."); Track("innerSpotAngle", c.innerSpotAngle, v, before, applied, () => c.innerSpotAngle = v, Show, Near); }
+            if (s.ContainsKey("color")) { var v = ColorOf(s["color"], "color"); Track("color", c.color, v, before, applied, () => c.color = v, ColorList2, (x, y) => Near(x.r, y.r) && Near(x.g, y.g) && Near(x.b, y.b) && Near(x.a, y.a)); }
+            if (s.ContainsKey("shadows")) { var v = EnumOf<LightShadows>(s["shadows"], "shadows"); Track("shadows", c.shadows, v, before, applied, () => c.shadows = v, x => x.ToString()); }
+            if (s.ContainsKey("shadowStrength")) { var v = F(s, "shadowStrength"); Require(v >= 0 && v <= 1, "invalidValue", "shadowStrength must be between 0 and 1."); Track("shadowStrength", c.shadowStrength, v, before, applied, () => c.shadowStrength = v, Show, Near); }
+            if (s.ContainsKey("enabled")) { var v = B(s, "enabled"); Track("enabled", c.enabled, v, before, applied, () => c.enabled = v); }
+            if (s.ContainsKey("bounceIntensity")) { var v = F(s, "bounceIntensity"); Require(v >= 0 && v <= 8, "invalidValue", "bounceIntensity must be between 0 and 8."); Track("bounceIntensity", c.bounceIntensity, v, before, applied, () => c.bounceIntensity = v, Show, Near); }
+            if (s.ContainsKey("useColorTemperature")) { var v = B(s, "useColorTemperature"); Track("useColorTemperature", c.useColorTemperature, v, before, applied, () => c.useColorTemperature = v); }
+            if (s.ContainsKey("colorTemperature")) { var v = F(s, "colorTemperature"); Require(v >= 1000 && v <= 20000, "invalidValue", "colorTemperature must be between 1000 and 20000."); Track("colorTemperature", c.colorTemperature, v, before, applied, () => c.colorTemperature = v, Show, Near); }
+            return c;
+        }
+        static object ColorList2(Color c) => ColorList(c);
+
+        static Component ConfigureCamera(GameObject go, D s, D before, D applied)
+        {
+            NeedKeys(s, "camera", "fieldOfView", "nearClipPlane", "farClipPlane", "orthographic", "orthographicSize", "clearFlags", "backgroundColor", "depth", "enabled");
+            var c = Need<Camera>(go, "Camera");
+            Undo.RecordObject(c, "JARVIS configure camera");
+            if (s.ContainsKey("fieldOfView")) { var v = F(s, "fieldOfView"); Require(v >= 1 && v <= 179, "invalidValue", "fieldOfView must be between 1 and 179."); Track("fieldOfView", c.fieldOfView, v, before, applied, () => c.fieldOfView = v, Show, Near); }
+            if (s.ContainsKey("nearClipPlane")) { var v = F(s, "nearClipPlane"); Require(v >= 0.01f && v < c.farClipPlane, "invalidValue", "nearClipPlane must be at least 0.01 and smaller than farClipPlane."); Track("nearClipPlane", c.nearClipPlane, v, before, applied, () => c.nearClipPlane = v, Show, Near); }
+            if (s.ContainsKey("farClipPlane")) { var v = F(s, "farClipPlane"); Require(v > c.nearClipPlane && v <= 1000000, "invalidValue", "farClipPlane must be larger than nearClipPlane."); Track("farClipPlane", c.farClipPlane, v, before, applied, () => c.farClipPlane = v, Show, Near); }
+            if (s.ContainsKey("orthographic")) { var v = B(s, "orthographic"); Track("orthographic", c.orthographic, v, before, applied, () => c.orthographic = v); }
+            if (s.ContainsKey("orthographicSize")) { var v = F(s, "orthographicSize"); Require(v > 0 && v <= 100000, "invalidValue", "orthographicSize must be greater than 0."); Track("orthographicSize", c.orthographicSize, v, before, applied, () => c.orthographicSize = v, Show, Near); }
+            if (s.ContainsKey("clearFlags")) { var v = EnumOf<CameraClearFlags>(s["clearFlags"], "clearFlags"); Track("clearFlags", c.clearFlags, v, before, applied, () => c.clearFlags = v, x => x.ToString()); }
+            if (s.ContainsKey("backgroundColor")) { var v = ColorOf(s["backgroundColor"], "backgroundColor"); Track("backgroundColor", c.backgroundColor, v, before, applied, () => c.backgroundColor = v, ColorList2, (x, y) => Near(x.r, y.r) && Near(x.g, y.g) && Near(x.b, y.b) && Near(x.a, y.a)); }
+            if (s.ContainsKey("depth")) { var v = F(s, "depth"); Track("depth", c.depth, v, before, applied, () => c.depth = v, Show, Near); }
+            if (s.ContainsKey("enabled")) { var v = B(s, "enabled"); Track("enabled", c.enabled, v, before, applied, () => c.enabled = v); }
+            return c;
+        }
+
+        static Component ConfigureRenderer(GameObject go, D s, D before, D applied)
+        {
+            NeedKeys(s, "renderer", "material", "materialIndex", "enabled", "castShadows", "receiveShadows");
+            var c = Need<Renderer>(go, "Renderer");
+            Undo.RecordObject(c, "JARVIS configure renderer");
+            if (s.ContainsKey("material"))
+            {
+                int idx = s.ContainsKey("materialIndex") ? (int)Num(s, "materialIndex") : 0;
+                var mats = c.sharedMaterials;
+                Require(idx >= 0 && idx < mats.Length, "invalidValue", "materialIndex must be between 0 and " + (mats.Length - 1) + ".");
+                var m = LoadAssetRef(S(s, "material"), "material") as Material;
+                Require(m != null, "typeMismatch", "The asset is not a Material.");
+                if (mats[idx] != m) { before["material"] = AssetRefOf(mats[idx]); mats[idx] = m; c.sharedMaterials = mats; applied["material"] = AssetRefOf(m); }
+            }
+            if (s.ContainsKey("enabled")) { var v = B(s, "enabled"); Track("enabled", c.enabled, v, before, applied, () => c.enabled = v); }
+            if (s.ContainsKey("castShadows")) { var v = EnumOf<UnityEngine.Rendering.ShadowCastingMode>(s["castShadows"], "castShadows"); Track("castShadows", c.shadowCastingMode, v, before, applied, () => c.shadowCastingMode = v, x => x.ToString()); }
+            if (s.ContainsKey("receiveShadows")) { var v = B(s, "receiveShadows"); Track("receiveShadows", c.receiveShadows, v, before, applied, () => c.receiveShadows = v); }
+            return c;
+        }
+
+        static Component ConfigureRigidbody(GameObject go, D s, D before, D applied)
+        {
+#if JARVIS_PHYSICS
+            NeedKeys(s, "rigidbody", "mass", "linearDamping", "angularDamping", "useGravity", "isKinematic", "constraints", "interpolation", "collisionDetectionMode");
+            var c = Need<Rigidbody>(go, "Rigidbody");
+            Undo.RecordObject(c, "JARVIS configure rigidbody");
+            if (s.ContainsKey("mass")) { var v = F(s, "mass"); Require(v > 0 && v <= 1000000, "invalidValue", "mass must be greater than 0."); Track("mass", c.mass, v, before, applied, () => c.mass = v, Show, Near); }
+            if (s.ContainsKey("linearDamping")) { var v = F(s, "linearDamping"); Require(v >= 0 && v <= 1000000, "invalidValue", "linearDamping must not be negative."); Track("linearDamping", c.linearDamping, v, before, applied, () => c.linearDamping = v, Show, Near); }
+            if (s.ContainsKey("angularDamping")) { var v = F(s, "angularDamping"); Require(v >= 0 && v <= 1000000, "invalidValue", "angularDamping must not be negative."); Track("angularDamping", c.angularDamping, v, before, applied, () => c.angularDamping = v, Show, Near); }
+            if (s.ContainsKey("useGravity")) { var v = B(s, "useGravity"); Track("useGravity", c.useGravity, v, before, applied, () => c.useGravity = v); }
+            if (s.ContainsKey("isKinematic")) { var v = B(s, "isKinematic"); Track("isKinematic", c.isKinematic, v, before, applied, () => c.isKinematic = v); }
+            if (s.ContainsKey("interpolation")) { var v = EnumOf<RigidbodyInterpolation>(s["interpolation"], "interpolation"); Track("interpolation", c.interpolation, v, before, applied, () => c.interpolation = v, x => x.ToString()); }
+            if (s.ContainsKey("collisionDetectionMode")) { var v = EnumOf<CollisionDetectionMode>(s["collisionDetectionMode"], "collisionDetectionMode"); Track("collisionDetectionMode", c.collisionDetectionMode, v, before, applied, () => c.collisionDetectionMode = v, x => x.ToString()); }
+            if (s.ContainsKey("constraints"))
+            {
+                var l = s["constraints"] as List<object>;
+                Require(l != null && l.All(x => x is string), "invalidValue", "constraints must be an array of names: " + string.Join(", ", Enum.GetNames(typeof(RigidbodyConstraints))));
+                RigidbodyConstraints v = RigidbodyConstraints.None;
+                foreach (var n in l.Cast<string>()) v |= EnumOf<RigidbodyConstraints>(n, "constraint");
+                Track("constraints", c.constraints, v, before, applied, () => c.constraints = v, x => x.ToString());
+            }
+            return c;
+#else
+            throw new OpException("moduleMissing", "The Physics module is not enabled in this project.");
+#endif
+        }
+
+        static Component ConfigureCollider(GameObject go, D s, D before, D applied)
+        {
+#if JARVIS_PHYSICS
+            NeedKeys(s, "collider", "enabled", "isTrigger", "center", "size", "radius", "height");
+            var c = Need<Collider>(go, "Collider");
+            Undo.RecordObject(c, "JARVIS configure collider");
+            if (s.ContainsKey("enabled")) { var v = B(s, "enabled"); Track("enabled", c.enabled, v, before, applied, () => c.enabled = v); }
+            if (s.ContainsKey("isTrigger")) { var v = B(s, "isTrigger"); Track("isTrigger", c.isTrigger, v, before, applied, () => c.isTrigger = v); }
+            Func<Vector3, Vector3, bool> sv = (x, y) => (x - y).sqrMagnitude < 1e-8f;
+            Func<Vector3, object> shv = x => Vec(x);
+            if (s.ContainsKey("center"))
+            {
+                var v = ToVec3(s["center"]);
+                if (c is BoxCollider bc) Track("center", bc.center, v, before, applied, () => bc.center = v, shv, sv);
+                else if (c is SphereCollider sc) Track("center", sc.center, v, before, applied, () => sc.center = v, shv, sv);
+                else if (c is CapsuleCollider cc) Track("center", cc.center, v, before, applied, () => cc.center = v, shv, sv);
+                else throw new OpException("settingNotApplicable", "center does not apply to a " + c.GetType().Name + ".");
+            }
+            if (s.ContainsKey("size")) { var v = ToVec3(s["size"]); var bc = c as BoxCollider; Require(bc != null, "settingNotApplicable", "size only applies to a BoxCollider."); Require(v.x > 0 && v.y > 0 && v.z > 0, "invalidValue", "size must be positive."); Track("size", bc.size, v, before, applied, () => bc.size = v, shv, sv); }
+            if (s.ContainsKey("radius"))
+            {
+                var v = F(s, "radius"); Require(v > 0, "invalidValue", "radius must be positive.");
+                if (c is SphereCollider sc) Track("radius", sc.radius, v, before, applied, () => sc.radius = v, Show, Near);
+                else if (c is CapsuleCollider cc) Track("radius", cc.radius, v, before, applied, () => cc.radius = v, Show, Near);
+                else throw new OpException("settingNotApplicable", "radius does not apply to a " + c.GetType().Name + ".");
+            }
+            if (s.ContainsKey("height")) { var v = F(s, "height"); var cc = c as CapsuleCollider; Require(cc != null, "settingNotApplicable", "height only applies to a CapsuleCollider."); Require(v > 0, "invalidValue", "height must be positive."); Track("height", cc.height, v, before, applied, () => cc.height = v, Show, Near); }
+            return c;
+#else
+            throw new OpException("moduleMissing", "The Physics module is not enabled in this project.");
+#endif
+        }
+
+        static Component ConfigureCharacterController(GameObject go, D s, D before, D applied)
+        {
+#if JARVIS_PHYSICS
+            NeedKeys(s, "characterController", "height", "radius", "center", "slopeLimit", "stepOffset", "skinWidth", "minMoveDistance");
+            var c = Need<CharacterController>(go, "CharacterController");
+            Undo.RecordObject(c, "JARVIS configure character controller");
+            if (s.ContainsKey("height")) { var v = F(s, "height"); Require(v > 0, "invalidValue", "height must be positive."); Track("height", c.height, v, before, applied, () => c.height = v, Show, Near); }
+            if (s.ContainsKey("radius")) { var v = F(s, "radius"); Require(v > 0, "invalidValue", "radius must be positive."); Track("radius", c.radius, v, before, applied, () => c.radius = v, Show, Near); }
+            if (s.ContainsKey("center")) { var v = ToVec3(s["center"]); Track("center", c.center, v, before, applied, () => c.center = v, x => Vec(x), (x, y) => (x - y).sqrMagnitude < 1e-8f); }
+            if (s.ContainsKey("slopeLimit")) { var v = F(s, "slopeLimit"); Require(v >= 0 && v <= 90, "invalidValue", "slopeLimit must be between 0 and 90."); Track("slopeLimit", c.slopeLimit, v, before, applied, () => c.slopeLimit = v, Show, Near); }
+            if (s.ContainsKey("stepOffset")) { var v = F(s, "stepOffset"); Require(v >= 0, "invalidValue", "stepOffset must not be negative."); Track("stepOffset", c.stepOffset, v, before, applied, () => c.stepOffset = v, Show, Near); }
+            if (s.ContainsKey("skinWidth")) { var v = F(s, "skinWidth"); Require(v >= 0.0001f, "invalidValue", "skinWidth must be positive."); Track("skinWidth", c.skinWidth, v, before, applied, () => c.skinWidth = v, Show, Near); }
+            if (s.ContainsKey("minMoveDistance")) { var v = F(s, "minMoveDistance"); Require(v >= 0, "invalidValue", "minMoveDistance must not be negative."); Track("minMoveDistance", c.minMoveDistance, v, before, applied, () => c.minMoveDistance = v, Show, Near); }
+            return c;
+#else
+            throw new OpException("moduleMissing", "The Physics module is not enabled in this project.");
+#endif
+        }
+
+        static Component ConfigureAudioSource(GameObject go, D s, D before, D applied)
+        {
+#if JARVIS_AUDIO
+            NeedKeys(s, "audioSource", "clip", "volume", "pitch", "loop", "playOnAwake", "spatialBlend", "minDistance", "maxDistance", "rolloffMode", "mute", "priority", "dopplerLevel", "spread", "outputMixerGroup");
+            var c = Need<AudioSource>(go, "AudioSource");
+            Undo.RecordObject(c, "JARVIS configure audio source");
+            if (s.ContainsKey("clip"))
+            {
+                Object clip = null;
+                if (s["clip"] is string cs && cs.Length > 0) { clip = LoadAssetRef(cs, "clip"); Require(clip is AudioClip, "typeMismatch", "The asset is not an AudioClip."); }
+                if (c.clip != (AudioClip)clip) { before["clip"] = AssetRefOf(c.clip); c.clip = (AudioClip)clip; applied["clip"] = AssetRefOf(clip); }
+            }
+            if (s.ContainsKey("volume")) { var v = F(s, "volume"); Require(v >= 0 && v <= 1, "invalidValue", "volume must be between 0 and 1."); Track("volume", c.volume, v, before, applied, () => c.volume = v, Show, Near); }
+            if (s.ContainsKey("pitch")) { var v = F(s, "pitch"); Require(v >= -3 && v <= 3, "invalidValue", "pitch must be between -3 and 3."); Track("pitch", c.pitch, v, before, applied, () => c.pitch = v, Show, Near); }
+            if (s.ContainsKey("loop")) { var v = B(s, "loop"); Track("loop", c.loop, v, before, applied, () => c.loop = v); }
+            if (s.ContainsKey("playOnAwake")) { var v = B(s, "playOnAwake"); Track("playOnAwake", c.playOnAwake, v, before, applied, () => c.playOnAwake = v); }
+            if (s.ContainsKey("mute")) { var v = B(s, "mute"); Track("mute", c.mute, v, before, applied, () => c.mute = v); }
+            if (s.ContainsKey("spatialBlend")) { var v = F(s, "spatialBlend"); Require(v >= 0 && v <= 1, "invalidValue", "spatialBlend must be between 0 (2D) and 1 (3D)."); Track("spatialBlend", c.spatialBlend, v, before, applied, () => c.spatialBlend = v, Show, Near); }
+            if (s.ContainsKey("minDistance")) { var v = F(s, "minDistance"); Require(v >= 0 && v <= c.maxDistance, "invalidValue", "minDistance must be between 0 and maxDistance."); Track("minDistance", c.minDistance, v, before, applied, () => c.minDistance = v, Show, Near); }
+            if (s.ContainsKey("maxDistance")) { var v = F(s, "maxDistance"); Require(v > c.minDistance && v <= 1000000, "invalidValue", "maxDistance must be larger than minDistance."); Track("maxDistance", c.maxDistance, v, before, applied, () => c.maxDistance = v, Show, Near); }
+            if (s.ContainsKey("rolloffMode")) { var v = EnumOf<AudioRolloffMode>(s["rolloffMode"], "rolloffMode"); Track("rolloffMode", c.rolloffMode, v, before, applied, () => c.rolloffMode = v, x => x.ToString()); }
+            if (s.ContainsKey("priority")) { var v = (int)Num(s, "priority"); Require(v >= 0 && v <= 256, "invalidValue", "priority must be between 0 and 256."); Track("priority", c.priority, v, before, applied, () => c.priority = v); }
+            if (s.ContainsKey("dopplerLevel")) { var v = F(s, "dopplerLevel"); Require(v >= 0 && v <= 5, "invalidValue", "dopplerLevel must be between 0 and 5."); Track("dopplerLevel", c.dopplerLevel, v, before, applied, () => c.dopplerLevel = v, Show, Near); }
+            if (s.ContainsKey("spread")) { var v = F(s, "spread"); Require(v >= 0 && v <= 360, "invalidValue", "spread must be between 0 and 360."); Track("spread", c.spread, v, before, applied, () => c.spread = v, Show, Near); }
+            if (s.ContainsKey("outputMixerGroup"))
+            {
+                UnityEngine.Audio.AudioMixerGroup g = null;
+                if (s["outputMixerGroup"] is string gs && gs.Length > 0) { var o = LoadAssetRef(gs, "outputMixerGroup"); g = o as UnityEngine.Audio.AudioMixerGroup; Require(g != null, "typeMismatch", "The asset is not an AudioMixerGroup. Use Assets/…mixer::GroupName."); }
+                if (c.outputAudioMixerGroup != g) { before["outputMixerGroup"] = AssetRefOf(c.outputAudioMixerGroup); c.outputAudioMixerGroup = g; applied["outputMixerGroup"] = AssetRefOf(g); }
+            }
+            return c;
+#else
+            throw new OpException("moduleMissing", "The Audio module is not enabled in this project.");
+#endif
+        }
+
+        static Component ConfigureAnimator(GameObject go, D s, D before, D applied)
+        {
+#if JARVIS_ANIMATION
+            NeedKeys(s, "animator", "controller", "avatar", "applyRootMotion", "updateMode", "cullingMode", "speed", "enabled");
+            var c = Need<Animator>(go, "Animator");
+            Undo.RecordObject(c, "JARVIS configure animator");
+            if (s.ContainsKey("controller"))
+            {
+                RuntimeAnimatorController rc = null;
+                if (s["controller"] is string cs && cs.Length > 0) { var o = LoadAssetRef(cs, "controller"); rc = o as RuntimeAnimatorController; Require(rc != null, "typeMismatch", "The asset is not an Animator Controller."); }
+                if (c.runtimeAnimatorController != rc) { before["controller"] = AssetRefOf(c.runtimeAnimatorController); c.runtimeAnimatorController = rc; applied["controller"] = AssetRefOf(rc); }
+            }
+            if (s.ContainsKey("avatar"))
+            {
+                Avatar av = null;
+                if (s["avatar"] is string avs && avs.Length > 0) { var o = LoadAssetRef(avs, "avatar"); av = o as Avatar; Require(av != null, "typeMismatch", "The asset is not an Avatar. Use Assets/…fbx::AvatarName."); }
+                if (c.avatar != av) { before["avatar"] = AssetRefOf(c.avatar); c.avatar = av; applied["avatar"] = AssetRefOf(av); }
+            }
+            if (s.ContainsKey("applyRootMotion")) { var v = B(s, "applyRootMotion"); Track("applyRootMotion", c.applyRootMotion, v, before, applied, () => c.applyRootMotion = v); }
+            if (s.ContainsKey("updateMode")) { var v = EnumOf<AnimatorUpdateMode>(s["updateMode"], "updateMode"); Track("updateMode", c.updateMode, v, before, applied, () => c.updateMode = v, x => x.ToString()); }
+            if (s.ContainsKey("cullingMode")) { var v = EnumOf<AnimatorCullingMode>(s["cullingMode"], "cullingMode"); Track("cullingMode", c.cullingMode, v, before, applied, () => c.cullingMode = v, x => x.ToString()); }
+            if (s.ContainsKey("speed")) { var v = F(s, "speed"); Require(v >= -10 && v <= 10, "invalidValue", "speed must be between -10 and 10."); Track("speed", c.speed, v, before, applied, () => c.speed = v, Show, Near); }
+            if (s.ContainsKey("enabled")) { var v = B(s, "enabled"); Track("enabled", c.enabled, v, before, applied, () => c.enabled = v); }
+            return c;
+#else
+            throw new OpException("moduleMissing", "The Animation module is not enabled in this project.");
+#endif
+        }
+
+        static Component ConfigureCanvas(GameObject go, D s, D before, D applied)
+        {
+#if JARVIS_UI
+            NeedKeys(s, "canvas", "renderMode", "sortingOrder", "pixelPerfect", "enabled");
+            var c = Need<Canvas>(go, "Canvas");
+            Undo.RecordObject(c, "JARVIS configure canvas");
+            if (s.ContainsKey("renderMode")) { var v = EnumOf<RenderMode>(s["renderMode"], "renderMode"); Track("renderMode", c.renderMode, v, before, applied, () => c.renderMode = v, x => x.ToString()); }
+            if (s.ContainsKey("sortingOrder")) { var v = (int)Num(s, "sortingOrder"); Track("sortingOrder", c.sortingOrder, v, before, applied, () => c.sortingOrder = v); }
+            if (s.ContainsKey("pixelPerfect")) { var v = B(s, "pixelPerfect"); Track("pixelPerfect", c.pixelPerfect, v, before, applied, () => c.pixelPerfect = v); }
+            if (s.ContainsKey("enabled")) { var v = B(s, "enabled"); Track("enabled", c.enabled, v, before, applied, () => c.enabled = v); }
+            return c;
+#else
+            throw new OpException("moduleMissing", "The UI module is not enabled in this project.");
+#endif
+        }
+
+        static Component ConfigureRectTransform(GameObject go, D s, D before, D applied)
+        {
+            NeedKeys(s, "rectTransform", "anchorMin", "anchorMax", "pivot", "anchoredPosition", "sizeDelta", "offsetMin", "offsetMax");
+            var c = go.transform as RectTransform;
+            Require(c != null, "componentNotFound", "\"" + go.name + "\" has no RectTransform (it is not a UI object).");
+            Undo.RecordObject(c, "JARVIS configure rect transform");
+            Func<Vector2, Vector2, bool> sv = (x, y) => (x - y).sqrMagnitude < 1e-8f;
+            Func<Vector2, object> shv = x => new List<object> { (double)x.x, (double)x.y };
+            Func<string, Vector2> V2 = k => { var n = Nums(s[k], 2); return new Vector2(n[0], n[1]); };
+            if (s.ContainsKey("anchorMin")) { var v = V2("anchorMin"); Track("anchorMin", c.anchorMin, v, before, applied, () => c.anchorMin = v, shv, sv); }
+            if (s.ContainsKey("anchorMax")) { var v = V2("anchorMax"); Track("anchorMax", c.anchorMax, v, before, applied, () => c.anchorMax = v, shv, sv); }
+            if (s.ContainsKey("pivot")) { var v = V2("pivot"); Track("pivot", c.pivot, v, before, applied, () => c.pivot = v, shv, sv); }
+            if (s.ContainsKey("anchoredPosition")) { var v = V2("anchoredPosition"); Track("anchoredPosition", c.anchoredPosition, v, before, applied, () => c.anchoredPosition = v, shv, sv); }
+            if (s.ContainsKey("sizeDelta")) { var v = V2("sizeDelta"); Track("sizeDelta", c.sizeDelta, v, before, applied, () => c.sizeDelta = v, shv, sv); }
+            if (s.ContainsKey("offsetMin")) { var v = V2("offsetMin"); Track("offsetMin", c.offsetMin, v, before, applied, () => c.offsetMin = v, shv, sv); }
+            if (s.ContainsKey("offsetMax")) { var v = V2("offsetMax"); Track("offsetMax", c.offsetMax, v, before, applied, () => c.offsetMax = v, shv, sv); }
+            return c;
+        }
+
+        // ================================================================ prefabs
+
+        static D InstantiatePrefab(D a)
+        {
+            string path = Str(a, "assetPath");
+            Require(AssetPathOk(path, ".prefab"), "invalidArguments", "assetPath must be a .prefab inside Assets/.");
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            Require(asset != null, "assetNotFound", "No prefab exists at " + path + ".");
+            var scene = SceneFor(Str(a, "scene"));
+            GameObject parent = a.ContainsKey("parent") && a["parent"] is D pd ? Resolve(pd) : null;
+            if (parent != null) Require(parent.scene == scene, "invalidArguments", "The parent is in a different scene.");
+            string name = Str(a, "name");
+            if (!string.IsNullOrEmpty(name) && Bool(a, "ifAbsent", true))
+            {
+                IEnumerable<Transform> sibs = parent != null ? Enumerable.Range(0, parent.transform.childCount).Select(i => parent.transform.GetChild(i)) : scene.GetRootGameObjects().Select(g => g.transform);
+                var existing = sibs.Where(x => x.name == name && PrefabUtility.GetCorrespondingObjectFromSource(x.gameObject) == asset).ToList();
+                if (existing.Count == 1) return Obj("created", false, "alreadyExists", true, "object", Identity(existing[0].gameObject));
+            }
+            var inst = (GameObject)PrefabUtility.InstantiatePrefab(asset, scene);
+            Require(inst != null, "instantiateFailed", "Unity could not instantiate the prefab.");
+            Undo.RegisterCreatedObjectUndo(inst, "JARVIS instantiate " + asset.name);
+            if (parent != null) inst.transform.SetParent(parent.transform, false);
+            if (!string.IsNullOrEmpty(name)) { Require(name.Length <= 80 && !name.Contains("/") && !name.Contains("#"), "invalidArguments", "A valid name (no / or #) is required."); inst.name = name; }
+            if (a.TryGetValue("position", out var pos)) inst.transform.localPosition = ToVec3(pos);
+            if (a.TryGetValue("rotation", out var rot)) inst.transform.localEulerAngles = ToVec3(rot);
+            if (a.TryGetValue("scale", out var sc)) inst.transform.localScale = ToVec3(sc);
+            NoteTouched(inst.transform);
+            MarkDirty(scene);
+            return Obj("created", true, "alreadyExists", false, "undoRecorded", true, "object", Identity(inst), "prefab", PrefabInfo(inst));
+        }
+
+        static IEnumerable<ObjectOverride> InstanceOverrides(GameObject root) => PrefabUtility.GetObjectOverrides(root, false);
+
+        static D PrefabOverrides(D a)
+        {
+            var go = Resolve(Sub(a, "target"), true);
+            var root = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
+            Require(root != null, "notAPrefabInstance", "\"" + go.name + "\" is not part of a prefab instance.");
+            var list = new List<object>();
+            int mine = 0, users = 0;
+            foreach (var ov in InstanceOverrides(root))
+            {
+                bool jarvis = WasTouched(ov.instanceObject);
+                if (jarvis) mine++; else users++;
+                if (list.Count < 60) list.Add(Obj("object", ov.instanceObject == null ? null : ov.instanceObject.name, "type", ov.instanceObject == null ? null : ov.instanceObject.GetType().Name, "jarvis", jarvis));
+            }
+            return Obj("root", Identity(root), "prefab", PrefabInfo(root), "overrides", list, "jarvisOverrides", mine, "otherOverrides", users,
+                       "addedComponents", PrefabUtility.GetAddedComponents(root).Count, "removedComponents", PrefabUtility.GetRemovedComponents(root).Count, "addedGameObjects", PrefabUtility.GetAddedGameObjects(root).Count);
+        }
+
+        static D RevertPrefabOverrides(D a)
+        {
+            var go = Resolve(Sub(a, "target"), true);
+            var root = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
+            Require(root != null, "notAPrefabInstance", "\"" + go.name + "\" is not part of a prefab instance.");
+            int reverted = 0, protectedCount = 0;
+            foreach (var ov in InstanceOverrides(root).ToList())
+            {
+                if (!WasTouched(ov.instanceObject)) { protectedCount++; continue; }          // the user's own override is never reverted by JARVIS
+                ov.Revert(InteractionMode.AutomatedAction); reverted++;
+            }
+            if (reverted > 0) MarkDirty(root.scene);
+            return Obj("reverted", reverted, "protectedUserOverrides", protectedCount, "root", Identity(root));
+        }
+
+        static D ApplyPrefabOverrides(D a)
+        {
+            var go = Resolve(Sub(a, "target"), true);
+            var root = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
+            Require(root != null, "notAPrefabInstance", "\"" + go.name + "\" is not part of a prefab instance.");
+            int applied = 0, protectedCount = 0;
+            foreach (var ov in InstanceOverrides(root).ToList())
+            {
+                if (!WasTouched(ov.instanceObject)) { protectedCount++; continue; }          // only what JARVIS changed is written into the shared prefab
+                ov.Apply(InteractionMode.AutomatedAction); applied++;
+            }
+            if (applied > 0) { AssetDatabase.SaveAssets(); MarkDirty(root.scene); }
+            return Obj("applied", applied, "protectedUserOverrides", protectedCount, "root", Identity(root), "prefabAsset", AssetDatabase.GetAssetPath(PrefabUtility.GetCorrespondingObjectFromSource(root)));
+        }
+
+        static D CreatePrefabVariant(D a)
+        {
+            string src = Str(a, "sourceAssetPath"), path = Str(a, "assetPath");
+            Require(AssetPathOk(src, ".prefab") && AssetPathOk(path, ".prefab"), "invalidArguments", "sourceAssetPath and assetPath must be .prefab files inside Assets/.");
+            Require(!File.Exists(Abs(path)), "assetExists", "A prefab already exists at that path; the bridge never overwrites assets.");
+            var source = AssetDatabase.LoadAssetAtPath<GameObject>(src);
+            Require(source != null, "assetNotFound", "No prefab exists at " + src + ".");
+            Directory.CreateDirectory(Path.GetDirectoryName(Abs(path)));
+            var preview = EditorSceneManager.NewPreviewScene();
+            try
+            {
+                var inst = (GameObject)PrefabUtility.InstantiatePrefab(source, preview);
+                var variant = PrefabUtility.SaveAsPrefabAsset(inst, path, out bool ok);
+                Require(ok && variant != null, "prefabFailed", "Unity could not create the variant.");
+                var type = PrefabUtility.GetPrefabAssetType(variant).ToString();
+                Require(type == "Variant", "prefabFailed", "The saved prefab is not a variant (it is " + type + ").");
+                return Obj("created", true, "assetPath", path, "source", src, "assetType", type);
+            }
+            finally { EditorSceneManager.ClosePreviewScene(preview); }
+        }
+
+        static D UnpackPrefab(D a)
+        {
+            var go = Resolve(Sub(a, "target"));
+            var root = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
+            Require(root != null, "notAPrefabInstance", "\"" + go.name + "\" is not part of a prefab instance.");
+            var mode = Str(a, "mode", "outermostRoot") == "completely" ? PrefabUnpackMode.Completely : PrefabUnpackMode.OutermostRoot;
+            PrefabUtility.UnpackPrefabInstance(root, mode, InteractionMode.AutomatedAction);
+            MarkDirty(root.scene);
+            return Obj("unpacked", true, "mode", mode.ToString(), "root", Identity(root));
+        }
+
+        // ================================================================ environment & lighting
+
+        static D EnvSnapshot() => Obj("ambientMode", RenderSettings.ambientMode.ToString(), "ambientLight", ColorList(RenderSettings.ambientLight), "ambientIntensity", (double)RenderSettings.ambientIntensity,
+            "ambientSkyColor", ColorList(RenderSettings.ambientSkyColor), "ambientEquatorColor", ColorList(RenderSettings.ambientEquatorColor), "ambientGroundColor", ColorList(RenderSettings.ambientGroundColor),
+            "fog", RenderSettings.fog, "fogColor", ColorList(RenderSettings.fogColor), "fogMode", RenderSettings.fogMode.ToString(), "fogDensity", (double)RenderSettings.fogDensity,
+            "fogStartDistance", (double)RenderSettings.fogStartDistance, "fogEndDistance", (double)RenderSettings.fogEndDistance, "reflectionIntensity", (double)RenderSettings.reflectionIntensity,
+            "skybox", AssetRefOf(RenderSettings.skybox), "sun", RenderSettings.sun == null ? null : HierarchyPath(RenderSettings.sun.transform, true));
+
+        static D InspectLighting(D a)
+        {
+            var scene = SceneFor(Str(a, "scene"));
+            var lights = new List<object>();
+            int probes = 0, reflection = 0;
+            foreach (var go in AllObjects(scene))
+            {
+                var l = go.GetComponent<Light>();
+                if (l != null && lights.Count < 40)
+                    lights.Add(Obj("path", HierarchyPath(go.transform, true), "type", l.type.ToString(), "enabled", l.enabled && go.activeInHierarchy, "intensity", (double)l.intensity, "range", (double)l.range, "spotAngle", (double)l.spotAngle,
+                                   "color", ColorList(l.color), "shadows", l.shadows.ToString(), "eulerAngles", Vec(go.transform.eulerAngles), "position", Vec(go.transform.position), "mode", l.lightmapBakeType.ToString()));
+                if (go.GetComponent<LightProbeGroup>() != null) probes++;
+                if (go.GetComponent<ReflectionProbe>() != null) reflection++;
+            }
+            string rp = "Built-in", asset = null;
+            try { var p = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline; if (p != null) { rp = p.GetType().Name; asset = AssetDatabase.GetAssetPath(p); } } catch (Exception) { }
+            return Obj("scene", scene.path, "lights", lights, "lightProbeGroups", probes, "reflectionProbes", reflection, "environment", EnvSnapshot(), "renderPipeline", rp, "renderPipelineAsset", asset, "colorSpace", PlayerSettings.colorSpace.ToString());
+        }
+
+        static D SetEnvironment(D a)
+        {
+            string prop = Str(a, "property");
+            Require(a.ContainsKey("value"), "invalidArguments", "value is required.");
+            var value = a["value"];
+            var before = EnvSnapshot();
+            object old = before.TryGetValue(prop, out var o) ? o : null;
+            switch (prop)
+            {
+                case "ambientMode": RenderSettings.ambientMode = EnumOf<UnityEngine.Rendering.AmbientMode>(value, "ambientMode"); break;
+                case "ambientLight": RenderSettings.ambientLight = ColorOf(value, prop); break;
+                case "ambientSkyColor": RenderSettings.ambientSkyColor = ColorOf(value, prop); break;
+                case "ambientEquatorColor": RenderSettings.ambientEquatorColor = ColorOf(value, prop); break;
+                case "ambientGroundColor": RenderSettings.ambientGroundColor = ColorOf(value, prop); break;
+                case "ambientIntensity": { Require(value is double d1 && d1 >= 0 && d1 <= 8, "invalidValue", "ambientIntensity must be between 0 and 8."); RenderSettings.ambientIntensity = (float)(double)value; break; }
+                case "fog": Require(value is bool, "invalidValue", "fog must be true or false."); RenderSettings.fog = (bool)value; break;
+                case "fogColor": RenderSettings.fogColor = ColorOf(value, prop); break;
+                case "fogMode": RenderSettings.fogMode = EnumOf<FogMode>(value, "fogMode"); break;
+                case "fogDensity": { Require(value is double d2 && d2 >= 0 && d2 <= 1, "invalidValue", "fogDensity must be between 0 and 1."); RenderSettings.fogDensity = (float)(double)value; break; }
+                case "fogStartDistance": { Require(value is double d3 && d3 >= 0, "invalidValue", "fogStartDistance must not be negative."); RenderSettings.fogStartDistance = (float)(double)value; break; }
+                case "fogEndDistance": { Require(value is double d4 && d4 >= 0, "invalidValue", "fogEndDistance must not be negative."); RenderSettings.fogEndDistance = (float)(double)value; break; }
+                case "reflectionIntensity": { Require(value is double d5 && d5 >= 0 && d5 <= 1, "invalidValue", "reflectionIntensity must be between 0 and 1."); RenderSettings.reflectionIntensity = (float)(double)value; break; }
+                default: throw new OpException("unknownSetting", "\"" + prop + "\" is not a supported environment setting. Supported: ambientMode, ambientLight, ambientSkyColor, ambientEquatorColor, ambientGroundColor, ambientIntensity, fog, fogColor, fogMode, fogDensity, fogStartDistance, fogEndDistance, reflectionIntensity.");
+            }
+            var after = EnvSnapshot();
+            bool changed = Json.Serialize(old) != Json.Serialize(after[prop]);
+            if (changed) MarkDirty(SceneManager.GetActiveScene());
+            return Obj("changed", changed, "alreadyApplied", !changed, "property", prop, "before", old, "value", after[prop], "scene", SceneManager.GetActiveScene().path);
+        }
+    }
+}
+"""###),
         ("Editor/Ops.cs", ###"""
 using System;
 using System.Collections.Generic;
@@ -662,7 +2036,7 @@ namespace Jarvis.Bridge
     /// The complete, fixed operation table. Every operation is typed, bounded and returns structured data. Anything that would let a caller
     /// supply code (eval, menu item by name, shell) does not exist here by design.
     /// </summary>
-    internal static class Ops
+    internal static partial class Ops
     {
         const int MaxObjects = 200;
         const int MaxProps = 60;
@@ -715,6 +2089,7 @@ namespace Jarvis.Bridge
             R("deleteGameObject", DeleteGameObject, true);
             R("saveScene", SaveSceneOp, true);
             R("createPrefab", CreatePrefab, true);
+            RegisterOperator(R);
         }
 
         // ================================================================ small helpers
@@ -907,10 +2282,10 @@ namespace Jarvis.Bridge
 
         static D GetProjectInfo(D a)
         {
-            string rp = "Built-in";
-            try { var p = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline; if (p != null) rp = p.GetType().Name; } catch (Exception) { }
+            string rp = "Built-in", rpAsset = null;
+            try { var p = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline; if (p != null) { rp = p.GetType().Name; rpAsset = AssetDatabase.GetAssetPath(p); } } catch (Exception) { }
             return Obj("unityVersion", Application.unityVersion, "projectName", Path.GetFileName(JarvisBridge.ProjectPath), "productName", Application.productName,
-                       "renderPipeline", rp, "batchMode", Application.isBatchMode, "platform", EditorUserBuildSettings.activeBuildTarget.ToString(),
+                       "renderPipeline", rp, "renderPipelineAsset", rpAsset, "colorSpace", PlayerSettings.colorSpace.ToString(), "batchMode", Application.isBatchMode, "platform", EditorUserBuildSettings.activeBuildTarget.ToString(),
                        "isPlaying", EditorApplication.isPlaying, "isCompiling", EditorApplication.isCompiling, "bridgeVersion", JarvisBridge.BridgeVersion,
                        "session", JarvisBridge.SessionId, "owned", JarvisBridge.IsOwned);
         }
@@ -1112,6 +2487,7 @@ namespace Jarvis.Bridge
             if (hasExpected) Require(Equal(current, expectedOld), "expectedValueMismatch", "The current value does not match the expected old value.", Obj("current", current));
             Assign(p, newValue);
             so.ApplyModifiedProperties();
+            if (PrefabUtility.IsPartOfPrefabInstance(go)) NoteTouched(comp);
             MarkDirty(go.scene);
             TryRead(so.FindProperty(path), out var after, out _);
             return Obj("changed", true, "alreadyApplied", false, "value", after, "undoRecorded", true, "target", Identity(go));
@@ -1165,6 +2541,7 @@ namespace Jarvis.Bridge
             string prim = Str(a, "primitive", "None");
             GameObject go;
             if (prim == "None") go = new GameObject(name);
+            else if (prim == "RectTransform") go = new GameObject(name, typeof(RectTransform));
             else
             {
                 Require(Enum.TryParse<PrimitiveType>(prim, out var pt), "invalidArguments", "Unknown primitive \"" + prim + "\".");
@@ -1193,6 +2570,7 @@ namespace Jarvis.Bridge
             }
             var c = Undo.AddComponent(go, type);
             Require(c != null, "addComponentFailed", "Unity refused to add " + type.Name + " to \"" + go.name + "\" (conflicting or disallowed component).");
+            if (PrefabUtility.IsPartOfPrefabInstance(go)) NoteTouched(c);
             MarkDirty(go.scene);
             return Obj("added", true, "alreadyPresent", false, "undoRecorded", true, "count", go.GetComponents(type).Length, "target", Identity(go));
         }
@@ -1494,11 +2872,17 @@ namespace Jarvis.Bridge
 {
   "name": "com.jarvis.bridge",
   "displayName": "JARVIS Editor Bridge",
-  "version": "0.6.0",
+  "version": "0.13.0",
   "unity": "2021.3",
-  "description": "Typed, local, file-based Editor bridge used by the JARVIS macOS app. No network, no arbitrary code execution: a fixed list of inspection and bounded mutation operations.",
-  "author": { "name": "JARVIS" },
-  "keywords": [ "jarvis", "editor", "bridge" ]
+  "description": "Typed, local, file-based Editor bridge used by the JARVIS macOS app. No network, no arbitrary code execution: a fixed list of inspection and bounded mutation operations (scene, prefab, material, lighting, animation, audio, camera, capture).",
+  "author": {
+    "name": "JARVIS"
+  },
+  "keywords": [
+    "jarvis",
+    "editor",
+    "bridge"
+  ]
 }
 """###),
     ]
