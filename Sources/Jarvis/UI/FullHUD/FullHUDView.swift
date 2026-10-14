@@ -135,6 +135,8 @@ private struct FullHUDBody: View {
         case .system: SystemSectionView()
         case .memory: MemorySectionView()
         case .computer: ComputerSectionView()
+        case .learning: LearningSectionView()
+        case .capabilities: CapabilitiesSectionView()
         }
     }
 

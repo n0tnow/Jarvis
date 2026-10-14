@@ -432,7 +432,7 @@ final class MCPRegistry {
         s.allowedProjects = allowedProjects; try? repository?.save(s)
         let tools = s.tools.map { "\($0.name) [\($0.risk.label)]" }.joined(separator: ", ")
         return decisions.request(kind: .installCapability, subjectID: id, material: fingerprintMaterial(s), summary: "Register the MCP “\(s.name)”",
-                                 detail: "Permissions: \(s.envelopeLabels.joined(separator: ", ")). Network: \(s.network). Credentials: \(s.credentialRequirement). Typed capabilities offered to agents: \(s.wrappers.map(\.capability).joined(separator: ", ")). Tools: \(tools). Source: \(s.provenance). Projects: \(allowedProjects.isEmpty ? "none" : allowedProjects.joined(separator: ", ")).",
+                                 detail: "Permissions: \(s.envelopeLabels.joined(separator: ", ")). Network: \(s.network). Needs a key or sign-in: \(s.credentialRequirement). Typed capabilities offered to agents: \(s.wrappers.map(\.capability).joined(separator: ", ")). Tools: \(tools). Source: \(s.provenance). Projects: \(allowedProjects.isEmpty ? "none" : allowedProjects.joined(separator: ", ")).",
                                  risk: s.envelope.contains(where: \.isNeverAutomatic) || s.dangerous ? .high : .medium)
     }
 

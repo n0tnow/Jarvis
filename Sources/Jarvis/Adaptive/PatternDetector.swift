@@ -142,7 +142,7 @@ enum PatternDetector {
                 guard slow.count >= LearningThresholds.minimumEvents else { continue }
                 let draft = ImprovementDraft(problem: "Completed \(g.key) tasks repeatedly take far longer than the usual \(g.key) task (\(slow.count) of them above 3× the median).",
                                              evidenceSummary: "\(slow.count) separate tasks; each is recorded with its duration.", proposedChange: "Measure where the time goes in \(g.key) tasks (step durations are already recorded) and remove the largest avoidable wait.",
-                                             expectedBenefit: "Shorter \(g.key) tasks.", risk: "Low: measurement first; any code change is a normal task you approve.", validationPlan: "Compare step durations on the same fixture before and after; run scripts/verify.sh.",
+                                             expectedBenefit: "Shorter \(g.key) tasks.", risk: "Low: measurement first; any code change is an ordinary task that still needs approval.", validationPlan: "Compare step durations on the same fixture before and after; run scripts/verify.sh.",
                                              rollback: "git revert the commit that introduced the change.", affectedArea: "Tasks / orchestration")
                 out.append(CandidateDraft(kind: .sourceCodeImprovement, scope: .global, projectKey: nil, situation: "slow \(g.key)", title: "Speed up \(g.key) tasks", summary: draft.problem, evidence: slow.map(ref), counterEvidence: 0, risk: .medium,
                                           proposedEffect: "A written proposal. JARVIS does not change its own source unless you raise the level to 4 AND approve this exact change.", validationRequirement: "Benchmark before/after on a fixture.",

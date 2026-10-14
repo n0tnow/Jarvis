@@ -17,6 +17,8 @@ enum Phrasebook {
         case .system: pick(l, "Opening system.", "Sistemi açıyorum.")
         case .memory: pick(l, "Opening memory.", "Belleği açıyorum.")
         case .computer: pick(l, "Opening Computer Use.", "Bilgisayar kontrolünü açıyorum.")
+        case .learning: pick(l, "Opening what I have learned.", "Öğrendiklerimi açıyorum.")
+        case .capabilities: pick(l, "Opening capabilities.", "Yetenekleri açıyorum.")
         }
     }
     static func openingSettings(_ l: ReplyLanguage) -> String { pick(l, "Opening settings.", "Ayarları açıyorum.") }

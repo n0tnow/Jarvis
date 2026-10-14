@@ -44,6 +44,8 @@ enum CommandRouter {
         "system": (.section(.system), .en), "sistem": (.section(.system), .tr), "sistemi": (.section(.system), .tr), "sisteme": (.section(.system), .tr),
         "memory": (.section(.memory), .en), "memories": (.section(.memory), .en),
         "hafiza": (.section(.memory), .tr), "hafizayi": (.section(.memory), .tr), "hafizaya": (.section(.memory), .tr), "bellek": (.section(.memory), .tr), "bellegi": (.section(.memory), .tr), "bellege": (.section(.memory), .tr),
+        "learning": (.section(.learning), .en), "what you learned": (.section(.learning), .en), "ogrenme": (.section(.learning), .tr), "ogrendiklerim": (.section(.learning), .tr), "ogrendiklerini": (.section(.learning), .tr),
+        "capabilities": (.section(.capabilities), .en), "capability": (.section(.capabilities), .en), "skills": (.section(.capabilities), .en), "yetenekler": (.section(.capabilities), .tr), "yetenekleri": (.section(.capabilities), .tr), "yeteneklere": (.section(.capabilities), .tr),
         "computer use": (.section(.computer), .en), "computer control": (.section(.computer), .en), "bilgisayar kontrolu": (.section(.computer), .tr),
         "dashboard": (.section(.dashboard), .en), "dashboardu": (.section(.dashboard), .tr), "home": (.section(.dashboard), .en), "overview": (.section(.dashboard), .en),
         "ana ekran": (.section(.dashboard), .tr), "ana ekrana": (.section(.dashboard), .tr), "ana sayfa": (.section(.dashboard), .tr), "kontrol paneli": (.section(.dashboard), .tr), "panel": (.section(.dashboard), .tr),

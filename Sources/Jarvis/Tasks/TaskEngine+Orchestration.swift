@@ -103,7 +103,7 @@ extension TaskEngine {
         }
         if effects.extraValidations.contains("rerunTests"), hasTestCommand, !plan.steps.contains(where: { $0.type == .test }) { append(nextID(), "Run the tests (learned rule)", .test, expected: "the tests pass"); added.append("a test run") }
         if effects.independentReviewRequired, !plan.steps.contains(where: { $0.type == .review }) { append(nextID(), "Independent review (learned rule)", .review, expected: "a review verdict"); added.append("an independent review") }
-        return added
+        return added.isEmpty ? nil : added
     }
 
     /// Delegated nodes need the capability of the CHILD kind on the parent; nothing else is added. nil when a needed capability is not allowed by the user's settings.

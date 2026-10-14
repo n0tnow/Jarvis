@@ -4,7 +4,7 @@ import Observation
 /// Views the Full HUD can show. `report` is the navigation target for the future
 /// "Jarvis, give me the report" flow: `windows.showFullHUD(section: .report)`.
 enum HUDSection: String, CaseIterable, Identifiable, Sendable {
-    case dashboard, tasks, agents, research, report, system, memory, computer
+    case dashboard, tasks, agents, research, report, system, memory, computer, learning, capabilities
 
     var id: String { rawValue }
 
@@ -20,6 +20,8 @@ enum HUDSection: String, CaseIterable, Identifiable, Sendable {
         case .system: "cpu"
         case .memory: "externaldrive"
         case .computer: "cursorarrow.rays"
+        case .learning: "brain.head.profile"
+        case .capabilities: "puzzlepiece.extension"
         }
     }
 }

@@ -189,6 +189,7 @@ struct CompactHUDView: View {
             Text("ACTIVE TASK").jarvisLabel(Theme.Opacity.textTertiary)
             Text("No active task").font(Theme.Typography.headline).foregroundStyle(Color.jarvisSecondary)
             Text("Tasks started later will appear here.").font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
+            if let line = app.adaptiveCompactLine { Text(line).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Color.jarvisTertiary).lineLimit(1).accessibilityIdentifier("compact.adaptive") }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)

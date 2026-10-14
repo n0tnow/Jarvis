@@ -138,6 +138,29 @@ enum DevCapture {
                 snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "tasks_operator", in: directory)
             }
             context.preferences.projectRoot = savedRoot
+            // V0.14: the Learning and Capabilities screens and the one-line Compact state (SIMULATED data in the throw-away database)
+            await AdaptiveDemo.seed(context)
+            context.hud.section = .learning; w.showFullHUD(section: .learning); await settle(800)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "learning_insights", in: directory)
+            context.learningModel.tab = .candidates; context.learningModel.selected = context.learning.candidates(kinds: [.rule]).first?.id; context.learningModel.refresh(); await settle(600)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "learning_candidate_detail", in: directory)
+            context.learningModel.selected = nil; context.learningModel.tab = .rules; await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "learning_rules", in: directory)
+            context.learningModel.tab = .proposals; await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "learning_self_improvement", in: directory)
+            context.hud.section = .capabilities; await settle(800)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "capabilities_list", in: directory)
+            for q in context.adaptiveDecisions.pending() where q.kind == .removeCapability { _ = context.adaptiveDecisions.deny(q.id, source: .test) }       // keep the detail card above the fold
+            context.capabilitiesModel.refresh()
+            context.capabilitiesModel.selected = "blender-demo"; await settle(600)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "capabilities_detail", in: directory)
+            context.capabilitiesModel.selected = nil; context.capabilitiesModel.filter = .attention; await settle(500)
+            snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "capabilities_attention", in: directory)
+            context.capabilitiesModel.filter = .all
+            w.hideFullHUD(); w.showCompactHUD(); await settle(800)
+            snapshot(of: NSApp.windows.first { $0 is HUDPanel }, name: "compact_adaptive_line", in: directory)
+            print("adaptive demo: compact line = \(context.adaptiveCompactLine ?? "none"); compact size = \(CompactHUDLayout.size)")
+            w.hideCompactHUD()
             context.hud.selectedTaskID = nil; context.hud.section = .dashboard
             for p in projects { try? FileManager.default.removeItem(atPath: p) }
             DemoScenario.resetDemoTask(store)

@@ -58,6 +58,15 @@ final class AppContext {
     let mcp: MCPRegistry
     let selfImprovement: SelfImprovementService
     let adaptiveAssistant: AdaptiveAssistant
+    let learningModel: LearningViewModel
+    /// One short line for the Compact HUD when something is relevant (“Learning · 2 suggestions”, “Blender MCP · active”). nil = nothing to say. Read from the services' revisions; never polled.
+    var adaptiveCompactLine: String? {
+        _ = learning.revision; _ = adaptiveDecisions.revision; _ = mcp.revision
+        if let running = mcp.runningServerIDs.first, let s = mcp.server(running) { return "\(s.name) · active" }
+        let n = learning.candidates(statuses: [.candidate, .validated, .proposed], limit: 50).count + adaptiveDecisions.pending().count
+        return n > 0 ? "Learning · \(n) suggestion\(n == 1 ? "" : "s")" : nil
+    }
+    let capabilitiesModel: CapabilitiesViewModel
     /// V0.13: general visual grounding (perception only; its proposals pass through the same Computer Use validation as everything else).
     let visual: VisualGrounder
     let visionRuntime: LocalVLMRuntime
@@ -190,6 +199,8 @@ final class AppContext {
         mcp = MCPRegistry(repository: repo, decisions: adaptiveDecisions, root: p.root.appendingPathComponent("mcp", isDirectory: true))
         selfImprovement = SelfImprovementService(repository: repo, learning: learning, decisions: adaptiveDecisions)
         adaptiveAssistant = AdaptiveAssistant(learning: learning, skills: skills, registry: mcp, selfImprovement: selfImprovement, decisions: adaptiveDecisions)
+        learningModel = LearningViewModel(learning: learning, skills: skills, decisions: adaptiveDecisions, selfImprovement: selfImprovement, preferences: preferences)
+        capabilitiesModel = CapabilitiesViewModel(registry: mcp, decisions: adaptiveDecisions, assistant: adaptiveAssistant, preferences: preferences)
         learning.settings = { [weak adaptivePrefs] in
             guard let a = adaptivePrefs else { return LearningSettings() }
             return LearningSettings(enabled: a.adaptiveLearningEnabled, fromTasks: a.learnFromTasks, fromCorrections: a.learnFromCorrections, gapDetection: a.capabilityGapDetection, safeExperiments: a.safeLearningExperiments,
