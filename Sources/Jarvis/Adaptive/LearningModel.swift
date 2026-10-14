@@ -268,6 +268,8 @@ struct WorkflowNode: Codable, Equatable, Hashable, Sendable {
     var type: StepType
     var dependsOn: [String]
     var optional: Bool
+    /// The validation the original step used when it differs from its type's default (a “reproduce the failure” test is not a “tests must pass” test).
+    var validation: String? = nil
 }
 
 struct WorkflowTemplate: Codable, Equatable, Hashable, Sendable {

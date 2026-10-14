@@ -130,6 +130,8 @@ enum AssetEvaluator {
         else if i.ruleRequiresExperiment, !importedAndCompiled { rec = "A learned rule requires the asset test first (earlier assets of this kind were incompatible): run it before you decide. " + (i.ruleWarnings.first ?? "") }
         else if importedAndCompiled { rec = "Technically fine to try: it imported and compiled in a clean project. Import it into the real project only through its own approved task." }
         else { rec = "Not tested: the facts above come from the source. Run the asset test before importing." }
+        // A learned rule only ever makes the recommendation STRICTER: whatever else applies, the asset test comes first.
+        if i.ruleRequiresExperiment, !importedAndCompiled, !rec.contains("A learned rule requires the asset test first") { rec += " A learned rule also requires the asset test first (earlier assets of this kind were incompatible)." }
         return AssetEvaluation(name: i.name, facts: facts, usage: usage(i, tested: importedAndCompiled), recommendation: rec)
     }
 

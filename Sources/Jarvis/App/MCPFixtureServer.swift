@@ -91,19 +91,19 @@ struct MCPFixtureServer {
         let env = ProcessInfo.processInfo.environment
         let names = ["HOME", "SSH_AUTH_SOCK", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "AWS_ACCESS_KEY_ID", "OPENCODE_API_KEY", "USER", "LOGNAME", "TMPDIR", "PATH"]
         var lines = ["visible variables: \(env.keys.count)"]
-        for n in names { lines.append("env \(n)=\(env[n] == nil ? "absent" : (n == "PATH" || n == "HOME" || n == "TMPDIR" ? env[n]! : "PRESENT"))") }
+        for n in names { lines.append("env \(n) -> \(env[n] == nil ? "absent" : (n == "PATH" || n == "HOME" || n == "TMPDIR" ? env[n]! : "PRESENT"))") }
         let home = getpwuid(getuid()).map { String(cString: $0.pointee.pw_dir) } ?? NSHomeDirectory()      // the REAL home, not the (possibly replaced) $HOME
         func canRead(_ p: String) -> String { FileManager.default.isReadableFile(atPath: p) ? "readable" : "denied" }
-        lines.append("read ~/.ssh: \(canRead(home + "/.ssh"))")
-        lines.append("read ~/Library/Keychains: \(canRead(home + "/Library/Keychains"))")
-        lines.append("read ~/Library/Cookies: \(canRead(home + "/Library/Cookies"))")
-        lines.append("read ~/Library/Safari: \(canRead(home + "/Library/Safari"))")
-        for p in probePaths { lines.append("read probe \((p as NSString).lastPathComponent): \(FileManager.default.isReadableFile(atPath: p) ? "readable" : "denied")") }
+        lines.append("read ~/.ssh -> \(canRead(home + "/.ssh"))")
+        lines.append("read ~/Library/Keychains -> \(canRead(home + "/Library/Keychains"))")
+        lines.append("read ~/Library/Cookies -> \(canRead(home + "/Library/Cookies"))")
+        lines.append("read ~/Library/Safari -> \(canRead(home + "/Library/Safari"))")
+        for p in probePaths { lines.append("read probe \((p as NSString).lastPathComponent) -> \(FileManager.default.isReadableFile(atPath: p) ? "readable" : "denied")") }
         let probe = home + "/jarvis-mcp-escape-probe-\(getpid())"
         let wrote = FileManager.default.createFile(atPath: probe, contents: Data("x".utf8))
         if wrote { try? FileManager.default.removeItem(atPath: probe) }
-        lines.append("write outside the sandbox directory: \(wrote ? "ALLOWED" : "denied")")
-        lines.append("network: not probed here (measured by the sandbox self-test)")
+        lines.append("write outside the sandbox directory -> \(wrote ? "ALLOWED" : "denied")")
+        lines.append("network -> not probed here (measured by the sandbox self-test)")
         return lines.joined(separator: "\n")
     }
 

@@ -86,10 +86,17 @@ enum MCPSandbox {
     }
 
     /// Creates the private directory and the launch description. `readableRoots` should contain the folder of the executable and its runtime (e.g. a Node install).
-    static func prepare(root: URL, executable: String, arguments: [String], allowNetwork: Bool, readableRoots: [String] = [], extraEnvironment: [String: String] = [:], useSeatbelt: Bool = true) throws -> MCPSandboxLaunch {
+    static func prepare(root: URL, executable: String, arguments rawArguments: [String], allowNetwork: Bool, readableRoots: [String] = [], extraEnvironment: [String: String] = [:], useSeatbelt: Bool = true, seedFiles: [String: String] = [:]) throws -> MCPSandboxLaunch {
         let fm = FileManager.default
         let dir = root.appendingPathComponent("sbx-" + UUID().uuidString.prefix(8), isDirectory: true)
         for sub in ["home", "tmp", "work"] { try fm.createDirectory(at: dir.appendingPathComponent(sub), withIntermediateDirectories: true) }
+        let work = ProcessInfoPath.canonical(dir.appendingPathComponent("work").path)
+        let arguments = rawArguments.map { $0.replacingOccurrences(of: "{{WORK}}", with: work) }
+        for (name, text) in seedFiles where !name.contains("..") && !name.hasPrefix("/") && text.utf8.count <= 64 * 1024 {
+            let url = dir.appendingPathComponent("work").appendingPathComponent(name)
+            try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(text.utf8).write(to: url)
+        }
         let seatbelt = useSeatbelt && seatbeltPresent
         let env = environment(directory: dir, extra: extraEnvironment)
         let roots = readableRoots + [(executable as NSString).deletingLastPathComponent]

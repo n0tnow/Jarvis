@@ -13,7 +13,7 @@ enum SkillValidator {
     static func plan(from t: WorkflowTemplate, summary: String) -> TaskPlan {
         TaskPlan(summary: summary, steps: t.nodes.map {
             PlanStep(id: $0.key, title: $0.title.isEmpty ? $0.type.rawValue : $0.title, description: "Part of a learned workflow.", type: $0.type, dependsOn: $0.dependsOn,
-                     expected: "", validation: .default(for: $0.type), risk: $0.type.defaultRisk, optional: $0.optional)
+                     expected: "", validation: $0.validation.flatMap(ValidationKind.init(rawValue:)) ?? .default(for: $0.type), risk: $0.type.defaultRisk, optional: $0.optional)
         })
     }
 

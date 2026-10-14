@@ -121,7 +121,10 @@ enum SignalExtractor {
     static func encode(_ steps: [TaskStepRecord]) -> String {
         let sorted = steps.sorted { $0.index < $1.index }
         let index = Dictionary(uniqueKeysWithValues: sorted.enumerated().map { ($0.element.key, $0.offset) })
-        return sorted.map { st in st.type.rawValue + "<" + st.dependsOn.compactMap { index[$0] }.map(String.init).joined(separator: ",") }.joined(separator: "|")
+        return sorted.map { st in
+            let v = st.validation == ValidationKind.default(for: st.type) ? "" : "/" + st.validation.rawValue
+            return st.type.rawValue + v + "<" + st.dependsOn.compactMap { index[$0] }.map(String.init).joined(separator: ",")
+        }.joined(separator: "|")
     }
     static func decodeTemplate(_ detail: String) -> WorkflowTemplate? {
         let parts = detail.split(separator: "|", omittingEmptySubsequences: false)
@@ -129,10 +132,13 @@ enum SignalExtractor {
         var nodes: [WorkflowNode] = []
         for (i, p) in parts.enumerated() {
             let pieces = p.split(separator: "<", maxSplits: 1, omittingEmptySubsequences: false)
-            guard pieces.count == 2, let type = StepType(rawValue: String(pieces[0])) else { return nil }
+            let head = pieces.first?.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false) ?? []
+            guard pieces.count == 2, let first = head.first, let type = StepType(rawValue: String(first)) else { return nil }
+            let validation = head.count == 2 ? String(head[1]) : nil
+            if let validation, ValidationKind(rawValue: validation) == nil { return nil }
             let deps = pieces[1].split(separator: ",").compactMap { Int($0) }
             guard deps.allSatisfy({ $0 >= 0 && $0 < i }) else { return nil }
-            nodes.append(WorkflowNode(key: "w\(i + 1)", title: type.rawValue, type: type, dependsOn: deps.map { "w\($0 + 1)" }, optional: false))
+            nodes.append(WorkflowNode(key: "w\(i + 1)", title: type.rawValue, type: type, dependsOn: deps.map { "w\($0 + 1)" }, optional: false, validation: validation))
         }
         return WorkflowTemplate(nodes: nodes)
     }

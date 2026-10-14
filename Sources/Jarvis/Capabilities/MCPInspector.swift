@@ -24,7 +24,7 @@ struct MCPInspection: Codable, Equatable, Sendable {
 enum MCPInspector {
     private static let urlPattern = try! NSRegularExpression(pattern: "https?://([A-Za-z0-9.\\-]+)")
     static let sourceExtensions: Set<String> = ["js", "mjs", "cjs", "ts", "py", "sh", "rb", "go", "rs", "swift", "toml", "cfg", "json"]
-    static let skipDirectories: Set<String> = ["node_modules", ".git", "dist", "build", "__pycache__", ".venv", "venv", "target", ".next"]
+    static let skipDirectories: Set<String> = ["node_modules", ".git", "dist", "build", "__pycache__", ".venv", "venv", "target", ".next", "tests", "test", "__tests__", "benches", "docs", "fixtures"]
 
     /// Scans one text. `name` appears in the finding location.
     static func scan(text: String, name: String) -> [MCPSecurityFinding] {

@@ -186,6 +186,23 @@ struct AdaptivePatternTests {
         #expect(single.service.candidates(kinds: [.lesson]).isEmpty, "one task is one event")
     }
 
+    @Test("the same failure in three DIFFERENT projects becomes one global lesson; a project that reaches the threshold alone gets its own and no global copy")
+    func crossProject() async throws {
+        let h = try AdaptiveHarness.make()
+        var roots = 0
+        h.service.projectKey = { t in t.workspaceRoot }
+        for i in 0..<3 { var t = TaskRecord(id: UUID(), title: "T\(i)", goal: "g", kind: .development); t.state = .failed; t.failureCategory = .buildFailed; t.workspaceRoot = "/tmp/proj-\(i)"; t.finishedAt = Date().addingTimeInterval(-Double(3600 * (i + 1))); try h.repo.insert(t); roots += 1 }
+        _ = await h.service.extract(reason: "test")
+        let global = h.service.candidates(kinds: [.lesson])
+        #expect(global.count == 1 && global[0].scope.level == .global && global[0].occurrenceCount == 3)
+        let h2 = try AdaptiveHarness.make()
+        h2.service.projectKey = { t in t.workspaceRoot }
+        for i in 0..<4 { var t = TaskRecord(id: UUID(), title: "T\(i)", goal: "g", kind: .development); t.state = .failed; t.failureCategory = .buildFailed; t.workspaceRoot = i < 3 ? "/tmp/same" : "/tmp/other"; t.finishedAt = Date().addingTimeInterval(-Double(3600 * (i + 1))); try h2.repo.insert(t) }
+        _ = await h2.service.extract(reason: "test")
+        let scoped = h2.service.candidates(kinds: [.lesson])
+        #expect(scoped.count == 1 && scoped[0].scope == .project("/tmp/same"))
+    }
+
     @Test("extraction is idempotent: running it again duplicates nothing and updates nothing")
     func idempotent() async throws {
         let h = try AdaptiveHarness.make()
@@ -482,10 +499,22 @@ struct AdaptiveSkillTests {
         }
         let enc = SignalExtractor.encode(steps)
         #expect(enc == "analysis<|codeChange<0|test<1")
+        var repro = steps; repro[2].validation = .testEvidence
+        #expect(SignalExtractor.encode(repro) == "analysis<|codeChange<0|test/testEvidence<1", "a non-default validation survives the round trip")
+        #expect(SignalExtractor.decodeTemplate("analysis<|codeChange<0|test/testEvidence<1")?.nodes[2].validation == "testEvidence" && SignalExtractor.decodeTemplate("analysis<|codeChange<0|test/nonsense<1") == nil)
         let t = SignalExtractor.decodeTemplate(enc)
         #expect(t?.signature == "analysis>codeChange>test" && t?.nodes[2].dependsOn == ["w2"])
         #expect(SignalExtractor.decodeTemplate("analysis<|nonsense<0|test<1") == nil)
         #expect(SignalExtractor.decodeTemplate("analysis<|codeChange<5|test<1") == nil, "a dependency on a later step is invalid")
+    }
+
+    @Test("the real fix-flow shape (a reproduction test before the change) validates as a learned workflow")
+    func reproductionShape() throws {
+        let t = try #require(SignalExtractor.decodeTemplate("analysis<|test/testEvidence<0|codeChange<1|test<2|review<3"))
+        #expect(SkillValidator.validate(t).isEmpty, "\(SkillValidator.validate(t))")
+        let plan = SkillValidator.plan(from: t, summary: "x")
+        #expect(plan.steps[1].validation == .testEvidence && plan.steps[3].validation == .testPass)
+        #expect(GraphValidator.validate(plan, capabilities: CapabilitySet(granted: SkillValidator.capabilities(of: t))).isEmpty)
     }
 
     @Test("skills match on intent AND available capabilities AND a non-failing record; built-ins are listed but never override the deterministic planner")

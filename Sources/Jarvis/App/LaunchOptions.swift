@@ -67,6 +67,10 @@ struct LaunchOptions {
     var computerRepo: String?
     var orchestrationLiveTest = false
     var operatorLiveTest = false
+    var adaptiveLiveTest = false
+    var adaptiveSections = Set<String>()
+    var mcpLiveTest = false
+    var mcpSections = Set<String>()
     var continuityLiveTest = false
     var continuitySections: Set<String> = []
     var visualBenchmark = false
@@ -124,6 +128,10 @@ struct LaunchOptions {
             case "--computer-repo": computerRepo = it.next()
             case "--orchestration-live-test": orchestrationLiveTest = true
             case "--operator-live-test": operatorLiveTest = true
+            case "--adaptive-live-test": adaptiveLiveTest = true
+            case "--adaptive-section": if let v = it.next() { adaptiveSections.insert(v) }
+            case "--mcp-live-test": mcpLiveTest = true
+            case "--mcp-section": if let v = it.next() { mcpSections.insert(v) }
             case "--continuity-live-test": continuityLiveTest = true
             case "--continuity-section": if let v = it.next() { continuitySections.insert(v) }
             case "--visual-benchmark": visualBenchmark = true

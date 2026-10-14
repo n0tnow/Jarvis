@@ -12,7 +12,10 @@ struct MCPBenchmarkCase: Sendable {
     var arguments: [String: AnySendable] = [:]
     var expect: @Sendable (String) -> Bool
     var readOnly = true
-    var args: [String: Any] { arguments.mapValues(\.value) }
+    /// The PASS condition is a refusal (an error or an `isError` answer): used for confinement checks (“a path outside the root must be refused”).
+    var expectsFailure = false
+    /// `{{WORK}}` inside a text argument is replaced by the sandbox work directory.
+    func args(work: String) -> [String: Any] { arguments.mapValues { v in (v.value as? String).map { $0.replacingOccurrences(of: "{{WORK}}", with: work) } ?? v.value } }
 }
 
 struct AnySendable: @unchecked Sendable { var value: Any; init(_ v: Any) { value = v } }
@@ -59,6 +62,7 @@ enum MCPBenchmarkRunner {
             if s.tools.isEmpty { s.tools = schemas; s.envelope = s.envelope.union(MCPToolClassifier.envelope(for: schemas)); try? registry.repository?.save(s) }
             cases.append(.init(name: "starts and lists its tools", passed: !tools.isEmpty, detail: "\(tools.count) tool(s) in \(Int(ms)) ms", latencyMS: ms))
             var deterministic = true
+            let work = ProcessInfoPath.canonical(launch.directory.appendingPathComponent("work").path)
             for c in spec.cases {
                 guard let tool = c.tools.first(where: { name in tools.contains { $0.name == name } }), let schema = schemas.first(where: { $0.name == tool }) else {
                     cases.append(.init(name: c.name, passed: false, detail: "not offered by this server (looked for \(c.tools.prefix(3).joined(separator: ", ")))", latencyMS: 0)); continue
@@ -66,19 +70,26 @@ enum MCPBenchmarkRunner {
                 guard schema.risk != .broad else { cases.append(.init(name: c.name, passed: false, detail: "skipped: “\(tool)” is a broad tool", latencyMS: 0)); continue }
                 let t0 = Date()
                 do {
-                    let r1 = try await conn.call(tool, c.args, timeout: timeout)
+                    let r1 = try await conn.call(tool, c.args(work: work), timeout: timeout)
+                    if c.expectsFailure {
+                        let refused = r1.isError
+                        cases.append(.init(name: c.name, passed: refused, detail: refused ? "refused as it should be" : "it answered instead of refusing", latencyMS: Date().timeIntervalSince(t0) * 1000)); continue
+                    }
                     let ms = Date().timeIntervalSince(t0) * 1000
                     if let rss = ProcessTree.residentBytes(of: conn.processIdentifier) { peak = max(peak, Double(rss) / 1_048_576) }
                     let ok = !r1.isError && c.expect(r1.text)
                     if r1.injectionNotes > 0 { findings.append(MCPSecurityFinding(severity: .warning, category: "result-injection", detail: "the result of “\(tool)” contained instruction-shaped text (kept as data)", location: tool)) }
                     var detail = ok ? "ok" : (r1.isError ? "the tool reported an error" : "the answer did not match what was expected")
                     if ok, c.readOnly {
-                        let t1 = Date(); let r2 = try await conn.call(tool, c.args, timeout: timeout)
+                        let t1 = Date(); let r2 = try await conn.call(tool, c.args(work: work), timeout: timeout)
                         warm.append(Date().timeIntervalSince(t1) * 1000)
                         if r2.text != r1.text { deterministic = false; detail = "ok, but two identical calls gave different answers" }
                     }
                     cases.append(.init(name: c.name, passed: ok, detail: detail, latencyMS: ms))
-                } catch { cases.append(.init(name: c.name, passed: false, detail: "\(error)", latencyMS: Date().timeIntervalSince(t0) * 1000)) }
+                } catch {
+                    if c.expectsFailure, case MCPError.server = error { cases.append(.init(name: c.name, passed: true, detail: "refused with a protocol error, as it should be", latencyMS: Date().timeIntervalSince(t0) * 1000)) }
+                    else { cases.append(.init(name: c.name, passed: false, detail: "\(error)", latencyMS: Date().timeIntervalSince(t0) * 1000)) }
+                }
             }
             // Failure quality: an unknown tool must produce a clean error, not a crash or a hang.
             if let r = try? await conn.request("tools/call", ["name": "jarvis-no-such-tool", "arguments": [String: Any]()], timeout: 8) { _ = r; cases.append(.init(name: "an unknown tool is rejected cleanly", passed: false, detail: "it answered instead of refusing", latencyMS: 0)) }
@@ -118,7 +129,7 @@ enum MCPBenchmarkRunner {
         if !b.cleanupOK { why.append("cleanup was incomplete") }
         if let d = s.discovery {
             if !d.licenseKnown && !s.isFixture { why.append("the licence is unknown (an unknown licence is never safe)") }
-            if d.price.lowercased() != "free" && !s.isFixture { why.append("the price is \(d.price) (unknown is never free)") }
+            if !d.isVerifiablyFree && !s.isFixture { why.append("the price is \(d.price) (unknown is never free)") }
         } else if !s.isFixture { why.append("no discovery evidence") }
         let high = (s.discovery?.findings ?? []) + b.findings
         if high.contains(where: { $0.severity == .high && $0.category != "broad-tool" }) { why.append("the static scan or the benchmark found high-risk behaviour") }

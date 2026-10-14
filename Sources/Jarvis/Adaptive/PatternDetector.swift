@@ -47,13 +47,23 @@ enum PatternDetector {
         return out
     }
 
+    /// Groups per (kind, situation, project). When the SAME situation recurs across several projects, a merged group without a project is added — but only if no single project reaches the
+    /// threshold on its own (so a project-specific pattern is never duplicated as a global one).
     static func groups(_ signals: [LearningSignal]) -> [Group] {
         var map: [String: Group] = [:]
-        for s in signals {
-            let k = "\(s.kind.rawValue)|\(s.key)|\(s.projectKey ?? "*")"
-            var g = map[k] ?? Group(kind: s.kind, key: s.key, project: s.projectKey, failures: [], successes: [], events: [])
+        func add(_ s: LearningSignal, project: String?, into map: inout [String: Group]) {
+            let k = "\(s.kind.rawValue)|\(s.key)|\(project ?? "*")"
+            var g = map[k] ?? Group(kind: s.kind, key: s.key, project: project, failures: [], successes: [], events: [])
             switch s.outcome { case .failure: g.failures.append(s); case .success: g.successes.append(s); case .event: g.events.append(s) }
             map[k] = g
+        }
+        for s in signals { add(s, project: s.projectKey, into: &map) }
+        var merged: [String: Group] = [:]
+        for s in signals where s.projectKey != nil { add(s, project: nil, into: &merged) }
+        for (k, g) in merged {
+            let perProject = map.values.filter { $0.kind == g.kind && $0.key == g.key && $0.project != nil }
+            let best = perProject.map { independent($0.failures + $0.events + $0.successes).count }.max() ?? 0
+            if perProject.count > 1, best < LearningThresholds.minimumEvents { map[k] = g }
         }
         return Array(map.values)
     }

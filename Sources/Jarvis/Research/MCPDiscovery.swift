@@ -129,6 +129,16 @@ final class MCPDiscovery: @unchecked Sendable {
         }
     }
 
+    /// A lead the USER named (an address of a repository): the same evidence as a searched lead, labelled as such.
+    func record(forRepository url: String, domain: String) async -> MCPDiscoveryRecord? {
+        guard let (owner, name) = GitHubInspector.parseRepoURL(url) else { return nil }
+        let base = MCPDiscoveryRecord(name: "\(owner)/\(name)", domain: domain, sourceURL: url, repository: url, publisher: owner, license: nil, version: nil, lastRelease: nil, lastPush: nil, stars: nil, installMethod: nil, runtime: nil,
+                                      networkRequirement: "unknown", credentialRequirement: "unknown", filesystemRequirement: "unknown", processRequirement: "unknown", declaredTools: [], declaredResources: [], declaredPrompts: [], knownRisks: [],
+                                      price: "unknown", apiRequirements: "unknown", macOS: "unknown", appleSilicon: "unknown", overlap: [], expectedBenefit: "", evidenceFetchedAt: Date(), sourceKind: "named repository (requested)")
+        var failures: [String] = []
+        return await enrich(base, failures: &failures)
+    }
+
     static func leadScore(_ r: MCPDiscoveryRecord) -> Double {
         var s = 0.0
         if r.sourceKind.hasPrefix("official") { s += 3 }
@@ -149,8 +159,6 @@ final class MCPDiscovery: @unchecked Sendable {
             if f.archived { r.knownRisks.append("the repository is archived") }
             if let rel = f.latestRelease { r.version = r.version ?? rel }
         } else { failures.append("repository facts for \(owner)/\(name) could not be read") }
-        // stars (only the search API returns them cheaply): one extra read for the leads that came from the registry
-        if r.stars == nil, case (let j?, _) = await json("https://api.github.com/repos/\(owner)/\(name)", headers: GitHubSearchProvider.headers) { r.stars = Int(j["stargazers_count"]?.double ?? 0); r.lastPush = r.lastPush ?? Self.date(j["pushed_at"]?.string) }
         let (readme, _) = await json("https://api.github.com/repos/\(owner)/\(name)/readme", headers: GitHubSearchProvider.headers)
         if let content = readme?["content"]?.string, let data = Data(base64Encoded: content.replacingOccurrences(of: "\n", with: "")), let text = String(data: data.prefix(80_000), encoding: .utf8) {
             MCPReadme.apply(readme: text, to: &r)

@@ -99,6 +99,8 @@ struct MCPLaunch: Codable, Equatable, Sendable {
     var environment: [String: String] = [:]
     var persistent = false
     var idleSeconds: Double = 60
+    /// Small TEXT files written into the sandbox work directory before the server starts (a benchmark score, a fixture). `{{WORK}}` inside `arguments` stands for that directory.
+    var seedFiles: [String: String] = [:]
 }
 
 struct MCPSecurityFinding: Codable, Equatable, Sendable {
@@ -142,6 +144,9 @@ struct MCPDiscoveryRecord: Codable, Equatable, Sendable {
     var evidenceFetchedAt: Date
     var sourceKind: String                    // official registry · vendor · repository · community lead
     var findings: [MCPSecurityFinding] = []
+
+    /// Free to USE as verified: an open-source licence on the code. “free code; a service behind it may be paid”, “unknown” and anything else are NOT free.
+    var isVerifiablyFree: Bool { price == "free" || price.hasPrefix("free (") }
 
     func freshness(now: Date = Date()) -> String {
         let days = Int(now.timeIntervalSince(evidenceFetchedAt) / 86_400)

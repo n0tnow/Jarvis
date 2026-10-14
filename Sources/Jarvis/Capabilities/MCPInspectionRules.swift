@@ -14,7 +14,8 @@ extension MCPInspector {
 
     static let rules: [Rule] = [
         rule("shell", .high, "runs shell commands or child processes", "\\b(child_process|subprocess\\.(run|Popen|call|check_output)|os\\.system|os\\.popen|Runtime\\.getRuntime\\(\\)\\.exec|execSync|spawnSync|shell\\s*=\\s*True|/bin/(ba|z)?sh\\b)"),
-        rule("shell", .warning, "spawns processes", "\\b(spawn|execFile|fork)\\s*\\("),
+        rule("shell", .warning, "spawns processes", "\\b(spawn|execFile|fork)\\s*\\(|std::process::Command|Command::new\\("),
+        rule("network-code", .warning, "contains network client code", "\\b(reqwest|ureq|hyper::|TcpStream|UdpSocket|std::net::|requests\\.(get|post)|urllib\\.request|http\\.client|axios|node-fetch|XMLHttpRequest|URLSession)\\b"),
         rule("credentials", .high, "reads credentials or token-shaped environment values", "\\b(API_KEY|APIKEY|SECRET_KEY|ACCESS_TOKEN|AUTH_TOKEN|GITHUB_TOKEN|AWS_SECRET|PRIVATE_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY)\\b"),
         rule("environment", .warning, "enumerates or reads the whole environment", "\\b(process\\.env\\b(?!\\.[A-Z_]+\\b)|os\\.environ(\\.items|\\.copy|\\.keys)?\\b|printenv|environ\\(\\))"),
         rule("keychain", .high, "touches the macOS Keychain", "\\b(SecKeychain|SecItemCopyMatching|find-generic-password|find-internet-password|Keychain|keychain-?access|\\bsecurity\\s+(find|dump|export))"),
@@ -22,7 +23,7 @@ extension MCPInspector {
         rule("ssh", .high, "touches SSH keys or the agent", "(\\.ssh\\b|id_rsa|id_ed25519|SSH_AUTH_SOCK|known_hosts)"),
         rule("filesystem-scope", .warning, "reaches the home directory or arbitrary absolute paths", "(os\\.homedir\\(|expanduser\\(|Path\\.home\\(|NSHomeDirectory|\"~/|'~/|process\\.env\\.HOME|\\bos\\.path\\.expanduser)"),
         rule("destructive", .high, "deletes recursively or wipes", "\\b(rm\\s+-rf|rmtree|fs\\.rm(Sync)?\\([^)]*recursive|rimraf|shutil\\.rmtree|unlinkSync|os\\.remove\\(|os\\.rmdir|removeItem)"),
-        rule("telemetry", .warning, "sends usage telemetry", "\\b(telemetry|posthog|mixpanel|segment\\.io|sentry|amplitude|google-analytics|datadog|appinsights)\\b"),
+        rule("telemetry", .warning, "sends usage telemetry", "\\b(telemetry|posthog|mixpanel|segment\\.io|sentry\\.io|@sentry|google-analytics|datadoghq|appinsights)\\b"),
         rule("auto-update", .warning, "updates itself or installs packages at run time", "(self[-_ ]?update|auto[-_ ]?update|npm\\s+(i|install)\\s+-g|pip\\s+install|uv\\s+pip\\s+install|brew\\s+install|npx\\s+-y|checkForUpdates)"),
         rule("download-on-run", .high, "downloads and runs code", "(curl[^|\\n]*\\|\\s*(ba)?sh|wget[^|\\n]*\\|\\s*(ba)?sh|urlretrieve|\\bcurl\\s+-[a-zA-Z]*[sS]?[lL]?[oO]\\b|download.{0,30}(exec|chmod\\s+\\+x))"),
         rule("dynamic-code", .high, "evaluates dynamic code", "\\b(eval\\s*\\(|new\\s+Function\\s*\\(|exec\\s*\\(\\s*compile|__import__\\s*\\(|importlib\\.import_module|vm\\.runIn|Function\\s*\\(\\s*['\"]return)"),

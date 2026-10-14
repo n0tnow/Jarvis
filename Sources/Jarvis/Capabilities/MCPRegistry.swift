@@ -166,7 +166,7 @@ final class MCPRegistry {
         var env = s.launch.environment; for (k, v) in extraEnvironment { env[k] = v }
         var roots = readableRoots
         if let d = s.installDirectory { roots.append(d) }
-        return try MCPSandbox.prepare(root: sandboxDirectory, executable: exe, arguments: s.launch.arguments + extraArguments, allowNetwork: allowNetwork, readableRoots: roots, extraEnvironment: env, useSeatbelt: useSeatbelt)
+        return try MCPSandbox.prepare(root: sandboxDirectory, executable: exe, arguments: s.launch.arguments + extraArguments, allowNetwork: allowNetwork, readableRoots: roots, extraEnvironment: env, useSeatbelt: useSeatbelt, seedFiles: s.launch.seedFiles)
     }
 
     func connect(_ s: MCPServerRecord, allowNetwork: Bool, extraArguments: [String] = [], timeout: TimeInterval = 20, useSeatbelt: Bool = true) async throws -> (MCPConnection, MCPSandboxLaunch, coldStartMS: Double) {
