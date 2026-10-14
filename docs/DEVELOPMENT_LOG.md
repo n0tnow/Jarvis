@@ -484,3 +484,30 @@ See `PROJECT_STATE.md` status. Before: V13-7 failed 5 of 9 V0.13 runs. After (fi
 ### Not done / next
 Wait for the manual test (README 987–999). V0.14 is not started.
 
+
+## 2026-10-14 — V0.14 Adaptive Learning, Controlled Self-Improvement & MCP/Skill Registry
+
+### Goal
+Bounded adaptive layer on V0.13.1: learning from recorded work, a closed rule vocabulary, Skills, capability gaps, controlled self-improvement, and an MCP/Skill registry with a sandboxed benchmark — learning is never authority (DEC-215…233).
+
+### Done
+* **Adaptive** (`Sources/Jarvis/Adaptive/`): signals with episodes, `PatternDetector` thresholds, ONE admission door, `RuleEngine`, `LearningService` lifecycle, `AdaptiveDecisionService` (HUD-only, scope-hash bound), `SelfImprovementService`, EN/TR `AdaptiveAssistant`, view models.
+* **Capabilities** (`Sources/Jarvis/Capabilities/`): status machine, registry, JSON-RPC client over `ManagedProcess`, Seatbelt sandbox, inspector, benchmark, in-sandbox Rust staging, Skill registry. Discovery on the V0.9 stack.
+* **UI**: Learning and Capabilities screens, Settings section, Compact line (392×448). Schema v13 / v14.
+* **Guards**: `scripts/guards_v14.sh` (18 guards; each shown to fail on an injected violation). `GUARD_MATRIX.md` rows 36–53.
+* **Live tests**: `--adaptive-live-test` (learning, gap, rules, workflow, selfimprove, rejection, overlearning, security, soak, ui), `--mcp-live-test` (research, sandbox, registry, security, voice, ui, candidate) with a fixture MCP server (normal / adversarial / shell / env / crash / slow / flaky / hang) and real Accessibility clicks from a child process (DEC-231).
+
+### Found and fixed on the way
+* The restart budget counted clean idle stops (found by the soak) → failures only (DEC-229).
+* Approval hash used unstable JSON key order → sorted keys.
+* A throw-away second `MCPRegistry` in the live test took the decision hooks (weak self) and made later installs "tampered" → `registerDecisionDomains()` re-registered by the test (test-only effect; the app has one registry).
+* The MCP `ui` section needs an empty registry → explicit section like `candidate`.
+* Adaptive/MCP live tests now reset their own isolated data directory (a second run found a 24-run workflow and failed for the wrong reason).
+* Smoke: paste/composer checks were timing-sensitive (also on the V0.13.1 baseline) → `press` waits for the key window and settles longer; composer height waits for the layout. 7/7 consecutive passes afterwards.
+* A source-scan unit test forbids shell literals; the explicit MCP live test runs its isolation probes via `/bin/sh` inside the sandbox → narrow exemption for that one file.
+
+### Evidence
+See `PROJECT_STATE.md` status. Real research (2026-10-14) covered 3D/Blender, design, audio, animation and Unity; one real open-source candidate (cochlea-mcp) built in the sandbox and benchmarked; final code `--mcp-section candidate` 14/0/0 (an earlier rerun hit the unauthenticated GitHub limit 0/60 and JARVIS reported licence/activity as unknown, as designed). Final `scripts/verify.sh` result is in PROJECT_STATE.md.
+
+### Not done / next
+Wait for the manual test (README 1000–1152). V0.15 is not started.

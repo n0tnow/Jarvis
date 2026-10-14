@@ -51,3 +51,6 @@ Automated: `ContinuityCoreTests` (35), `ContinuityEngineTests` (11), migration t
 The Full HUD Project card shows a compact **Scene** block: scene name, object / light / camera / renderer counts and the active render pipeline. It has two labelled states — **live** (an owned editor is connected right now; read through the typed `sceneProfile`) and **stale** (the last facts, with the time they were read, shown greyed with "as of …"). Nothing starts an editor to fill it, nothing polls: with no connected editor you see the stale block or nothing. A stale value is never presented as live and never decides anything. The Compact HUD is unchanged (392×448, one line).
 
 `ContinuationSelector`: a *known issue* that exists only in memory is offered as a choice, never started on its own — memory alone never starts work.
+
+## V0.14 note
+Continuity stays a derived view. V0.14 may add learned requirements to a continuation plan, never a second path to start work; memory and learning alone still never start a task (`docs/ADAPTIVE_LEARNING.md`).

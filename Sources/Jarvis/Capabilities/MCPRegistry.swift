@@ -66,6 +66,11 @@ final class MCPRegistry {
 
     init(repository: JarvisRepository?, decisions: AdaptiveDecisionService, root: URL) {
         self.repository = repository; self.decisions = decisions; self.root = root
+        registerDecisionDomains()
+    }
+
+    /// Registers this registry as the executor of the four capability request kinds. Called once from `init`; a live test that builds a second registry over the same database calls it again on the original afterwards.
+    func registerDecisionDomains() {
         decisions.register(.installCapability, .init(fingerprint: { [weak self] id in self?.fingerprint(.installCapability, id) }, execute: { [weak self] q in await self?.executeInstall(q) ?? .failure(.init(message: "the registry is not available")) }))
         decisions.register(.updateCapability, .init(fingerprint: { [weak self] id in self?.fingerprint(.updateCapability, id) }, execute: { [weak self] q in await self?.executeUpdate(q) ?? .failure(.init(message: "the registry is not available")) }))
         decisions.register(.removeCapability, .init(fingerprint: { [weak self] id in self?.fingerprint(.removeCapability, id) }, execute: { [weak self] q in await self?.executeRemoval(q) ?? .failure(.init(message: "the registry is not available")) }))

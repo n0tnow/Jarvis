@@ -1057,3 +1057,98 @@ Why: DEC-205.
 Status: Accepted (V0.13.1)
 Decision: `VisionProposing.prepare(label:)` runs before the window capture. Only when the first eligible provider for the query is the local model (an icon or custom-drawn control, not an OCR-readable label) is the model loaded, and never under memory pressure. The 6 s observation-age rule (`ComputerLimits.maxObservationAge`) is unchanged.
 Why: a cold load (~5 s) plus the counting check made the screenshot older than the rule, so a correct stale-screen refusal looked like a flaky icon-only press. The cause was the order of operations, not the rule.
+
+## DEC-215 — Learning is data, never authority
+Status: Accepted (V0.14)
+Decision: a learned lesson, rule, workflow, skill, routing nudge, MCP server or model output never becomes an authority source. It can add a requirement, a warning or a preference; it cannot approve, grant a capability, install, delete, send, purchase, weaken a safety rule or change the sandbox. Policy, approval and command code never read learned data to decide.
+Why: the user's V0.14 brief ("JARVIS remains the orchestrator"); the same principle as DEC-104 (memory) and DEC-182 (handoffs). `verify.sh` guards it.
+
+## DEC-216 — The V0.12 orchestrator stays the only orchestrator
+Status: Accepted (V0.14)
+Decision: no `SelfImprovementOrchestrator`, `AdaptiveOrchestrator` or `MCPOrchestrator`. A self-change, a learned Skill or an MCP-assisted step is an ordinary V0.4/V0.12 task; the adaptive layer has exactly one `engine.submit` (self-improvement, started from an approved request) and never plans or saves graphs.
+Why: DEC-157; a second orchestrator would be a second authority.
+
+## DEC-217 — Learning thresholds and independence
+Status: Accepted (V0.14)
+Decision: a candidate needs ≥ 3 independent episodes (`LearningThresholds.minimumEvents`; an episode is the independence unit, so several signals from one task count once); workflows ≥ 3 successes, capability gaps ≥ 3 sessions, routing nudges ≥ 4 runs, 90-day window. Confidence n/(n+2), 30-day half-life, contradiction factor. Narrow scope needs 3, broad scope 6 episodes; counter-evidence ratio above 0.25 blocks. A rejected candidate has a 14-day cooldown and reappears only if its evidence doubles.
+Why: one weak event must never create a global rule; overlearning is a tested failure mode.
+
+## DEC-218 — ONE admission door for learned text
+Status: Accepted (V0.14)
+Decision: every candidate passes `LearningService.admit`: secret gate → authority gate (the memory gate patterns plus voice approval / "user always approves" shapes) → injection gate → rule vocabulary → evidence must resolve to real rows → overgeneralisation → dedupe/cooldown. Refusals are audited with a machine-readable reason. Nothing is stored before the door.
+Why: DEC-107 (one memory door) applied to learning; guarded by `verify.sh`.
+
+## DEC-219 — Closed rule vocabulary that can only add requirements
+Status: Accepted (V0.14)
+Decision: seven action kinds (requireExperiment, requireExtraValidation, requireIndependentReview, preferWorkflow, avoidSource, addWarning, preferCapability), three comparisons, three scopes. No action names approve / grant / install / delete / send / purchase / sandbox / shell / execute. Evaluation is narrowest-scope-first and can only tighten.
+Why: a rule is data a person can read and disable; it must not be a scripting language.
+
+## DEC-220 — Approval boundary: `AdaptiveDecisionSource` is hud or test
+Status: Accepted (V0.14)
+Decision: promotion, rule/skill activation, self-improvement, and MCP install / update / removal / enable-with-more-permission are REQUESTS bound to a scope hash (sorted-key JSON, so the hash is stable). Only the HUD view models (and the test harness) decide them. Voice, typed chat, memory, proactive and orchestration code cannot. A spoken or typed "yes" creates and approves nothing. Optional standing auto-promotion exists only for LOW-risk workflows and is OFF by default.
+Why: DEC-043/DEC-064 (HUD-only approval, voice has no authority) extended to the adaptive layer.
+
+## DEC-221 — Self-improvement levels 0–4, default Experiment, no level 5
+Status: Accepted (V0.14)
+Decision: Observe, Learn, Experiment (default), Propose, Approved self-improvement. A self-change needs level 4, an HUD-approved request, a recorded checkpoint and a CLEAN Git tree; it runs as an ordinary V0.12 development task (QA + independent review); a failed change is never promoted. `selfRepositoryPath` is assigned only by live tests (disposable fixtures): the app default targets nothing, so the production JARVIS repository is never edited by itself.
+Why: the brief ("no silent source modification"); DEC-040 (JARVIS never runs git reset/clean/checkout/commit/push).
+
+## DEC-222 — Skills are validated graph templates
+Status: Accepted (V0.14)
+Decision: a Skill is a `WorkflowTemplate` validated by the V0.12 graph/plan validators plus learned-workflow restrictions (generic step types only; a code change must be followed by validation). Matching only chooses the starting template; the normal planner checks, role contracts and approvals still apply. A Skill that keeps failing stops being preferred.
+Why: reuse without a new execution path.
+
+## DEC-223 — Learned routing is a bounded nudge
+Status: Accepted (V0.14)
+Decision: `RoutingAdjustment` is limited to |bias| ≤ 0.2 and only orders providers that are already eligible under the V0.3.1 price/privacy/security policy. An explicit provider choice never reads it; UNKNOWN price is never made automatic by learning.
+Why: DEC-022…028.
+
+## DEC-224 — MCP servers are capabilities with a status machine
+Status: Accepted (V0.14)
+Decision: DISCOVERED → INSPECTED → SANDBOXED → BENCHMARKED → RECOMMENDED → APPROVED → INSTALLED → ACTIVE (⇄ DEGRADED / DISABLED) → REMOVED, plus REJECTED / BLOCKED. There is no edge from a pre-approval status to ACTIVE. Registration, update and removal are never automatic.
+Why: "never auto-install a production MCP; no automatic MCP update".
+
+## DEC-225 — The MCP sandbox is Seatbelt + sanitised environment, and says what it is not
+Status: Accepted (V0.14)
+Decision: `sandbox-exec` profile (network denied unless the envelope allows it; writes only in the sandbox directory; home reads denied except the sandbox and runtime root; Keychain/security Mach services denied by name) plus an environment built from scratch, a private directory, own process tree, timeouts and memory sampling. The boundary text lists what is NOT enforced (kernel CPU/memory caps, world-readable system files, an exhaustive Mach filter, separate account or VM). `sandbox-exec` is deprecated by Apple; if it disappears, the report says "sanitised environment only".
+Why: "Do not claim isolation you do not have."
+
+## DEC-226 — Typed wrappers inside a permission envelope; BROAD tools never exposed
+Status: Accepted (V0.14)
+Decision: agents reach an MCP only through `MCPWrapper`s. The registered envelope (read, projectWrite, network, process, account, credential, destructive) is the maximum; shell/arbitrary-code tools are classified BROAD and never exposed; account / credential / destructive envelopes are never automatic (a person must be present). Server output is sanitised, bounded data; instruction-shaped text is counted, never obeyed.
+Why: DEC-182-style handoff discipline; an MCP is untrusted.
+
+## DEC-227 — Discovery reuses V0.9 research; the bar is evidence, not popularity
+Status: Accepted (V0.14)
+Decision: candidates come from the official MCP registry and the GitHub API (unauthenticated, rate-limited, no key), README text as data. A recommendation needs a known licence, activity within a year, an unarchived repository, macOS compatibility, no arbitrary-code tool, a verifiably free price (UNKNOWN is never free) and no credential requirement JARVIS would have to supply. Discovery is on demand only.
+Why: DEC-088…103.
+
+## DEC-228 — Benchmark in the sandbox, recommendation rule is deterministic
+Status: Accepted (V0.14)
+Decision: start/list, domain read-only cases, write cases only on fixtures, determinism, cold/warm latency, RSS, implied permissions, network need, unknown-tool rejection, confinement cases, cleanup. RECOMMENDED needs ≥ 75 % applicable cases passed, clean cleanup, known licence, verified-free price, no uncontained high finding, no credential need. A benchmark is evidence about this version in this sandbox, not a statement of safety.
+Why: honest comparison with native tools and Skills.
+
+## DEC-229 — The restart budget is spent only by failures
+Status: Accepted (V0.14)
+Decision: `failureTimes` (not every stop) drive the bounded restart budget. A clean one-shot idle stop is not a failure.
+Why: found by the soak — idle stops were degrading healthy servers.
+
+## DEC-230 — MCP removal deletes only recorded owned files
+Status: Accepted (V0.14)
+Decision: exact recorded paths inside JARVIS' own server folder; symlinks are removed, not followed; the folder only if empty; the active-task check is re-run at execution time; disabled ≠ removed. Unused servers produce advice, never a deletion.
+Why: ownership-safe deletion in the brief.
+
+## DEC-231 — Real UI tests drive the product's AXBackend from a child process
+Status: Accepted (V0.14)
+Decision: `--live-ui-child <pid>` runs the Accessibility driver in a child; calling AX on the own process crashes SwiftUI. An AX press error (-25200) can still have worked, so the test verifies state, not the return code (DEC-206).
+Why: real clicks on the Learning and Capabilities screens without a second AX implementation.
+
+## DEC-232 — Live tests label their evidence
+Status: Accepted (V0.14)
+Decision: output is labelled REAL (real process/engine/network), ENGINE (real engine, scripted agents) or POLICY (deterministic gate). Live tests use disposable Git fixtures and `live-test-adaptive` / `live-test-mcp` data directories; the real Hamam project is never a target.
+Why: AGENTS.md "distinguish automated testing from manual verification".
+
+## DEC-233 — Roadmap unchanged
+Status: Accepted (V0.14)
+Decision: V0.14 (adaptive learning, controlled self-improvement & MCP/Skill registry) → V0.15 (presence, personality & visual teaching) → V1.0. V0.15 is NOT started.
+Why: DEC-213.

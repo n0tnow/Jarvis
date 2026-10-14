@@ -650,6 +650,33 @@ enum SmokeTest {
             await resetWorld()
         }
 
+        // --- V0.14 adaptive layer: wired but idle. Learning is data, approvals are HUD-only, MCP servers run only on demand, nothing is learned or researched while idle.
+        do {
+            let c = context
+            check("V0.14 the adaptive layer is wired (schema v14, learning, skills, MCP registry, self-improvement, assistant) and the default level is Experiment with auto-promotion OFF",
+                  (c.database?.schemaVersion ?? 0) >= 14 && c.preferences.selfImprovementLevel == .experiment && !c.preferences.autoPromoteLowRiskWorkflows && c.conversationService.adaptiveHandler != nil && c.skills.all().contains { $0.builtIn })
+            let sbx = ((try? FileManager.default.contentsOfDirectory(atPath: c.mcp.sandboxDirectory.path)) ?? []).filter { $0.hasPrefix("sbx-") }
+            let live = c.mcp.runningServerIDs, installed = c.mcp.servers(statuses: [.active, .installed]).count, running = c.selfImprovement.proposals().filter { $0.status == .running }.count
+            check("V0.14 IDLE: no MCP server process, no discovery, no benchmark, no staging or sandbox folder, no pending self-change task", live.isEmpty && installed == 0 && sbx.isEmpty && running == 0, "live \(live) installed \(installed) sandboxes \(sbx) running \(running)")
+            check("V0.14 learning and MCP phrases are recognised (EN + TR) and “yes” / “evet” is never a decision", AdaptiveIntentParser.recognize("Son zamanlarda ne öğrendin?") == .learnedRecently && AdaptiveIntentParser.recognize("Blender MCP'yi sil.") == .removeMCP("blender")
+                  && AdaptiveIntentParser.recognize("Evet.") == nil && AdaptiveIntentParser.recognize("yes") == nil)
+            check("V0.14 learned rules are data from a closed vocabulary (7 actions, none approves, grants, installs, deletes, sends or weakens a check) and authority-shaped text is refused",
+                  RuleActionKind.allCases.count == 7 && LearningGate.refuseText("User always approves deletes") == .authorityGrant && LearningGate.refuseText("Voice approval is enough") == .authorityGrant)
+            check("V0.14 the MCP status machine has no edge from a discovered or recommended server to ACTIVE; a shell tool is classified BROAD; the sandbox says what it does NOT enforce",
+                  !MCPStatus.discovered.canMove(to: .active) && !MCPStatus.recommended.canMove(to: .active) && MCPToolClassifier.risk(name: "executeShell", description: "", parameters: ["command": "string"]) == .broad
+                  && MCPSandbox.boundary(seatbelt: true, allowNetwork: false).summary.contains("NOT enforced"))
+            check("V0.14 there is no self-improvement level above 4 and the Learning and Capabilities screens exist", SelfImprovementLevel.allCases.max() == .approvedSelfImprovement && HUDSection.allCases.contains(.learning) && HUDSection.allCases.contains(.capabilities))
+            context.hud.section = .learning; w.showFullHUD(section: .learning); _ = await waitUntil { w.isFullHUDOpen }
+            await settle(300)
+            context.hud.section = .capabilities; await settle(300)
+            check("V0.14 the Learning and Capabilities screens open without starting anything (still no MCP process)", w.isFullHUDOpen && c.mcp.runningServerIDs.isEmpty)
+            w.hideFullHUD(); w.showCompactHUD(); _ = await waitUntil { w.isCompactHUDOpen }
+            await settle(200)
+            check("V0.14 the Compact HUD stays 392×448 (the adaptive state is at most one short line)", compactWindow()?.frame.size == CompactHUDLayout.size, "\(compactWindow()?.frame.size ?? .zero)")
+            w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- V0.13 Project operator: wired but idle. Continuity answers from current truth without a model, the Unity operator is a closed typed set, visual grounding is local and unloaded, experiments live outside the data folder, Compact stays 392×448.
         do {
             check("V0.13 the operator layer is wired (schema v12, continuity service, experiments root in Caches, bounds 30 min · 12 · 2 · 2 · 2)", (context.database?.schemaVersion ?? 0) >= 12 && context.taskEngine.experimentsRoot.map { !$0.path.contains("/Library/Application Support/JARVIS") } == true && ContinuationBounds.standard.summary.contains("30 min") && ContinuationBounds.standard.maxExperiments == 2)
@@ -680,6 +707,7 @@ enum SmokeTest {
         /// Posts through the event queue so `NSApp.currentEvent` is the real event (as with a physical key).
         func press(_ chars: String, _ code: UInt16, _ flags: NSEvent.ModifierFlags = [], in window: NSWindow?) async {
             guard let window else { return }
+            _ = await waitUntil(2) { window.isKeyWindow }          // synthetic key events are dropped while another window is key (found flaky since V0.13.1)
             for type in [NSEvent.EventType.keyDown, .keyUp] {
                 if let ev = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
                                              windowNumber: window.windowNumber, context: nil, characters: chars,
@@ -687,7 +715,7 @@ enum SmokeTest {
                     NSApp.postEvent(ev, atStart: false)
                 }
             }
-            await settle(120)
+            await settle(250)
         }
         func setPasteboard(_ text: String) { pb.clearContents(); pb.setString(text, forType: .string) }
         func composerHeight(_ tv: NSTextView) -> CGFloat { tv.enclosingScrollView?.frame.height ?? 0 }
@@ -723,6 +751,7 @@ enum SmokeTest {
             await press("v", 9, .command, in: fullWindow())
             check("Multiline paste stays intact and does NOT submit", tv.string == swift && convo.messages.count == messagesBefore,
                   "messages \(messagesBefore)→\(convo.messages.count)")
+            _ = await waitUntil(2) { composerHeight(tv) > singleLine + 20 }          // the composer re-lays out after the paste; wait for it instead of racing the layout pass
             check("Composer grows for multiline content (bounded, Full HUD)", composerHeight(tv) > singleLine + 20 && composerHeight(tv) <= singleLine * 6 + 2,
                   "height \(composerHeight(tv)) single=\(singleLine)")
             // 200-line paste: height stays bounded (internal scroll)

@@ -663,3 +663,35 @@ Description: the bridge never installs or upgrades a package. Without `com.unity
 ### JARVIS-V13-17 — A cold local vision model is ~5 s on first use
 Status: Mitigated (V0.13.1)
 Description: the model loads before the picture is taken, so the stale-screen rule is not hit; the first icon-only press after idle still costs the load time.
+
+### JARVIS-V14-1 — The MCP sandbox is not a VM
+Status: By design (documented)
+Description: Seatbelt (`sandbox-exec`, deprecated by Apple) plus a sanitised environment. It runs as the SAME macOS user; CPU/memory are sampled and killed, not capped; world-readable system files remain readable; the Mach-service deny-list is best effort. Every benchmark report prints the boundary. If Apple removes `sandbox-exec`, the report says "sanitised environment only" and no server should be approved.
+
+### JARVIS-V14-2 — Only one real MCP candidate was benchmarked
+Status: Open
+Description: real research covered 3D/Blender, design, audio, animation and Unity; the cochlea-mcp candidate was built inside the sandbox and benchmarked. The Blender MCP exposes arbitrary-code execution and needs a running Blender add-on, so it was researched and statically inspected but NOT benchmarked or recommended. Design/animation candidates were researched only.
+
+### JARVIS-V14-3 — GitHub discovery is rate-limited and noisy
+Status: Open
+Description: unauthenticated GitHub API (60 core requests/h, 10 searches/min; JARVIS never adds a key). The registry-name filter still matches substrings such as "mcprep"; relevance is double-checked on the README but results can include non-MCP repositories. Discovery may need a retry after a registry timeout.
+
+### JARVIS-V14-4 — Learned behaviour needs real history
+Status: Open (manual)
+Description: thresholds (3 independent episodes) mean a fresh install learns nothing for several tasks. Real learning quality on the user's own projects is unknown until used; live tests use generated, disposable histories (labelled ENGINE/POLICY).
+
+### JARVIS-V14-5 — Self-improvement is verified only on disposable fixtures
+Status: By design
+Description: `selfRepositoryPath` is assigned only by live tests; the app default is none. Changing JARVIS' own source from the app needs a deliberate configuration that does not exist in the UI yet.
+
+### JARVIS-V14-6 — Voice can only create a request
+Status: By design
+Description: "install / delete this MCP" by voice creates an HUD request; approval happens only by clicking. Spoken "yes/evet" approves nothing.
+
+### JARVIS-V14-7 — Smoke composer/paste keyboard checks are timing-sensitive
+Status: Mitigated (V0.14)
+Description: `--smoke-test` checks "Composer grows for multiline content" and the ⌘V paste checks failed intermittently (also on the V0.13.1 baseline c44f942) when synthetic key events raced focus or layout. Mitigated: `press` waits for the key window and settles longer, the composer check waits for the layout; 7/7 consecutive passes plus a full `verify.sh` afterwards. Root cause is the synthetic-event delivery, not product code.
+
+### JARVIS-V14-8 — MCP wrappers for real servers are generic
+Status: Open
+Description: typed wrappers validate arguments against the server's own schema and classify risk by name/description/parameters; a domain-specific wrapper (e.g. Blender object creation) still has to be written per accepted server.

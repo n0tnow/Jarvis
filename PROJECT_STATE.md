@@ -4,6 +4,8 @@
 
 ## Current Version
 
+**V0.14 — Adaptive Learning, Controlled Self-Improvement & MCP/Skill Registry** (on V0.13.1, a17b5ff): evidence-backed learning (signals → thresholds → ONE admission door → candidates → HUD-approved rules / workflows / Skills), a closed non-executable rule vocabulary, capability-gap detection, self-improvement levels 0–4 (default Experiment, no level 5), an MCP/Skill registry (discovery on the V0.9 stack, static inspection, Seatbelt sandbox benchmark, permission envelopes, typed wrappers, health / drift / update / removal approvals), Learning and Capabilities Full HUD screens. Learning is data, never authority; V0.12 stays the only orchestrator. NOT V0.15.
+
 **V0.13.1 — Project Operator Closure & Stability** (on V0.13, de48238): Input System typed Unity operations, real animation / audio experiments on the one experiment engine, Scene Profile (live / stale) on the Full HUD Project card, the JARVIS-V13-7 Accessibility fix (DEC-206), vision pre-warm, guard matrix, bounded soak. NOT V0.14. Details below describe V0.13, which this builds on.
 
 V0.13 — Autonomous Project Operator & General Visual Grounding (JARVIS can say where a project stands from CURRENT truth, continue it as ONE bounded task through the single V0.12 orchestrator, work in the Unity editor through a closed typed operator set, inspect and correct its own result from measured facts, test unknowns in disposable environments, and look at a picture without ever treating it as authority). Built on V0.12 (957f95e). NOT V0.14 (self-improvement) and NOT V0.15 (persona / whiteboard).
@@ -23,6 +25,10 @@ Previous milestone V0.9: Web Research & Asset Acquisition (research → evidence
 Previous milestone V0.8: Natural Voice & Presence (opt-in wake word "Jarvis" → VAD → natural endpointing → the typed pipeline → local neural JARVIS voice; follow-up window; barge-in). NOT V0.9 (web research & asset acquisition), no spoken approvals, no voice biometrics, no stored audio, no cloud/paid speech.
 
 ## Status
+
+**V0.14 — READY FOR MANUAL TEST.** NOT COMPLETE, NOT TAGGED, NOT MANUALLY VERIFIED. Automated + REAL on this Mac: `scripts/verify.sh` VERIFY PASSED (1565 unit tests / 230 suites; smoke 155 PASS / 0 FAIL / 2 SKIP; idle 0.01 CPU-s per 8 s at 75 MB; 18 new V0.14 guards, each shown to fail on an injected violation); `--adaptive-live-test` 84/0/0 (REAL / ENGINE / POLICY labelled, incl. real Accessibility clicks on the Learning screen and a 20-cycle soak); `--mcp-live-test` 84/0/0 + `--mcp-section ui` 19/0/0 (real Accessibility clicks and typing on the Capabilities screen); `--mcp-section candidate` 14/0/0 (REAL: cochlea-mcp — Apache-2.0, free, read from the real GitHub API, source snapshot downloaded and inspected, built inside the sandbox and benchmarked; it needs the unauthenticated GitHub API, which was rate-limited once and recovered after the hourly reset). MANUAL TEST REQUIRED: README 1000–1152.
+
+Previous status (V0.13.1): READY FOR MANUAL TEST (1470 tests; smoke 147/0/2).
 
 **V0.13.1 — READY FOR MANUAL TEST.** NOT COMPLETE, NOT TAGGED. Automated + REAL on this Mac: `scripts/verify.sh` VERIFY PASSED (1470 tests / 216 suites; smoke 147 PASS / 0 FAIL / 2 SKIP; idle 0.01 CPU-s per 8 s at 73 MB); `--operator-live-test` 131/0/0 (real Unity 6000.5.1f1, disposable fixture; includes Input System and animation/audio experiments); model-planned graph 7/0; asset-experiment 10/0; operator soak 5/0; `--stability-soak 10` 15/0 (RSS 80→86 MB, no orphans); experiment hard-kill start/recover 6/0; `--continuity-live-test` 21/0/0 + interrupt/restart 8/0; `--computer-live-test` 10/10 consecutive full runs (95/0/2), 40/40 focused CONTEXT runs, restart repeat 10/10. JARVIS-V13-7 is MITIGATED, not "resolved" (trigger never identified; see KNOWN_ISSUES). MANUAL TEST REQUIRED: README 987–999.
 
@@ -56,6 +62,19 @@ User manual test of `build/Jarvis.app` (README items 824–986 for V0.13 — use
 - Settings: Reduce Motion, Show Developer Controls, Launch at Login (disabled placeholder, NOT implemented).
 - Build/verify tooling: `scripts/build_app.sh`, `scripts/test.sh`, `scripts/verify.sh`; dev launch args (`--smoke-test`, `--capture`, …).
 - Persistent memory docs (this set).
+
+## V0.14 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED on this Mac with a real sandboxed MCP process, the real public web and real Accessibility clicks, on disposable fixtures · real use MANUAL TEST REQUIRED)
+
+* **Adaptive learning** (`Sources/Jarvis/Adaptive/`, `docs/ADAPTIVE_LEARNING.md`): persisted idempotent signals with an episode independence unit; thresholds ≥ 3 independent episodes (workflow ≥ 3 successes, gap ≥ 3 sessions, routing ≥ 4 runs, 90-day window); one admission door (secret → authority → injection → vocabulary → evidence → overgeneralisation → dedupe/cooldown); 11 statuses and 10 candidate kinds; 14-day rejection cooldown.
+* **Rules**: closed vocabulary (7 actions, 3 comparisons) that can only ADD requirements; disable / enable / revert / retire.
+* **Skills** (`docs/SKILLS.md`): validated graph templates; learned Skills from repeated successful workflows; matched by triggers, capabilities and track record.
+* **Capability gaps**: repeated vision fallbacks etc. become a recommendation (native → Skill → MCP), never an install.
+* **Self-improvement** (`docs/SELF_IMPROVEMENT.md`): levels 0–4, default Experiment; a change needs level 4 + HUD request + checkpoint + CLEAN tree and is an ordinary V0.12 task; a failed change is never promoted; the app default targets no repository.
+* **MCP registry** (`Sources/Jarvis/Capabilities/`, `docs/MCP_REGISTRY.md`): status machine without any pre-approval edge to ACTIVE; Seatbelt sandbox + sanitised environment + honest boundary; static inspection; benchmark; typed wrappers inside a registered envelope; drift / update / removal approvals; ownership-safe deletion; restart budget spent only by failures.
+* **Discovery** (`Research/MCPDiscovery.swift`): official MCP registry + GitHub (unauthenticated), real research across 3D/Blender, design, audio, animation and Unity.
+* **UI / conversation**: Learning and Capabilities screens, Settings → Adaptive learning, one optional Compact line (392×448), EN/TR typed and spoken intents sharing one path (a request can be created by voice, never approved).
+* **Schema** v13 (learning) and v14 (MCP registry).
+* **Honest limits**: the sandbox is not a VM (same user, `sandbox-exec` deprecated); only one real candidate (cochlea-mcp) was built and benchmarked; the Blender MCP exposes arbitrary-code execution and was not benchmarked or recommended; manual tests remain. See `docs/KNOWN_ISSUES.md` JARVIS-V14-1…8.
 
 ## V0.13 additions (IMPLEMENTED · AUTOMATED TESTED · REAL TESTED on this Mac with a real Unity editor, real providers and the real public web on disposable fixtures · real use MANUAL TEST REQUIRED)
 

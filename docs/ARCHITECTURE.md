@@ -258,3 +258,10 @@ Authority is unchanged: approvals are HUD buttons only; memory, artifacts, check
 ### V0.13.1 — closure and stability (no new layer)
 
 Same orchestrator, same experiment engine: the Input System ops extend `UnityDevOp` (+ the optional `Jarvis.Bridge.InputSystem` assembly in the bridge package); `animationPlayback` / `audioPlayback` are kinds of `ExperimentKind` (`TaskEngine+ExperimentPlayback.swift`); `Continuity/UnitySceneFacts.swift` is a read-only live-or-history scene view for the Project card; `App/StabilitySoak.swift` is a dev-only bounded soak (`--stability-soak N`). The requirement-to-guard matrix is `docs/GUARD_MATRIX.md`.
+
+## V0.14 — Adaptive learning, self-improvement & MCP/Skill registry (DEC-215…233; details `ADAPTIVE_LEARNING.md`, `SELF_IMPROVEMENT.md`, `MCP_REGISTRY.md`, `SKILLS.md`)
+
+* `Sources/Jarvis/Adaptive/` — `LearningModel`, `LearningGate` (one admission door), `SignalExtractor`, `PatternDetector`, `LearningService`, `RuleEngine`, `AdaptiveDecisions` (HUD-only approval, scope-hash bound), `SelfImprovement`, `AdaptiveIntent`/`AdaptiveAssistant` (typed + spoken share one path), view models.
+* `Sources/Jarvis/Capabilities/` — `MCPModel` (status machine, envelope), `MCPRegistry`, `MCPClient` (JSON-RPC over `ManagedProcess`), `MCPSandbox` (Seatbelt + sanitised env + honest boundary), `MCPInspector`, `MCPBenchmark`, `MCPStaging`, `SkillRegistry`. Discovery: `Research/MCPDiscovery.swift` (V0.9 stack).
+* Persistence v13 (learning) and v14 (MCP registry); UI: Learning and Capabilities Full HUD screens, Settings → Adaptive learning, one optional Compact line (392×448).
+* Hooks into existing systems are read-only requirements: planner (`learnedContext`, `applyLearnedRequirements`, Skill matcher), asset evaluation, bounded routing bias. No new orchestrator, no new approval source.

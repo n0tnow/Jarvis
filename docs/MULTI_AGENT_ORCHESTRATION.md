@@ -163,3 +163,6 @@ Role benchmark (suite `roles-v1`, 11 cases, one sample each — **do not over-ge
 * "Continue" is one `TaskEngine.submit` with a persisted constraint and bounds (30 min · 12 nodes · 2 revisions · 2 correction rounds · 2 experiments) — the same graph, roles, gates, review independence and artifacts as any task; no second orchestrator.
 * The Unity role contract gained the `experiment` step type and the operator capabilities (`editUnityAssets`, `captureUnityView`, `runExperiment`); research and computer nodes stay child tasks.
 * REAL TESTED: a real model planned a Unity operator graph (inspect → edit → compile → validate → inspect → validate, 35 s); an independent Review node rejected thinner evidence in earlier runs (JARVIS-V13-8).
+
+## V0.14 note
+V0.14 adds no orchestrator. A learned rule can add validation / review / experiment requirements to a plan, and a learned Skill can supply the starting template (`TaskEngine+Orchestration`: `learnedContext`, `applyLearnedRequirements`, Skill matcher); graph validation, role contracts, capabilities and approvals are unchanged. An approved self-improvement is an ordinary development graph (`docs/SELF_IMPROVEMENT.md`). Learned routing bias is bounded (|bias| ≤ 0.2).

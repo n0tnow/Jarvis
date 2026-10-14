@@ -57,6 +57,14 @@ final class MCPHarness {
 
 @Suite("MCP · classification, inspection, sandbox text")
 struct MCPPureTests {
+    @Test("discovery relevance matches whole words: ‘mcprep’ is not an MCP server, ‘audio MCP server’ is")
+    func discoveryRelevanceIsWholeWord() {
+        #expect(!MCPDiscovery.relevant("mcprep blender addon", to: ["mcp", "model context protocol"]))
+        #expect(MCPDiscovery.relevant("A Blender MCP server for scenes", to: ["mcp", "model context protocol"]))
+        #expect(MCPDiscovery.relevant("model context protocol tools for audio", to: ["mcp", "model context protocol"]))
+        #expect(!MCPDiscovery.relevant("audio synthesis library", to: ["mcp", "model context protocol"]))
+    }
+
     @Test("tool risk comes from names and parameters, never from the server's claims")
     func classifier() {
         func r(_ n: String, _ d: String = "", _ p: [String: String] = [:]) -> MCPToolRisk { MCPToolClassifier.risk(name: n, description: d, parameters: p) }

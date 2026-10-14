@@ -141,3 +141,6 @@ The vision rung is now **general visual grounding** (`docs/VISUAL_GROUNDING.md`)
 **The vision model is loaded before the picture is taken.** A cold local model needs ~5 s; a screenshot that waited for it was already older than the 6 s rule (`ComputerLimits.maxObservationAge`) and was refused as stale. `VisionProposing.prepare(label:)` loads the model first — only when the first eligible provider for the query is the local model (text labels the OCR can read never load it; never under memory pressure). The 6 s rule itself is unchanged.
 
 **Purchase words.** Rent / rental / cart / basket / pre-order / donate (and Turkish kirala / sepete / bağış) are consequence words alongside buy (BLOCKED, no approval path; DEC-211).
+
+## V0.14 note
+Computer Use is unchanged. Repeated vision-fallback sessions are signals for a capability-gap candidate (a recommendation, never an install). An MCP server that offers computer-control tools gets no authority from that: the GUI is still driven only by V0.11 tasks with their own approvals (`docs/MCP_REGISTRY.md`).

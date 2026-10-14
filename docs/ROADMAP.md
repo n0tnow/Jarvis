@@ -1,6 +1,6 @@
 # Roadmap
 
-V0.1–V0.13 have been built (V0.3 … V0.13 await manual test). Everything else is PLANNED — do not start a milestone without explicit user approval.
+V0.1–V0.14 have been built (V0.3 … V0.14 await manual test). Everything else is PLANNED — do not start a milestone without explicit user approval.
 
 | Version | Scope | Status |
 |---|---|---|
@@ -21,8 +21,8 @@ V0.1–V0.13 have been built (V0.3 … V0.13 await manual test). Everything else
 | V0.12 | **Advanced Multi-Agent Orchestration & Intelligent Routing**: JARVIS as orchestrator over a validated role graph (Analysis, Coding, Research, Unity, Computer, QA, Review), deterministic planning first, least-capability contracts, typed artifacts + fenced handoffs with trust labels, per-role routing reasons and benchmarks, risk-based review independence, bounded retry/escalation/revision, approval gates, graph-state status questions, cancel cascade and revalidating resume (`docs/MULTI_AGENT_ORCHESTRATION.md`, DEC-157…190) | READY FOR MANUAL TEST |
 | V0.13 | **Autonomous Project Operator & General Visual Grounding**: derived project continuity ("where are we", bounded "continue", checkpoints, drift/failed/interrupted handling) on the single V0.12 orchestrator; the typed Unity development operator (scene, prefab, material, lighting, animation, audio, camera, physics, UI, runtime, capture) with read-back verification and a bounded observe → act → inspect → correct loop; general visual grounding (on-device, perception only); disposable-environment experiments and asset suitability with fact classes. **IMPLEMENTED · AUTOMATED TESTED · REAL TESTED · MANUAL TEST REQUIRED.** | 
 | V0.13.1 | **Project Operator closure & stability**: Input System typed Unity operations, real animation / audio experiments on the same experiment engine, Scene Profile on the Project card, AX unsupported-answer cross-check (JARVIS-V13-7), vision pre-warm, guard matrix, bounded soak. Not V0.14: no self-improvement, persona or new capability family (DEC-213). | see PROJECT_STATE |
-| V0.14 | **Self-improvement** (PLANNED, not started): JARVIS proposes and tests changes to its own behaviour under the same authority rules. |
-| V0.15 | **Persona & whiteboard** (PLANNED, not started). |
+| V0.14 | **Adaptive learning, controlled self-improvement & MCP/Skill registry**: evidence-backed learning (signals → thresholds → one admission door → candidates → HUD-approved rules/workflows/skills), a closed non-executable rule vocabulary, capability-gap detection, self-improvement levels 0–4 (default Experiment; approved changes only as ordinary V0.12 tasks on a clean tree), an MCP registry with discovery, static inspection, a Seatbelt sandbox benchmark, permission envelopes, typed wrappers, health/drift/update/removal approvals, and Learning + Capabilities screens (`docs/ADAPTIVE_LEARNING.md`, `docs/SELF_IMPROVEMENT.md`, `docs/MCP_REGISTRY.md`, `docs/SKILLS.md`). | READY FOR MANUAL TEST |
+| V0.15 | **Presence, personality & visual teaching** (PLANNED, not started — needs explicit approval). |
 | V1.0 | **Integration / Stabilization / Real-World Validation / Final Voice & UX Polish**: final voice integration, human voice validation, wake-word tuning, latency tuning, human Computer Use validation, Xcode live validation, real Unity workflow validation, multi-hour game-development runs, UX polish, battery testing, crash soak, security audit, installer/signing/notarization, permission onboarding, release packaging (DEC-126, DEC-189) | PLANNED |
 
 *V0.8 (DEC-086):* named "Natural Voice & Presence" (earlier "Natural Voice Session"); the order of the later milestones is unchanged.

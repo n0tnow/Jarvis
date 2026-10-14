@@ -101,7 +101,7 @@ final class MCPDiscovery: @unchecked Sendable {
                 guard let url = item["html_url"]?.string, seenRepos.insert(url.lowercased()).inserted, let full = item["full_name"]?.string else { continue }
                 let topics = (item["topics"]?.array ?? []).compactMap(\.string)
                 let blob = full + " " + (item["description"]?.string ?? "") + " " + topics.joined(separator: " ")
-                guard MemoryText.fold(blob).contains("mcp"), Self.relevant(blob, to: terms) else { continue }
+                guard Self.relevant(blob, to: ["mcp", "model context protocol"]), Self.relevant(blob, to: terms) else { continue }          // “mcp” as a WORD (a substring also matched “mcprep”)
                 records.append(MCPDiscoveryRecord(name: full, domain: domain.label, sourceURL: url, repository: url, publisher: item.at("owner.login")?.string, license: item.at("license.spdx_id")?.string,
                                                   version: nil, lastRelease: nil, lastPush: Self.date(item["pushed_at"]?.string), stars: Int(item["stargazers_count"]?.double ?? 0), installMethod: nil, runtime: item["language"]?.string.map { $0.lowercased() },
                                                   networkRequirement: "unknown", credentialRequirement: "unknown", filesystemRequirement: "unknown", processRequirement: "unknown", declaredTools: [], declaredResources: [], declaredPrompts: [],

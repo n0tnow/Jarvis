@@ -11,7 +11,7 @@ import Foundation
 enum McpLiveTest {
     static func run(context: AppContext, sections: Set<String>) async {
         var passes = 0, failures = 0, skips = 0
-        func wants(_ s: String) -> Bool { sections.isEmpty ? s != "candidate" : sections.contains(s) }
+        func wants(_ s: String) -> Bool { sections.isEmpty ? !["candidate", "ui"].contains(s) : sections.contains(s) }          // candidate (builds a real project) and ui (real Accessibility clicks, needs an empty registry) are explicit sections
         func check(_ tag: String, _ name: String, _ ok: Bool, _ detail: String = "") { print("\(ok ? "PASS" : "FAIL")  [\(tag)] \(name)\(detail.isEmpty ? "" : " — \(detail)")"); if ok { passes += 1 } else { failures += 1 }; fflush(stdout) }
         func skip(_ name: String, _ why: String) { print("SKIP  \(name) — \(why)"); skips += 1; fflush(stdout) }
         func info(_ s: String) { print("INFO  \(s)"); fflush(stdout) }
@@ -191,6 +191,7 @@ enum McpLiveTest {
             // restart: the registry is data; processes never survive
             let reopened = MCPRegistry(repository: context.repository, decisions: decisions, root: mcp.root)
             check("ENGINE", "RESTART: a registry rebuilt over the same database sees the same rows, and no server process is running", reopened.server("jarvis-fixture")?.status == .removed && reopened.runningServerIDs.isEmpty && reopened.reconcileAfterLaunch() == 0)
+            mcp.registerDecisionDomains()          // the throw-away registry above took the decision hooks (weakly); the app has exactly one registry
             check("REAL", "No fixture process, no sandbox folder and no staging folder is left", await fixtureProcesses() == before && sandboxDirs() == 0)
             check("POLICY", "Every status change and decision above is in the audit trail with who decided it", ((try? context.repository?.learningAudit(limit: 300)) ?? []).contains { $0.kind == "approved" && $0.by == "test" } && ((try? context.repository?.learningAudit(limit: 300)) ?? []).contains { $0.kind == "mcp-removed" })
         }
@@ -204,7 +205,9 @@ enum McpLiveTest {
                 mcp.addCandidate(r); mcp.inspect(id, sourceDirectory: nil)
                 _ = await MCPBenchmarkRunner.run(registry: mcp, serverID: id, spec: .fixture, allowNetwork: false, useSeatbelt: true)
                 if var s = mcp.server(id) { s.status = .recommended; try? context.repository?.save(s) }
-                guard let q = mcp.requestInstall(id, allowedProjects: ["live-fixture"]), case .executed = await approve(q.id) else { return false }
+                guard let q = mcp.requestInstall(id, allowedProjects: ["live-fixture"]) else { info("register \(id): no install request (status \(mcp.server(id)?.status.rawValue ?? "none"))"); return false }
+                let outcome = await approve(q.id)
+                guard case .executed = outcome else { info("register \(id): approval did not execute — \(outcome)"); return false }
                 return mcp.server(id)?.status == .active
             }
             // injection

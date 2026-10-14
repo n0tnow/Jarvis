@@ -23,6 +23,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             : (options.researchLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.researchChild != nil ? "live-test-research-child" : "live-test-research", isDirectory: true)
             : (options.voiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.voiceQuitChild ? "live-test-voice-child" : "live-test-voice", isDirectory: true)
             : (options.naturalVoiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.naturalChild ? "live-test-natural-child" : "live-test-natural", isDirectory: true) : nil))))))))))
+        // V0.14: the adaptive and MCP live tests judge what is learned from THEIR OWN generated history, so they start from an empty isolated directory every time
+        // (a second run on top of the first would find a 24-run workflow and fail for the wrong reason). Only these two JARVIS-created test directories are ever removed.
+        if let liveData, ["live-test-adaptive", "live-test-mcp"].contains(liveData.lastPathComponent), liveData.deletingLastPathComponent().standardizedFileURL == JarvisPaths.standard().root.standardizedFileURL {
+            try? FileManager.default.removeItem(at: liveData)
+        }
         // The natural-voice live test runs the real stack in a closed acoustic loop (scripted microphone + simulated speaker); nothing else ever gets a rig.
         let rig: VoiceTestRig? = options.naturalVoiceLiveTest ? VoiceTestRig() : nil
         context = AppContext(stubIntelligence: stubbed, dataDirectory: liveData, voiceRig: rig)
