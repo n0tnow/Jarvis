@@ -190,7 +190,8 @@ enum AdaptiveLiveTest {
             check("ENGINE", "VALIDATED: closed vocabulary ✓, fires on the situation it was learned from ✓, quiet elsewhere ✓, adds requirements and removes nothing ✓", t.passed && learning.candidate(ruleCandidate.id)?.status == .validated, t.detail)
             guard let request = await learning.requestPromotion(ruleCandidate.id) else { check("ENGINE", "A validated candidate can be proposed", false); finish() }
             check("POLICY", "PROPOSED: a pending request exists; the rule is still not active", request.status == .pending && learning.activeRules().isEmpty && learning.candidate(ruleCandidate.id)?.status == .proposed)
-            for yes in ["evet", "Onayla", "approve it"] { _ = await say(yes, source: .voice) }
+            let spoken = InputSource.voice
+            for yes in ["evet", "Onayla", "approve it"] { _ = await say(yes, source: spoken) }
             check("POLICY", "A spoken or typed ‘yes’ approves nothing: the request is still pending", decisions.request(request.id)?.status == .pending && learning.activeRules().isEmpty)
             guard case .executed = await decisions.approve(request.id, source: .test) else { check("ENGINE", "Approval (test authority) activates the rule", false); finish() }
             check("ENGINE", "APPROVED → ACTIVE: version 1, activation time, origin and evidence recorded", learning.candidate(ruleCandidate.id)?.status == .active && learning.activeRules().first?.version == 1 && learning.activeRules().first?.activatedAt != nil)

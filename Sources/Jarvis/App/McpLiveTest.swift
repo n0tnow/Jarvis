@@ -168,7 +168,7 @@ enum McpLiveTest {
             try? FileManager.default.copyItem(atPath: exe, toPath: copy.path)
             var moved = mcp.server("jarvis-fixture")!; moved.launch.executable = copy.path; moved.executableHash = MCPRegistry.fileHash(copy.path); try? context.repository?.save(moved)
             check("POLICY", "DRIFT: an unchanged executable is trusted", !mcp.checkDrift("jarvis-fixture"))
-            if let h = try? FileHandle(forWritingTo: copy) { _ = try? h.seekToEnd(); try? h.write(contentsOf: Data("changed".utf8)); try? h.close() }
+            if var bytes = FileManager.default.contents(atPath: copy.path) { bytes.append(Data("changed".utf8)); try? bytes.write(to: copy) }
             check("POLICY", "DRIFT: a changed executable ⇒ REVALIDATION REQUIRED, not silently active", mcp.checkDrift("jarvis-fixture") && mcp.server("jarvis-fixture")?.revalidationRequired == true && mcp.server("jarvis-fixture")?.status == .degraded)
             if case .refused(let why) = await mcp.invoke("echoText", ["text": "x"], context: ctx) { check("POLICY", "A server that needs revalidation is not used", why.contains("revalidated")) } else { check("POLICY", "A server that needs revalidation is not used", false) }
             try? FileManager.default.removeItem(at: copy)
@@ -345,7 +345,7 @@ enum McpLiveTest {
             info("static scan: \(inspection.filesScanned) file(s), \(inspection.findings.count) finding(s), \(inspection.dependencyCount) dependencies listed (not scanned); network hosts named in source: \(inspection.hosts.prefix(8).joined(separator: ", ")); install scripts: \(inspection.installScripts.isEmpty ? "none" : inspection.installScripts.joined(separator: "; "))")
             for f in inspection.findings.prefix(12) { info("   [\(f.severity.rawValue)] \(f.category): \(f.detail) @ \(f.location ?? "?")") }
             check("REAL", "The source was inspected before anything was run (static evidence, not proof of safety)", inspection.filesScanned > 10 && !inspection.disclaimer.isEmpty)
-            let hasRoot = ((try? String(contentsOf: stage.source.appendingPathComponent("docs/mcp.md"), encoding: .utf8)) ?? "").contains("--root")
+            let hasRoot = (FileManager.default.contents(atPath: stage.source.appendingPathComponent("docs/mcp.md").path).flatMap { String(data: $0, encoding: .utf8) } ?? "").contains("--root")
             check("REAL", "The server documents filesystem confinement (--root); JARVIS will start it with --root set to the sandbox work folder", hasRoot)
             guard let tcBin = MCPStaging.rustToolchainBin() else { skip("Build in the sandbox", "no Rust toolchain installed"); MCPStaging.remove(stage, under: mcp.sandboxDirectory); finish() }
             stage = await MCPStaging.buildRust(stage, package: "cochlea-mcp", binary: "cochlea-mcp", toolchainBin: tcBin)
@@ -353,7 +353,7 @@ enum McpLiveTest {
             check("REAL", "The candidate was built INSIDE the sandbox: dependencies fetched with the network allowed (nothing run), then compiled offline with the network denied", stage.steps.count == 2 && stage.steps.allSatisfy(\.ok) && stage.binary != nil)
             guard let binary = stage.binary else { MCPStaging.remove(stage, under: mcp.sandboxDirectory); finish() }
             // the score the benchmark renders (from the candidate's own examples, copied into the sandbox work folder — never into a project)
-            let score = (try? String(contentsOf: stage.source.appendingPathComponent("examples/scores/first_light.ron"), encoding: .utf8)) ?? ""
+            let score = FileManager.default.contents(atPath: stage.source.appendingPathComponent("examples/scores/first_light.ron").path).flatMap { String(data: $0, encoding: .utf8) } ?? ""
             check("REAL", "The candidate's own example score is available for a harmless render", !score.isEmpty && score.utf8.count < 60_000)
             var server = AdaptiveAssistant.candidateRecord(from: record)
             server.id = "cochlea-mcp"; server.name = "cochlea (audio engine MCP)"; server.version = "0.7.x"
