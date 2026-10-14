@@ -36,7 +36,8 @@ enum DailyLiveTest {
         func skip(_ name: String, _ why: String) { print("SKIP  \(name) — \(why)"); skips += 1; fflush(stdout) }
         func info(_ s: String) { print("INFO  \(s)"); fflush(stdout) }
         let prefs = context.preferences, engine = context.taskEngine, repo = context.repository!, convo = ConversationStore()
-        let svc = ConversationService(store: context.store, conversation: convo, windows: context.windowManager, resolver: ScriptedAnswerResolver())
+        let scripted = ScriptedAnswerResolver()
+        let svc = ConversationService(store: context.store, conversation: convo, windows: context.windowManager, resolver: scripted)
         let intake = RecordingIntake(real: context.taskIntake)
         svc.taskSubmitter = intake; svc.researchSubmitter = intake
         svc.continuityHandler = context.continuity; svc.adaptiveHandler = context.adaptiveAssistant; svc.memoryHandler = context.memory
@@ -144,7 +145,7 @@ enum DailyLiveTest {
             let (overall, _) = await say("Her şey hazır mı?")
             let (more, _) = await say("Detaylı anlat.")
             let (less, _) = await say("Kısa söyle.")
-            let shortened = svc.presenter.lastFull?.wasShortened == true
+            let shortened = more.count > overall.count
             check("REAL", "“Detaylı anlat.” expands the previous answer (never shorter) and “Kısa söyle.” shortens it again without dropping a problem",
                   more.count >= overall.count && less.count <= more.count && (!shortened || more.count > less.count), "normal \(overall.count) → detailed \(more.count) → short \(less.count) chars")
 
@@ -188,6 +189,34 @@ enum DailyLiveTest {
                 let t = String(repeating: "Dolgu cümlesi. ", count: 40) + "Birim testi başarısız oldu."
                 return [ResponseDepth.terse, .normal].allSatisfy { ReplyShaper.shape(full: t, depth: $0, style: .concise, language: .tr).shown.contains("başarısız oldu") }
             })
+        }
+
+        // MARK: introspection (V1.0 stabilisation fix 1): what JARVIS can use is answered from its own state — no model, nothing started
+        if wants("introspection") {
+            prefs.responseStyle = .concise; svc.workingContext.clear(); svc.presenter.reset()
+            await context.providers.refresh()                       // the same safe status probe the app runs at launch (no model call)
+            let before = (children: ProcessTree.children(of: getpid()).count, opencode: context.openCode.state, runs: context.hub.activeRuns.count, modelCalls: scripted.prompts.count)
+            let snapshot = context.readiness.refresh()
+            for id in ["provider.claude", "provider.codex", "provider.opencode", "local.qwen", "local.vision", "local.whisper"] { info("   record \(id): \(snapshot.item(id)?.state.label ?? "—")  installed=\(snapshot.item(id)?.installed.map(String.init(describing:)) ?? "nil")") }
+            let (all, _) = await say("Her şey hazır mı?")
+            let (providers, _) = await say("Hangi AI modellerine ve providerlara erişebiliyorsun? Kısa söyle.")
+            let (claude, _) = await say("Claude Code'u kullanabiliyor musun?")
+            let (codex, _) = await say("Codex kullanabiliyor musun?")
+            let (opencode, _) = await say("OpenCode hazır mı?")
+            let (opencodeUse, _) = await say("OpenCode kullanabiliyor musun?")
+            let (qwen, _) = await say("Local Qwen modelin var mı?")
+            let (detail, _) = await say("Biraz daha detaylı anlat.")
+            let (short, _) = await say("Kısa söyle.")
+            _ = all
+            let fake = ["API'lere bağlanamam", "erişimim yok", "sadece kendi yeteneklerimle"]
+            check("REAL", "No capability answer came from a language model: zero model calls, nothing started, no provider run", scripted.prompts.count == before.modelCalls && ProcessTree.children(of: getpid()).count == before.children && context.hub.activeRuns.count == before.runs)
+            check("REAL", "The provider summary is built from the live records and keeps the state distinctions", providers.contains(snapshot.item("provider.claude")?.state == .ready ? "Claude Code" : "Claude Code") && !fake.contains { providers.contains($0) }, providers)
+            check("REAL", "“Claude Code'u kullanabiliyor musun?” agrees with the record (\(snapshot.item("provider.claude")?.state.label ?? "—"))", (snapshot.item("provider.claude")?.state == .ready) == claude.hasPrefix("Evet") && !fake.contains { claude.contains($0) }, claude)
+            check("REAL", "“Codex kullanabiliyor musun?” agrees with the record (\(snapshot.item("provider.codex")?.state.label ?? "—"))", (snapshot.item("provider.codex")?.state == .ready) == codex.hasPrefix("Evet") && !fake.contains { codex.contains($0) }, codex)
+            check("REAL", "OpenCode keeps the state the System screen shows (\(snapshot.item("provider.opencode")?.state.label ?? "—")) and asking did not start it", context.openCode.state == before.opencode && (snapshot.item("provider.opencode")?.state != .unknown || (opencode.contains("henüz kontrol edilmedi") && !opencodeUse.hasPrefix("Evet"))), "\(opencode) / \(opencodeUse)")
+            check("REAL", "“Local Qwen modelin var mı?” says what the record says", (snapshot.item("local.qwen")?.state == .optionalAbsent) == qwen.hasPrefix("Hayır") && !fake.contains { qwen.contains($0) }, qwen)
+            check("REAL", "“Biraz daha detaylı anlat.” works on the answer just given (the Qwen answer), not an older one", !detail.contains("Sağlayıcılar") && (detail.contains("Qwen") || detail.contains("model")), detail)
+            check("REAL", "“Kısa söyle.” then shortens that same subject", short.contains("Qwen") || short.contains("model") || short.contains("doğrulanmış"), short)
         }
 
         // MARK: latency

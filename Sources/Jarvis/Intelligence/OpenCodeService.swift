@@ -53,6 +53,12 @@ final class OpenCodeService {
     }
 
     /// Re-reads provider data. `remote: true` asks OpenCode to refresh its models.dev snapshot first (≈2 s).
+    /// Whether an `opencode` executable exists on disk. File-existence checks only: no process is started and the background service is left alone (used by readiness, which must not start anything).
+    var executableFoundOnDisk: Bool {
+        let override = preferences?.openCodePathOverride
+        return !locator.candidates(for: .openCode, override: (override?.isEmpty ?? true) ? nil : override).isEmpty
+    }
+
     func refresh(remote: Bool = true) async {
         guard !isRefreshing else { return }
         if isStubbed { state = .notInstalled; return }

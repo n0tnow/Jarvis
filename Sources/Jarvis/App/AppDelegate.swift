@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController!
     private(set) var hotkeys: GlobalHotkeyService!
     private let options = LaunchOptions()
+    private static var lastMonitorLine = ""
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // V0.15: opening JARVIS again (Finder, Spotlight, Dock, login) shows the running copy instead of starting a second menu-bar assistant. Developer / live-test launches (any --flag) are exempt.
@@ -50,19 +51,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let service = hotkeys!
         // One sampling service for the HUD chords AND Push-to-Talk (V0.7): same permission-free modifier polling, no second hotkey system.
         // It runs when either feature is on; the microphone is only ever touched by an explicit, held Push-to-Talk.
+        context.hotkeyDiagnostics = { [weak service] in service?.diagnostics ?? GlobalHotkeyService.TalkDiagnostics() }
         let voice = context.voice, stubbedRun = context.intelligenceIsStubbed, forceVoice = options.voiceLiveTest && !options.voiceQuitChild
         let applyShortcuts: @MainActor () -> Void = {
-            let talk = !stubbedRun && (prefs.voiceEnabled || forceVoice) && prefs.voicePushToTalk
+            // The handler is attached whenever Push-to-Talk is switched on in Settings, EVEN WHILE Voice itself is off: the hold is then recognised and answered with a visible
+            // "Voice is off" hint instead of being silently ignored (V1.0 stabilisation: the installed app ships with Voice OFF). The microphone is only ever opened when Voice is ON.
+            let attach = !stubbedRun && prefs.voicePushToTalk
             service.chordsEnabled = prefs.globalShortcutsEnabled
-            let handler: @MainActor (PushToTalkMachine.Action) -> Void = { action in
+            let handler: @MainActor (PushToTalkMachine.Action) -> Void = { [weak self] action in
+                let voiceOn = prefs.voiceEnabled || forceVoice
+                // Bounded Push-to-Talk diagnostics (state transitions only: no other key, no text, no audio).
                 switch action {
-                case .press: voice.pushToTalkPressed()
-                case .release(let interrupted): voice.pushToTalkReleased(interrupted: interrupted)
+                case .press:
+                    if voiceOn {
+                        self?.context.store.log("Push-to-Talk: hold reached — voice input requested", kind: .info)
+                        voice.pushToTalkPressed()
+                        self?.context.store.log("Push-to-Talk: voice state is now \(voice.state.label.lowercased())", kind: .info)
+                    } else { self?.context.pushToTalkWhileVoiceIsOff() }
+                case .release(let interrupted):
+                    if voiceOn { self?.context.store.log("Push-to-Talk: released\(interrupted ? " (interrupted — audio dropped)" : "")", kind: .info); voice.pushToTalkReleased(interrupted: interrupted) }
                 }
             }
-            service.performTalk = talk ? handler : nil
+            service.performTalk = attach ? handler : nil
+            let monitorLine = attach ? "Push-to-Talk key monitor active (Voice is \(prefs.voiceEnabled ? "on" : "OFF — a hold shows a hint only"))" : "Push-to-Talk key monitor off"
+            if monitorLine != Self.lastMonitorLine { Self.lastMonitorLine = monitorLine; if !stubbedRun { ctx.store.log(monitorLine, kind: .info) } }
             if !prefs.voiceEnabled { voice.cancelAll(reason: "turned off") }
-            if prefs.globalShortcutsEnabled || talk { service.start() } else { service.stop() }
+            if prefs.globalShortcutsEnabled || attach { service.start() } else { service.stop() }
         }
         observeContinuously(track: { _ = prefs.globalShortcutsEnabled; _ = prefs.voiceEnabled; _ = prefs.voicePushToTalk }, onChange: { applyShortcuts() })
         applyShortcuts()

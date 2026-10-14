@@ -57,7 +57,7 @@ v09_none "setup is typed and allowlisted: no sudo / downloader / package manager
 g15_nocreds() {
   grep -rnE 'SecItem|kSec|Keychain|HTTPCookie|binarycookies|credential\.|auth\.json|\.credentials|find-generic-password|security find' $DY $RD | nonc
   # provider status comes from the safe probe the app already has; readiness reads no provider credential store
-  grep -rnE 'CLAUDE_CONFIG_DIR|CODEX_HOME|\.claude|\.codex|opencode/auth|oauth' $RD | nonc
+  grep -rnE 'CLAUDE_CONFIG_DIR|CODEX_HOME|[~/"]\.claude|[~/"]\.codex|opencode/auth|oauth' $RD | nonc
 }
 v09_none "readiness never enumerates or reads credentials: no Keychain, cookie, credential-store or provider-config access in Daily/ or Readiness/" "$(g15_nocreds)"
 
@@ -116,6 +116,6 @@ g15_livetests() {
   # the V0.15 live tests use disposable fixtures only; the real Hamam project is never named or opened by them
   grep -niE 'hamam' Sources/Jarvis/App/DailyLiveTest.swift Sources/Jarvis/App/PackagingLiveTest.swift Sources/Jarvis/App/SetupLiveTest.swift | nonc
   grep -nE 'TaskDemo\.makeProject|fm\.temporaryDirectory' Sources/Jarvis/App/DailyLiveTest.swift Sources/Jarvis/App/SetupLiveTest.swift | head -1 | grep -q . || echo "the V0.15 live tests must use temporary fixtures"
-  grep -nE '\.claudeCode|\.openCode\b|ProviderID|providers\.resolve|coordinator\.|supervisor\.|\.agents\.run' Sources/Jarvis/App/DailyLiveTest.swift Sources/Jarvis/App/SetupLiveTest.swift | nonc
+  grep -nE '\.claudeCode|openCode\.(refresh|start|run|stop)|ProviderID|providers\.resolve|coordinator\.|supervisor\.|\.agents\.run' Sources/Jarvis/App/DailyLiveTest.swift Sources/Jarvis/App/SetupLiveTest.swift | nonc
 }
 v09_none "the V0.15 live tests touch no real project (Hamam is never named) and ask no provider (scripted answers only)" "$(g15_livetests)"

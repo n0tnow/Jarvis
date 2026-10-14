@@ -58,7 +58,7 @@ struct DailyStructuralTests {
             let n = a.rawValue.lowercased()
             for bad in ["url", "command", "shell", "script", "path", "text", "claude", "codex", "opencode", "mcp", "brew", "npm", "pip", "download", "paid", "api", "subscription", "purchase"] { #expect(!n.contains(bad), "\(a) mentions \(bad)") }
         }
-        #expect(SetupAction.allCases.count == 15)
+        #expect(SetupAction.allCases.count == 16)
     }
 
     @Test func theWorkingContextIsEphemeralAndBounded() {

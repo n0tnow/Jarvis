@@ -735,3 +735,15 @@ Description: "Select Existing Model Folder" stores the path; the local runtime c
 ### JARVIS-V15-10 — Provider authentication is only what the safe probe can tell
 Status: By design
 Description: READY for Claude Code / Codex means the existing status probe succeeded; it does not prove a subscription limit has not been reached or that the account can run a particular model. JARVIS never reads credentials.
+
+### JARVIS-V15-11 — An ad-hoc signed app loses its macOS privacy grants on every reinstall
+Status: Open (by design of ad-hoc signing)
+Description: macOS ties Microphone / Accessibility / Screen Recording to the exact code signature. An ad-hoc signature is the hash of the build, so each new `JARVIS.app` is a new app to macOS and asks again (verified: after reinstalling, the same bundle id read PERMISSION NEEDED / NOT SET UP). Re-grant on first use (the first Push-to-Talk hold shows the microphone prompt; Accessibility via “Allow Accessibility”). A stable signature (a Developer ID, or a self-signed code-signing certificate you create in Keychain Access) would keep the grants across updates; JARVIS does not create one on its own.
+
+### JARVIS-V15-12 — Voice is OFF by default
+Status: By design (made visible in V1.0 stabilisation fix 1)
+Description: the installed app starts with Voice off, so holding the right ⌥ key does nothing audible. JARVIS now says so (hint after the hold; Readiness “Voice input · Push-to-Talk (hold right ⌥): OFF” with a Turn On Voice button; “Her şey hazır mı?” mentions it). Switching Voice on is always your click.
+
+### JARVIS-V15-13 — A capability question phrased outside the recognised grammar still reaches the conversation model
+Status: Open
+Description: the introspection grammar is deliberately strict (it must not swallow real requests such as “Can you use Claude Code to fix the bug?”). An unusual phrasing of a capability question falls through to the model, which knows nothing about this installation. Report such phrasings and they are added as tests.

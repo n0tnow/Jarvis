@@ -56,7 +56,7 @@ struct ReadinessProbes {
     var persistenceError: () -> String? = { nil }
     var activeTasks: () -> Int = { 0 }
     var providers: () -> [ProviderProbeResult] = { [] }
-    var openCode: () -> (state: ProviderState, freeModels: Int) = { (.unknown, 0) }
+    var openCode: () -> (state: ProviderState, freeModels: Int, found: Bool) = { (.unknown, 0, false) }
     var localQwen: () -> LocalModelProbe = { LocalModelProbe(kind: .notConfigured, modelPath: "") }
     var vision: () -> (installed: Bool, problem: String?) = { (false, nil) }
     var memoryEmbedding: () -> (installed: Bool, problem: String?) = { (false, nil) }
@@ -67,6 +67,8 @@ struct ReadinessProbes {
     var wakeWord: () -> (installed: Bool, enabled: Bool, detail: String) = { (false, false, "") }
     var tts: () -> [(name: String, available: TTSAvailability)] = { [] }
     var voiceEnabled: () -> Bool = { false }
+    /// Voice and Push-to-Talk as the user switched them, and whether the key monitor is running with a handler attached.
+    var pushToTalk: () -> (voiceOn: Bool, pttOn: Bool, monitorRunning: Bool, handlerAttached: Bool) = { (false, true, false, false) }
     var microphone: () -> PermissionStatus = { .notDetermined }
     var accessibility: () -> PermissionStatus = { .notDetermined }
     var screenRecording: () -> PermissionStatus = { .notDetermined }
@@ -104,8 +106,8 @@ final class ReadinessService {
     static func build(_ p: ReadinessProbes) -> ReadinessSnapshot {
         let now = p.now()
         var items: [ReadinessItem] = []
-        func add(_ id: String, _ c: ReadinessCategory, _ name: String, _ state: ReadinessState, _ detail: String = "", required: Bool = false, action: SetupAction? = nil) {
-            items.append(ReadinessItem(id: id, category: c, name: name, state: state, detail: detail, required: required, action: action, checkedAt: now))
+        func add(_ id: String, _ c: ReadinessCategory, _ name: String, _ state: ReadinessState, _ detail: String = "", required: Bool = false, action: SetupAction? = nil, installed: Bool? = nil) {
+            items.append(ReadinessItem(id: id, category: c, name: name, state: state, detail: detail, required: required, action: action, checkedAt: now, installed: installed))
         }
 
         // Core
@@ -122,20 +124,20 @@ final class ReadinessService {
             for r in p.providers() {
                 let id = "provider." + r.id
                 switch r.state {
-                case .ready, .running: add(id, .intelligence, r.name, .ready, [r.version.map { "version \($0)" }, "checked with a safe status command — no model call"].compactMap { $0 }.joined(separator: " · "))
-                case .notInstalled: add(id, .intelligence, r.name, .notInstalled, "No executable was found in the usual places.")
-                case .authenticationRequired: add(id, .intelligence, r.name, .signInRequired, r.loginHint.map { "Sign in with `\($0)` in Terminal, then recheck." } ?? "Sign in, then recheck.", action: .recheck)
+                case .ready, .running: add(id, .intelligence, r.name, .ready, [r.version.map { "version \($0)" }, "checked with a safe status command — no model call"].compactMap { $0 }.joined(separator: " · "), installed: true)
+                case .notInstalled: add(id, .intelligence, r.name, .notInstalled, "No executable was found in the usual places.", installed: false)
+                case .authenticationRequired: add(id, .intelligence, r.name, .signInRequired, r.loginHint.map { "Sign in with `\($0)` in Terminal, then recheck." } ?? "Sign in, then recheck.", action: .recheck, installed: true)
                 case .rateLimited: add(id, .intelligence, r.name, .degraded("usage limit reached for now"), "Installed and signed in; it is waiting for its limit to reset.")
-                case .unknown: add(id, .intelligence, r.name, r.path == nil ? .unknown : .available, r.path == nil ? "" : "Found at \(r.path ?? ""); not checked yet.", action: .recheck)
+                case .unknown: add(id, .intelligence, r.name, r.path == nil ? .unknown : .available, r.path == nil ? "" : "Found at \(r.path ?? ""); not checked yet.", action: .recheck, installed: r.path != nil ? true : nil)
                 case .unavailable(let why), .failed(let why): add(id, .intelligence, r.name, .unavailable(why), "Installed, but the safe status check did not succeed.", action: .recheck)
                 }
             }
             let oc = p.openCode()
             switch oc.state {
-            case .ready, .running: add("provider.opencode", .intelligence, "OpenCode", .ready, "\(oc.freeModels) model(s) with verified-free price data")
-            case .notInstalled: add("provider.opencode", .intelligence, "OpenCode", .notInstalled)
-            case .unknown: add("provider.opencode", .intelligence, "OpenCode", .unknown, "Read lazily — it may start OpenCode's background service, so it is only checked when needed.")
-            default: add("provider.opencode", .intelligence, "OpenCode", .unavailable(oc.state.label.lowercased()))
+            case .ready, .running: add("provider.opencode", .intelligence, "OpenCode", .ready, "\(oc.freeModels) model(s) with verified-free price data", installed: true)
+            case .notInstalled: add("provider.opencode", .intelligence, "OpenCode", .notInstalled, installed: false)
+            case .unknown: add("provider.opencode", .intelligence, "OpenCode", .unknown, oc.found ? "Found on disk; not checked yet. Checking may start OpenCode's background service, so it happens only when you press Recheck or a task needs it." : "Not checked yet. Checking may start OpenCode's background service, so it happens only when you press Recheck or a task needs it.", installed: oc.found ? true : nil)
+            default: add("provider.opencode", .intelligence, "OpenCode", .unavailable(oc.state.label.lowercased()), installed: oc.found ? true : nil)
             }
             add("provider.paid", .intelligence, "Paid API", .notRunning, "Not used and not possible: a Claude or ChatGPT sign-in is a subscription, never permission to use a metered API.")
         }
@@ -161,9 +163,20 @@ final class ReadinessService {
         add("local.embedding", .localAI, "Memory search helper", e.installed ? .available : .optionalAbsent, e.installed ? "on demand, offline" : (e.problem ?? "Not installed. Memory still works with keyword search."), action: e.installed ? nil : .installMemoryHelper)
 
         // Voice
+        // Push-to-Talk is a SWITCH the user flips, not a permission: every voice dependency can be READY while Voice is OFF and the hold of the right ⌥ key does nothing. Say so first.
+        let ptt = p.pushToTalk()
+        if !ptt.voiceOn {
+            add("voice.input", .voice, "Voice input · Push-to-Talk (hold right ⌥)", .off, "Voice is switched OFF in Settings, so holding the right ⌥ key does nothing. Turn it on to talk to JARVIS; the microphone opens only while you hold the key.", action: .turnOnVoice)
+        } else if !ptt.pttOn {
+            add("voice.input", .voice, "Voice input · Push-to-Talk (hold right ⌥)", .off, "Voice is on but Push-to-Talk is switched off in Settings → Voice.", action: .turnOnVoice)
+        } else if !ptt.monitorRunning || !ptt.handlerAttached {
+            add("voice.input", .voice, "Voice input · Push-to-Talk (hold right ⌥)", .degraded("the key monitor is not running"), "Voice is on, but JARVIS is not watching the right ⌥ key. Switching Voice off and on again in Settings restarts it.", action: .recheck)
+        } else {
+            add("voice.input", .voice, "Voice input · Push-to-Talk (hold right ⌥)", .ready, "On. Hold the right ⌥ key for a moment, speak, release. The key is read without any extra macOS permission.")
+        }
         let mic = p.microphone()
-        add("voice.mic", .voice, "Microphone", mic == .granted ? .ready : (mic == .notDetermined ? .optionalAbsent : .permissionNeeded),
-            mic == .granted ? "Allowed. It is open only while you hold Push-to-Talk (or when wake mode is on)." : (mic == .notDetermined ? "Not asked yet. macOS asks the first time you use voice." : "Not allowed — voice input is unavailable; typing is unaffected."),
+        add("voice.mic", .voice, "Microphone permission", mic == .granted ? .ready : (mic == .notDetermined ? .optionalAbsent : .permissionNeeded),
+            mic == .granted ? "Allowed (the permission only — it does not mean Push-to-Talk is on). The microphone is open only while you hold the key (or when wake mode is on)." : (mic == .notDetermined ? "Not asked yet. macOS asks the first time you use voice." : "Not allowed — voice input is unavailable; typing is unaffected."),
             action: mic == .notDetermined ? .allowMicrophone : (mic == .granted ? nil : .openMicrophoneSettings))
         let apple = p.appleSTT()
         switch apple {

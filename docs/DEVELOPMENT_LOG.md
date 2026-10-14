@@ -538,3 +538,18 @@ See `PROJECT_STATE.md` status.
 
 ### Not done / next
 Wait for the manual test (README 1153–1234). V1.0 is not started.
+
+## 2026-10-14 — V1.0 stabilisation fix 1 (installed-app findings)
+
+### Root causes
+* **Bug 1**: `ReadinessIntentParser` only accepted “ready / installed / var mı” forms; “erişebiliyorsun / kullanabiliyorsun” fell through `ConversationService` to the conversation model, which answered from its own identity (“I cannot access other AI models”). Only the strict forms were deterministic.
+* **Bug 2**: `ResponsePresenter.lastFull` was a single global slot written only when a deterministic answer was shaped; a model's or a command's answer never replaced it, so “detaylı anlat” re-rendered the last deterministic answer.
+* **Bug 3**: not an input-path bug. `Preferences.voiceEnabled` defaults to false and the installed app had no `prefs.voice.*` keys: `AppDelegate` attached the PTT handler only when Voice was on, so the right ⌥ hold was sampled and dropped; Readiness listed every voice dependency READY and no row said Voice was OFF.
+
+### Fixes
+* Introspection grammar + `providers / canUse / tools / capabilities` replies from the records (no model, nothing started; `ReadinessItem.installed`, `OpenCodeService.executableFoundOnDisk`); Turkish detection for diacritic-free capability words.
+* Presenter keyed by displayed text; `rerender(previous:)` reads the immediately preceding JARVIS message; no stale answer, no invented detail.
+* PTT handler attached whenever PTT is on; hint when Voice is off; Readiness “Voice input” row + Turn On Voice; “Microphone permission” wording; bounded PTT diagnostics (counters; activity log of state transitions).
+
+### Evidence
+Synthetic right ⌥ HID events (`CGEvent` flagsChanged, keyCode 61) change the session flag state exactly like a key (raw 0x40) and reach the installed app: Voice OFF → hint logged; Voice ON (non-persistent `-prefs.voice.enabled '<true/>'` override) → “hold reached — voice input requested”, voice state “requesting permission”, “released”. After reinstalling, Microphone / Accessibility read PERMISSION NEEDED (ad-hoc signature, JARVIS-V15-11).

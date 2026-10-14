@@ -92,6 +92,9 @@ final class AppContext {
     @ObservationIgnored var readinessAssistant: ReadinessAssistant!
     @ObservationIgnored var setupRunner: SetupRunner!
     @ObservationIgnored var notifier: JarvisNotifier!
+    /// Set by the app delegate: the Push-to-Talk key monitor's counters (read by Settings and Readiness; never polled).
+    @ObservationIgnored var hotkeyDiagnostics: (() -> GlobalHotkeyService.TalkDiagnostics)?
+    @ObservationIgnored var lastPushToTalkHint = Date.distantPast
     @ObservationIgnored private(set) var conversationService: ConversationService!
     @ObservationIgnored private(set) var windowManager: WindowManager!
 

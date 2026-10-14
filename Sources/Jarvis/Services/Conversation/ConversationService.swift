@@ -133,8 +133,10 @@ final class ConversationService {
             conversation.appendJarvis(ApprovalGuard.notice(lang), tone: .notice, route: .local)
             return .localResponse(.approvalNeedsHUD, lang)
         }
-        // “Detaylı anlat.” / “Kısa söyle.” on its own: the previous answer again, at that depth (no model).
-        if let d = depth, d.bare, let again = presenter.rerender(depth: d.depth, language: inputLanguage) {
+        // “Detaylı anlat.” / “Kısa söyle.” on its own: the answer IMMEDIATELY BEFORE this request again, at that depth (no model). The target is read from the conversation itself — the last
+        // JARVIS message of the previous turn — so it can never be an older answer.
+        if let d = depth, d.bare, !d.weak {          // “Explain it again” / “Neden?” are questions for the model, not a depth change
+            let again = presenter.rerender(previous: previousAnswerForDepthRequest(), depth: d.depth, language: inputLanguage)
             conversation.appendJarvis(again, route: .local)
             return .localResponse(.contextual, inputLanguage)
         }
@@ -173,7 +175,7 @@ final class ConversationService {
         if let readiness = readinessHandler, let intent = readiness.recognizes(text) {
             let lang = inputLanguage
             let full = readiness.reply(to: intent, language: lang)
-            conversation.appendJarvis(presenter.present(full: full, language: lang), route: .local)
+            conversation.appendJarvis(presenter.present(full: full, language: lang, evidence: true), route: .local)
             return .localResponse(.contextual, lang)
         }
         // Project Memory: explicit remember / correct / forget and direct questions about the project's history are answered from RECORDS (no model, no invention).
@@ -358,6 +360,14 @@ final class ConversationService {
     private func acknowledgement(full: String, brief: String, language: ReplyLanguage) -> String {
         let expanded = presenter.lastDepth.expands || presenter.style() == .detailed
         return presenter.addressed(expanded ? full : brief, moment: .taskAccepted, language: language)
+    }
+
+    /// The text of the JARVIS answer that came immediately before the current user message — nil when the previous turn was not answered (still streaming, failed to answer, cleared) or there is none.
+    private func previousAnswerForDepthRequest() -> String? {
+        let m = conversation.messages
+        guard m.count >= 2, m[m.count - 1].role == .user else { return nil }
+        let prior = m[m.count - 2]
+        return prior.role == .jarvis && prior.status == .complete && !prior.content.isEmpty ? prior.content : nil
     }
 
     /// “go to system”, “switch to compact”, “open the report”: deterministic commands win over a project switch.

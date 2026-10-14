@@ -14,7 +14,7 @@ private func probes(_ edit: (inout ReadinessProbes) -> Void = { _ in }) -> Readi
         ProviderProbeResult(id: "claude", name: "Claude Code", state: .ready, version: "2.1.0", path: "/x/claude", loginHint: "claude"),
         ProviderProbeResult(id: "codex", name: "Codex", state: .ready, version: "0.15", path: "/x/codex", loginHint: "codex login"),
     ] }
-    p.openCode = { (.ready, 4) }
+    p.openCode = { (.ready, 4, true) }
     p.localQwen = { LocalModelProbe(kind: .ready(loaded: false), modelPath: "/models/qwen") }
     p.vision = { (true, nil) }
     p.memoryEmbedding = { (true, nil) }
@@ -51,7 +51,7 @@ struct ReadinessStateTests {
         let s = ReadinessService.build(probes { p in
             p.providers = { [ProviderProbeResult(id: "claude", name: "Claude Code", state: .unknown, version: nil, path: "/x/claude", loginHint: "claude"),
                              ProviderProbeResult(id: "codex", name: "Codex", state: .notInstalled, version: nil, path: nil, loginHint: nil)] }
-            p.openCode = { (.authenticationRequired, 0) }
+            p.openCode = { (.authenticationRequired, 0, true) }
         })
         #expect(s.item("provider.claude")?.state == .available)
         #expect(s.item("provider.codex")?.state == .notInstalled)

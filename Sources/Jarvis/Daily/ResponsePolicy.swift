@@ -35,6 +35,8 @@ enum ResponseDepthDetector {
         var depth: ResponseDepth
         /// The utterance contains nothing but the depth request (“Detaylı anlat.”, “Kısa söyle.”): it refers to the PREVIOUS answer.
         var bare: Bool
+        /// Only a weak leading cue (“Neden?”, “Why?”, “Explain it again”): a question for the language model, not a depth change of the previous answer.
+        var weak = false
     }
 
     private static func fold(_ s: String) -> [String] {
@@ -45,7 +47,7 @@ enum ResponseDepthDetector {
     /// (phrase tokens, depth). Matched as a contiguous token run, strongest first.
     private static let phrases: [([String], ResponseDepth)] = [
         (["kisa", "soyle"], .terse), (["kisa", "kes"], .terse), (["kisaca"], .terse), (["ozetle"], .terse), (["ozet", "gec"], .terse), (["tek", "cumle"], .terse),
-        (["short"], .terse), (["briefly"], .terse), (["be", "brief"], .terse), (["tldr"], .terse), (["tl", "dr"], .terse), (["in", "short"], .terse), (["shorter"], .terse), (["keep", "it", "short"], .terse),
+        (["short"], .terse), (["brief"], .terse), (["briefly"], .terse), (["keep", "it", "brief"], .terse), (["make", "it", "shorter"], .terse), (["be", "brief"], .terse), (["tldr"], .terse), (["tl", "dr"], .terse), (["in", "short"], .terse), (["shorter"], .terse), (["keep", "it", "short"], .terse),
         (["adim", "adim"], .instructional), (["step", "by", "step"], .instructional), (["ogret"], .instructional), (["teach", "me"], .instructional), (["walk", "me", "through"], .instructional),
         (["rapor", "ver"], .report), (["tam", "rapor"], .report), (["detayli", "rapor"], .report), (["rapor", "hazirla"], .report), (["full", "report"], .report), (["give", "me", "a", "report"], .report), (["report", "on"], .report),
         (["detayli", "anlat"], .detailed), (["ayrintili", "anlat"], .detailed), (["detaylandir"], .detailed), (["tum", "detaylari"], .detailed), (["ayrintilari", "goster"], .detailed),
@@ -54,7 +56,7 @@ enum ResponseDepthDetector {
     ]
     /// Weak cues count only as the first word of the utterance (“Neden?”, “Why did it fail?”).
     private static let leadingCues: [String: ResponseDepth] = ["neden": .detailed, "niye": .detailed, "why": .detailed, "acikla": .detailed, "explain": .detailed, "aciklar": .detailed]
-    private static let fillers: Set<String> = ["bana", "bunu", "sunu", "onu", "lutfen", "please", "jarvis", "biraz", "it", "this", "that", "me", "now", "simdi", "tekrar", "bir", "daha", "da", "mi", "misin", "musun", "can", "you", "could", "again", "the", "explain", "describe", "tell", "anlat", "acikla", "goster", "show", "soyle", "say", "give"]
+    private static let fillers: Set<String> = ["bana", "bunu", "sunu", "onu", "lutfen", "please", "jarvis", "biraz", "it", "this", "that", "me", "now", "simdi", "tekrar", "bir", "daha", "da", "mi", "misin", "musun", "can", "you", "could", "again", "the", "explain", "describe", "tell", "anlat", "acikla", "goster", "show", "soyle", "say", "give", "make", "keep", "in", "more", "that"]
 
     static func detect(_ raw: String) -> Detection? {
         let t = fold(raw)
@@ -64,7 +66,7 @@ enum ResponseDepthDetector {
             var rest = t; rest.removeSubrange(at..<(at + phrase.count))
             return Detection(depth: depth, bare: rest.allSatisfy(fillers.contains))
         }
-        if let first = t.first, let depth = leadingCues[first] { return Detection(depth: depth, bare: t.dropFirst().allSatisfy(fillers.contains)) }
+        if let first = t.first, let depth = leadingCues[first] { return Detection(depth: depth, bare: t.dropFirst().allSatisfy(fillers.contains), weak: true) }
         return nil
     }
 
@@ -199,8 +201,12 @@ final class ResponsePresenter {
     var style: () -> ResponseStyle = { .concise }
     var addressStyle: () -> AddressStyle = { .natural }
     private(set) var address = AddressPolicy()
-    private(set) var lastFull: ShapedReply?
     private(set) var lastDepth: ResponseDepth = .normal
+    /// What each deterministic answer that was SHOWN really is (the text shown → the full text it came from). Keyed by the displayed text, so “detaylı anlat” finds the full form of exactly the answer that is
+    /// on screen — never of an older one. Bounded; an answer that is not in here (a model's answer, a command's reply) is simply its own text.
+    private var shown: [String: ShapedReply] = [:]
+    private var shownOrder: [String] = []
+    private static let memoLimit = 40
 
     /// Call once per accepted user message.
     func beginTurn(_ text: String) -> ResponseDepthDetector.Detection? {
@@ -213,24 +219,45 @@ final class ResponsePresenter {
 
     func noteWakeAddressed() { address.markUsed() }
 
-    func reset() { address = AddressPolicy(); address.style = addressStyle(); lastFull = nil; lastDepth = .normal }
+    func reset() { address = AddressPolicy(); address.style = addressStyle(); shown.removeAll(); shownOrder.removeAll(); lastDepth = .normal }
 
-    /// Shapes a deterministic answer for the current turn and remembers the full text.
+    private func remember(_ text: String, _ reply: ShapedReply) {
+        if shown[text] == nil { shownOrder.append(text) }
+        shown[text] = reply
+        while shownOrder.count > Self.memoLimit { shown[shownOrder.removeFirst()] = nil }
+    }
+
+    /// Shapes a deterministic answer for the current turn and remembers the full text under the text that is actually shown.
     /// `evidence`: the answer carries citations or records (Project Memory, status from persisted facts). Those are shown whole unless the user asked for a short one.
     func present(full: String, short: String? = nil, moment: ReplyMoment = .answer, language: ReplyLanguage, depth: ResponseDepth? = nil, evidence: Bool = false) -> String {
         var d = depth ?? lastDepth
         if evidence, d == .normal { d = .detailed }
         let shaped = ReplyShaper.shape(full: full, short: short, depth: d, style: style(), language: language)
-        lastFull = shaped
-        return addressed(shaped.shown, moment: moment, language: language)
+        let text = addressed(shaped.shown, moment: moment, language: language)
+        remember(text, ShapedReply(shown: text, full: shaped.full, wasShortened: shaped.wasShortened))
+        return text
     }
 
-    /// The previous answer again, at another depth. nil = there is nothing to re-render (the previous answer was not a shaped deterministic one).
-    func rerender(depth: ResponseDepth, language: ReplyLanguage) -> String? {
-        guard let last = lastFull else { return nil }
-        let shaped = ReplyShaper.shape(full: last.full, depth: depth, style: style(), language: language)
-        lastFull = ShapedReply(shown: shaped.shown, full: last.full, wasShortened: shaped.wasShortened)
-        return shaped.shown
+    /// The previous answer again, at another depth. `previous` is the text of the answer immediately before the request (nil = there is none).
+    /// • A deterministic answer that was shortened expands to its full text; one that was already whole says there is no further VERIFIED detail (and repeats what is known).
+    /// • An answer from a model or a command has no structured facts behind it here: it can be shortened (sentences that carry a problem stay) but not enlarged — nothing is invented.
+    /// No model is called.
+    func rerender(previous: String?, depth: ResponseDepth, language: ReplyLanguage) -> String {
+        guard let previous, !previous.isEmpty else {
+            return language == .tr ? "Ayrıntısını değiştirebileceğim bir önceki yanıt yok." : "There is no previous answer whose detail I can change."
+        }
+        let base = shown[previous] ?? ShapedReply(shown: previous, full: previous, wasShortened: false)
+        let out: String
+        if depth.expands {
+            if base.wasShortened { out = base.full }
+            else if base.full.count <= 700 {
+                out = (language == .tr ? "Bunun ötesinde doğrulanmış bir ayrıntım yok. Bildiğim bu kadar: " : "I have no further verified detail beyond this: ") + base.full
+            } else { out = (language == .tr ? "Bunun ötesinde doğrulanmış bir ayrıntım yok; yukarıdaki yanıt elimdeki bilginin tamamı." : "I have no further verified detail; the answer above is everything I know.") }
+        } else {
+            out = ReplyShaper.shape(full: base.full, depth: depth, style: style(), language: language).shown
+        }
+        remember(out, ShapedReply(shown: out, full: base.full, wasShortened: out.count < base.full.count))
+        return out
     }
 
     func addressed(_ text: String, moment: ReplyMoment, language: ReplyLanguage) -> String {

@@ -37,6 +37,8 @@ enum InputNormalizer {
         "tesekkurler", "sagol", "lutfen", "gorevi", "gorevleri", "raporu", "ayarlari", "sistemi", "gunaydin", "yapiyorsun", "durumun",
         // V0.15 follow-ups written without Turkish letters (“onu kullan”, “ikincisini dene”, “biraz sola al”)
         "onu", "bunu", "sunu", "dene", "kullan", "ikincisini", "birincisini", "ucuncusunu", "sil", "kaldir", "koy", "ekle", "sola", "saga", "yukari", "asagi", "biraz", "tekrar", "hayir", "evet", "uygunsa", "sus", "kisa", "soyle", "detayli", "ayrintili",
+        // V1.0 stabilisation: capability questions written without Turkish letters
+        "hangi", "hangileri", "neler", "neleri", "yapabiliyorsun", "kullanabiliyorsun", "kullanabiliyor", "erisebiliyorsun", "erisimin", "saglayicilara", "providerlara", "providerlari", "hazir", "kurulu", "mi", "mu", "misin", "musun", "modellerine", "modelleri", "modelin", "araclara", "yetenekler",
     ]
 
     static func normalize(_ raw: String) -> NormalizedInput {

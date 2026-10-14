@@ -68,6 +68,17 @@ extension AppContext {
         service.readinessHandler = readinessAssistant
     }
 
+    /// The right ⌥ key was held while Voice is OFF: say so, visibly, once in a while — instead of ignoring the hold in silence. Nothing is switched on and the microphone stays closed; the
+    /// person decides (Settings → Voice, or System & Readiness → Turn On Voice).
+    func pushToTalkWhileVoiceIsOff() {
+        guard !intelligenceIsStubbed, PushToTalkHint.shouldShow(lastShown: lastPushToTalkHint, now: Date()) else { return }
+        lastPushToTalkHint = Date()
+        let lang = dailyLanguage()
+        conversation.appendJarvis(PushToTalkHint.message(lang), tone: .notice, route: .local, silent: true)
+        store.log("Push-to-Talk key held while Voice is off — nothing was recorded", kind: .warning)
+        if !windowManager.isFullHUDOpen { windows.showCompactHUD() }
+    }
+
     /// The language of the current conversation (the last thing the user wrote), defaulting to the system language.
     func dailyLanguage() -> ReplyLanguage {
         if let last = conversation.messages.last(where: { $0.role == .user }) { return InputNormalizer.normalize(last.content).language }
@@ -103,8 +114,8 @@ extension AppContext {
             }
         }
         p.openCode = { [weak self] in
-            guard let self else { return (.unknown, 0) }
-            return (self.openCode.state, self.openCode.freePool.count)
+            guard let self else { return (.unknown, 0, false) }
+            return (self.openCode.state, self.openCode.freePool.count, self.openCode.executableFoundOnDisk)
         }
         p.localQwen = { [weak self] in
             guard let self else { return LocalModelProbe(kind: .notConfigured, modelPath: "") }
@@ -145,6 +156,11 @@ extension AppContext {
         }
         p.tts = { [weak self] in (self?.voice.ttsProviders ?? []).map { ($0.displayName, $0.availability()) } }
         p.voiceEnabled = { [weak self] in self?.preferences.voiceEnabled ?? false }
+        p.pushToTalk = { [weak self] in
+            guard let self else { return (false, true, false, false) }
+            let d = self.hotkeyDiagnostics?()
+            return (self.preferences.voiceEnabled, self.preferences.voicePushToTalk, d?.monitorRunning ?? false, d?.handlerAttached ?? false)
+        }
         p.microphone = { [weak self] in
             switch self?.voice.permission ?? .notDetermined { case .granted: .granted; case .notDetermined: .notDetermined; case .denied: .denied; case .restricted: .restricted }
         }
@@ -187,5 +203,16 @@ extension AppContext {
         let candidates = ((try? repository.researchCandidates(researchID)) ?? []).sorted { $0.rank == $1.rank ? $0.score > $1.score : ($0.rank == 0 ? false : ($1.rank == 0 ? true : $0.rank < $1.rank)) }
         guard !candidates.isEmpty else { return }
         service.workingContext.noteList(kind: .asset, entries: candidates.map { ($0.id.uuidString, $0.name, $0.url) }, source: .validatedResult("research-report"), evidence: "research:\(researchID.uuidString.prefix(8))")
+    }
+}
+
+
+/// The hint shown when the right ⌥ key is held while Voice is OFF. Pure, so it is tested without a window.
+enum PushToTalkHint {
+    static let interval: TimeInterval = 20
+    static func shouldShow(lastShown: Date, now: Date) -> Bool { now.timeIntervalSince(lastShown) > interval }
+    static func message(_ l: ReplyLanguage) -> String {
+        l == .tr ? "Sağ ⌥ tuşunu algıladım ama ses girişi kapalı, bu yüzden mikrofon açılmadı. Açmak için Sistem ve Hazırlık ekranında “Turn On Voice” düğmesine ya da Ayarlar → Voice bölümüne bakın."
+                 : "I saw the right ⌥ key, but voice input is OFF, so the microphone stayed closed. Turn it on with “Turn On Voice” in System & Readiness, or in Settings → Voice."
     }
 }

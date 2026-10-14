@@ -23,6 +23,7 @@ struct VoiceSettingsSection: View {
                 Text("Hold the RIGHT Option key by itself for a moment, speak, release. Typing Option characters, ⌥⌘ shortcuts, Shift or Control combinations never start it. Needs no macOS permission of its own.")
                     .font(.caption).foregroundStyle(.secondary)
 
+                pushToTalkMonitorRow()
                 LabeledContent("Microphone") { mono(voice.permission.label, voice.permission.allowsCapture ? .green : (voice.permission == .notDetermined ? .secondary : .orange)) }
                 switch voice.permission {
                 case .notDetermined: Text("macOS will ask the first time you use Push-to-Talk.").font(.caption).foregroundStyle(.secondary)
@@ -104,6 +105,18 @@ struct VoiceSettingsSection: View {
             }
         }
         .task { await voice.refreshProviders() }
+    }
+
+    // MARK: Push-to-Talk key monitor (V1.0 stabilisation)
+
+    @ViewBuilder
+    private func pushToTalkMonitorRow() -> some View {
+        let d = app.hotkeyDiagnostics?() ?? GlobalHotkeyService.TalkDiagnostics()
+        VStack(alignment: .leading, spacing: 2) {
+            LabeledContent("Push-to-Talk key monitor") { mono(d.monitorRunning && d.handlerAttached ? "ACTIVE" : (d.monitorRunning ? "RUNNING · NO HANDLER" : "NOT RUNNING"), d.monitorRunning && d.handlerAttached ? .green : .orange) }
+            mono("last key event: \(d.lastEvent)\(d.lastEventAt.map { " · " + $0.formatted(date: .omitted, time: .standard) } ?? "") · right ⌥ seen \(d.rightOptionPresses)×")
+            Text("Reopen Settings to refresh this line. It records only whether the right ⌥ key went down or up — never other keys, typed text or audio.").font(.caption2).foregroundStyle(.secondary)
+        }
     }
 
     // MARK: Wake word (V0.8)

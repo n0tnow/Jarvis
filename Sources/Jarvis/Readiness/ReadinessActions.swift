@@ -30,6 +30,10 @@ enum ReadinessActions {
             return ok ? "Notifications allowed." : "Notifications were not allowed."
         case .openNotificationSettings: PrivacySettingsPane.notifications.open(); return nil
         case .chooseLocalModelFolder: return chooseModelFolder(app)
+        case .turnOnVoice:
+            app.preferences.voiceEnabled = true; app.preferences.voicePushToTalk = true
+            app.readiness.refresh()
+            return "Voice is on. Hold the right ⌥ key for a moment, speak, and release."
         case .installLocalModelRuntime, .installSpeechRecognizer, .installNaturalVoice, .installVisionHelper, .installMemoryHelper:
             if let refusal = await app.setupRunner.start(action) { return refusal.description }
             return nil

@@ -6,6 +6,7 @@ private func stateTint(_ s: ReadinessState) -> Color {
     switch s {
     case .ready: Theme.Palette.mint
     case .available, .notRunning: Color.jarvisSecondary
+    case .off: Theme.Palette.amber
     case .optionalAbsent, .unknown: Color.jarvisTertiary
     case .notInstalled, .signInRequired, .permissionNeeded, .degraded, .stale, .unavailable: Theme.Palette.amber
     }

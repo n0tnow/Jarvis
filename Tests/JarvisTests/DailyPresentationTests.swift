@@ -19,8 +19,9 @@ struct DailyDepthTests {
         #expect(d("Bana öğret")?.depth == .instructional)
         #expect(d("Rapor ver.") == .init(depth: .report, bare: true))
         #expect(d("give me a full report")?.depth == .report)
-        #expect(d("Neden?")?.depth == .detailed)
+        #expect(d("Neden?")?.depth == .detailed && d("Neden?")?.weak == true)
         #expect(d("Why did it fail?")?.depth == .detailed)
+        #expect(d("Explain it again.")?.weak == true)                                  // a question for the model, never a bare depth change
     }
 
     @Test("requests for less")
@@ -125,17 +126,17 @@ struct DailyAddressTests {
         #expect(!p.addressed("Bir karar gerekiyor.", moment: .decisionNeeded, language: .tr).contains("efendim"))
     }
 
-    @Test("a detailed turn can be shortened again and a shortened one expanded")
+    @Test("a shortened answer expands to its full text and shortens again")
     func rerender() {
         let p = ResponsePresenter()
         _ = p.beginTurn("Hamam ne durumda?")
         let full = String(repeating: "Uzun bir durum cümlesi. ", count: 40) + "Bir test başarısız oldu."
         let shown = p.present(full: full, language: .tr)
         #expect(shown.count < full.count)
-        let more = p.rerender(depth: .detailed, language: .tr)
-        #expect(more?.contains("Uzun bir durum cümlesi") == true && (more?.count ?? 0) > shown.count)
-        let less = p.rerender(depth: .terse, language: .tr)
-        #expect(less?.contains("başarısız oldu") == true)
+        let more = p.rerender(previous: shown, depth: .detailed, language: .tr)
+        #expect(more.contains("Uzun bir durum cümlesi") && more.count > shown.count)
+        let less = p.rerender(previous: more, depth: .terse, language: .tr)
+        #expect(less.contains("başarısız oldu") && less.count < more.count)
     }
 
     @Test("task acceptance wording claims only that the task was created")

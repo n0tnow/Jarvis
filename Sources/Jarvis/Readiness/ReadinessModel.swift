@@ -18,6 +18,7 @@ enum ReadinessState: Equatable, Sendable {
     case permissionNeeded
     case optionalAbsent                 // not installed, and nothing needs it right now
     case notRunning                     // installed; idle by design (Unity, MCP servers, models)
+    case off                            // a feature the user can switch on (Voice, Push-to-Talk) that is currently switched OFF
     case degraded(String)
     case stale(String)                  // last known state is old
     case unknown                        // not checked yet
@@ -32,6 +33,7 @@ enum ReadinessState: Equatable, Sendable {
         case .permissionNeeded: "PERMISSION NEEDED"
         case .optionalAbsent: "OPTIONAL · NOT SET UP"
         case .notRunning: "NOT RUNNING"
+        case .off: "OFF"
         case .degraded: "DEGRADED"
         case .stale: "STALE"
         case .unknown: "NOT CHECKED"
@@ -42,7 +44,7 @@ enum ReadinessState: Equatable, Sendable {
     var needsAttention: Bool {
         switch self {
         case .notInstalled, .signInRequired, .permissionNeeded, .degraded, .unavailable, .stale: true
-        case .ready, .available, .optionalAbsent, .notRunning, .unknown: false
+        case .ready, .available, .optionalAbsent, .notRunning, .unknown, .off: false
         }
     }
     var isGood: Bool { self == .ready || self == .available || self == .notRunning }
@@ -60,6 +62,8 @@ enum SetupAction: String, CaseIterable, Identifiable, Sendable {
     case allowNotifications, openNotificationSettings
     case installLocalModelRuntime, installSpeechRecognizer, installNaturalVoice, installVisionHelper, installMemoryHelper
     case chooseLocalModelFolder
+    /// Explicit click: switches Voice (and Push-to-Talk) ON in Settings. It opens no microphone — that happens only while the key is held.
+    case turnOnVoice
     var id: String { rawValue }
 
     var title: String {
@@ -79,6 +83,7 @@ enum SetupAction: String, CaseIterable, Identifiable, Sendable {
         case .installVisionHelper: "Set Up Visual Model"
         case .installMemoryHelper: "Set Up Memory Search"
         case .chooseLocalModelFolder: "Select Existing Model Folder"
+        case .turnOnVoice: "Turn On Voice"
         }
     }
     /// Actions that download or install files (explicit click, preflight, progress, cancel).
@@ -97,6 +102,8 @@ struct ReadinessItem: Identifiable, Equatable, Sendable {
     var required = false
     var action: SetupAction?
     var checkedAt: Date?
+    /// What is known about the files regardless of the state: true = found on disk, false = not found, nil = unknown. (A provider can be present yet NOT CHECKED.)
+    var installed: Bool?
 }
 
 enum ReadinessSummary: Equatable, Sendable {

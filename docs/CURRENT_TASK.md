@@ -12,6 +12,8 @@ V0.15 State:
 * `scripts/verify.sh`: 1660 tests / 247 suites; smoke 165/0/2; idle 0.02 CPU-s / 8 s at 75 MB. `--daily-jarvis-live-test` 47/0/0, `--setup-live-test` 15/0/0, V0.7 `--voice-live-test` 36/0/0.
 * MANUAL TEST REQUIRED: README 1153–1234 (installed launch, menu bar, first run, permissions, human voice, brevity, follow-ups, notifications, Launch at Login, crash/relaunch, a real day of use).
 
+V1.0 stabilisation fix 1 (DEC-246): capability introspection, response-depth target and Push-to-Talk visibility fixed after the first real use — AUTOMATED VERIFIED / HUMAN PTT TEST REQUIRED (README 1235–1242).
+
 Next Step:
 Wait for Bilal to open JARVIS.app and start real-world use. Do not start V1.0 / any feature work without approval. No tag.
 
