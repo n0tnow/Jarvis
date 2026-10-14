@@ -40,12 +40,7 @@ struct SettingsView: View {
         @Bindable var prefs = app.preferences
 
         Form {
-            Section {
-                Toggle("Launch at Login", isOn: .constant(false))
-                    .disabled(!prefs.launchAtLoginIsAvailable)
-                Text("Not implemented in V0.1. Planned for a later milestone.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            DailySettingsSection()
             Section {
                 Toggle("Reduce Motion", isOn: $prefs.reduceMotion)
                 if prefs.systemReduceMotion {
@@ -101,11 +96,7 @@ struct SettingsView: View {
             ComputerSettingsSection()
             OperatorSettingsSection()
             AdaptiveSettingsSection()
-            Section {
-                LabeledContent("Version", value: "\(AppInfo.version) (\(AppInfo.milestone))")
-                LabeledContent("Permissions", value: app.preferences.voiceEnabled ? "Microphone (only while you hold Push-to-Talk)" : "None requested")
-                LabeledContent("Data", value: app.database == nil ? "persistence unavailable" : "SQLite · Application Support/JARVIS")
-            }
+            AboutSettingsSection()
         }
         .formStyle(.grouped)
         .frame(width: 480, height: 1000)

@@ -677,6 +677,30 @@ enum SmokeTest {
             await resetWorld()
         }
 
+        // --- V0.15 daily JARVIS: presentation, follow-ups, readiness and app lifecycle are wired, conservative and idle. Nothing here starts a process, asks for a permission or decides anything.
+        do {
+            let c = context
+            let snap = c.readiness.refresh()
+            let suiteName = "jarvis-smoke-\(UUID().uuidString)", suite = UserDefaults(suiteName: suiteName)!
+            let fresh = Preferences(defaults: suite); suite.removePersistentDomain(forName: suiteName)
+            check("V0.15 daily JARVIS is wired; a fresh profile defaults to concise style, natural address, follow-ups on, notifications OFF, first run pending", fresh.responseStyle == .concise && fresh.addressStyle == .natural && fresh.conversationFollowUps && !fresh.notifyOnTaskEvents && !fresh.firstRunCompleted && c.conversationService.readinessHandler != nil)
+            check("V0.15 the readiness picture covers every category and an automated run contacts no provider (it says so)", ReadinessCategory.allCases.allSatisfy { !snap.items(in: $0).isEmpty } && snap.item("provider.stub") != nil && snap.item("provider.paid")?.action == nil)
+            check("V0.15 IDLE: readiness started no process, no model, no MCP server, no setup", c.taskEngine.activeCount == 0 && c.mcp.runningServerIDs.isEmpty && c.localRuntime.workerPID == nil && !c.setupRunner.isRunning)
+            check("V0.15 setup is refused in an automated run and only typed actions exist", await c.setupRunner.start(.installLocalModelRuntime) == .stubbedRun && SetupAction(rawValue: "runCommand") == nil)
+            check("V0.15 a development binary does not pretend it can register a login item", LaunchAtLogin.status == .unsupported || AppInfo.isApplicationBundle)
+            check("V0.15 a bare “yes” cannot decide while a decision is pending, and “detaylı anlat” has a depth", ResponseDepthDetector.detect("Detaylı anlat")?.depth == .detailed && ApprovalGuard.isApprovalUtterance("Evet"))
+            check("V0.15 the reference resolver answers “onu kullan” with nothing to refer to by saying so (no guess)", { if case .nothing = ReferenceResolver.resolve("Onu kullan", context: ConversationWorkingContext(), language: .tr) { return true }; return false }())
+            check("V0.15 plain launches are single-instance restricted, developer launches are not", SingleInstance.isPlainLaunch(["Jarvis"]) && !SingleInstance.isPlainLaunch(["Jarvis", "--smoke-test"]))
+            context.hud.section = .system; w.showFullHUD(section: .system); _ = await waitUntil { w.isFullHUDOpen }
+            await settle(300)
+            check("V0.15 the System & Readiness screen opens without starting anything", w.isFullHUDOpen && c.mcp.runningServerIDs.isEmpty && c.taskEngine.activeCount == 0)
+            w.hideFullHUD(); w.showCompactHUD(); _ = await waitUntil { w.isCompactHUDOpen }
+            await settle(200)
+            check("V0.15 the Compact HUD stays 392×448", compactWindow()?.frame.size == CompactHUDLayout.size, "\(compactWindow()?.frame.size ?? .zero)")
+            w.hideCompactHUD(); context.hud.section = .dashboard
+            await resetWorld()
+        }
+
         // --- V0.13 Project operator: wired but idle. Continuity answers from current truth without a model, the Unity operator is a closed typed set, visual grounding is local and unloaded, experiments live outside the data folder, Compact stays 392×448.
         do {
             check("V0.13 the operator layer is wired (schema v12, continuity service, experiments root in Caches, bounds 30 min · 12 · 2 · 2 · 2)", (context.database?.schemaVersion ?? 0) >= 12 && context.taskEngine.experimentsRoot.map { !$0.path.contains("/Library/Application Support/JARVIS") } == true && ContinuationBounds.standard.summary.contains("30 min") && ContinuationBounds.standard.maxExperiments == 2)

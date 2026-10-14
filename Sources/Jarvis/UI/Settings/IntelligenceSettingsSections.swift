@@ -132,7 +132,7 @@ struct LocalModelSettingsSection: View {
             LabeledContent("Qwen3.5 4B (MLX 4-bit)") { mono(rt.state.label, rt.state.isUsableForRouting || rt.state == .running ? .green : .orange) }
             switch rt.state {
             case .runtimeMissing:
-                Text("Run  scripts/setup_local_ai.sh  once (creates an isolated runtime; no model is downloaded).").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                Text("Press Set Up in System & Readiness once (creates an isolated runtime; no model is downloaded).").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             case .modelMissing:
                 Text("Model folder not found. Point to an MLX model directory below. JARVIS never downloads models.").font(.caption).foregroundStyle(.secondary)
             case .failed(let why), .unavailable(let why):

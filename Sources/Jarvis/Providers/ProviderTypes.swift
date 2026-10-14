@@ -35,7 +35,7 @@ enum ProviderID: String, CaseIterable, Codable, Sendable {
         case .claudeCode: "claude auth login"
         case .codex: "codex login"
         case .openCode: "opencode providers login"
-        case .local: "scripts/setup_local_ai.sh"
+        case .local: "Set Up in System & Readiness"
         case .tool: ""
         }
     }

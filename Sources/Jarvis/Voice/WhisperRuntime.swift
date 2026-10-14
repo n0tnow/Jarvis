@@ -344,8 +344,8 @@ final class WhisperSTTProvider: SpeechToTextProvider {
         runtime.inspect()
         switch runtime.state {
         case .idle, .ready, .starting, .stopping: return .ready
-        case .runtimeMissing: return .needsSetup("Not installed. Run scripts/setup_voice_ai.sh (downloads a ≈460 MB model once).")
-        case .modelMissing: return .needsSetup("The Whisper model is missing at \(runtime.config.modelPath). Run scripts/setup_voice_ai.sh.")
+        case .runtimeMissing: return .needsSetup("Not installed. Press Set Up in System & Readiness (downloads a ≈460 MB model once; development builds: scripts/setup_voice_ai.sh).")
+        case .modelMissing: return .needsSetup("The Whisper model is missing at \(runtime.config.modelPath). Press Set Up in System & Readiness (development builds: scripts/setup_voice_ai.sh).")
         case .failed(let why): return .unavailable("The speech helper failed (\(why)). It restarts on the next use.")
         }
     }

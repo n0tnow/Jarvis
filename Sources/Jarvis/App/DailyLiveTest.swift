@@ -1,0 +1,258 @@
+import AppKit
+import Foundation
+
+/// `Jarvis --daily-jarvis-live-test [--daily-section <name>]…` — OPT-IN (V0.15). The intended daily experience on DISPOSABLE fixtures with its own data directory (live-test-daily).
+///
+/// REAL = the real engine, real persistence, real processes. ENGINE = the real task engine with SCRIPTED model answers (no provider, no quota). POLICY = a deterministic rule. Nothing here contacts
+/// Claude, Codex or OpenCode, the public web, Unity or the microphone; the real Hamam project and every other real project are never touched.
+/// Sections: `conversation` (the daily flow: status, follow-ups, depth, approval boundary, stop-speech vs cancel-task), `latency`, `readiness` (real discovery, nothing started), `voice`.
+@MainActor
+enum DailyLiveTest {
+    /// Records what a typed or spoken sentence asks task intake for. Asset-suitability goals are recorded and NOT run (the real graph would research the public web); every other goal goes to the real intake.
+    @MainActor
+    final class RecordingIntake: TaskSubmitting, ResearchSubmitting {
+        let real: TaskIntake
+        private(set) var goals: [(goal: String, kind: TaskKind?)] = []
+        init(real: TaskIntake) { self.real = real }
+        var hasProject: Bool { real.hasProject }
+        var projectName: String? { real.projectName }
+        func submitTask(goal: String, intent: GoalIntake.Intent, channel: InputSource) async -> TaskSubmission {
+            goals.append((goal, intent.kind))
+            if GoalCues.assetQuestion(goal) { return .started(title: "Asset suitability (recorded, not run)") }
+            return await real.submitTask(goal: goal, intent: intent, channel: channel)
+        }
+        func submitResearch(goal: String, channel: InputSource) async -> TaskSubmission { goals.append((goal, nil)); return .started(title: "Research (recorded, not run)") }
+    }
+
+    static func percentile(_ values: [Double], _ p: Double) -> Double {
+        guard !values.isEmpty else { return 0 }
+        let s = values.sorted(); return s[min(s.count - 1, Int(Double(s.count) * p))]
+    }
+
+    static func run(context: AppContext, sections: Set<String>) async {
+        var passes = 0, failures = 0, skips = 0
+        func wants(_ s: String) -> Bool { sections.isEmpty || sections.contains(s) }
+        func check(_ tag: String, _ name: String, _ ok: Bool, _ detail: String = "") { print("\(ok ? "PASS" : "FAIL")  [\(tag)] \(name)\(detail.isEmpty ? "" : " — \(detail)")"); if ok { passes += 1 } else { failures += 1 }; fflush(stdout) }
+        func skip(_ name: String, _ why: String) { print("SKIP  \(name) — \(why)"); skips += 1; fflush(stdout) }
+        func info(_ s: String) { print("INFO  \(s)"); fflush(stdout) }
+        let prefs = context.preferences, engine = context.taskEngine, repo = context.repository!, convo = ConversationStore()
+        let svc = ConversationService(store: context.store, conversation: convo, windows: context.windowManager, resolver: ScriptedAnswerResolver())
+        let intake = RecordingIntake(real: context.taskIntake)
+        svc.taskSubmitter = intake; svc.researchSubmitter = intake
+        svc.continuityHandler = context.continuity; svc.adaptiveHandler = context.adaptiveAssistant; svc.memoryHandler = context.memory
+        svc.graphStatus = { [weak engine] focus, lang in engine?.graphStatusText(focus, lang) }
+        context.configureDailyConversation(on: svc)
+        let realRunner = engine.agents
+        let savedRoot = prefs.projectRoot, savedStyle = prefs.responseStyle, savedAddress = prefs.addressStyle, savedFollow = prefs.conversationFollowUps
+        var projects: [String] = []
+        DispatchQueue.main.asyncAfter(deadline: .now() + 900) { ProcessRegistry.shared.killAll(); print("DAILY LIVE TEST TIMEOUT"); fflush(stdout); exit(2) }
+        func finish() -> Never {
+            engine.agents = realRunner
+            prefs.projectRoot = savedRoot; prefs.responseStyle = savedStyle; prefs.addressStyle = savedAddress; prefs.conversationFollowUps = savedFollow
+            for p in projects { try? FileManager.default.removeItem(atPath: p) }
+            ProcessRegistry.shared.killAll()
+            print("DAILY LIVE TEST \(failures == 0 ? "PASSED" : "FAILED") (\(passes) passed, \(failures) failed, \(skips) skipped)"); fflush(stdout)
+            exit(failures == 0 ? 0 : 1)
+        }
+        func git(_ args: [String], in dir: String) async -> String {
+            await ManagedProcess.runOnce(executable: "/usr/bin/git", arguments: ["-c", "user.name=JARVIS Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false"] + args, environment: ProviderEnvironment.make(), workingDirectory: dir, timeout: 30)?.output ?? ""
+        }
+        func makeProject() async -> String {
+            let dir = TaskDemo.makeProject(); projects.append(dir)
+            func write(_ p: String, _ t: String) { FileManager.default.createFile(atPath: dir + "/" + p, contents: Data(t.utf8)) }
+            write("README.md", "# Calculator fixture\n")
+            write("calc.py", "def add(a, b):\n    return a - b\n\ndef mul(a, b):\n    return a * b\n")
+            write("test_calc.py", "import unittest\nfrom calc import add, mul\n\nclass T(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n    def test_mul(self):\n        self.assertEqual(mul(2, 3), 6)\n\nif __name__ == '__main__':\n    unittest.main()\n")
+            _ = await git(["init", "-q", "-b", "main"], in: dir); _ = await git(["add", "-A"], in: dir); _ = await git(["commit", "-q", "-m", "initial"], in: dir)
+            return dir
+        }
+        func waitUntil(_ seconds: Double, _ cond: () -> Bool) async -> Bool {
+            let end = Date().addingTimeInterval(seconds)
+            while Date() < end { if cond() { return true }; try? await Task.sleep(for: .milliseconds(25)) }
+            return cond()
+        }
+        /// Sends one sentence and waits until the answer has landed; returns (answer, milliseconds).
+        func say(_ text: String, source: InputSource = .typed, quiet: Bool = false) async -> (String, Double) {
+            let before = convo.messages.count
+            let t0 = Date()
+            svc.submit(text, source: source)
+            _ = await waitUntil(5) { convo.messages.count > before + 1 && !svc.isAnswering }
+            await svc.waitUntilIdle()
+            let ms = Date().timeIntervalSince(t0) * 1000
+            let r = convo.last?.content ?? ""
+            if !quiet { info("   “\(text)” → \(r.replacingOccurrences(of: "\n", with: " ⏎ ").prefix(200))  [\(Int(ms)) ms]") }
+            return (r, ms)
+        }
+
+        info("data directory: \(context.paths.root.path) (isolated from your real JARVIS history); schema v\(context.database?.schemaVersion ?? -1); installed application: \(AppInfo.isApplicationBundle); \(AppInfo.versionLine)")
+        check("POLICY", "Defaults are conservative: concise, natural address, follow-ups on, notifications off, Launch at Login off by default",
+              prefs.responseStyle == .concise && prefs.addressStyle == .natural && prefs.conversationFollowUps && !prefs.notifyOnTaskEvents)
+        check("POLICY", "The Compact HUD is unchanged at 392 × 448", CompactHUDLayout.size == CGSize(width: 392, height: 448))
+
+        // MARK: conversation
+        if wants("conversation") {
+            let project = await makeProject()
+            prefs.projectRoot = project
+            prefs.responseStyle = .concise; prefs.addressStyle = .natural; prefs.conversationFollowUps = true
+            // A real finished task gives the project a history to speak about (scripted model answers; the engine, tests and Git are real).
+            engine.agents = OrchestrationScriptRunner(audit: context.audit, script: { job, _ in
+                switch job.type {
+                case "AnalysisAgent": return .text(OrchestrationDemoText.analysis)
+                case "CodingAgent": return .text(OrchestrationDemoText.fixEdit)
+                case "ReviewAgent": return .text(OrchestrationDemoText.reviewPass)
+                default: return .fail(.generic)
+                }
+            })
+            if case .success(let id) = await engine.submit(goal: "Find the bug, fix it, run the tests and review the change.", kind: .development, workspacePath: project) {
+                await engine.waitUntilFinished(id); try? await Task.sleep(for: .milliseconds(400))
+                check("ENGINE", "A real task finished on the fixture project (history for the status questions)", engine.view(id)?.task.state == .completed, "\(engine.view(id)?.task.state.rawValue ?? "?")")
+            } else { check("ENGINE", "A real task finished on the fixture project", false) }
+
+            let (status, _) = await say("Jarvis durum nedir?")
+            check("REAL", "“Jarvis durum nedir?” is answered from the real store and is short", !status.isEmpty && status.count < 300)
+            let (last, _) = await say("Bu projede en son ne yaptık?")
+            check("REAL", "“Bu projede en son ne yaptık?” comes from the project's recorded work (continuity), not from a model", !last.isEmpty && last != Phrasebook.reasoningUnavailable(.tr) && convo.last?.route == .local, String(last.prefix(120)))
+
+            // Research results (labelled demo rows from the repository fixture — the real web is not contacted) become what “the second one” means.
+            let researchID = ResearchDemo.seed(repo, artifacts: context.artifacts)
+            context.noteResearchCandidates(researchID: researchID, into: svc)
+            let listed = svc.workingContext.candidates([.asset]).sorted { ($0.ordinal ?? 0) < ($1.ordinal ?? 0) }
+            check("ENGINE", "Three validated research candidates entered the working context in rank order", listed.count == 3 && listed.map { $0.ordinal } == [1, 2, 3], listed.map(\.label).joined(separator: " | "))
+            let second = listed.dropFirst().first?.label ?? "?"
+            let before = intake.goals.count
+            let (pick, _) = await say("İkincisini dene.")
+            check("ENGINE", "“İkincisini dene.” chose the second result and sent ONE ordinary read-only analysis request to task intake (the same call a typed sentence makes)",
+                  intake.goals.count == before + 1 && intake.goals.last?.goal.contains(second) == true && intake.goals.last?.kind == .readOnlyAnalysis && convo.messages.contains { $0.content.contains("Seçildi") && $0.content.contains(second) }, "chosen: \(second)")
+            check("POLICY", "The explicit request names no import or download", !(intake.goals.last?.goal ?? "").lowercased().contains("import") && !GoalCues.wantsImport(intake.goals.last?.goal ?? ""))
+            _ = pick
+            let n = intake.goals.count
+            _ = await say("Uygunsa kullan.")
+            check("ENGINE", "“Uygunsa kullan.” means the chosen one and again only asks for a suitability check (importing stays a separate, approved step)",
+                  intake.goals.count == n + 1 && intake.goals.last?.goal.contains(second) == true && !GoalCues.wantsImport(intake.goals.last?.goal ?? ""))
+
+            // Ambiguity and destructive guesses
+            context.noteResearchCandidates(researchID: researchID, into: svc)           // a fresh list: nothing is chosen any more
+            let m = intake.goals.count
+            let (q, _) = await say("Onu kullan.")
+            check("POLICY", "With a whole list in mind “Onu kullan.” asks which one and starts nothing", q.contains("Hangisini") && intake.goals.count == m)
+            let (del, _) = await say("Bunu sil.")
+            check("POLICY", "“Bunu sil.” never guesses a target: it asks and starts nothing", del.contains("tahmin etmem") && intake.goals.count == m)
+            let (yes, _) = await say("Evet.")
+            check("POLICY", "“Evet.” chooses nothing", intake.goals.count == m, yes)
+
+            // Depth: expand and shorten the previous answer
+            let (overall, _) = await say("Her şey hazır mı?")
+            let (more, _) = await say("Detaylı anlat.")
+            let (less, _) = await say("Kısa söyle.")
+            let shortened = svc.presenter.lastFull?.wasShortened == true
+            check("REAL", "“Detaylı anlat.” expands the previous answer (never shorter) and “Kısa söyle.” shortens it again without dropping a problem",
+                  more.count >= overall.count && less.count <= more.count && (!shortened || more.count > less.count), "normal \(overall.count) → detailed \(more.count) → short \(less.count) chars")
+
+            // The approval boundary: spoken or typed “yes” cannot approve; the HUD decision source can
+            var executed = 0
+            context.adaptiveDecisions.register(.activateSkill, .init(fingerprint: { id in AdaptiveDecisionService.scopeHash(kind: .activateSkill, subjectID: id, material: "x") }, execute: { _ in executed += 1; return .success("done") }))
+            let req = context.adaptiveDecisions.request(kind: .activateSkill, subjectID: "live-daily", material: "x", summary: "Live-test decision", detail: "A decision that only a HUD button may take.", risk: .low)
+            check("ENGINE", "A pending decision exists", req != nil && !context.adaptiveDecisions.pending().isEmpty)
+            for yes in ["Evet.", "yes, go ahead", "Tamam", "Onaylıyorum", "olur"] {
+                for source in [InputSource.typed, .voice] {
+                    let (r, _) = await say(yes, source: source, quiet: true)
+                    check("POLICY", "“\(yes)” (\(source == .voice ? "spoken" : "typed")) with a decision pending approves nothing", executed == 0 && r.contains("HUD") && !context.adaptiveDecisions.pending().isEmpty)
+                }
+            }
+            if let req { _ = await context.adaptiveDecisions.approve(req.id, source: .test) }
+            check("ENGINE", "The HUD decision source (test) approves it and the action proceeds", executed == 1 && context.adaptiveDecisions.pending().isEmpty)
+
+            // Stop speech ≠ stop task
+            engine.agents = OrchestrationScriptRunner(audit: context.audit, script: { job, _ in
+                try? await Task.sleep(for: .seconds(8))
+                return .text(OrchestrationDemoText.analysis)
+            })
+            var speechStops = 0
+            svc.stopSpeech = { speechStops += 1; return true }
+            guard case .success(let slowID) = await engine.submit(goal: "Analyze the project structure and report.", kind: .readOnlyAnalysis, workspacePath: project) else { check("ENGINE", "A slow task started", false); finish() }
+            _ = await waitUntil(5) { engine.view(slowID)?.task.state.isActive == true }
+            _ = await say("Sus.")
+            check("POLICY", "“Sus.” stops speech and the task keeps running", speechStops == 1 && engine.view(slowID)?.task.state.isActive == true, "\(engine.view(slowID)?.task.state.rawValue ?? "?")")
+            _ = await say("Görevi durdur.")
+            let stopped = await waitUntil(15) { engine.view(slowID)?.task.state.isActive == false }
+            check("ENGINE", "“Görevi durdur.” cancels the actual task, separately, through the normal path", stopped && engine.view(slowID)?.task.state == .cancelled, "\(engine.view(slowID)?.task.state.rawValue ?? "?")")
+            svc.stopSpeech = nil
+
+            // Typed and spoken take the same route
+            let a = await say("Hangi sürümdesin?", source: .typed, quiet: true)
+            let b = await say("Hangi sürümdesin?", source: .voice, quiet: true)
+            check("POLICY", "Spoken and typed sentences give the same answer through the same service", a.0 == b.0 && a.0.contains("JARVIS"))
+
+            // Personality never alters evidence
+            check("POLICY", "A failure sentence survives shortening in every depth", ["a"].allSatisfy { _ in
+                let t = String(repeating: "Dolgu cümlesi. ", count: 40) + "Birim testi başarısız oldu."
+                return [ResponseDepth.terse, .normal].allSatisfy { ReplyShaper.shape(full: t, depth: $0, style: .concise, language: .tr).shown.contains("başarısız oldu") }
+            })
+        }
+
+        // MARK: latency
+        if wants("latency") {
+            prefs.responseStyle = .concise; prefs.conversationFollowUps = true
+            var det: [Double] = []
+            for text in ["Hangi sürümdesin?", "Claude hazır mı?", "Ses sistemi hazır mı?", "MCP'ler sağlıklı mı?", "Jarvis durum nedir?", "Merhaba", "Teşekkürler", "Rapor aç"] {
+                for _ in 0..<5 { let (_, ms) = await say(text, quiet: true); det.append(ms) }
+            }
+            info("conversation (deterministic answer, submit → reply landed): n=\(det.count) p50 \(String(format: "%.0f", percentile(det, 0.5))) ms · p95 \(String(format: "%.0f", percentile(det, 0.95))) ms")
+            check("REAL", "Deterministic answers land well under a second (p95)", percentile(det, 0.95) < 1000)
+            let c = ConversationWorkingContext()
+            c.beginTurn()
+            c.noteList(kind: .asset, entries: [("a", "Bucket A", nil), ("b", "Bucket B", nil), ("c", "Bucket C", nil)], source: .validatedResult("research-report"), evidence: "r")
+            c.beginTurn()
+            var res: [Double] = []
+            for _ in 0..<500 { let t0 = Date(); _ = ReferenceResolver.resolve("İkincisini dene", context: c, language: .tr); res.append(Date().timeIntervalSince(t0) * 1000) }
+            info("working-context resolution: n=\(res.count) p50 \(String(format: "%.3f", percentile(res, 0.5))) ms · p95 \(String(format: "%.3f", percentile(res, 0.95))) ms")
+            check("REAL", "A follow-up resolves in well under 5 ms (p95)", percentile(res, 0.95) < 5)
+            var snap: [Double] = []
+            for _ in 0..<20 { let t0 = Date(); _ = context.readiness.refresh(); snap.append(Date().timeIntervalSince(t0) * 1000) }
+            info("readiness snapshot: n=\(snap.count) p50 \(String(format: "%.1f", percentile(snap, 0.5))) ms · p95 \(String(format: "%.1f", percentile(snap, 0.95))) ms")
+            check("REAL", "The readiness picture builds in under half a second", percentile(snap, 0.95) < 500)
+        }
+
+        // MARK: readiness (real discovery; nothing started; no quota)
+        if wants("readiness") {
+            let childrenBefore = ProcessTree.children(of: getpid()).count
+            let runsBefore = context.hub.activeRuns.count
+            await ReadinessActions.recheck(context)
+            let snap = context.readiness.refresh()
+            for c in ReadinessCategory.allCases { for i in snap.items(in: c) { info("   \(c.rawValue) · \(i.name): \(i.state.label)\(i.detail.isEmpty ? "" : " — \(i.detail.prefix(110))")") } }
+            check("REAL", "Every category has at least one item", ReadinessCategory.allCases.allSatisfy { !snap.items(in: $0).isEmpty })
+            check("REAL", "Core is ready and the database is open", snap.item("core.app")?.state == .ready && snap.item("core.database")?.state == .ready)
+            check("REAL", "Claude Code, Codex and OpenCode are reported (installed / signed in / ready are different states)", snap.item("provider.claude") != nil && snap.item("provider.codex") != nil && snap.item("provider.opencode") != nil)
+            check("POLICY", "No paid API is offered or enabled: the item says a subscription is not API permission", snap.item("provider.paid")?.action == nil && snap.item("provider.paid")?.detail.contains("never permission") == true)
+            let qwen = prefs.localModelPath
+            let qwenPresent = FileManager.default.fileExists(atPath: qwen + "/config.json")
+            check("REAL", "The existing local Qwen model is discovered where it is, never downloaded", (snap.item("local.qwen")?.state != .optionalAbsent) == qwenPresent || !qwenPresent, "\(qwen) → \(snap.item("local.qwen")?.state.label ?? "?")")
+            check("REAL", "The readiness check started no process and made no model request", ProcessTree.children(of: getpid()).count == childrenBefore && context.hub.activeRuns.count == runsBefore)
+            check("REAL", "No MCP server, Unity editor, local model or helper is running", context.mcp.runningServerIDs.isEmpty && context.localRuntime.workerPID == nil && snap.item("unity.bridge")?.state == .notRunning)
+            let text = DiagnosticsReport.build(snapshot: snap, schema: context.database?.schemaVersion, installed: AppInfo.isApplicationBundle)
+            check("POLICY", "Diagnostics carry no path, account or credential", !text.contains(NSHomeDirectory()) && !text.contains("/Users/") && !OutputSanitizer.containsSecret(text))
+            check("POLICY", "Daily conversation answers the readiness questions from this picture", await say("Claude hazır mı?", quiet: true).0.contains("Claude"))
+        }
+
+        // MARK: voice (voice-equivalent: the same service, source .voice; no microphone, no audio)
+        if wants("voice") {
+            prefs.responseStyle = .concise; prefs.addressStyle = .natural
+            svc.workingContext.clear(); svc.presenter.reset()
+            let project = await makeProject(); prefs.projectRoot = project
+            engine.agents = OrchestrationScriptRunner(audit: context.audit, script: { _, _ in try? await Task.sleep(for: .seconds(20)); return .fail(.generic) })      // scripted: no provider can be reached
+            let (ack, ms) = await say("Çoklu oyuncu senkronizasyon hatasını düzelt.", source: .voice)
+            check("REAL", "A spoken task request is acknowledged briefly and the acknowledgement claims only that the task exists", ack.count < 60 && !ack.lowercased().contains("düzelttim") && !ack.lowercased().contains("tamamlandı"), "\(ack) [\(Int(ms)) ms]")
+            check("POLICY", "The Turkish acknowledgement carries the address once", ack.contains("efendim"))
+            let (ack2, _) = await say("Oyuncu hareket hatasını da düzelt.", source: .voice)
+            check("POLICY", "…and not again in the next sentence of the same exchange", !ack2.contains("efendim"), ack2)
+            engine.cancelAll()
+            _ = await waitUntil(15) { engine.activeViews.isEmpty }
+            check("POLICY", "A voice sentence is a typed-equivalent message in the conversation (source voice), not a second path", convo.messages.contains { $0.source == .voice })
+            let silent = ConversationStore().appendJarvis("x", silent: true)
+            check("POLICY", "A silent acknowledgement is shown but marked not to be spoken", silent.silent == true)
+            check("POLICY", "Completions are spoken only when voice is enabled and nothing else is being said (no microphone is opened)", !context.voice.speaker.isActive)
+        }
+
+        finish()
+    }
+}

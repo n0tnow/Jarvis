@@ -35,6 +35,8 @@ enum InputNormalizer {
     private static let turkishWords: Set<String> = [
         "bana", "bir", "ne", "nasil", "neden", "icin", "anlat", "hakkinda", "nedir", "musun", "misin", "selam", "merhaba",
         "tesekkurler", "sagol", "lutfen", "gorevi", "gorevleri", "raporu", "ayarlari", "sistemi", "gunaydin", "yapiyorsun", "durumun",
+        // V0.15 follow-ups written without Turkish letters (“onu kullan”, “ikincisini dene”, “biraz sola al”)
+        "onu", "bunu", "sunu", "dene", "kullan", "ikincisini", "birincisini", "ucuncusunu", "sil", "kaldir", "koy", "ekle", "sola", "saga", "yukari", "asagi", "biraz", "tekrar", "hayir", "evet", "uygunsa", "sus", "kisa", "soyle", "detayli", "ayrintili",
     ]
 
     static func normalize(_ raw: String) -> NormalizedInput {

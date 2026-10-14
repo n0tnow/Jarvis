@@ -82,7 +82,8 @@ struct ConversationTaskRoutingTests {
         svc.submit("Fix the multiplayer synchronization problem.")
         try await Task.sleep(for: .milliseconds(100))
         #expect(sub.submitted.count == 1 && sub.submitted[0].1.kind == .development)
-        #expect(conv.last?.content.contains("created the task") == true && conv.last?.route == .worker)
+        // V0.15: the acknowledgement is short and says only that a task was created; the long explanation is for “detailed” turns
+        #expect(conv.last?.content == "On it." && conv.last?.route == .worker)
     }
 
     @Test func withoutAProjectNothingStartsAndTheUserIsToldWhy() async throws {
@@ -98,7 +99,7 @@ struct ConversationTaskRoutingTests {
         svc.submit("Analyze the multiplayer issue.")
         try await Task.sleep(for: .milliseconds(100))
         #expect(sub.submitted.count == 1 && sub.submitted[0].1.kind == .readOnlyAnalysis)
-        #expect(conv.last?.content.contains("inspect the project") == true)
+        #expect(conv.last?.content == "Looking into it.")
         // no project: stays a normal reasoning request (no provider here → the usual "not connected" notice), never a task
         let (svc2, _, sub2, _) = make()
         sub2.hasProject = false

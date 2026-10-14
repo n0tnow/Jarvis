@@ -48,7 +48,7 @@ final class MemoryIndex: @unchecked Sendable {
         let current = live.filter { hashes[$0.id] == Self.textHash(Self.embeddingText($0)) }.count
         let state: State
         if !isSemanticEnabled() { state = .disabled }
-        else if e == nil || e?.isAvailable == false { state = .unavailable("embedding helper not installed — run scripts/setup_memory_ai.sh") }
+        else if e == nil || e?.isAvailable == false { state = .unavailable("embedding helper not installed — press Set Up in System & Readiness (development builds: scripts/setup_memory_ai.sh)") }
         else if !rows.invalid.isEmpty { state = .degraded("\(rows.invalid.count) vector(s) are invalid and are ignored until the index is repaired") }
         else { state = .ok }
         return Health(state: state, model: model, revision: rev, dimension: dim, indexed: rows.valid.count, unindexed: max(0, live.count - current), invalid: rows.invalid.count,

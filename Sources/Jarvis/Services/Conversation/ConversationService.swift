@@ -77,6 +77,18 @@ final class ConversationService {
     /// V0.14: learning and capabilities (“what did you learn?”, “show the MCPs”, “turn Blender MCP off”, “delete Blender MCP”). Typed and spoken text take this same path; a destructive request only
     /// CREATES a request that a HUD button decides — a spoken “yes” never does (ApprovalGuard above). nil = not wired.
     @ObservationIgnored weak var adaptiveHandler: (any AdaptiveConversing)?
+    /// V0.15: how an answer is shown (depth, shortening that never hides a failure, the form of address) and the bounded follow-up context. Presentation and references only: neither can approve,
+    /// grant or decide anything, and a resolved follow-up is rewritten into an explicit sentence that takes the normal route below.
+    @ObservationIgnored let presenter = ResponsePresenter()
+    @ObservationIgnored let workingContext = ConversationWorkingContext()
+    /// V0.15: “Is Claude ready?”, “Ses sistemi hazır mı?” — answered from the readiness picture. nil = not wired.
+    @ObservationIgnored weak var readinessHandler: (any ReadinessConversing)?
+    /// V0.15: true while any decision (approval, adaptive request, proposal) waits for a HUD button — a bare “yes” is then caught by `ApprovalGuard`, whatever kind of decision it is.
+    @ObservationIgnored var hasPendingDecision: () -> Bool = { false }
+    /// Settings → Speak task acknowledgements. Off: the acknowledgement is still shown, just not spoken.
+    @ObservationIgnored var speakTaskAcknowledgements: () -> Bool = { true }
+    /// V0.15: “Hamam’a dön” — makes a known project the conversation’s project (no permission change).
+    @ObservationIgnored var focusProject: ((String) async -> ProjectContinuity.FocusResult)?
     /// Called at the start of every accepted submission (V0.7: a typed message silences speech that is still playing).
     @ObservationIgnored var onSubmit: ((InputSource) -> Void)?
     /// "stop talking" also silences speech that is playing (V0.7): returns true when something was being spoken.
@@ -111,12 +123,36 @@ final class ConversationService {
 
         onSubmit?(source)
         conversation.appendUser(text, source: source)
+        let depth = presenter.beginTurn(text)
+        workingContext.beginTurn()
+        let inputLanguage = InputNormalizer.normalize(text).language
         defer { announceLatestReply() }
-        // "yes" / "approve" never approves anything — typed or spoken. Approvals are HUD buttons only (V0.7, DEC-066).
-        if store.pendingApproval != nil, ApprovalGuard.isApprovalUtterance(text) {
-            let lang = InputNormalizer.normalize(text).language
+        // "yes" / "approve" never approves anything — typed or spoken. Approvals are HUD buttons only (V0.7, DEC-066). V0.15: that holds for EVERY kind of pending decision.
+        if (store.pendingApproval != nil || hasPendingDecision()), ApprovalGuard.isApprovalUtterance(text) {
+            let lang = inputLanguage
             conversation.appendJarvis(ApprovalGuard.notice(lang), tone: .notice, route: .local)
             return .localResponse(.approvalNeedsHUD, lang)
+        }
+        // “Detaylı anlat.” / “Kısa söyle.” on its own: the previous answer again, at that depth (no model).
+        if let d = depth, d.bare, let again = presenter.rerender(depth: d.depth, language: inputLanguage) {
+            conversation.appendJarvis(again, route: .local)
+            return .localResponse(.contextual, inputLanguage)
+        }
+        // “Hamam’a dön”: the conversation's project changes (and what belonged to the old one is dropped). Nothing is selected for writing.
+        if let request = ProjectSwitchParser.parse(text), let focus = focusProject, !isNavigationCommand(text) {
+            handleProjectFocus(request, original: text, origin: origin, source: source, focus: focus, language: inputLanguage)
+            return .localResponse(.contextual, inputLanguage)
+        }
+        // Follow-ups (“ikincisini dene”, “onu kullan”, “biraz sola al”): resolved against the bounded working context, or asked about. Never from recency for anything destructive.
+        switch ReferenceResolver.resolve(text, context: workingContext, language: inputLanguage) {
+        case .notFollowUp: break
+        case .ask(let question), .nothing(let question):
+            conversation.appendJarvis(question, tone: .notice, route: .local)
+            return .localResponse(.contextual, inputLanguage)
+        case .resolved(let goal, let chosen, let id):
+            workingContext.select(id)
+            conversation.appendJarvis(chosen, route: .local)
+            return dispatch(goal, origin: origin, source: source)
         }
         // Project continuity: project status questions and “continue” are resolved against CURRENT project truth (no model, no invention); “continue” becomes an ordinary bounded task.
         if let continuity = continuityHandler, let intent = continuity.recognizes(text) {
@@ -132,6 +168,13 @@ final class ConversationService {
                 handleAdaptive(intent, language: lang, source: source)
                 return .localResponse(.adaptive, lang)
             }
+        }
+        // Readiness questions (“Claude hazır mı?”, “is the voice system ready?”): answered from the readiness picture; nothing is started or installed.
+        if let readiness = readinessHandler, let intent = readiness.recognizes(text) {
+            let lang = inputLanguage
+            let full = readiness.reply(to: intent, language: lang)
+            conversation.appendJarvis(presenter.present(full: full, language: lang), route: .local)
+            return .localResponse(.contextual, lang)
         }
         // Project Memory: explicit remember / correct / forget and direct questions about the project's history are answered from RECORDS (no model, no invention).
         if let memory = memoryHandler {
@@ -158,10 +201,10 @@ final class ConversationService {
 
         case .localResponse(let reply, let lang):
             switch reply {
-            case .greeting: conversation.appendJarvis(Phrasebook.greeting(lang), route: .local)
+            case .greeting: conversation.appendJarvis(presenter.addressed(Phrasebook.greeting(lang), moment: .greeting, language: lang), route: .local)
             case .thanks: conversation.appendJarvis(Phrasebook.thanks(lang), route: .local)
             case .approvalNeedsHUD: conversation.appendJarvis(ApprovalGuard.notice(lang), tone: .notice, route: .local)
-            case .memory, .continuity, .adaptive: break           // answered by handleMemoryCommand / handleContinuity / handleAdaptive
+            case .memory, .continuity, .adaptive, .contextual: break           // answered by handleMemoryCommand / handleContinuity / handleAdaptive
             }
 
         case .reasoningRequired(let prompt, let lang):
@@ -216,7 +259,12 @@ final class ConversationService {
             guard let self else { return }
             defer { self.pendingTaskAcks -= 1 }
             switch await submitter.submitTask(goal: prompt, intent: intent, channel: channel) {
-            case .started(let title): self.conversation.appendJarvis(compound ? Phrasebook.orchestratedStarted(title, language) : Phrasebook.taskStarted(title, readOnly: intent.kind == .readOnlyAnalysis, language), route: .worker)
+            case .started(let title):
+                let readOnly = intent.kind == .readOnlyAnalysis
+                let full = compound ? Phrasebook.orchestratedStarted(title, language) : Phrasebook.taskStarted(title, readOnly: readOnly, language)
+                let brief = compound ? DailyPhrasebook.orchestratedAccepted(language) : DailyPhrasebook.taskAccepted(readOnly: readOnly, language)
+                self.conversation.appendJarvis(self.acknowledgement(full: full, brief: brief, language: language), route: .worker, silent: !self.speakTaskAcknowledgements())
+                self.workingContext.note(kind: .completedAction, refID: "last-request", label: title, source: .userStated, evidence: "task-request", payload: prompt)
             case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
             case .rejected(let why): self.conversation.appendJarvis(why, tone: .notice, route: .worker)
             }
@@ -243,7 +291,7 @@ final class ConversationService {
             guard let self else { return }
             defer { self.pendingTaskAcks -= 1 }
             let reply = await adaptive.reply(to: intent, language: language, channel: source)
-            self.conversation.appendJarvis(reply, route: .local)
+            self.conversation.appendJarvis(self.presenter.present(full: reply, language: language), route: .local)
             self.announceLatestReply()
         }
     }
@@ -254,7 +302,7 @@ final class ConversationService {
             guard let self else { return }
             defer { self.pendingTaskAcks -= 1 }
             if let reply = await memory.reply(to: command, language: language) {
-                self.conversation.appendJarvis(reply, route: .local)
+                self.conversation.appendJarvis(self.presenter.present(full: reply, language: language, evidence: true), route: .local)
                 self.announceLatestReply()
             } else {
                 _ = self.dispatch(original, origin: origin, source: source)           // memory was not confident: the question goes the normal way
@@ -277,7 +325,9 @@ final class ConversationService {
                 guard let self else { return }
                 defer { self.pendingTaskAcks -= 1 }
                 switch await submitter.submitComputer(goal: prompt, channel: channel) {
-                case .started(let title): self.conversation.appendJarvis(Phrasebook.computerStarted(title, language), route: .worker)
+                case .started(let title):
+                    self.conversation.appendJarvis(self.acknowledgement(full: Phrasebook.computerStarted(title, language), brief: DailyPhrasebook.computerAccepted(language), language: language), route: .worker, silent: !self.speakTaskAcknowledgements())
+                    self.workingContext.note(kind: .completedAction, refID: "last-request", label: title, source: .userStated, evidence: "task-request", payload: prompt)
                 case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
                 case .rejected(let why): self.conversation.appendJarvis(why, tone: .notice, route: .worker)
                 }
@@ -294,9 +344,39 @@ final class ConversationService {
             guard let self else { return }
             defer { self.pendingTaskAcks -= 1 }
             switch await submitter.submitResearch(goal: prompt, channel: channel) {
-            case .started(let title): self.conversation.appendJarvis(Phrasebook.researchStarted(title, language), route: .worker)
+            case .started(let title):
+                self.conversation.appendJarvis(self.acknowledgement(full: Phrasebook.researchStarted(title, language), brief: DailyPhrasebook.researchAccepted(language), language: language), route: .worker, silent: !self.speakTaskAcknowledgements())
+                self.workingContext.note(kind: .completedAction, refID: "last-request", label: title, source: .userStated, evidence: "task-request", payload: prompt)
             case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
             case .rejected(let why): self.conversation.appendJarvis(why, tone: .notice, route: .worker)
+            }
+            self.announceLatestReply()
+        }
+    }
+
+    /// The words for “a task was created”: short by default, the original explanation when the user asked for detail or chose the Detailed style. Says only that the task exists.
+    private func acknowledgement(full: String, brief: String, language: ReplyLanguage) -> String {
+        let expanded = presenter.lastDepth.expands || presenter.style() == .detailed
+        return presenter.addressed(expanded ? full : brief, moment: .taskAccepted, language: language)
+    }
+
+    /// “go to system”, “switch to compact”, “open the report”: deterministic commands win over a project switch.
+    private func isNavigationCommand(_ text: String) -> Bool { if case .command = router.route(text) { return true }; return false }
+
+    private func handleProjectFocus(_ request: ProjectSwitchParser.Request, original: String, origin: InputOrigin, source: InputSource, focus: @escaping (String) async -> ProjectContinuity.FocusResult, language: ReplyLanguage) {
+        pendingTaskAcks += 1
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.pendingTaskAcks -= 1 }
+            switch await focus(request.name) {
+            case .found(let projectName, let key):
+                self.workingContext.projectChanged(to: key)
+                self.workingContext.note(kind: .project, refID: key, label: projectName, source: .userStated, evidence: "user-request")
+                self.conversation.appendJarvis(language == .tr ? "Konuşma “\(projectName)” projesine döndü. İzinler değişmedi." : "Back on “\(projectName)”. Permissions are unchanged.", route: .local)
+            case .unknown(let n, let known):
+                guard request.explicit else { _ = self.dispatch(original, origin: origin, source: source); self.announceLatestReply(); return }          // “back to work” is just a sentence
+                let list = known.isEmpty ? "" : (language == .tr ? " Bildiğim projeler: \(known.joined(separator: ", "))." : " Known projects: \(known.joined(separator: ", ")).")
+                self.conversation.appendJarvis(language == .tr ? "“\(n)” adında bir proje tanımıyorum.\(list)" : "I do not know a project called “\(n)”.\(list)", tone: .notice, route: .local)
             }
             self.announceLatestReply()
         }

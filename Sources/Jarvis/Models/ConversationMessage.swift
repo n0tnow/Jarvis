@@ -29,4 +29,6 @@ struct ConversationMessage: Identifiable, Codable, Hashable, Sendable {
     var provider: String?
     /// For user messages: nil = typed. A voice message is the FINAL transcript of a push-to-talk utterance (partials are never messages).
     var source: InputSource?
+    /// V0.15: shown but never spoken (a task acknowledgement when “Speak task acknowledgements” is off). nil = speak as usual.
+    var silent: Bool?
 }

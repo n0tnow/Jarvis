@@ -71,7 +71,7 @@ struct VoiceSettingsSection: View {
                     }
                 }
                 Text("Using: \(voice.sttChoice.reason)").font(.caption).foregroundStyle(.secondary)
-                Text("Both recognisers run on this Mac: no network, no API key, no cost. Whisper is more accurate (especially Turkish and technical words) but needs a one-time ≈460 MB download (scripts/setup_voice_ai.sh) and about 0.9 GB of memory while loaded (it unloads itself when idle or when memory is tight). Apple Speech needs no setup beyond its own language model.")
+                Text("Both recognisers run on this Mac: no network, no API key, no cost. Whisper is more accurate (especially Turkish and technical words) but needs a one-time ≈460 MB download (Set Up in System & Readiness) and about 0.9 GB of memory while loaded (it unloads itself when idle or when memory is tight). Apple Speech needs no setup beyond its own language model.")
                     .font(.caption).foregroundStyle(.secondary)
 
                 wakeSection(prefs: prefs)
@@ -124,7 +124,7 @@ struct VoiceSettingsSection: View {
                     Button("Allow microphone…") { Task { await app.voice.requestMicrophoneFromSettings(); await app.handsFree.applySettings() } }
                 }
                 if case .notInstalled = app.sentinel.state {
-                    Text("Install the local wake-word helper once: run scripts/setup_voice_ai.sh --natural (≈ 0.2 GB runtime, models from pinned releases; JARVIS never downloads anything itself).")
+                    Text("Install the local wake-word helper once: press Set Up Natural Voice in System & Readiness (≈ 0.2 GB runtime, models from pinned releases; JARVIS never downloads anything itself).")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -153,7 +153,7 @@ struct VoiceSettingsSection: View {
         Text(prefs.voicePreset.summary).font(.caption2).foregroundStyle(.secondary)
         LabeledContent("Neural voice") { mono(neural.state.label, neural.state == .running || neural.state == .idle ? .green : .orange) }
         if case .notInstalled = neural.state {
-            Text("Not installed — JARVIS speaks with the Apple system voice until you install it: run scripts/setup_voice_ai.sh --natural (≈ 0.4 GB model, local, no account, no API key, no cost).")
+            Text("Not installed — JARVIS speaks with the Apple system voice until you install it: press Set Up Natural Voice in System & Readiness (≈ 0.4 GB model, local, no account, no API key, no cost).")
                 .font(.caption2).foregroundStyle(.secondary)
         }
         Text("Using: \(voice.ttsChoice.reason)").font(.caption).foregroundStyle(.secondary)

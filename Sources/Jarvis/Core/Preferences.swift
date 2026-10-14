@@ -27,6 +27,9 @@ final class Preferences {
         static let experiments = "prefs.operator.experiments"
         static let adaptiveEnabled = "prefs.adaptive.enabled", learnTasks = "prefs.adaptive.tasks", learnCorrections = "prefs.adaptive.corrections", gapDetection = "prefs.adaptive.gaps"
         static let safeExperiments = "prefs.adaptive.experiments", autoPromoteWorkflows = "prefs.adaptive.autopromote", selfLevel = "prefs.adaptive.level"
+        // V0.15 daily JARVIS
+        static let responseStyle = "prefs.daily.responseStyle", addressStyle = "prefs.daily.addressStyle", followUps = "prefs.daily.followUps", notifyTasks = "prefs.daily.notifyTasks"
+        static let speakAcks = "prefs.daily.speakAcks", speakCompletions = "prefs.daily.speakCompletions", openCompactOnLaunch = "prefs.daily.openCompact", firstRunDone = "prefs.daily.firstRunDone"
         static let mcpDiscovery = "prefs.adaptive.mcpdiscovery", mcpUpdateAdvice = "prefs.adaptive.mcpupdates"
         static let visualMode = "prefs.operator.visualMode"
         static let visualModel = "prefs.operator.visualModel"
@@ -111,6 +114,16 @@ final class Preferences {
     /// OFF by default. Even when ON only LOW-risk workflow rules can be promoted without a click, and only after deterministic validation.
     var autoPromoteLowRiskWorkflows: Bool { didSet { defaults.set(autoPromoteLowRiskWorkflows, forKey: Key.autoPromoteWorkflows) } }
     var selfImprovementLevel: SelfImprovementLevel { didSet { defaults.set(selfImprovementLevel.rawValue, forKey: Key.selfLevel) } }
+    /// V0.15 Daily JARVIS (presentation only — none of these can change what JARVIS is allowed to do).
+    var responseStyle: ResponseStyle { didSet { defaults.set(responseStyle.rawValue, forKey: Key.responseStyle) } }
+    var addressStyle: AddressStyle { didSet { defaults.set(addressStyle.rawValue, forKey: Key.addressStyle) } }
+    var conversationFollowUps: Bool { didSet { defaults.set(conversationFollowUps, forKey: Key.followUps) } }
+    /// OFF by default: macOS is asked for notification permission only when the user turns this on.
+    var notifyOnTaskEvents: Bool { didSet { defaults.set(notifyOnTaskEvents, forKey: Key.notifyTasks) } }
+    var voiceSpeakTaskAcks: Bool { didSet { defaults.set(voiceSpeakTaskAcks, forKey: Key.speakAcks) } }
+    var voiceSpeakCompletions: Bool { didSet { defaults.set(voiceSpeakCompletions, forKey: Key.speakCompletions) } }
+    var openCompactOnLaunch: Bool { didSet { defaults.set(openCompactOnLaunch, forKey: Key.openCompactOnLaunch) } }
+    var firstRunCompleted: Bool { didSet { defaults.set(firstRunCompleted, forKey: Key.firstRunDone) } }
     var mcpDiscoveryEnabled: Bool { didSet { defaults.set(mcpDiscoveryEnabled, forKey: Key.mcpDiscovery) } }
     var mcpUpdateRecommendations: Bool { didSet { defaults.set(mcpUpdateRecommendations, forKey: Key.mcpUpdateAdvice) } }
     /// V0.13 general visual grounding: on-device only (Apple text recognition + the local vision model when installed), or off.
@@ -196,6 +209,14 @@ final class Preferences {
         safeLearningExperiments = defaults.object(forKey: Key.safeExperiments) as? Bool ?? true
         autoPromoteLowRiskWorkflows = defaults.object(forKey: Key.autoPromoteWorkflows) as? Bool ?? false
         selfImprovementLevel = (defaults.object(forKey: Key.selfLevel) as? Int).flatMap(SelfImprovementLevel.init(rawValue:)) ?? .experiment
+        responseStyle = defaults.string(forKey: Key.responseStyle).flatMap(ResponseStyle.init(rawValue:)) ?? .concise
+        addressStyle = defaults.string(forKey: Key.addressStyle).flatMap(AddressStyle.init(rawValue:)) ?? .natural
+        conversationFollowUps = defaults.object(forKey: Key.followUps) as? Bool ?? true
+        notifyOnTaskEvents = defaults.object(forKey: Key.notifyTasks) as? Bool ?? false
+        voiceSpeakTaskAcks = defaults.object(forKey: Key.speakAcks) as? Bool ?? true
+        voiceSpeakCompletions = defaults.object(forKey: Key.speakCompletions) as? Bool ?? true
+        openCompactOnLaunch = defaults.object(forKey: Key.openCompactOnLaunch) as? Bool ?? false
+        firstRunCompleted = defaults.object(forKey: Key.firstRunDone) as? Bool ?? false
         mcpDiscoveryEnabled = defaults.object(forKey: Key.mcpDiscovery) as? Bool ?? true
         mcpUpdateRecommendations = defaults.object(forKey: Key.mcpUpdateAdvice) as? Bool ?? true
         visualGroundingMode = (defaults.string(forKey: Key.visualMode)).flatMap(VisualGroundingMode.init(rawValue:)) ?? .auto

@@ -29,8 +29,10 @@ final class ConversationStore {
 
     @discardableResult
     func appendJarvis(_ text: String, tone: MessageTone = .normal, route: RouteKind? = nil,
-                      status: MessageStatus = .complete) -> ConversationMessage {
-        let message = append(ConversationMessage(role: .jarvis, content: text, status: status, tone: tone, route: route))
+                      status: MessageStatus = .complete, silent: Bool = false) -> ConversationMessage {
+        var m = ConversationMessage(role: .jarvis, content: text, status: status, tone: tone, route: route)
+        if silent { m.silent = true }
+        let message = append(m)
         if status == .complete { setFeedback(text) }
         return message
     }

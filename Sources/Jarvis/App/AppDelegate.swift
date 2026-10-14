@@ -8,11 +8,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let options = LaunchOptions()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // V0.15: opening JARVIS again (Finder, Spotlight, Dock, login) shows the running copy instead of starting a second menu-bar assistant. Developer / live-test launches (any --flag) are exempt.
+        if SingleInstance.handOverToRunningInstance() { NSApp.terminate(nil); return }
         Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
         let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.memoryLiveTest && !options.computerLiveTest && !options.orchestrationLiveTest && !options.operatorLiveTest && !options.adaptiveLiveTest && !options.mcpLiveTest && !options.continuityLiveTest && options.stabilitySoak == 0 && !options.visualBenchmark && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
-        let liveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true)
+        let legacyLiveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true)
             : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true)
             : (options.proactiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-proactive", isDirectory: true)
             : (options.unityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-unity", isDirectory: true)
@@ -23,9 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             : (options.researchLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.researchChild != nil ? "live-test-research-child" : "live-test-research", isDirectory: true)
             : (options.voiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.voiceQuitChild ? "live-test-voice-child" : "live-test-voice", isDirectory: true)
             : (options.naturalVoiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.naturalChild ? "live-test-natural-child" : "live-test-natural", isDirectory: true) : nil))))))))))
+        let liveData = options.dailyLiveFolder.map { JarvisPaths.standard().root.appendingPathComponent($0, isDirectory: true) } ?? legacyLiveData
         // V0.14: the adaptive and MCP live tests judge what is learned from THEIR OWN generated history, so they start from an empty isolated directory every time
         // (a second run on top of the first would find a 24-run workflow and fail for the wrong reason). Only these two JARVIS-created test directories are ever removed.
-        if let liveData, ["live-test-adaptive", "live-test-mcp"].contains(liveData.lastPathComponent), liveData.deletingLastPathComponent().standardizedFileURL == JarvisPaths.standard().root.standardizedFileURL {
+        if let liveData, ["live-test-adaptive", "live-test-mcp", "live-test-daily", "live-test-packaging", "live-test-setup"].contains(liveData.lastPathComponent), liveData.deletingLastPathComponent().standardizedFileURL == JarvisPaths.standard().root.standardizedFileURL {
             try? FileManager.default.removeItem(at: liveData)
         }
         // The natural-voice live test runs the real stack in a closed acoustic loop (scripted microphone + simulated speaker); nothing else ever gets a rig.
@@ -69,7 +72,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if options.demoTasks > 0, context.intelligenceIsStubbed { Task { await TaskDemo.park(context: context, count: options.demoTasks) } }
         if options.demoProposals, context.intelligenceIsStubbed { Task { await TaskDemo.leaveProposals(context: context) } }
         if let state = options.state { DemoScenario.apply(state, to: context.store) }
-        if options.openCompact { context.windows.showCompactHUD() }
+        let plainLaunch = SingleInstance.isPlainLaunch()
+        DistributedNotificationCenter.default().addObserver(forName: SingleInstance.showNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.context.windows.showCompactHUD() }
+        }
+        if options.openCompact || (plainLaunch && context.preferences.openCompactOnLaunch && context.preferences.firstRunCompleted) { context.windows.showCompactHUD() }
+        // First launch of the installed app: the readiness walk-through (skippable; nothing in it is required, and it never starts a model, a provider or a permission prompt by itself).
+        if plainLaunch, AppInfo.isApplicationBundle, !context.intelligenceIsStubbed, !context.preferences.firstRunCompleted { context.windows.showFullHUD(section: .system) }
         if options.openFull { context.windows.showFullHUD(section: options.section) }
 
         if let seconds = options.closeAfter {
@@ -121,6 +130,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let context = context!, sections = options.adaptiveSections, cycles = options.adaptiveCycles
             Task { await AdaptiveLiveTest.run(context: context, sections: sections, cycles: cycles) }
         }
+        if options.dailyLiveTest {
+            let context = context!, sections = options.dailySections
+            Task { await DailyLiveTest.run(context: context, sections: sections) }
+        }
+        if options.packagingLiveTest {
+            let context = context!
+            Task { await PackagingLiveTest.run(context: context) }
+        }
+        if options.setupLiveTest {
+            let context = context!
+            Task { await SetupLiveTest.run(context: context) }
+        }
         if options.mcpLiveTest {
             let context = context!, sections = options.mcpSections
             Task { await McpLiveTest.run(context: context, sections: sections) }
@@ -170,7 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await DevCapture.run(directory: directory, context: context) }
         }
         // Find out which engines are actually usable (event-driven, once; no polling). Stubbed runs never touch real providers.
-        if !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.computerLiveTest && !options.orchestrationLiveTest && !options.operatorLiveTest && !options.adaptiveLiveTest && !options.mcpLiveTest && !options.continuityLiveTest && options.stabilitySoak == 0 && !options.visualBenchmark && !options.voiceLiveTest && !options.naturalVoiceLiveTest {
+        if options.dailyLiveFolder == nil && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.computerLiveTest && !options.orchestrationLiveTest && !options.operatorLiveTest && !options.adaptiveLiveTest && !options.mcpLiveTest && !options.continuityLiveTest && options.stabilitySoak == 0 && !options.visualBenchmark && !options.voiceLiveTest && !options.naturalVoiceLiveTest {
             let context = context!
             Task { await context.refreshIntelligence(includeOpenCode: false) }     // OpenCode is read lazily (may start its background service)
         }
@@ -200,6 +221,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showSettings(_ sender: Any?) { context.windows.showSettings() }
+
+    /// Opening the running app again from Finder / Spotlight / the Dock shows it (a menu-bar app has no window to bring forward).
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { context?.windows.showCompactHUD() }
+        return true
+    }
 
     /// Closing HUDs must never quit JARVIS: the menu bar item is the app.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

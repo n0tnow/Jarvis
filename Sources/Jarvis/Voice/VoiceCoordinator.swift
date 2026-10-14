@@ -202,6 +202,13 @@ final class VoiceCoordinator {
 
     /// The explicit "Stop speaking" control and the typed-message rule. Returns true if something was being spoken.
     @discardableResult
+    /// V0.15: a short spoken line for a task that finished while nothing else is being said (Settings → Speak task completions). Never interrupts speech that is already playing, never
+    /// opens the microphone. It goes through the same queue, voice choice and stop path as every other phrase.
+    func speakCompletion(_ text: String, language: ReplyLanguage) {
+        guard settings().enabled, settings().speakResponses, !speaker.isActive, !speaker.isSpeaking else { return }
+        speaker.speakStandalone(String(text.prefix(280)), language: language == .tr ? .turkish : .english)
+    }
+
     func stopSpeaking() -> Bool {
         let was = speaker.isSpeaking || speaker.isActive
         let t0 = Date()
@@ -478,7 +485,10 @@ final class VoiceCoordinator {
         let s = settings()
         let lang: VoiceLanguage = s.language != .auto ? s.language : (languageContinuity.current ?? (turns > 0 ? lastReplyLanguage : VoiceLanguage.systemDefault))
         speaker.speakStandalone(lang == .turkish ? "Efendim?" : "Yes?", language: lang)
+        if lang == .turkish { onAddressed?() }
     }
+    /// V0.15: told when “Efendim?” was said, so the address policy does not repeat it a moment later.
+    @ObservationIgnored var onAddressed: (() -> Void)?
 
     /// A typed message while JARVIS is speaking: the speech is stopped (the text conversation keeps going).
     func typedInputArrived() {

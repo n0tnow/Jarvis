@@ -70,8 +70,14 @@ struct LaunchOptions {
     var adaptiveLiveTest = false
     var adaptiveSections = Set<String>()
     var adaptiveCycles = 15
+    var dailyLiveTest = false
+    var dailySections = Set<String>()
+    var packagingLiveTest = false
+    var setupLiveTest = false
     var mcpLiveTest = false
     var mcpSections = Set<String>()
+    /// V0.15: which isolated data folder a daily / packaging / setup live test uses (nil = none of them was requested).
+    var dailyLiveFolder: String? { dailyLiveTest ? "live-test-daily" : (packagingLiveTest ? "live-test-packaging" : (setupLiveTest ? "live-test-setup" : nil)) }
     var continuityLiveTest = false
     var continuitySections: Set<String> = []
     var visualBenchmark = false
@@ -132,6 +138,10 @@ struct LaunchOptions {
             case "--adaptive-live-test": adaptiveLiveTest = true
             case "--adaptive-section": if let v = it.next() { adaptiveSections.insert(v) }
             case "--adaptive-cycles": adaptiveCycles = it.next().flatMap(Int.init) ?? 15
+            case "--daily-jarvis-live-test": dailyLiveTest = true
+            case "--daily-section": if let v = it.next() { dailySections.insert(v) }
+            case "--packaging-live-test": packagingLiveTest = true
+            case "--setup-live-test": setupLiveTest = true
             case "--mcp-live-test": mcpLiveTest = true
             case "--mcp-section": if let v = it.next() { mcpSections.insert(v) }
             case "--continuity-live-test": continuityLiveTest = true

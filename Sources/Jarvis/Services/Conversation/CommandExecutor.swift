@@ -57,6 +57,7 @@ final class CommandExecutor {
             return ExecutionResult(message: Phrasebook.cleared(l))
 
         case .cancelGeneration:
+            // V0.15: this silences speech and stops an answer being generated — it NEVER cancels a task (“Görevi durdur” / “stop task” does that, separately).
             return cancelGeneration() ? ExecutionResult(message: Phrasebook.generationStopped(l))
                                       : ExecutionResult(message: Phrasebook.nothingGenerating(l), tone: .notice)
 

@@ -87,6 +87,11 @@ final class AppContext {
     /// Automated runs (smoke/capture/--no-providers) use a throw-away data directory and NEVER touch real providers.
     let intelligenceIsStubbed: Bool
 
+    /// V0.15: what is ready (read-only), the typed setup runner, opt-in notifications. Created by `installDailyJarvis()`.
+    @ObservationIgnored var readiness: ReadinessService!
+    @ObservationIgnored var readinessAssistant: ReadinessAssistant!
+    @ObservationIgnored var setupRunner: SetupRunner!
+    @ObservationIgnored var notifier: JarvisNotifier!
     @ObservationIgnored private(set) var conversationService: ConversationService!
     @ObservationIgnored private(set) var windowManager: WindowManager!
 
@@ -342,6 +347,7 @@ final class AppContext {
         taskEngine.onFinished = { [weak self] v in
             guard let self else { return }
             self.taskBridge.finished(v)
+            self.noteResearchResults(v)                                                                 // V0.15: a research task's candidates are what “the second one” means next (children too)
             let finishedReport = self.taskEngine.report(for: v.id)
             Task { @MainActor in await self.memory.taskFinished(v, report: finishedReport) }          // V0.10: only meaningful outcomes become memory
             Task { @MainActor in await self.learning.taskFinished(v) }                                  // V0.14: credit applied rules/skills, then look for NEW patterns in recent history (bounded)
@@ -353,8 +359,7 @@ final class AppContext {
             Task { @MainActor in await self.opportunities.taskFinished(v) }          // event-driven post-task reflection (bounded; no polling)
             if let report = self.taskEngine.report(for: v.id) {
                 let text = self.taskEngine.researchSummary(for: v) ?? report.userSummary          // V0.9: a research task's message is its cited recommendation
-                self.conversation.appendJarvis(text, tone: v.task.state == .completed ? .normal : .notice, route: .worker)
-                Announcer.announce(text, high: v.task.state != .completed)
+                self.dailyTaskFinished(v, text: text)                                           // V0.15: shaped for the conversation, optional spoken line, opt-in notification
             }
         }
         if !stubIntelligence {
@@ -378,6 +383,7 @@ final class AppContext {
             sleepObservers.append(nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak engine, weak self] _ in MainActor.assumeIsolated { engine?.willSleep(); self?.voice.cancelAll(reason: "stopped for sleep") } })
             sleepObservers.append(nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak engine] _ in MainActor.assumeIsolated { engine?.didWake() } })
         }
+        installDailyJarvis()                                                          // V0.15: presentation, follow-ups, readiness, setup, notifications
         taskEngine.refreshHistory()
         taskBridge.sync()
         if !stubIntelligence { Task { @MainActor [opportunities] in await opportunities.reconcileOnLaunch() } }

@@ -100,6 +100,9 @@ final class VoiceResponseSpeaker {
         for m in messages[(idx + 1)...] where m.role == .jarvis {
             var p = progress[m.id] ?? MessageProgress()
             if p.done { progress[m.id] = p; continue }
+            if m.silent == true, m.status == .complete || m.status == .failed {          // shown, never spoken (Settings → Speak task acknowledgements is off)
+                p.consumed = m.content.count; p.done = true; progress[m.id] = p; continue
+            }
             let content = m.content
             if content.count > p.consumed {
                 if firstTextAt == nil { firstTextAt = .now }

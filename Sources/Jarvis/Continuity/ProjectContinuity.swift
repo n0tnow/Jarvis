@@ -228,6 +228,26 @@ final class ProjectContinuity: ContinuityConversing {
         return .found(r)
     }
 
+    // MARK: Conversational project focus (V0.15)
+
+    enum FocusResult: Equatable, Sendable { case found(name: String, key: String), unknown(String, known: [String]) }
+
+    /// “Hamam’a dön”: makes the named project the one later UNNAMED questions mean (“where are we?”, “continue”). It resolves the name exactly like a named status question and changes
+    /// nothing else — no project is selected for writing, no capability changes; work still needs the normal project choice and approvals.
+    func focus(projectNamed name: String) async -> FocusResult {
+        switch await resolve(name) {
+        case .found(let r): referencedRoot = r.root; return .found(name: r.name, key: r.key)
+        case .unknownName(let n, let known): return .unknown(n, known: known)
+        case .noProject: return .unknown(name, known: [])
+        }
+    }
+
+    /// The project later unnamed questions mean, for the working context.
+    func currentFocus() async -> (name: String, key: String)? {
+        guard case .found(let r) = await resolve(nil) else { return nil }
+        return (r.name, r.key)
+    }
+
     // MARK: Gathering current truth
 
     /// The project the user has chosen, gathered for the Project panel (nil when none is chosen or it cannot be resolved).

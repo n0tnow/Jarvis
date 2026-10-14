@@ -32,7 +32,8 @@ struct ComputerRoutingTests {
         try await Task.sleep(for: .milliseconds(120))
         #expect(sub.submitted.count == 1 && sub.submitted[0].channel == .typed)
         let ack = conv.last?.content ?? ""
-        #expect(ack.contains("Mac") && ack.contains("stop") && ack.count < 300 && conv.last?.route == .worker)
+        // V0.15: short by default, still says how to stop it
+        #expect(ack.contains("stop") && ack.count < 80 && conv.last?.route == .worker)
     }
 
     @Test("a spoken Turkish request takes the same route; only the channel differs")
@@ -41,7 +42,7 @@ struct ComputerRoutingTests {
         svc.submit("Jarvis, Xcode'u aç.", source: .voice)
         try await Task.sleep(for: .milliseconds(120))
         #expect(sub.submitted.count == 1 && sub.submitted[0].channel == .voice)
-        #expect(conv.last?.content.contains("Mac'inizi") == true)
+        #expect(conv.last?.content.contains("durdur") == true && (conv.last?.content.count ?? 999) < 80)
         let typed = make()
         typed.0.submit("Jarvis, Xcode'u aç.")
         try await Task.sleep(for: .milliseconds(120))

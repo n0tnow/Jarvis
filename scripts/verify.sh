@@ -20,13 +20,17 @@ check "CFBundleExecutable exists" test -x "$APP/Contents/MacOS/$(plutil -extract
 check "signature valid (strict, deep)" codesign --verify --strict --deep $APP
 check "arm64 binary" sh -c "lipo -archs $APP/Contents/MacOS/Jarvis | grep -q arm64"
 
+print "== Packaging (V0.15)"
+if scripts/package-app.sh >/tmp/jarvis-package.log 2>&1; then pass "package-app.sh builds a verified JARVIS.app (signature, hardened runtime, microphone-only entitlement, no model or database inside, packaged setup scripts)"; else fail "package-app.sh"; grep -E "^FAIL" /tmp/jarvis-package.log | head -3; fi
+
 print "== Permission audit"
 # V0.7 (DEC-057): the ONLY allowed privacy key is the microphone usage description (Push-to-Talk). Any other NS*UsageDescription still fails.
 other_usage=$(plutil -p $APP/Contents/Info.plist | grep -i "UsageDescription" | grep -v "NSMicrophoneUsageDescription" || true)
 [ -z "$other_usage" ] && pass "no NS*UsageDescription keys except the microphone (Push-to-Talk)" || fail "unexpected NS*UsageDescription key: $other_usage"
 [ -z "$(codesign -d --entitlements - $APP 2>/dev/null | grep -v -E '^Executable=')" ] && pass "no entitlements" || fail "no entitlements"
+# (Exemption, V0.15: UNUserNotificationCenter may appear in Readiness/SystemIntegration.swift ONLY — opt-in task notifications, requested only when the user switches them on.)
 # (Exemption, V0.7: AVCaptureDevice may appear in Voice/MicrophoneAccess.swift ONLY — the single place that reads/requests the microphone permission.)
-! grep -rEl "AVCaptureDevice|CGRequestScreenCapture|CGPreflightScreenCapture|AXIsProcessTrusted|NSAppleScript|SFSpeechRecognizer|addGlobalMonitorForEvents|CGEventTapCreate|RegisterEventHotKey|IOHIDManager|CNContactStore|CLLocationManager|UNUserNotificationCenter" Sources | grep -v "^Sources/Jarvis/Voice/MicrophoneAccess.swift$" | grep -vE "^Sources/Jarvis/Computer/(AXBackend|ScreenCapture)\.swift$" | grep -q . \
+! grep -rEl "AVCaptureDevice|CGRequestScreenCapture|CGPreflightScreenCapture|AXIsProcessTrusted|NSAppleScript|SFSpeechRecognizer|addGlobalMonitorForEvents|CGEventTapCreate|RegisterEventHotKey|IOHIDManager|CNContactStore|CLLocationManager|UNUserNotificationCenter" Sources | grep -v "^Sources/Jarvis/Voice/MicrophoneAccess.swift$" | grep -vE "^Sources/Jarvis/Computer/(AXBackend|ScreenCapture)\.swift$" | grep -v "^Sources/Jarvis/Readiness/SystemIntegration.swift$" | grep -q . \
   && pass "no permission-gated API usage in sources" || fail "permission-gated API usage found in sources"
 
 # --- V0.3 provider policy (replaces the V0.2 blanket "no provider code" rule; docs/DECISIONS.md DEC-020) ---
@@ -52,6 +56,8 @@ V11_CLIP='^Sources/Jarvis/Computer/ComputerClipboard\.swift|^Sources/Jarvis/App/
 # the MCP live test name secret variables and credential folders ONLY to measure that the sandbox hides them. Nothing else in the product may.
 V14_DETECT='^Sources/Jarvis/Capabilities/MCPInspectionRules\.swift'
 V14_PROBE='^Sources/Jarvis/App/(McpLiveTest|MCPFixtureServer)\.swift'
+# V0.15: the fixed x-apple.systempreferences: panes (System Settings) that the permission buttons open — local app URLs, never a network host.
+V15_PANES='^Sources/Jarvis/Readiness/SystemIntegration\.swift'
 V14_LIVE='^Sources/Jarvis/App/(McpLiveTest|AdaptiveLiveTest)\.swift'      # live tests name fixture hosts / public repositories (research evidence) and let a sandboxed MCP server render a file in ITS sandbox folder
 V12_DENY='^Sources/Jarvis/Tasks/TaskEngine\+Orchestration\.swift|^Sources/Jarvis/Orchestration/RoleBenchmarks\.swift|^Sources/Jarvis/App/OrchestrationLiveTest\.swift|^Sources/Jarvis/Memory/MemoryText\.swift|^Sources/Jarvis/Experiments/ExperimentContract\.swift'
 
@@ -65,7 +71,7 @@ forbid "Process is created ONLY by ManagedProcess (one audited launch point)" "(
 forbid "no generic launchers / downloaders / UI scripting" "/usr/bin/env|\"env\"|curl|wget|osascript|NSWorkspace\\.shared\\.(launchApplication|open\\(.*URL\\(string)" "^Sources/Jarvis/App/(SmokeTest|DevCapture)\\.swift|^Sources/Jarvis/Tasks/TaskPlan\\.swift|^Sources/Jarvis/Unity/UnityProtocol\\.swift|$V09_DENY|$V11_DENY|$V12_DENY|$V14_DETECT|$V14_PROBE"
 forbid "no shell is ever used to run a provider" "/bin/(ba|z)?sh|launchPath|\"sh\", *\"-c\"|popen\\(|[^.[:alnum:]_]system\\(" "$V09_DENY|$V14_PROBE"
 forbid "OpenCode credential/integration API operations are never invoked (only the fixed model.list)" "credential\\.(list|get|remove|create|update)|integration\\.(list|get|connect)|connect/(key|external|oauth|command)"
-forbid "no URL literals in product code (JARVIS contacts no host itself; providers do their own networking)" "\"https?://|URL\\(string:" "$V09_URL|^Sources/Jarvis/App/OrchestrationLiveTest\.swift|$V14_LIVE"
+forbid "no URL literals in product code (JARVIS contacts no host itself; providers do their own networking)" "\"https?://|URL\\(string:" "$V09_URL|^Sources/Jarvis/App/OrchestrationLiveTest\.swift|$V14_LIVE|$V15_PANES"
 forbid "the product never reads the pasteboard (only native paste; the dev smoke test is excluded)" "NSPasteboard|generalPasteboard" "App/SmokeTest\\.swift|$V11_CLIP"
 
 # --- V0.3.1: persistence, models and secrets must never be committed; the local worker must stay offline ---
@@ -163,7 +169,7 @@ tracked_unity=$(git ls-files 2>/dev/null | grep -E '(^|/)(Library|Temp|Logs|Obj|
 voice_src() { find Sources/Jarvis/Voice -name '*.swift'; }
 voi_auth=$(voice_src | xargs grep -nE 'decideApproval|\.decide\(|approve|ProposalService|EngineTaskControlling|TaskEngine|ApprovedExecutables|ProjectTools|ConversationService|appendUser|appendJarvis|JarvisRepository' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
 [ -z "$voi_auth" ] && pass "the voice layer cannot approve, edit, run or route anything itself (no approval/task/file/repository/conversation access)" || { fail "voice layer reaches an authority"; echo "$voi_auth" | head -3; }
-voi_entry=$(grep -rn 'source: \.voice' Sources | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | cut -d: -f1 | sort -u | grep -v 'Sources/Jarvis/App/AppContext.swift' | grep -v 'Sources/Jarvis/Services/Conversation/ConversationService.swift' | grep -v 'Sources/Jarvis/Core/ConversationStore.swift' | grep -v 'Sources/Jarvis/Tasks/GoalIntake.swift' | grep -v 'Sources/Jarvis/App/DevCapture.swift' | grep -v 'Sources/Jarvis/App/VoiceLiveTest.swift' | grep -v 'Sources/Jarvis/App/ResearchLiveTest.swift' | grep -v 'Sources/Jarvis/App/MemoryLiveTest.swift' | grep -v 'Sources/Jarvis/App/ComputerLiveTest.swift' || true)
+voi_entry=$(grep -rn 'source: \.voice' Sources | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | cut -d: -f1 | sort -u | grep -v 'Sources/Jarvis/App/AppContext.swift' | grep -v 'Sources/Jarvis/Services/Conversation/ConversationService.swift' | grep -v 'Sources/Jarvis/Core/ConversationStore.swift' | grep -v 'Sources/Jarvis/Tasks/GoalIntake.swift' | grep -v 'Sources/Jarvis/App/DevCapture.swift' | grep -v 'Sources/Jarvis/App/DailyLiveTest.swift' | grep -v 'Sources/Jarvis/App/VoiceLiveTest.swift' | grep -v 'Sources/Jarvis/App/ResearchLiveTest.swift' | grep -v 'Sources/Jarvis/App/MemoryLiveTest.swift' | grep -v 'Sources/Jarvis/App/ComputerLiveTest.swift' || true)
 [ -z "$voi_entry" ] && pass "a spoken transcript enters the conversation only through ConversationService.submit (the typed path) wired in AppContext" || { fail "voice input path outside AppContext/ConversationService: $voi_entry"; }
 # (V0.8: JARVIS' own playback engine, Voice/SpeechPlayer.swift, is OUTPUT only: it may create an AVAudioEngine and meter its mixer, but never touch an input node.)
 voi_mic=$(grep -rnE 'AVAudioInputNode|inputNode' Sources | grep -v 'Sources/Jarvis/Voice/AudioInput.swift' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
@@ -382,7 +388,7 @@ v09_none "purchase, rental, cart and donation words are blocked forever by the c
 v09_none "no site- or account-specific scraper or automation: no streaming, shop or social service is named in product code" "$(grep -rniE 'primevideo|prime video|netflix|disneyplus|hulu\b|spotify|amazon\.com|youtube\.com/watch' Sources | grep -vE "$V11_DENY" | nonc)"
 v09_none "the user's unsaved scene is protected in Swift AND in the bridge" "$( (grep -q 'userDirtyScenes' Sources/Jarvis/Unity/UnityPolicy.swift || echo 'swift'; grep -q 'dirtyScene\|sc.isDirty' UnityBridge/com.jarvis.bridge/Editor/*.cs UnityBridge/com.jarvis.bridge/TestRunner/TestOps.cs || echo 'bridge') )"
 v09_none "no runtime code writes JARVIS's own rules, decisions, state or roadmap documents (AGENTS / DECISIONS / PROJECT_STATE / CURRENT_TASK / ROADMAP are only READ)" "$(grep -rnE '(AGENTS|DECISIONS|PROJECT_STATE|CURRENT_TASK|ROADMAP)\.md' Sources | grep -vE '^Sources/Jarvis/App/[A-Za-z]*LiveTest\.swift|^Sources/Jarvis/Services/Demo/' | grep -E 'write|createFile|replaceItem|removeItem|moveItem|copyItem|FileHandle' | nonc)"
-v09_none "no permanent vision daemon or login item: no LaunchAgent / LaunchDaemon / launchctl / SMAppService in the app or the vision setup" "$(grep -rniE 'LaunchAgent|LaunchDaemon|launchctl|SMAppService|loginItem' Sources scripts/setup_vision_ai.sh scripts/vision-ai | grep -vE "ComputerPolicy.swift|$V14_DETECT|"'^[^:]+:[0-9]+:[[:space:]]*(//|#)' | head -3)"
+v09_none "no permanent daemon or hidden persistence: no LaunchAgent / LaunchDaemon / launchctl anywhere, and SMAppService only in Readiness/SystemIntegration.swift (the user-controlled Launch at Login, V0.15)" "$(grep -rniE 'LaunchAgent|LaunchDaemon|launchctl|SMAppService' Sources scripts/setup_vision_ai.sh scripts/vision-ai | grep -vE "ComputerPolicy.swift|$V14_DETECT|^Sources/Jarvis/(Readiness/SystemIntegration|App/PackagingLiveTest)\.swift:|"'^[^:]+:[0-9]+:[[:space:]]*(//|#)' | head -3)"
 v09_none "visual text output is sanitised (secrets redacted) and scanned before it is shown or stored" "$( (awk '/static func text\(_ raw: String\)/,/^    }/' $VIS/VisualTypes.swift | grep -q 'OutputSanitizer.sanitize' || echo 'sanitize'; awk '/static func text\(_ raw: String\)/,/^    }/' $VIS/VisualTypes.swift | grep -q 'UntrustedContent.scan' || echo 'scan') )"
 v09_none "the Unity layer and the operator code never poll the editor on a timer: no Timer / DispatchSource in Unity/, experiments or continuity (bounded request/response waits only)" "$(grep -rnE 'Timer\.scheduled|scheduledTimer|DispatchSource.*Timer|Timer\.publish|repeats: *true' Sources/Jarvis/Unity Sources/Jarvis/Experiments Sources/Jarvis/Tasks/TaskEngine+Experiment.swift Sources/Jarvis/Tasks/TaskEngine+ExperimentPlayback.swift Sources/Jarvis/Tasks/TaskEngine+UnityOperator.swift | grep -v 'UnityBridgePackage.generated' | nonc)"
 v09_none "no real user path or user name is embedded in sources, tests or scripts (automated runs use temp fixtures; the real Hamam project is never a target)" "$(grep -rInE '/Users/bilalkaya|Library/Application Support/JARVIS/live-test-[a-z]+/.*Hamam' Sources Tests scripts --exclude-dir=__pycache__ --exclude-dir=.venv | grep -v 'scripts/verify.sh' | nonc)"
@@ -393,6 +399,7 @@ v09_none "an Accessibility action's 'unsupported' answer is neither trusted nor 
 v09_none "the experiment's generated fixture sound is a synthetic tone written only into the disposable project (no downloaded or copyrighted audio)" "$( (grep -q 'writeFixtureTone(into project' Sources/Jarvis/Tasks/TaskEngine+ExperimentPlayback.swift || echo 'tone'; grep -rn 'writeFixtureTone' Sources | grep -vE 'TaskEngine\+Experiment(Playback)?\.swift' | head -1) )"
 
 source scripts/guards_v14.sh
+source scripts/guards_v15.sh
 
 print "== Smoke test (real window manager, store, status item)"
 log=$(mktemp)

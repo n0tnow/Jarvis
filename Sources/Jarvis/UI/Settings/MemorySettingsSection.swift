@@ -16,7 +16,7 @@ struct MemorySettingsSection: View {
             Text("A proposal is kept only if its quoted evidence appears in the task report; otherwise it is an unverified note. Models never write memory directly.").font(.caption).foregroundStyle(.secondary)
             Toggle("Semantic (meaning-based) search", isOn: $prefs.memorySemanticEnabled).disabled(!prefs.projectMemoryEnabled)
             LabeledContent("Embedding model") { Text(app.memory.embedding?.installProblem == nil ? "\(EmbeddingModel.id) · \(EmbeddingModel.license) · 118 MB" : "not installed").font(.system(.caption, design: .monospaced)) }
-            Text(app.memory.embedding?.installProblem == nil ? "Runs locally, only when needed (idle unload after 2 minutes). No network, no API key, no paid service." : "Optional. Install once with scripts/setup_memory_ai.sh; without it, search uses keywords and structure and says so.")
+            Text(app.memory.embedding?.installProblem == nil ? "Runs locally, only when needed (idle unload after 2 minutes). No network, no API key, no paid service." : "Optional. Set it up once from System & Readiness; without it, search uses keywords and structure and says so.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

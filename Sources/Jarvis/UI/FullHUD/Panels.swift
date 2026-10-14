@@ -9,7 +9,7 @@ struct SystemPanel: View {
         HUDCard("System") {
             VStack(spacing: Theme.Spacing.s) {
                 KeyValueRow(key: "State", value: app.store.state.label, valueTint: app.store.state.tint)
-                KeyValueRow(key: "Version", value: AppInfo.version)
+                KeyValueRow(key: "Version", value: AppInfo.versionLine)
                 KeyValueRow(key: "Provider", value: providerSummary, valueTint: app.coordinator.statusBadge.usable ? Theme.Palette.mint : Theme.Palette.amber)
                 KeyValueRow(key: "Local", value: app.localRuntime.state.label, valueTint: app.localRuntime.state.isUsableForRouting || app.localRuntime.state == .running ? Theme.Palette.mint : Color.jarvisSecondary)
                 KeyValueRow(key: "OpenCode", value: openCodeSummary, valueTint: app.openCode.state == .ready ? Theme.Palette.mint : Color.jarvisSecondary)
@@ -257,6 +257,7 @@ struct SystemSectionView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.m) {
+                ReadinessPanel()
                 SystemPanel()
                 ProjectPanel()
                 ToolsPanel()

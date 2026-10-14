@@ -95,6 +95,14 @@ final class StatusItemController: NSObject {
         let menu = NSMenu()
         menu.addItem(withTitle: "Open JARVIS", action: #selector(openFullHUD), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Show Compact HUD", action: #selector(openCompactHUD), keyEquivalent: "").target = self
+        // V0.15: a one-line truthful status (only when a task is really running) and the voice switch; no sub-menus, nothing that starts work.
+        if context.taskEngine.activeCount > 0, let title = context.taskEngine.activeViews.first?.task.title {
+            let n = context.taskEngine.activeCount
+            let item = menu.addItem(withTitle: "Working: \(String(title.prefix(40)))" + (n > 1 ? " (+\(n - 1))" : ""), action: nil, keyEquivalent: "")
+            item.isEnabled = false
+        }
+        let voiceOn = context.preferences.voiceEnabled
+        menu.addItem(withTitle: voiceOn ? "Turn Voice Off" : "Turn Voice On", action: #selector(toggleVoice), keyEquivalent: "").target = self
         // V0.7: with the HUDs closed this is the way to silence JARVIS (the other ways: hold Push-to-Talk, type "stop talking").
         if context.voice.speaker.isActive || context.voice.speaker.isSpeaking {
             menu.addItem(.separator())
@@ -113,6 +121,7 @@ final class StatusItemController: NSObject {
             menu.addItem(withTitle: "Push-to-Talk: hold right ⌥", action: nil, keyEquivalent: "").isEnabled = false
         }
         menu.addItem(.separator())
+        menu.addItem(withTitle: "System & Readiness", action: #selector(openReadiness), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit JARVIS", action: #selector(quit), keyEquivalent: "q").target = self
@@ -126,7 +135,9 @@ final class StatusItemController: NSObject {
     @objc private func openFullHUD() { context.windows.showFullHUD(section: .dashboard) }
     @objc private func openCompactHUD() { context.windows.showCompactHUD() }
     @objc private func openSettings() { context.windows.showSettings() }
-    @objc private func stopSpeaking() { context.voice.stopSpeaking() }
+    @objc private func stopSpeaking() { _ = context.voice.stopSpeaking() }
+    @objc private func toggleVoice() { context.preferences.voiceEnabled.toggle() }
+    @objc private func openReadiness() { context.windows.showFullHUD(section: .system) }
     @objc private func toggleWake() { context.preferences.voiceWakeEnabled.toggle() }
     @objc private func quit() { NSApp.terminate(nil) }
 }

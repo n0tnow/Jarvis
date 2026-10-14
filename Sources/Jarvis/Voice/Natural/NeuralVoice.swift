@@ -190,7 +190,7 @@ final class NeuralSpeechEngine: PCMSynthesizing {
     func availability() -> TTSAvailability {
         runtime.inspect()
         switch runtime.state {
-        case .notInstalled(let why): return .unavailable("Not installed (\(why)). Run scripts/setup_voice_ai.sh --natural.")
+        case .notInstalled(let why): return .unavailable("Not installed (\(why)). Press Set Up in System & Readiness (development builds: scripts/setup_voice_ai.sh --natural).")
         case .failed(let why): return .unavailable("The neural voice failed (\(why)). It restarts on the next use.")
         default: return .ready
         }
