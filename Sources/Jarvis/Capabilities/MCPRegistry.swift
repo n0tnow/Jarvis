@@ -57,7 +57,8 @@ final class MCPRegistry {
     private var inFlight: [String: [UUID: Int]] = [:]
     private var reserved: [String: Set<UUID>] = [:]
     private var anonymousInFlight: [String: Int] = [:]
-    private var restarts: [String: [Date]] = [:]
+    /// Times a server FAILED (could not start, died, errored). A clean idle stop and a later start is normal use and never counts: only failures spend the restart budget.
+    private var failureTimes: [String: [Date]] = [:]
     private(set) var coldStartsMS: [Double] = []
     private(set) var warmCallsMS: [Double] = []
 
@@ -276,9 +277,9 @@ final class MCPRegistry {
         // start or reuse
         var cold = 0.0
         if live[s.id]?.connection.isRunning != true {
-            let recent = (restarts[s.id] ?? []).filter { clock().timeIntervalSince($0) < Self.restartWindow }
+            let recent = (failureTimes[s.id] ?? []).filter { clock().timeIntervalSince($0) < Self.restartWindow }
+            failureTimes[s.id] = recent
             guard recent.count < Self.restartBudget + 1 else { markFailed(s.id, "restart budget used up"); log("failed", start, "restart budget"); return .failed("\(s.name) kept failing to start — not restarted again (re-enable it after checking)") }
-            restarts[s.id] = recent + [clock()]
             await makeRoom()
             do {
                 let (conn, launch, ms) = try await connect(s, allowNetwork: s.envelope.contains(.network))
@@ -313,6 +314,7 @@ final class MCPRegistry {
     // MARK: - Health, degradation
 
     func recordSuccess(_ id: String, latency: Double) {
+        failureTimes[id] = []
         guard var s = server(id) else { return }
         s.successCount += 1; s.consecutiveFailures = 0; s.lastSuccessAt = clock(); s.lastUsedAt = clock()
         s.averageLatencyMS = s.averageLatencyMS.map { $0 * 0.8 + latency * 0.2 } ?? latency
@@ -321,6 +323,7 @@ final class MCPRegistry {
         try? repository?.save(s); bump()
     }
     func recordFailure(_ id: String, _ why: String) {
+        failureTimes[id, default: []].append(clock())
         guard var s = server(id) else { return }
         s.failureCount += 1; s.consecutiveFailures += 1; s.lastFailureAt = clock(); s.lastUsedAt = clock()
         if s.consecutiveFailures >= Self.degradeAt, s.status == .active { s.status = .degraded; s.statusChangedAt = clock(); s.health = .degraded; note("\(s.name) is DEGRADED after \(s.consecutiveFailures) failures in a row", .warning); audit("mcp-degraded", id, why) }

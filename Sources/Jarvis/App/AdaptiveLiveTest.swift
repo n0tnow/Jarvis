@@ -8,7 +8,7 @@ import Foundation
 /// and every other real project are never touched. Sections: `learning`, `gap` (REAL fixture app + vision; skipped without permissions), `rules`, `workflow`, `selfimprove`, `rejection`, `overlearning`, `security`.
 @MainActor
 enum AdaptiveLiveTest {
-    static func run(context: AppContext, sections: Set<String>) async {
+    static func run(context: AppContext, sections: Set<String>, cycles: Int = 15) async {
         var passes = 0, failures = 0, skips = 0
         func wants(_ s: String) -> Bool { sections.isEmpty || sections.contains(s) }
         func check(_ tag: String, _ name: String, _ ok: Bool, _ detail: String = "") { print("\(ok ? "PASS" : "FAIL")  [\(tag)] \(name)\(detail.isEmpty ? "" : " — \(detail)")"); if ok { passes += 1 } else { failures += 1 }; fflush(stdout) }
@@ -358,6 +358,118 @@ enum AdaptiveLiveTest {
             check("POLICY", "A rule whose WARNING text smuggles authority is refused", learning.admit(draft, by: "live test") == .refused(.invalidRule))
             check("ENGINE", "Memory cannot activate learning and learning cannot rewrite memory: the learning tables hold no memory ids as authority and no memory path approves", ((try? repo.learningAudit(limit: 300)) ?? []).filter { $0.kind == "refused" }.count >= 3)
             check("POLICY", "The audit trail records every refusal with its reason", ((try? repo.learningAudit(limit: 300)) ?? []).contains { $0.kind == "refused" && $0.detail.contains("authority") })
+        }
+
+        // MARK: soak — bounded repetition of the whole adaptive loop; memory, database, processes and duplicates are tracked
+        if wants("soak") {
+            let exe = Bundle.main.executablePath ?? CommandLine.arguments[0]
+            let mcp = context.mcp
+            // one ACTIVE fixture server through the real flow
+            var rec = MCPServerRecord(id: "soak-fixture", name: "Soak fixture", domain: "fixture", status: .discovered, version: "1.0.0", executableHash: nil, launch: MCPLaunch(executable: exe, arguments: ["--mcp-fixture-server"], idleSeconds: 1), tools: [], wrappers: [MCPWrapper(capability: "echoText", tool: "echo", summary: "Echo", parameters: ["text": "string"], envelope: .read)],
+                                      envelope: [.read], allowedProjects: [], network: "none", credentialRequirement: "none", health: .available, benchmark: nil, discovery: nil, provenance: "JARVIS fixture (built in)", isFixture: true)
+            rec.tools = [MCPToolSchema(name: "echo", description: "Echo", parameters: ["text": "string"], risk: .read)]
+            mcp.addCandidate(rec); mcp.inspect("soak-fixture", sourceDirectory: nil)
+            _ = await MCPBenchmarkRunner.run(registry: mcp, serverID: "soak-fixture", spec: MCPBenchmarkSpec(domain: "fixture", cases: [MCPBenchmarkCase(name: "echo", tools: ["echo"], arguments: ["text": AnySendable("x")], expect: { $0 == "x" })]), allowNetwork: false, useSeatbelt: true)
+            if var s = mcp.server("soak-fixture") { s.status = .recommended; try? repo.save(s) }
+            if let q = mcp.requestInstall("soak-fixture"), case .executed = await decisions.approve(q.id, source: .test) {} else { check("ENGINE", "the soak fixture server is registered", false); finish() }
+            func rss() -> Double { Double(ProcessTree.residentBytes(of: getpid()) ?? 0) / 1_048_576 }
+            func dbKB() -> Int { ((try? FileManager.default.attributesOfItem(atPath: context.paths.database.path)[.size] as? Int) ?? 0) / 1024 }
+            func fixtureProcs() async -> Int { ((await ManagedProcess.runOnce(executable: "/usr/bin/pgrep", arguments: ["-f", "mcp-fixture-server"], environment: ["PATH": "/usr/bin:/bin"], timeout: 5)?.output ?? "").split(separator: "\n").count) }
+            var rssSeries: [Double] = [rss()], extractMS: [Double] = [], ruleMS: [Double] = [], skillMS: [Double] = [], coldMS: [Double] = [], warmMS: [Double] = [], hudMS: [Double] = [], lookupMS: [Double] = []
+            let db0 = dbKB()
+            var ok = 0
+            let rule = LearnedRule(scope: .global, version: 1, status: .active, definition: RuleDefinition(when: [RuleCondition(fact: .taskKind, comparison: .equals, value: "development")], then: [RuleAction(kind: .addWarning, argument: "Soak warning")]), title: "Soak rule", origin: "soak")
+            try? repo.save(rule)
+            for cycle in 1...cycles {
+                let p = await makeProject()
+                guard let v = await runTask("Find the bug, fix it, run the tests and review the change. (soak \(cycle))", project: p, script: good), v.task.state == .completed else { check("ENGINE", "soak cycle \(cycle): a scripted task completed", false); break }
+                var t0 = Date(); _ = await learning.extract(reason: "soak", taskLimit: 80); extractMS.append(Date().timeIntervalSince(t0) * 1000)
+                t0 = Date(); for _ in 0..<100 { _ = RuleEngine.evaluate(learning.activeRules(), RuleContext([.taskKind: "development"], projectKey: "soak")) }; ruleMS.append(Date().timeIntervalSince(t0) * 10)
+                t0 = Date(); for _ in 0..<100 { _ = context.skills.match(goal: "Find the bug and fix it", kind: .development, available: [.readProject, .writeProject, .runBuild, .runTests]) }; skillMS.append(Date().timeIntervalSince(t0) * 10)
+                t0 = Date(); _ = learning.candidates(limit: 200); lookupMS.append(Date().timeIntervalSince(t0) * 1000)
+                t0 = Date(); context.learningModel.refresh(); context.capabilitiesModel.refresh(); hudMS.append(Date().timeIntervalSince(t0) * 1000)
+                let cold = await mcp.invoke("echoText", ["text": "x"], context: MCPCallContext(taskID: UUID(), role: "CodingAgent", projectKey: "soak"))
+                if let c = mcp.coldStartsMS.last, cold.text == "x" { coldMS.append(c) }
+                t0 = Date(); let warm = await mcp.invoke("echoText", ["text": "y"], context: MCPCallContext(projectKey: "soak")); warmMS.append(Date().timeIntervalSince(t0) * 1000)
+                await mcp.stopAll()                                                    // start/stop every cycle
+                if cold.text == "x" && warm.text == "y" { ok += 1 }
+                rssSeries.append(rss())
+            }
+            func avg(_ a: [Double]) -> String { a.isEmpty ? "—" : String(format: "%.1f", a.reduce(0, +) / Double(a.count)) }
+            func p95(_ a: [Double]) -> String { a.isEmpty ? "—" : String(format: "%.1f", a.sorted()[Int(Double(a.count - 1) * 0.95)]) }
+            info("PERF learning extraction (80 tasks, signals + patterns): avg \(avg(extractMS)) ms · p95 \(p95(extractMS)) ms")
+            info("PERF rule evaluation (1 rule): avg \(avg(ruleMS)) ms/100 → \(avg(ruleMS.map { $0 / 100 })) ms each · skill matching: avg \(avg(skillMS.map { $0 / 100 })) ms each · candidate lookup: avg \(avg(lookupMS)) ms · HUD refresh (both screens): avg \(avg(hudMS)) ms")
+            info("PERF MCP registry lookup + cold start (sandbox + process + handshake): avg \(avg(coldMS)) ms · p95 \(p95(coldMS)) ms · warm call: avg \(avg(warmMS)) ms · stop: included in the cycle")
+            info("RSS series (MB): \(rssSeries.map { String(format: "%.0f", $0) }.joined(separator: " → ")) · database \(db0) → \(dbKB()) KB over \(cycles) cycle(s)")
+            check("ENGINE", "SOAK: \(cycles) cycles of task → extraction → rule evaluation → skill matching → MCP cold start → warm call → stop all completed", ok == cycles, "\(ok)/\(cycles)")
+            check("ENGINE", "JARVIS' own memory stays flat (growth < 100 MB over \(cycles) cycles)", (rssSeries.last ?? 0) - (rssSeries.first ?? 0) < 100, "\(String(format: "%.0f", rssSeries.first ?? 0)) → \(String(format: "%.0f", rssSeries.last ?? 0)) MB")
+            let cands = learning.candidates(limit: 1000)
+            check("ENGINE", "No candidate duplication: every candidate has a unique fingerprint", Set(cands.map(\.fingerprint)).count == cands.count, "\(cands.count) candidates")
+            check("ENGINE", "No rule duplication: the single rule stays one row with one version", learning.rules().filter { $0.title == "Soak rule" }.count == 1 && ((try? repo.ruleVersions(rule.id)) ?? []).count == 1)
+            check("REAL", "No orphan processes and no sandbox folders after the soak", await waitUntil(8) { mcp.runningServerIDs.isEmpty } && ((try? FileManager.default.contentsOfDirectory(atPath: mcp.sandboxDirectory.path)) ?? []).filter { $0.hasPrefix("sbx-") }.isEmpty)
+            check("REAL", "No MCP fixture process survives (idle = nothing running)", await fixtureProcs() == 0)
+            check("ENGINE", "The database grows slowly and boundedly (signals are idempotent, activity and benchmarks are pruned)", dbKB() - db0 < 4_000, "\(dbKB() - db0) KB")
+            await mcp.stopAll()
+        }
+
+        // MARK: ui — REAL Accessibility clicks on the Learning screen
+        if wants("ui") {
+            let drv = LiveUIDriver(log: info)
+            guard drv.trusted else { skip("UI clicks on the Learning screen", "Accessibility is not granted to this process (JARVIS never grants itself a permission)"); finish() }
+            // evidence made by the real engine and the real evaluator (project “live-ui”)
+            for i in 1...3 {
+                let p = await makeProject()
+                _ = await runTask("Fix the failing calculation test (ui \(i))", project: p, script: bad)
+                let input = AssetEvaluationInput(name: "UI prop \(i)", sourceURL: "https://ui.example.org/model/\(i)", candidate: nil, acquisition: nil, project: nil,
+                                                 experiment: ExperimentResult(verdict: .refuted, summary: "nothing could be instantiated", facts: [], successMet: [], failureHit: ["nothing could be instantiated"], seconds: 8, environmentDeleted: true))
+                var r = AssetEvaluationRecord(evaluation: AssetEvaluator.evaluate(input)); r.projectKey = "live-ui"; r.createdAt = Date().addingTimeInterval(-Double(i) * 3600); try? repo.save(r)
+            }
+            _ = await learning.extract(reason: "ui scenario")
+            context.learningModel.refresh()
+            let model = context.learningModel
+            context.hud.section = .learning
+            await drv.start { context.windowManager.showFullHUD(section: .learning) }
+            defer { drv.stop() }
+            var snap = await drv.snapshot()
+            check("REAL", "The Learning screen is on screen with its seven views and the ‘learning is not authority’ banner", Set(snap.titles(role: "AXRadioButton")).isSuperset(of: ["Insights", "Candidate rules", "Active rules", "Skills", "Capability gaps", "Self-improvement", "History"]) && snap.has("LEARNING IS NOT AUTHORITY"))
+            await drv.press("Candidate rules", role: "AXRadioButton")
+            snap = await drv.snapshot()
+            let ruleRow = snap.elements.first { $0.role == "AXButton" && $0.title.hasPrefix("Rule:") && $0.title.contains("ui.example.org") }
+            check("REAL", "CANDIDATE RULE row (real list): the rule learned from three refuted assets is listed with its status and event count", ruleRow != nil && ruleRow!.title.lowercased().contains("candidate"), ruleRow?.title ?? "none")
+            if let t = ruleRow?.title { await drv.press(t, role: "AXButton") }
+            snap = await drv.snapshot()
+            check("REAL", "DETAIL (real click): what JARVIS noticed, evidence, the rule as data, risk, validation and scope — with TEST, PROPOSE and REJECT", snap.find("TEST", role: "AXButton") != nil && snap.find("REJECT", role: "AXButton") != nil && snap.has("THE RULE (DATA, NOT CODE)") && snap.has("EVIDENCE"))
+            guard let cand = model.selectedCandidate else { check("REAL", "a candidate is selected", false); finish() }
+            check("POLICY", "Before any click the rule is NOT active", learning.activeRules().filter { $0.candidateID == cand.id }.isEmpty && cand.status == .candidate)
+            await drv.press("TEST", role: "AXButton", settle: 900)
+            check("REAL", "TEST (real click): the candidate is VALIDATED by the closed-vocabulary simulation", learning.candidate(cand.id)?.status == .validated)
+            await drv.press("PROPOSE FOR ACTIVATION", role: "AXButton", settle: 900)
+            snap = await drv.snapshot()
+            check("REAL", "PROPOSE (real click): a request appears under ‘Waiting for your decision’ with APPROVE and DECLINE; the rule is still not active", learning.candidate(cand.id)?.status == .proposed && snap.find("APPROVE", role: "AXButton") != nil && snap.find("DECLINE", role: "AXButton") != nil && learning.activeRules().filter { $0.candidateID == cand.id }.isEmpty && snap.has("Saying “yes” does not approve this."))
+            await drv.press("APPROVE", role: "AXButton", settle: 1000)
+            check("REAL", "APPROVE (real click) activates it: ACTIVE, version 1", learning.candidate(cand.id)?.status == .active && learning.activeRules().first { $0.candidateID == cand.id }?.version == 1)
+            await drv.press("Active rules", role: "AXRadioButton")
+            snap = await drv.snapshot()
+            check("REAL", "ACTIVE RULES view lists the rule as data with its origin, scope and counts, and DISABLE / RETIRE buttons", snap.has("When assetSource = ui.example.org") && snap.find("DISABLE", role: "AXButton") != nil && snap.find("RETIRE", role: "AXButton") != nil)
+            await drv.press("DISABLE", role: "AXButton")
+            check("REAL", "DISABLE (real click): the rule stops applying at once", learning.activeRules().filter { $0.candidateID == cand.id }.isEmpty && (engine.learnedEffects?(RuleContext([.assetSource: "ui.example.org"], projectKey: "live-ui")).isEmpty ?? true))
+            await drv.press("ENABLE", role: "AXButton")
+            check("REAL", "ENABLE (real click) restores it", learning.activeRules().contains { $0.candidateID == cand.id })
+            // insights: reject a lesson
+            await drv.press("Insights", role: "AXRadioButton")
+            snap = await drv.snapshot()
+            let lessonRow = snap.elements.first { $0.role == "AXButton" && $0.title.hasPrefix("Lesson:") }
+            check("REAL", "INSIGHTS view lists the lesson learned from the repeated failures", lessonRow != nil, lessonRow?.title ?? "none")
+            if let t = lessonRow?.title { await drv.press(t, role: "AXButton") }
+            let lessonID = model.selected
+            await drv.press("REJECT", role: "AXButton")
+            check("REAL", "REJECT (real click): the lesson becomes REJECTED with a cooldown", lessonID.flatMap { learning.candidate($0)?.status } == .rejected)
+            await drv.press("Self-improvement", role: "AXRadioButton")
+            snap = await drv.snapshot()
+            check("REAL", "SELF-IMPROVEMENT view states the level, that JARVIS never edits its own source because it found an idea, and that it is at the default level Experiment", snap.has("never edits its own source because it found an idea") && snap.has("Level: Experiment"), snap.elements.filter { ($0.title + $0.value).lowercased().contains("level") }.map { "\($0.role): \(($0.title + " | " + $0.value).prefix(160))" }.joined(separator: " ⏎ "))
+            await drv.press("History", role: "AXRadioButton")
+            snap = await drv.snapshot()
+            check("REAL", "HISTORY view shows who decided what (the HUD approval and the activation are recorded)", snap.elements.contains { $0.title.contains("approved") && $0.title.contains("hud") } || snap.elements.contains { $0.value.contains("approved") })
         }
         finish()
     }

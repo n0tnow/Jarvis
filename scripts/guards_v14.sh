@@ -106,7 +106,7 @@ v09_none "MCP servers have no wildcard filesystem scope, no automatic update and
 g14_idle() {
   grep -rnE 'MCPDiscovery\(|discovery\.search\(|\.search\(domain' Sources | nonc | grep -vE 'Research/MCPDiscovery.swift|Adaptive/AdaptiveAssistant.swift|AppContext.swift|App/McpLiveTest.swift'
   grep -rnE 'learning\.extract\(|\.extract\(reason' Sources | nonc | grep -vE 'Adaptive/LearningService.swift|AdaptiveViewModels.swift|App/AdaptiveLiveTest.swift|Services/Demo/AdaptiveDemo.swift'
-  grep -rnE 'MCPBenchmarkRunner.run\(' Sources | nonc | grep -vE 'Capabilities/MCPBenchmark.swift|AdaptiveAssistant.swift|AdaptiveViewModels.swift|App/McpLiveTest.swift'
+  grep -rnE 'MCPBenchmarkRunner.run\(' Sources | nonc | grep -vE 'Capabilities/MCPBenchmark.swift|AdaptiveAssistant.swift|AdaptiveViewModels.swift|App/McpLiveTest.swift|App/AdaptiveLiveTest.swift'
 }
 v09_none "nothing runs while idle: discovery, learning extraction and benchmarks start only from a user request, a finished task or a live test — never from a timer, a launch or a poll" "$(g14_idle)"
 

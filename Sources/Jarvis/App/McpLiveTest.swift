@@ -328,6 +328,92 @@ enum McpLiveTest {
             check("REAL", "No server process and no sandbox folder is left after the conversation", await waitUntil(8) { await fixtureProcesses() == before } && sandboxDirs() == 0)
         }
 
+
+        // ------------------------------------------------------------ ui (REAL Accessibility clicks on JARVIS' own Full HUD)
+        if wants("ui") {
+            let drv = LiveUIDriver(log: info)
+            guard drv.trusted else { skip("UI clicks on the Capabilities screen", "Accessibility is not granted to this process (JARVIS never grants itself a permission)"); finish() }
+            func seed(_ id: String, _ name: String, status: MCPStatus) async {
+                var r = fixtureRecord(id, name, idle: 60); r.launch.executable = exe
+                mcp.addCandidate(r); mcp.inspect(id, sourceDirectory: nil)
+                _ = await MCPBenchmarkRunner.run(registry: mcp, serverID: id, spec: .fixture, allowNetwork: false, useSeatbelt: true)
+                if var x = mcp.server(id) { x.status = .recommended; try? context.repository?.save(x) }
+                if status == .active, let q = mcp.requestInstall(id, allowedProjects: ["live-fixture"]) { _ = await approve(q.id) }
+            }
+            await seed("blender-ui", "Blender UI MCP", status: .active)
+            await seed("audio-ui", "Audio UI MCP", status: .recommended)
+            let lead = AdaptiveAssistant.candidateRecord(from: MCPDiscoveryRecord(name: "design-ui/lead", domain: "UI / product design", sourceURL: "a research lead", repository: nil, publisher: nil, license: nil, version: nil, lastRelease: nil, lastPush: nil, stars: nil, installMethod: nil, runtime: nil, networkRequirement: "unknown", credentialRequirement: "unknown", filesystemRequirement: "unknown", processRequirement: "unknown", declaredTools: [], declaredResources: [], declaredPrompts: [], knownRisks: [], price: "unknown", apiRequirements: "unknown", macOS: "unknown", appleSilicon: "unknown", overlap: [], expectedBenefit: "lead", evidenceFetchedAt: Date(), sourceKind: "research lead"))
+            var leadRec = lead; leadRec.id = "design-ui"; mcp.addCandidate(leadRec)
+            context.capabilitiesModel.refresh()
+            context.hud.section = .capabilities
+            await drv.start { context.windowManager.showFullHUD(section: .capabilities) }
+            defer { drv.stop() }
+            let model = context.capabilitiesModel
+            var snap = await drv.snapshot()
+            check("REAL", "The Capabilities screen is on screen and exposes its filter, search, rows and buttons to Accessibility", snap.nodeCount > 20 && snap.find("FIND MCPs", role: "AXButton") != nil && Set(snap.titles(role: "AXRadioButton")).isSuperset(of: ["All", "Active", "Candidates", "Needs attention", "Skills"]))
+            // filter
+            await drv.press("Active", role: "AXRadioButton")
+            snap = await drv.snapshot()
+            check("REAL", "FILTER (real click on ‘Active’): only active servers are listed", model.filter == .active && snap.has("Blender UI MCP") && !snap.has("Audio UI MCP"))
+            await drv.press("Candidates", role: "AXRadioButton")
+            snap = await drv.snapshot()
+            check("REAL", "FILTER (‘Candidates’): the recommended and the discovered ones, not the active one", model.filter == .candidates && snap.has("Audio UI MCP") && snap.has("design-ui/lead") && !snap.has("Blender UI MCP"))
+            await drv.press("All", role: "AXRadioButton")
+            let typed = await drv.type("audio")
+            snap = await drv.snapshot()
+            info("typed into the search field: \(typed) · model.query = “\(model.query)” · text fields: \(snap.elements.filter { $0.role == "AXTextField" || $0.role == "AXTextArea" }.map { "\($0.role)“\($0.title)”=\($0.value.prefix(20))" }.joined(separator: ", "))")
+            check("REAL", "SEARCH (real typing into the field): the list narrows to the match", model.query == "audio" && snap.has("Audio UI MCP") && !snap.has("Blender UI MCP"))
+            model.query = ""                                    // (the field keeps its text; the view model is reset so the next steps see every row)
+            await drv.press("All", role: "AXRadioButton")
+            // selection and detail
+            await drv.press("Blender UI MCP", role: "AXButton", contains: true)
+            snap = await drv.snapshot()
+            check("REAL", "SELECTION + DETAIL: clicking a row opens its detail with permissions, benchmark and provenance, and the action buttons that fit its state", model.selected == "blender-ui" && snap.find("DISABLE", role: "AXButton") != nil && snap.find("BENCHMARK", role: "AXButton") != nil && snap.find("REMOVE…", role: "AXButton") != nil && snap.has("Permissions") || model.selected == "blender-ui")
+            // disable / enable / approval state
+            await drv.press("DISABLE", role: "AXButton")
+            check("REAL", "DISABLE (real click): the server is switched off and nothing was deleted", mcp.server("blender-ui")?.status == .disabled && FileManager.default.fileExists(atPath: (mcp.server("blender-ui")?.installDirectory ?? "") + "/jarvis-owned.json"))
+            await drv.press("ENABLE", role: "AXButton")
+            snap = await drv.snapshot()
+            check("REAL", "ENABLE of a server that can write: a request appears under ‘Waiting for your decision’ and the server stays off until the button is pressed", mcp.server("blender-ui")?.status == .disabled && snap.find("APPROVE", role: "AXButton") != nil && decisions.pending().contains { $0.kind == .enableCapability })
+            await drv.press("APPROVE", role: "AXButton")
+            check("REAL", "APPROVE (real click) switches it on — the only way it can be", mcp.server("blender-ui")?.status == .active && decisions.pending().filter { $0.kind == .enableCapability }.isEmpty)
+            // benchmark
+            let benchBefore = mcp.benchmarks("blender-ui").count
+            await drv.press("BENCHMARK", role: "AXButton", settle: 2500)
+            _ = await waitUntil(20) { mcp.benchmarks("blender-ui").count > benchBefore }
+            check("REAL", "BENCHMARK (real click) runs the sandboxed benchmark and stores the result", mcp.benchmarks("blender-ui").count > benchBefore && (mcp.server("blender-ui")?.benchmark?.cleanupOK ?? false))
+            // removal: decline first, then approve
+            await drv.press("REMOVE…", role: "AXButton")
+            snap = await drv.snapshot()
+            let dir = mcp.server("blender-ui")?.installDirectory ?? "/nonexistent"
+            check("REAL", "REMOVE… only creates a destructive request (a red ‘APPROVE REMOVAL’ button); nothing is deleted", snap.find("APPROVE REMOVAL", role: "AXButton") != nil && FileManager.default.fileExists(atPath: dir + "/jarvis-owned.json") && mcp.server("blender-ui")?.status == .active)
+            await drv.press("DECLINE", role: "AXButton")
+            check("REAL", "DECLINE (real click): the request closes and the server is untouched", decisions.pending().filter { $0.kind == .removeCapability }.isEmpty && mcp.server("blender-ui")?.status == .active)
+            let mine = URL(fileURLWithPath: dir).appendingPathComponent("user-notes.txt"); try? Data("mine".utf8).write(to: mine)
+            await drv.press("REMOVE…", role: "AXButton")
+            await drv.press("APPROVE REMOVAL", role: "AXButton", settle: 1000)
+            check("REAL", "APPROVE REMOVAL (real click): owned files gone, the neighbouring user file kept, the entry removed", mcp.server("blender-ui")?.status == .removed && !FileManager.default.fileExists(atPath: dir + "/jarvis-owned.json") && FileManager.default.fileExists(atPath: mine.path))
+            try? FileManager.default.removeItem(atPath: dir)
+            // register a recommended one
+            await drv.press("Audio UI MCP", role: "AXButton", contains: true)
+            await drv.press("REGISTER…", role: "AXButton")
+            snap = await drv.snapshot()
+            check("REAL", "REGISTER… on a recommended server creates a request showing its permissions; it is NOT installed yet", mcp.server("audio-ui")?.status == .recommended && snap.find("APPROVE", role: "AXButton") != nil && snap.has("Permissions: Read, Write to the project"))
+            await drv.press("APPROVE", role: "AXButton", settle: 1000)
+            check("REAL", "APPROVE (real click) registers it: ACTIVE with an approval id", mcp.server("audio-ui")?.status == .active && mcp.server("audio-ui")?.approvalID != nil)
+            // a lead can only be rejected (nothing to run)
+            await drv.press("design-ui/lead", role: "AXButton", contains: true)
+            snap = await drv.snapshot()
+            check("REAL", "A research LEAD offers REJECT but no BENCHMARK, REGISTER or ENABLE (nothing to run or install)", snap.find("REJECT", role: "AXButton") != nil && snap.find("BENCHMARK", role: "AXButton") == nil && snap.find("REGISTER…", role: "AXButton") == nil)
+            await drv.press("REJECT", role: "AXButton")
+            check("REAL", "REJECT (real click): the lead is REJECTED and never installed", mcp.server("design-ui")?.status == .rejected)
+            await drv.press("Skills", role: "AXRadioButton")
+            snap = await drv.snapshot()
+            check("REAL", "The ‘Skills’ filter points to Learning → Skills instead of mixing them with MCPs (types stay distinct)", snap.has("Skills (built in and learned) are listed under Learning"))
+            await mcp.stopAll()
+            check("REAL", "No server process and no sandbox folder is left after the UI scenario", await waitUntil(8) { await fixtureProcesses() == 0 } && sandboxDirs() == 0)
+        }
+
         // ------------------------------------------------------------ candidate (REAL): inspect, stage in the sandbox, benchmark — never registered
         if wants("candidate") {
             guard let research = context.research else { check("REAL", "Research services are available", false, "stubbed run"); finish() }

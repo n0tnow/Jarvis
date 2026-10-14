@@ -113,8 +113,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await ContinuityLiveTest.run(context: context, sections: sections) }
         }
         if options.adaptiveLiveTest {
-            let context = context!, sections = options.adaptiveSections
-            Task { await AdaptiveLiveTest.run(context: context, sections: sections) }
+            let context = context!, sections = options.adaptiveSections, cycles = options.adaptiveCycles
+            Task { await AdaptiveLiveTest.run(context: context, sections: sections, cycles: cycles) }
         }
         if options.mcpLiveTest {
             let context = context!, sections = options.mcpSections

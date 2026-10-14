@@ -332,6 +332,17 @@ struct MCPRegistryTests {
         if case .failed(let why) = last { #expect(why.contains("not restarted again") || why.contains("could not be started")) } else if case .refused = last {} else { Issue.record("must not succeed") }
     }
 
+    @Test("clean idle stops and restarts are normal use and never spend the restart budget")
+    func idleRestartsAreFree() async throws {
+        let h = try MCPHarness()
+        await h.recommended(); _ = await h.install()
+        for i in 0..<8 {
+            #expect((await h.registry.invoke("echoText", ["text": "n\(i)"])).text == "n\(i)", "cycle \(i)")
+            await h.registry.stopAll()
+        }
+        #expect(h.registry.server("jarvis-fixture")?.status == .active && h.registry.server("jarvis-fixture")?.health == .healthy)
+    }
+
     @Test("a changed executable or version needs REVALIDATION and is not silently trusted; revalidation clears it")
     func drift() async throws {
         let h = try MCPHarness()

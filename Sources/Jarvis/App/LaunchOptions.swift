@@ -69,6 +69,7 @@ struct LaunchOptions {
     var operatorLiveTest = false
     var adaptiveLiveTest = false
     var adaptiveSections = Set<String>()
+    var adaptiveCycles = 15
     var mcpLiveTest = false
     var mcpSections = Set<String>()
     var continuityLiveTest = false
@@ -130,6 +131,7 @@ struct LaunchOptions {
             case "--operator-live-test": operatorLiveTest = true
             case "--adaptive-live-test": adaptiveLiveTest = true
             case "--adaptive-section": if let v = it.next() { adaptiveSections.insert(v) }
+            case "--adaptive-cycles": adaptiveCycles = it.next().flatMap(Int.init) ?? 15
             case "--mcp-live-test": mcpLiveTest = true
             case "--mcp-section": if let v = it.next() { mcpSections.insert(v) }
             case "--continuity-live-test": continuityLiveTest = true
