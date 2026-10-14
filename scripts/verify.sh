@@ -392,6 +392,8 @@ v09_none "scene facts for the Project card come only from a CONNECTED editor (ne
 v09_none "an Accessibility action's 'unsupported' answer is neither trusted nor repeated: the executor cross-checks the observed state (JARVIS-V13-7)" "$( (grep -q 'JARVIS-V13-7' Sources/Jarvis/Computer/ComputerExecutor.swift || echo 'note'; grep -q 'unsupportedLookTimeout' Sources/Jarvis/Computer/ComputerExecutor.swift || echo 'look'; grep -q 'not repeated' Sources/Jarvis/Computer/ComputerExecutor.swift || echo 'not repeated') )"
 v09_none "the experiment's generated fixture sound is a synthetic tone written only into the disposable project (no downloaded or copyrighted audio)" "$( (grep -q 'writeFixtureTone(into project' Sources/Jarvis/Tasks/TaskEngine+ExperimentPlayback.swift || echo 'tone'; grep -rn 'writeFixtureTone' Sources | grep -vE 'TaskEngine\+Experiment(Playback)?\.swift' | head -1) )"
 
+source scripts/guards_v14.sh
+
 print "== Smoke test (real window manager, store, status item)"
 log=$(mktemp)
 $APP/Contents/MacOS/Jarvis --smoke-test >$log 2>&1; rc=$?

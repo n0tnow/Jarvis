@@ -429,7 +429,8 @@ final class MCPRegistry {
     @discardableResult
     func requestInstall(_ id: String, allowedProjects: [String] = []) -> AdaptiveRequest? {
         guard var s = server(id), s.status == .recommended else { return nil }
-        s.allowedProjects = allowedProjects; try? repository?.save(s)
+        s.allowedProjects = allowedProjects.filter { $0 != "*" && !$0.isEmpty }          // never a wildcard: a server may change only projects that were named
+        try? repository?.save(s)
         let tools = s.tools.map { "\($0.name) [\($0.risk.label)]" }.joined(separator: ", ")
         return decisions.request(kind: .installCapability, subjectID: id, material: fingerprintMaterial(s), summary: "Register the MCP “\(s.name)”",
                                  detail: "Permissions: \(s.envelopeLabels.joined(separator: ", ")). Network: \(s.network). Needs a key or sign-in: \(s.credentialRequirement). Typed capabilities offered to agents: \(s.wrappers.map(\.capability).joined(separator: ", ")). Tools: \(tools). Source: \(s.provenance). Projects: \(allowedProjects.isEmpty ? "none" : allowedProjects.joined(separator: ", ")).",
