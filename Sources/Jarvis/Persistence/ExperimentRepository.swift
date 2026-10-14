@@ -133,4 +133,11 @@ extension JarvisRepository {
             return AssetEvaluationRecord(id: id, taskID: r.string("task_id").flatMap(UUID.init(uuidString:)), acquisitionID: acquisitionID, projectKey: r.string("project_key"), evaluation: ev, source: r.string("source"), createdAt: at)
         }
     }
+
+    func recentAssetEvaluations(limit: Int = 200) throws -> [AssetEvaluationRecord] {
+        try database.read("SELECT * FROM asset_evaluations ORDER BY created_at DESC LIMIT ?", [.int(Int64(limit))]).compactMap { r in
+            guard let id = r.string("id").flatMap(UUID.init(uuidString:)), let ev = Self.unjs(r.string("facts"), as: AssetEvaluation.self), let at = r.date("created_at") else { return nil }
+            return AssetEvaluationRecord(id: id, taskID: r.string("task_id").flatMap(UUID.init(uuidString:)), acquisitionID: r.string("acquisition_id").flatMap(UUID.init(uuidString:)), projectKey: r.string("project_key"), evaluation: ev, source: r.string("source"), createdAt: at)
+        }
+    }
 }

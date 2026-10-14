@@ -114,6 +114,10 @@ struct RouterSnapshot: Sendable {
     var modelCooldowns: [String: Date] = [:]
     var resources = ResourcePressure()
     var settings = RoutingSettings()
+    /// V0.14: bounded learned nudges (model id / engine id → −0.2…+0.2). They only ORDER providers that are already eligible: price, privacy, local-only, benchmark and security gates, and an explicit
+    /// user choice are decided before this is consulted and are never changed by it.
+    var learnedBias: [String: Double] = [:]
+    func bias(_ key: String) -> Double { min(RoutingAdjustment.limit, max(-RoutingAdjustment.limit, learnedBias[key] ?? 0)) }
 }
 
 // MARK: - Decision

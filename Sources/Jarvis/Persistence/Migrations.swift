@@ -35,7 +35,7 @@ struct Migration: Sendable {
 
     // MARK: Schema
 
-    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12]
+    static let all: [Migration] = [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14]
 
     /// V1 — operational foundation (V0.3.1). Tables for later milestones (tasks/steps/approvals/proposals) exist as plain
     /// storage only: nothing in V0.3.1 runs autonomous work.
@@ -535,5 +535,103 @@ struct Migration: Sendable {
         )
         """,
         "CREATE INDEX idx_asset_evaluations_acq ON asset_evaluations(acquisition_id)",
+    ])
+
+    /// V13 — adaptive learning (V0.14). A signal is a small fact DERIVED from an existing record (idempotent per source); a candidate is what repeated signals suggest; evidence rows
+    /// link a candidate to things that exist. Rules, skills and improvement proposals are structured data with versions. Requests are the approval boundary (HUD only).
+    /// Only small structured, sanitised rows are kept — nothing secret-shaped, nothing bulky.
+    static let v13 = Migration(version: 13, name: "adaptive learning", statements: [
+        """
+        CREATE TABLE learning_signals (
+            id TEXT PRIMARY KEY, kind TEXT NOT NULL, key TEXT NOT NULL, project_key TEXT, source_kind TEXT NOT NULL, source_id TEXT NOT NULL, episode TEXT NOT NULL, at REAL NOT NULL, outcome TEXT NOT NULL, detail TEXT,
+            UNIQUE(kind, key, source_kind, source_id)
+        )
+        """,
+        "CREATE INDEX idx_learning_signals_key ON learning_signals(kind, key, at)",
+        "CREATE INDEX idx_learning_signals_source ON learning_signals(source_kind, source_id)",
+        """
+        CREATE TABLE learning_candidates (
+            id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, status TEXT NOT NULL, scope_level TEXT NOT NULL, scope_key TEXT, project_key TEXT,
+            title TEXT NOT NULL, summary TEXT NOT NULL, confidence REAL NOT NULL, risk TEXT NOT NULL, occurrence_count INTEGER NOT NULL, proposed_effect TEXT, validation_requirement TEXT,
+            promotion_requirement TEXT, payload TEXT NOT NULL, rejection_reason TEXT, superseded_by TEXT, created_at REAL NOT NULL, last_seen_at REAL NOT NULL, updated_at REAL NOT NULL,
+            decided_by TEXT, decided_at REAL, cooldown_until REAL, evidence_at_rejection INTEGER
+        )
+        """,
+        "CREATE INDEX idx_learning_candidates_status ON learning_candidates(status, kind)",
+        """
+        CREATE TABLE learning_evidence (
+            id TEXT PRIMARY KEY, candidate_id TEXT NOT NULL REFERENCES learning_candidates(id) ON DELETE CASCADE, kind TEXT NOT NULL, source_id TEXT NOT NULL, at REAL NOT NULL, note TEXT,
+            UNIQUE(candidate_id, kind, source_id)
+        )
+        """,
+        """
+        CREATE TABLE learned_rules (
+            id TEXT PRIMARY KEY, candidate_id TEXT, scope_level TEXT NOT NULL, scope_key TEXT, project_key TEXT, version INTEGER NOT NULL, status TEXT NOT NULL, definition TEXT NOT NULL,
+            title TEXT NOT NULL, origin TEXT NOT NULL, activated_at REAL, last_used_at REAL, success_count INTEGER NOT NULL DEFAULT 0, failure_count INTEGER NOT NULL DEFAULT 0,
+            previous_version INTEGER, created_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_learned_rules_status ON learned_rules(status)",
+        """
+        CREATE TABLE rule_versions (
+            id TEXT PRIMARY KEY, rule_id TEXT NOT NULL REFERENCES learned_rules(id) ON DELETE CASCADE, version INTEGER NOT NULL, definition TEXT NOT NULL, at REAL NOT NULL, reason TEXT, changed_by TEXT
+        )
+        """,
+        """
+        CREATE TABLE skills (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL, scope_level TEXT NOT NULL, scope_key TEXT, version INTEGER NOT NULL, status TEXT NOT NULL, definition TEXT NOT NULL,
+            origin TEXT NOT NULL, success_count INTEGER NOT NULL DEFAULT 0, failure_count INTEGER NOT NULL DEFAULT 0, last_used_at REAL, created_at REAL NOT NULL, built_in INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX idx_skills_status ON skills(status)",
+        """
+        CREATE TABLE skill_versions (
+            id TEXT PRIMARY KEY, skill_id TEXT NOT NULL REFERENCES skills(id) ON DELETE CASCADE, version INTEGER NOT NULL, definition TEXT NOT NULL, at REAL NOT NULL, reason TEXT
+        )
+        """,
+        """
+        CREATE TABLE improvement_proposals (
+            id TEXT PRIMARY KEY, candidate_id TEXT, title TEXT NOT NULL, draft TEXT NOT NULL, status TEXT NOT NULL, checkpoint TEXT, task_id TEXT, result TEXT, created_at REAL NOT NULL, updated_at REAL NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE adaptive_requests (
+            id TEXT PRIMARY KEY, kind TEXT NOT NULL, subject_id TEXT NOT NULL, scope_hash TEXT NOT NULL, summary TEXT NOT NULL, detail TEXT, risk TEXT NOT NULL, status TEXT NOT NULL,
+            requested_at REAL NOT NULL, decided_at REAL, decided_by TEXT, executed_at REAL, result TEXT
+        )
+        """,
+        "CREATE INDEX idx_adaptive_requests_status ON adaptive_requests(status)",
+        """
+        CREATE TABLE learning_audit (
+            id TEXT PRIMARY KEY, at REAL NOT NULL, kind TEXT NOT NULL, subject_id TEXT, detail TEXT, by TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_learning_audit_at ON learning_audit(at)",
+    ])
+
+    /// V14 — the MCP / capability registry (V0.14). One row per server (discovered candidates included — a discovered server is a row with status DISCOVERED, never an installation); the full
+    /// definition (tools, wrappers, envelope, provenance, discovery evidence) is one JSON document so a change in the code never needs a column. Benchmarks and activity are bounded logs;
+    /// only bounded, sanitised summaries are stored.
+    static let v14 = Migration(version: 14, name: "mcp registry", statements: [
+        """
+        CREATE TABLE mcp_registry (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL, health TEXT NOT NULL, version TEXT, executable_hash TEXT, definition TEXT NOT NULL, install_directory TEXT,
+            registered_at REAL NOT NULL, status_changed_at REAL NOT NULL, last_used_at REAL, revalidation_required INTEGER NOT NULL DEFAULT 0, is_fixture INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX idx_mcp_registry_status ON mcp_registry(status)",
+        """
+        CREATE TABLE mcp_benchmarks (
+            id TEXT PRIMARY KEY, server_id TEXT NOT NULL, at REAL NOT NULL, result TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_mcp_benchmarks_server ON mcp_benchmarks(server_id, at)",
+        """
+        CREATE TABLE mcp_activity (
+            id TEXT PRIMARY KEY, server_id TEXT NOT NULL, capability TEXT NOT NULL, task_id TEXT, role TEXT, project_key TEXT, started_at REAL NOT NULL, ended_at REAL, status TEXT NOT NULL,
+            latency_ms REAL, envelope TEXT, error TEXT, validated INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX idx_mcp_activity_server ON mcp_activity(server_id, started_at)",
     ])
 }

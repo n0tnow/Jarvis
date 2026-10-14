@@ -50,6 +50,14 @@ final class AppContext {
     /// V0.13: project continuity — status questions and “continue” resolved against current project truth; checkpoints when tasks finish. Derived view, no execution path of its own.
     let continuity: ProjectContinuity
     let experimentsModel: ExperimentsViewModel
+    /// V0.14: adaptive learning (candidates from repeated evidence — never authority), the Skill registry, the MCP / capability registry, controlled self-improvement, and the ONE approval boundary
+    /// they share (decided from HUD buttons only).
+    let adaptiveDecisions: AdaptiveDecisionService
+    let learning: LearningService
+    let skills: SkillRegistry
+    let mcp: MCPRegistry
+    let selfImprovement: SelfImprovementService
+    let adaptiveAssistant: AdaptiveAssistant
     /// V0.13: general visual grounding (perception only; its proposals pass through the same Computer Use validation as everything else).
     let visual: VisualGrounder
     let visionRuntime: LocalVLMRuntime
@@ -174,6 +182,44 @@ final class AppContext {
         continuity.unityScene = { [weak unity] root in await unity?.sceneFacts(for: root) }
         operatorModel = ProjectOperatorViewModel(continuity: continuity, preferences: preferences)
         experimentsModel = ExperimentsViewModel(repository: repo)
+        // V0.14 adaptive layer. Nothing here runs by itself: learning extracts after a task finishes or when asked; MCP servers start only when a task needs one and stop when idle.
+        let adaptivePrefs = preferences
+        adaptiveDecisions = AdaptiveDecisionService(repository: repo)
+        learning = LearningService(repository: repo, decisions: adaptiveDecisions)
+        skills = SkillRegistry(repository: repo)
+        mcp = MCPRegistry(repository: repo, decisions: adaptiveDecisions, root: p.root.appendingPathComponent("mcp", isDirectory: true))
+        selfImprovement = SelfImprovementService(repository: repo, learning: learning, decisions: adaptiveDecisions)
+        adaptiveAssistant = AdaptiveAssistant(learning: learning, skills: skills, registry: mcp, selfImprovement: selfImprovement, decisions: adaptiveDecisions)
+        learning.settings = { [weak adaptivePrefs] in
+            guard let a = adaptivePrefs else { return LearningSettings() }
+            return LearningSettings(enabled: a.adaptiveLearningEnabled, fromTasks: a.learnFromTasks, fromCorrections: a.learnFromCorrections, gapDetection: a.capabilityGapDetection, safeExperiments: a.safeLearningExperiments,
+                                    autoPromoteLowRisk: a.autoPromoteLowRiskWorkflows, level: a.selfImprovementLevel)
+        }
+        selfImprovement.level = { [weak adaptivePrefs] in adaptivePrefs?.selfImprovementLevel ?? .experiment }
+        selfImprovement.engine = taskEngine
+        selfImprovement.activeMCPs = { [weak mcp] in mcp?.activeServers.map(\.id) ?? [] }
+        adaptiveAssistant.enabled = { [weak adaptivePrefs] in adaptivePrefs?.adaptiveLearningEnabled ?? true }
+        adaptiveAssistant.discoveryEnabled = { [weak adaptivePrefs] in adaptivePrefs?.mcpDiscoveryEnabled ?? true }
+        adaptiveAssistant.projectKey = { [weak adaptivePrefs] in adaptivePrefs.flatMap { $0.projectRoot.isEmpty ? nil : URL(fileURLWithPath: $0.projectRoot).lastPathComponent } }
+        let learnedRepo = repo
+        adaptiveAssistant.taskTitle = { id in ((try? learnedRepo?.engineTask(id)) ?? nil)?.title }
+        if let r = research { adaptiveAssistant.discovery = MCPDiscovery(client: r.client) }
+        mcp.pressureNormal = { [weak computerResources] in (computerResources?.pressure.memory ?? .normal) == .normal }
+        learning.mcpActivity = { [weak mcp] in mcp?.activity(limit: 300) ?? [] }
+        skills.seedBuiltIns()
+        taskEngine.learnedEffects = { [weak learning] ctx in learning?.effects(for: ctx) ?? RuleEffects() }
+        taskEngine.skillMatcher = { [weak skills, weak learning] goal, kind, caps in
+            guard let skills, let m = skills.match(goal: goal, kind: kind, available: caps, preferred: learning?.effects(for: RuleContext([.taskKind: kind.rawValue])).preferredWorkflows ?? []) else { return nil }
+            return (skills.orchestratedPlan(for: m, goal: goal), m.skill.id)
+        }
+        taskEngine.onLearnedApplied = { [weak learning] task, rules, skill in learning?.noteApplied(task: task, rules: rules, skill: skill) }
+        learning.skillOutcome = { [weak skills] id, ok in skills?.recordOutcome(id, success: ok) }
+        coordinator.learnedBias = { [weak learning] role in
+            guard let learning else { return [:] }
+            var bias: [String: Double] = [:]
+            for a in learning.routingAdjustments() where role == nil || a.role == role { bias[a.provider, default: 0] += a.clamped }
+            return bias
+        }
         let engineRef = taskEngine
         computer.onEmergencyStop = { [weak engineRef] in engineRef?.cancelComputerTasks(reason: "emergency stop") }
         computer.onEvent = { [weak engineRef] id, e in engineRef?.note(e.summary, e.isWarning ? .warning : .info, taskID: id) }
@@ -211,6 +257,7 @@ final class AppContext {
         if !stubIntelligence { conversationService.taskSubmitter = taskIntake; conversationService.researchSubmitter = taskIntake; conversationService.computerSubmitter = taskIntake }
         conversationService.graphStatus = { [weak taskEngine] focus, lang in taskEngine?.graphStatusText(focus, lang) }
         if !stubIntelligence { conversationService.continuityHandler = continuity }       // V0.13: stubbed automated runs never start continuation tasks
+        conversationService.adaptiveHandler = adaptiveAssistant           // V0.14: learning / MCP questions and requests (a request never approves itself)
         conversationService.memoryHandler = memory                         // V0.10: remember / correct / forget / "what did we decide…" — typed and spoken text alike
         memory.onActivity = { [weak store] message, kind in store?.log(message, kind: kind, persist: false) }
         memory.modelCall = { [weak self] task, prompt in
@@ -286,6 +333,9 @@ final class AppContext {
             self.taskBridge.finished(v)
             let finishedReport = self.taskEngine.report(for: v.id)
             Task { @MainActor in await self.memory.taskFinished(v, report: finishedReport) }          // V0.10: only meaningful outcomes become memory
+            Task { @MainActor in await self.learning.taskFinished(v) }                                  // V0.14: credit applied rules/skills, then look for NEW patterns in recent history (bounded)
+            self.selfImprovement.taskFinished(v, report: finishedReport)
+            self.mcp.release(task: v.id)
             Task { @MainActor in await self.continuity.taskFinished(v, report: finishedReport) }       // V0.13: the checkpoint this task leaves behind (Git HEAD, file hashes, validated / remaining)
             // V0.12: a child task (research / computer node of a graph) reports to its PARENT's graph — it never speaks to the user or triggers the proactive layer on its own.
             if v.task.parentTaskID != nil { return }
@@ -301,6 +351,7 @@ final class AppContext {
             // tasks that were waiting for an approval wait again.
             let r = taskEngine.reconcileOnLaunch()
             _ = try? repository?.reconcileComputerAfterRestart()                       // V0.11: GUI sessions are INTERRUPTED, never resumed silently
+            _ = mcp.reconcileAfterLaunch(); selfImprovement.reconcileAfterLaunch()    // V0.14: dead sandboxes removed; an interrupted self-change is never promoted
             _ = try? repository?.reconcileExperimentsAfterRestart()                   // V0.13: an experiment that was running is INTERRUPTED (never resumed by itself) …
             if let root = taskEngine.experimentsRoot { let finished = Set(((try? repository?.recentExperiments(limit: 200)) ?? []).filter { $0.status != "running" }.map(\.id)); ExperimentWorkspace.reconcile(under: root, finishedIDs: finished) }       // … and its JARVIS-owned temporary folder is removed (marker-checked, inside the experiments root only)
             _ = try? repository?.pruneCheckpoints(keep: 30); _ = try? repository?.pruneVisualObservations(keep: 500)

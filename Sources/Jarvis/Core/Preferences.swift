@@ -25,6 +25,9 @@ final class Preferences {
         static let webResearch = "prefs.web.research"
         static let projectContinuation = "prefs.operator.continuation"
         static let experiments = "prefs.operator.experiments"
+        static let adaptiveEnabled = "prefs.adaptive.enabled", learnTasks = "prefs.adaptive.tasks", learnCorrections = "prefs.adaptive.corrections", gapDetection = "prefs.adaptive.gaps"
+        static let safeExperiments = "prefs.adaptive.experiments", autoPromoteWorkflows = "prefs.adaptive.autopromote", selfLevel = "prefs.adaptive.level"
+        static let mcpDiscovery = "prefs.adaptive.mcpdiscovery", mcpUpdateAdvice = "prefs.adaptive.mcpupdates"
         static let visualMode = "prefs.operator.visualMode"
         static let visualModel = "prefs.operator.visualModel"
         static let webBrowser = "prefs.web.browser"
@@ -99,6 +102,17 @@ final class Preferences {
     var projectContinuationEnabled: Bool { didSet { defaults.set(projectContinuationEnabled, forKey: Key.projectContinuation) } }
     /// V0.13: whether the `experiment` step may run at all (disposable-environment tests). On by default; off ⇒ the step fails with a clear reason and nothing is created.
     var experimentsEnabled: Bool { didSet { defaults.set(experimentsEnabled, forKey: Key.experiments) } }
+    /// V0.14 adaptive learning (all conservative): learning from finished work and from corrections, gap detection, safe disposable experiments. Learning is never authority.
+    var adaptiveLearningEnabled: Bool { didSet { defaults.set(adaptiveLearningEnabled, forKey: Key.adaptiveEnabled) } }
+    var learnFromTasks: Bool { didSet { defaults.set(learnFromTasks, forKey: Key.learnTasks) } }
+    var learnFromCorrections: Bool { didSet { defaults.set(learnFromCorrections, forKey: Key.learnCorrections) } }
+    var capabilityGapDetection: Bool { didSet { defaults.set(capabilityGapDetection, forKey: Key.gapDetection) } }
+    var safeLearningExperiments: Bool { didSet { defaults.set(safeLearningExperiments, forKey: Key.safeExperiments) } }
+    /// OFF by default. Even when ON only LOW-risk workflow rules can be promoted without a click, and only after deterministic validation.
+    var autoPromoteLowRiskWorkflows: Bool { didSet { defaults.set(autoPromoteLowRiskWorkflows, forKey: Key.autoPromoteWorkflows) } }
+    var selfImprovementLevel: SelfImprovementLevel { didSet { defaults.set(selfImprovementLevel.rawValue, forKey: Key.selfLevel) } }
+    var mcpDiscoveryEnabled: Bool { didSet { defaults.set(mcpDiscoveryEnabled, forKey: Key.mcpDiscovery) } }
+    var mcpUpdateRecommendations: Bool { didSet { defaults.set(mcpUpdateRecommendations, forKey: Key.mcpUpdateAdvice) } }
     /// V0.13 general visual grounding: on-device only (Apple text recognition + the local vision model when installed), or off.
     var visualGroundingMode: VisualGroundingMode { didSet { defaults.set(visualGroundingMode.rawValue, forKey: Key.visualMode) } }
     var visualModel: LocalVLMModel { didSet { defaults.set(visualModel.rawValue, forKey: Key.visualModel) } }
@@ -175,6 +189,15 @@ final class Preferences {
         webResearchEnabled = defaults.object(forKey: Key.webResearch) as? Bool ?? true
         projectContinuationEnabled = defaults.object(forKey: Key.projectContinuation) as? Bool ?? true
         experimentsEnabled = defaults.object(forKey: Key.experiments) as? Bool ?? true
+        adaptiveLearningEnabled = defaults.object(forKey: Key.adaptiveEnabled) as? Bool ?? true
+        learnFromTasks = defaults.object(forKey: Key.learnTasks) as? Bool ?? true
+        learnFromCorrections = defaults.object(forKey: Key.learnCorrections) as? Bool ?? true
+        capabilityGapDetection = defaults.object(forKey: Key.gapDetection) as? Bool ?? true
+        safeLearningExperiments = defaults.object(forKey: Key.safeExperiments) as? Bool ?? true
+        autoPromoteLowRiskWorkflows = defaults.object(forKey: Key.autoPromoteWorkflows) as? Bool ?? false
+        selfImprovementLevel = (defaults.object(forKey: Key.selfLevel) as? Int).flatMap(SelfImprovementLevel.init(rawValue:)) ?? .experiment
+        mcpDiscoveryEnabled = defaults.object(forKey: Key.mcpDiscovery) as? Bool ?? true
+        mcpUpdateRecommendations = defaults.object(forKey: Key.mcpUpdateAdvice) as? Bool ?? true
         visualGroundingMode = (defaults.string(forKey: Key.visualMode)).flatMap(VisualGroundingMode.init(rawValue:)) ?? .auto
         visualModel = (defaults.string(forKey: Key.visualModel)).flatMap(LocalVLMModel.init(rawValue:)) ?? .qwen3VL4B
         webBrowserTierEnabled = defaults.object(forKey: Key.webBrowser) as? Bool ?? true

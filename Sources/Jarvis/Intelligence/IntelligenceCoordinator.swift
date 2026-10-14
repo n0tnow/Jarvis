@@ -51,12 +51,17 @@ final class IntelligenceCoordinator: IntelligenceProviderResolving {
 
     // MARK: Routing
 
-    func route(_ profile: TaskProfile, preference override: ProviderPreference? = nil) async -> RoutingDecision {
+    /// V0.14: the bounded learned nudges for one agent role (nil = none). Set by the composition root from the ACTIVE routing candidates.
+    var learnedBias: ((String?) -> [String: Double])?
+
+    func route(_ profile: TaskProfile, preference override: ProviderPreference? = nil, role: String? = nil) async -> RoutingDecision {
         // First use: find out which subscription CLIs / the local model are ready. OpenCode is NOT touched here (lazy, see below).
         if supervisor.lastRefresh == nil { await supervisor.refreshAll(remoteCatalog: false, includeOpenCode: false) }
         let pref = override ?? preference
         if ModelRouter.mayUseFreeCloud(profile, preference: pref, settings: routingSettings) { await supervisor.ensureFreshCatalog() }
-        let decision = ModelRouter.route(profile, snapshot: supervisor.snapshot(preference: pref, settings: routingSettings))
+        var snapshot = supervisor.snapshot(preference: pref, settings: routingSettings)
+        snapshot.learnedBias = learnedBias?(role) ?? [:]
+        let decision = ModelRouter.route(profile, snapshot: snapshot)
         lastDecision = decision
         return decision
     }

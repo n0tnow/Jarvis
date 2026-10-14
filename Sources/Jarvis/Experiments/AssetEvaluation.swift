@@ -22,6 +22,9 @@ struct AssetEvaluationInput: Sendable {
     var experiment: ExperimentResult?
     var visualFit: VisualFitEvidence?
     var existingAssetOverlap: [String] = []
+    /// V0.14: an ACTIVE learned rule says assets like this need the disposable test before any recommendation, and the warnings it carries. A rule only makes the recommendation stricter.
+    var ruleRequiresExperiment = false
+    var ruleWarnings: [String] = []
 }
 
 struct AssetEvaluation: Codable, Equatable, Sendable {
@@ -119,10 +122,12 @@ enum AssetEvaluator {
         let unknownLicense = facts.contains { $0.statement == "Licence" && $0.factClass == .unknown }
         let notFree = facts.contains { $0.statement.hasPrefix("Price:") && !$0.statement.contains("free") }
         var rec: String
+        if i.ruleRequiresExperiment { add("A learned rule applies to assets like this one", .verified, "earlier assets of this kind failed; the rule asks for the disposable test first") }
         if !blockers.isEmpty { rec = "Do not use: \(blockers[0].statement) (\(blockers[0].evidence))." }
         else if unknownLicense { rec = "Do not import yet: the licence is unknown. Read the source's licence page, then decide." }
         else if notFree { rec = "Not free as far as verified; JARVIS never buys anything. Decide yourself." }
         else if let why = refutedBy { rec = "Do not use as delivered: the experiment refuted it (\(why)). A different format or a conversion would have to be tested first." }
+        else if i.ruleRequiresExperiment, !importedAndCompiled { rec = "A learned rule requires the asset test first (earlier assets of this kind were incompatible): run it before you decide. " + (i.ruleWarnings.first ?? "") }
         else if importedAndCompiled { rec = "Technically fine to try: it imported and compiled in a clean project. Import it into the real project only through its own approved task." }
         else { rec = "Not tested: the facts above come from the source. Run the asset test before importing." }
         return AssetEvaluation(name: i.name, facts: facts, usage: usage(i, tested: importedAndCompiled), recommendation: rec)

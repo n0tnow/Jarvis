@@ -139,7 +139,7 @@ final class AgentRunManager {
         }
 
         // --- route ---
-        let decision = await coordinator.route(d.profile, preference: d.preference)
+        let decision = await coordinator.route(d.profile, preference: d.preference, role: d.type)
         guard let selected = decision.selected else {
             return .rejected(.noEligibleProvider(decision.refusalMessage() ?? "no provider"))
         }

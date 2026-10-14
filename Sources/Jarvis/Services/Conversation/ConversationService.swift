@@ -74,6 +74,9 @@ final class ConversationService {
     @ObservationIgnored weak var memoryHandler: (any MemoryConversing)?
     /// V0.13: project continuity (“where are we on the Hamam project?”, “continue”). Typed and spoken text take this same path; nil = not wired (stubbed runs).
     @ObservationIgnored weak var continuityHandler: (any ContinuityConversing)?
+    /// V0.14: learning and capabilities (“what did you learn?”, “show the MCPs”, “turn Blender MCP off”, “delete Blender MCP”). Typed and spoken text take this same path; a destructive request only
+    /// CREATES a request that a HUD button decides — a spoken “yes” never does (ApprovalGuard above). nil = not wired.
+    @ObservationIgnored weak var adaptiveHandler: (any AdaptiveConversing)?
     /// Called at the start of every accepted submission (V0.7: a typed message silences speech that is still playing).
     @ObservationIgnored var onSubmit: ((InputSource) -> Void)?
     /// "stop talking" also silences speech that is playing (V0.7): returns true when something was being spoken.
@@ -121,6 +124,15 @@ final class ConversationService {
             handleContinuity(intent, language: lang, source: source)
             return .localResponse(.continuity, lang)
         }
+        // Adaptive learning and the capability registry: answered from persisted records; management acts only inside its authority (never an approval).
+        if let adaptive = adaptiveHandler {
+            adaptive.observe(text)                                                   // a correction becomes an OBSERVATION for learning; it never changes a rule by itself
+            if let intent = adaptive.recognizes(text) {
+                let lang = InputNormalizer.normalize(text).language
+                handleAdaptive(intent, language: lang, source: source)
+                return .localResponse(.adaptive, lang)
+            }
+        }
         // Project Memory: explicit remember / correct / forget and direct questions about the project's history are answered from RECORDS (no model, no invention).
         if let memory = memoryHandler {
             let command = memory.recognizes(text)
@@ -149,7 +161,7 @@ final class ConversationService {
             case .greeting: conversation.appendJarvis(Phrasebook.greeting(lang), route: .local)
             case .thanks: conversation.appendJarvis(Phrasebook.thanks(lang), route: .local)
             case .approvalNeedsHUD: conversation.appendJarvis(ApprovalGuard.notice(lang), tone: .notice, route: .local)
-            case .memory, .continuity: break                      // answered by handleMemoryCommand / handleContinuity
+            case .memory, .continuity, .adaptive: break           // answered by handleMemoryCommand / handleContinuity / handleAdaptive
             }
 
         case .reasoningRequired(let prompt, let lang):
@@ -219,6 +231,18 @@ final class ConversationService {
             guard let self else { return }
             defer { self.pendingTaskAcks -= 1 }
             let reply = await continuity.reply(to: intent, language: language, channel: source)
+            self.conversation.appendJarvis(reply, route: .local)
+            self.announceLatestReply()
+        }
+    }
+
+    private func handleAdaptive(_ intent: AdaptiveIntent, language: ReplyLanguage, source: InputSource) {
+        guard let adaptive = adaptiveHandler else { return }
+        pendingTaskAcks += 1
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.pendingTaskAcks -= 1 }
+            let reply = await adaptive.reply(to: intent, language: language, channel: source)
             self.conversation.appendJarvis(reply, route: .local)
             self.announceLatestReply()
         }

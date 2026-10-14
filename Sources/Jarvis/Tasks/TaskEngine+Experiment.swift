@@ -132,7 +132,15 @@ extension TaskEngine {
     @discardableResult
     func evaluateAsset(_ acq: AcquisitionRecord, experiment: ExperimentResult?, workspace: String, taskID: UUID?) -> AssetEvaluation {
         let cand: CandidateRecord? = acq.candidateID.flatMap { cid in ((try? repository?.researchCandidates(acq.researchID ?? UUID())) ?? []).first { $0.id == cid } }
-        let input = AssetEvaluationInput(name: acq.name, sourceURL: acq.sourceURL, candidate: cand, acquisition: acq, project: TaskIntake.projectFacts(root: workspace), experiment: experiment)
+        var input = AssetEvaluationInput(name: acq.name, sourceURL: acq.sourceURL, candidate: cand, acquisition: acq, project: TaskIntake.projectFacts(root: workspace), experiment: experiment)
+        if let learnedEffects {
+            var facts: [RuleFactKey: String] = [.assetCompatibility: experiment?.verdict == .confirmed ? "tested" : "unknown", .taskKind: "asset"]
+            if let host = URLComponents(string: acq.sourceURL)?.host?.lowercased() { facts[.assetSource] = host }
+            if let t = acq.detectedType { facts[.assetFormat] = SignalExtractor.cleanKey(t) }
+            let fx = learnedEffects(RuleContext(facts, projectKey: URL(fileURLWithPath: workspace).lastPathComponent))
+            input.ruleRequiresExperiment = fx.requiredExperiments.contains(ExperimentKind.assetImport.rawValue)
+            input.ruleWarnings = fx.warnings
+        }
         let ev = AssetEvaluator.evaluate(input)
         try? repository?.save(AssetEvaluationRecord(taskID: taskID, acquisitionID: acq.id, projectKey: nil, evaluation: ev, source: acq.sourceURL))
         return ev

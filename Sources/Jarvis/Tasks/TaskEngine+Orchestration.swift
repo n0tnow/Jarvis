@@ -42,16 +42,30 @@ extension TaskEngine {
         guard orchestrationEnabled, ctx.record.kind == .development || ctx.record.kind == .readOnlyAnalysis, ctx.record.scope == nil, ctx.research?.importSource == nil else { return nil }
         let started = Date()
         let c = await planningContext(ctx)
-        let route = OrchestrationPlanner.route(goal: ctx.record.goal, kind: ctx.record.kind, context: c)
-        let plan: TaskPlan, template: String, rationale: String
-        switch route {
-        case .needsModelPlanning(let why): note("Orchestrator · no template (\(why)) — the planner model proposes a graph", .info, taskID: ctx.record.id); return nil
-        case .single(let role, let tpl):
-            plan = TaskPlan(summary: "Single \(role.label) node", steps: [PlanStep(id: "s1", title: "Run the project's tests", description: "Run the project's test command and report the real result.", type: .test, dependsOn: [],
-                                                                                  expected: "the tests pass", validation: .testPass, risk: .low)])
-            template = tpl; rationale = "a single \(role.label) job — no other agent is needed"
-        case .graph(let op): plan = op.plan; template = op.template; rationale = op.rationale
+        // V0.14: what the ACTIVE learned rules say about this situation. Effects only ADD requirements (a review, a test, a warning); they never approve, grant or remove anything.
+        let fx = learnedEffects?(learnedContext(ctx)) ?? RuleEffects()
+        for w in fx.warnings { note("Learned rule · \(w)", .warning, taskID: ctx.record.id) }
+        var plan: TaskPlan, template: String, rationale: String
+        var skillID: UUID?
+        if ctx.record.scope == nil, let hit = skillMatcher?(ctx.record.goal, ctx.record.kind, ctx.record.capabilities.granted) {
+            // A matching Skill only chooses the template the planner starts from; it is validated and executed exactly like any other plan.
+            plan = hit.plan.plan; template = hit.plan.template; rationale = hit.plan.rationale; skillID = hit.skillID
+        } else {
+            let route = OrchestrationPlanner.route(goal: ctx.record.goal, kind: ctx.record.kind, context: c)
+            switch route {
+            case .needsModelPlanning(let why): note("Orchestrator · no template (\(why)) — the planner model proposes a graph", .info, taskID: ctx.record.id); onLearnedApplied?(ctx.record.id, fx.firedRuleIDs, nil); return nil
+            case .single(let role, let tpl):
+                plan = TaskPlan(summary: "Single \(role.label) node", steps: [PlanStep(id: "s1", title: "Run the project's tests", description: "Run the project's test command and report the real result.", type: .test, dependsOn: [],
+                                                                                      expected: "the tests pass", validation: .testPass, risk: .low)])
+                template = tpl; rationale = "a single \(role.label) job — no other agent is needed"
+            case .graph(let op): plan = op.plan; template = op.template; rationale = op.rationale
+            }
         }
+        if let added = Self.applyLearnedRequirements(&plan, effects: fx, hasTestCommand: c.hasTestCommand), !added.isEmpty {
+            rationale += " · learned rule adds: " + added.joined(separator: ", ")
+            note("Learned rule · added to the plan: \(added.joined(separator: ", "))", .info, taskID: ctx.record.id)
+        }
+        onLearnedApplied?(ctx.record.id, fx.firedRuleIDs, skillID)
         guard let capset = capabilitiesForGraph(ctx, plan: plan) else { return nil }
         let base = PlanValidator.validate(plan, kind: ctx.record.kind, capabilities: capset, allowDestructive: ctx.record.destructiveRequested)
         let graph = GraphValidator.validate(plan, capabilities: capset, delegateCheck: delegateCheck(ctx))
@@ -65,6 +79,31 @@ extension TaskEngine {
         saveGraph(ctx, template: template, planner: "deterministic", rationale: rationale, plannerChars: 0, plannerMS: Date().timeIntervalSince(started) * 1000)
         note("Orchestrator · \(plan.steps.count == 1 ? "1 node" : "\(plan.steps.count)-node graph") (\(template)): \(rationale)", .info, taskID: ctx.record.id)
         return true
+    }
+
+    /// The situation the learned rules are matched against (short tokens only).
+    func learnedContext(_ ctx: TaskContext) -> RuleContext {
+        var facts: [RuleFactKey: String] = [.taskKind: ctx.record.kind.rawValue, .projectKind: ctx.unityProject ? "unity" : "code"]
+        let g = ctx.record.goal
+        if GoalCues.assetQuestion(g) { facts[.goalIntent] = "asset" } else if GoalCues.fix(g) { facts[.goalIntent] = "fix" } else if GoalCues.investigate(g) { facts[.goalIntent] = "investigate" }
+        if ctx.unityProject { facts[.renderPipeline] = "unknown" }
+        return RuleContext(facts, projectKey: ctx.record.workspaceRoot.map { URL(fileURLWithPath: $0).lastPathComponent }, capability: nil, workflow: nil)
+    }
+
+    /// A learned rule may only make the plan STRICTER: an extra test after a change, an independent review after a change. Returns what was added (nil = nothing applicable).
+    nonisolated static func applyLearnedRequirements(_ plan: inout TaskPlan, effects: RuleEffects, hasTestCommand: Bool) -> [String]? {
+        guard effects.independentReviewRequired || effects.extraValidations.contains("rerunTests") else { return nil }
+        let changes = plan.steps.filter { $0.type == .codeChange || $0.type == .unityEdit }
+        guard !changes.isEmpty else { return nil }
+        var added: [String] = []
+        func leaves() -> [String] { let depended = Set(plan.steps.flatMap(\.dependsOn)); return plan.steps.filter { !depended.contains($0.id) }.map(\.id) }
+        func nextID() -> String { "s\(plan.steps.count + 1)" }
+        func append(_ id: String, _ title: String, _ type: StepType, expected: String) {
+            plan.steps.append(PlanStep(id: id, title: title, description: "Added because a learned rule applies to this situation.", type: type, dependsOn: leaves(), expected: expected, validation: .default(for: type), risk: type.defaultRisk))
+        }
+        if effects.extraValidations.contains("rerunTests"), hasTestCommand, !plan.steps.contains(where: { $0.type == .test }) { append(nextID(), "Run the tests (learned rule)", .test, expected: "the tests pass"); added.append("a test run") }
+        if effects.independentReviewRequired, !plan.steps.contains(where: { $0.type == .review }) { append(nextID(), "Independent review (learned rule)", .review, expected: "a review verdict"); added.append("an independent review") }
+        return added
     }
 
     /// Delegated nodes need the capability of the CHILD kind on the parent; nothing else is added. nil when a needed capability is not allowed by the user's settings.

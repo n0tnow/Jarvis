@@ -100,7 +100,9 @@ enum ModelRouter {
             for m in models { chain.append(RoutingCandidate(engine: .openCode, model: m.0.id)); freeInfo[m.0.id] = m }
         }
         func addPremium() {
-            for e in ProviderID.subscription {
+            // Equal-footing engines are ordered by the (bounded) learned nudge; the stable sort keeps the default order when there is none.
+            let ordered = ProviderID.subscription.enumerated().sorted { (s.bias($0.element.rawValue), -$0.offset) > (s.bias($1.element.rawValue), -$1.offset) }.map(\.element)
+            for e in ordered {
                 if let why = premiumBlock(e, s) { d.rejected[e.rawValue] = why } else { chain.append(RoutingCandidate(engine: e, model: nil)) }
             }
         }
@@ -178,7 +180,7 @@ enum ModelRouter {
             ok.append((m, summary))
         }
         ok.sort { a, b in
-            let ra = a.1?.passRate ?? -1, rb = b.1?.passRate ?? -1
+            let ra = (a.1?.passRate ?? -1) + s.bias(a.0.id), rb = (b.1?.passRate ?? -1) + s.bias(b.0.id)
             if ra != rb { return ra > rb }
             // Privacy-preserving tie-break: documented zero-retention models first, then everything else.
             let za = a.0.dataPolicy == .zeroRetention, zb = b.0.dataPolicy == .zeroRetention

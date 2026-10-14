@@ -62,6 +62,11 @@ final class TaskEngine {
     var experimentsRoot: URL?
     /// Settings switch for the `experiment` step (default on); read at step start.
     var experimentsEnabled: () -> Bool = { true }
+    /// V0.14 learned behaviour (all nil in tests that do not wire it): what ACTIVE learned rules say about a situation (effects only ADD requirements), a learned/built-in Skill that matches the goal,
+    /// and a notification of what was applied to a task (so its outcome can be credited). None of these can approve, grant or remove anything.
+    @ObservationIgnored var learnedEffects: ((RuleContext) -> RuleEffects)?
+    @ObservationIgnored var skillMatcher: ((String, TaskKind, Set<TaskCapability>) -> (plan: OrchestratedPlan, skillID: UUID)?)?
+    @ObservationIgnored var onLearnedApplied: ((UUID, [UUID], UUID?) -> Void)?
     /// V0.11: Computer Use (nil = computer steps fail truthfully with "not available"). Owns the backend, the emergency stop and the session timeline.
     var computer: ComputerRuntime?
     /// Settings → Computer Use: the master switch (a closure so a change applies to the next task at once).

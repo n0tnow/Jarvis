@@ -40,7 +40,7 @@ enum JarvisIntent: Equatable, Sendable {
 }
 
 /// Tiny non-LLM social replies (architectural validation only — not a chatbot).
-enum LocalReply: Equatable, Sendable { case greeting, thanks, approvalNeedsHUD, memory, continuity }
+enum LocalReply: Equatable, Sendable { case greeting, thanks, approvalNeedsHUD, memory, continuity, adaptive }
 
 enum UnsupportedReason: Equatable, Sendable { case empty, noContent }
 
