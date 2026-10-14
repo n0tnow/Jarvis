@@ -511,3 +511,30 @@ See `PROJECT_STATE.md` status. Real research (2026-10-14) covered 3D/Blender, de
 
 ### Not done / next
 Wait for the manual test (README 1000–1152). V0.15 is not started.
+
+## 2026-10-14 — V0.15 Daily JARVIS, installable app, readiness and follow-ups
+
+### Goal
+Make the machinery usable every day without Terminal — presentation, bounded follow-ups, readiness + typed setup, packaging and lifecycle — with no new orchestrator and no new authority (DEC-234…245). Last feature milestone.
+
+### Done
+* **Daily/**: `ResponsePolicy` (depth detector, shortening that keeps negative facts, address policy, presenter, concise acknowledgements), `WorkingContext` (bounded ephemeral referents, follow-up parser/resolver, project switch). Wired into `ConversationService` after the approval guard.
+* **Readiness/**: read-only `ReadinessService` + probes, `ReadinessAssistant` (EN/TR), `SetupRunner` (closed action list → packaged pinned scripts), `ReadinessActions`, `SystemIntegration` (SMAppService, notifications, single instance), `Diagnostics`; System & Readiness card, first-run walk-through, Settings (Startup, Daily JARVIS, About), menu additions.
+* **Packaging**: `scripts/package-app.sh`, `install-app.sh`, `verify-installed.sh`, generated temporary icon, entitlements file, installed to `/Applications/JARVIS.app`.
+* **Guards**: `scripts/guards_v15.sh` (14) + three narrow amendments; `DailyStructuralTests`; live tests `--daily-jarvis-live-test`, `--packaging-live-test`, `--setup-live-test`.
+
+### Found and fixed on the way
+* The follow-up parser first matched verbs in the middle of longer sentences (“Remember that we use the free model…”, “Modify my project and test it”) → verb must open or close a ≤ 7-word sentence.
+* “go to system” was taken as a project switch (async reply broke the V0.2 ordering smoke check) → deterministic commands win; “back to <unknown>” is an ordinary sentence unless it names a project.
+* Memory answers lost their citations when shortened → evidence-bearing answers are shown whole.
+* Setup output: the process stream yields complete lines (they were concatenated); progress bars redraw with carriage returns.
+* macOS 26 hosts status items in Control Center: the menu-bar presence is detected by the window named after the bundle id.
+* `SMAppService` answers “not found” for a never-registered app; registering works (reversible round trip tested).
+* Several guards were amended narrowly (notification API, System Settings URLs, SMAppService), each in one file.
+* Pre-existing flaky ⌘V smoke checks were already hardened in V0.14; none flaked in V0.15 runs.
+
+### Evidence
+See `PROJECT_STATE.md` status.
+
+### Not done / next
+Wait for the manual test (README 1153–1234). V1.0 is not started.

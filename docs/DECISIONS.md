@@ -1152,3 +1152,63 @@ Why: AGENTS.md "distinguish automated testing from manual verification".
 Status: Accepted (V0.14)
 Decision: V0.14 (adaptive learning, controlled self-improvement & MCP/Skill registry) → V0.15 (presence, personality & visual teaching) → V1.0. V0.15 is NOT started.
 Why: DEC-213.
+
+## DEC-234 — Response presentation is presentation only
+Status: Accepted (V0.15)
+Decision: `ResponsePolicy` (depth detection, shortening, address policy, concise acknowledgement wording) only chooses how much of an already-determined answer is shown or spoken. It cannot reach the task engine or the store, never drops a sentence that carries a failure, refusal, unknown, missing piece, permission, warning or pending decision, never turns FAILED into “almost done” or UNKNOWN into “ready”, and uses no model (deterministic rules). Evidence-bearing answers (Project Memory with citations) are shown whole unless a short one is requested. Default style is Concise.
+Why: "personality must not alter evidence"; the brief's presentation-policy rule. `guards_v15.sh` (g15_pure), `DailyShapeTests`.
+
+## DEC-235 — The conversational working context is bounded, ephemeral, typed and powerless
+Status: Accepted (V0.15)
+Decision: `ConversationWorkingContext` keeps ≤ 16 typed referents for ≤ 30 minutes / 30 turns, in memory only (not Codable, not persisted, never written to Project Memory or learning, forgotten on restart). Only validated records and the user's own words enter (research candidate records, a named project, the user's earlier request, typed Unity results); labels that are instruction- or secret-shaped are refused. A resolved follow-up is rewritten into an explicit sentence that takes the normal route (router → task intake → V0.12); the context cannot approve, grant a capability or start work by itself. “Devam et” stays with Project Continuity (current truth outranks conversation).
+Why: DEC-104/DEC-215 (memory and learning are never authority) applied to short-term references; the V0.15 brief.
+
+## DEC-236 — A follow-up never guesses a destructive target, and “yes” never chooses
+Status: Accepted (V0.15)
+Decision: delete/remove follow-ups resolve only from something the user explicitly chose or named and only when it is the single candidate; otherwise JARVIS asks (“Silinecek hedefi tahmin etmem”). Ordinal deletes ask for confirmation of the one found. A bare yes/no never completes a clarification. The approval guard now covers EVERY pending decision (task approval, adaptive request, proposal) via `hasPendingDecision` and runs before follow-up resolution. Deleting still follows the normal approval policy afterwards.
+Why: DEC-065/DEC-220; recency is not consent.
+
+## DEC-237 — “Efendim” is a small deterministic address policy
+Status: Accepted (V0.15)
+Decision: Turkish only; at wake and at a decision request always; in Natural style also at greeting, task acceptance and completion, never twice within 4 replies; Minimal = wake + decisions; Off = never; English never. The only state is a turn counter and the last use.
+Why: natural use without roleplay or repetition.
+
+## DEC-238 — Readiness is a read-only picture with distinct states
+Status: Accepted (V0.15)
+Decision: `ReadinessService` builds the picture from probes of what JARVIS already knows (provider status probe, runtime inspection, permission preflights, stored MCP facts). Building it starts no process, asks for no permission, spends no quota, reads no credential. READY needs a safe check that ran; present-but-unverified is AVAILABLE; idle-by-design is NOT RUNNING; stored health is labelled stored; the Paid API row has no action. It is read on appear, on Recheck and after a user action — never polled.
+Why: "do not claim authenticated status merely because an executable exists"; DEC-017/DEC-021.
+
+## DEC-239 — Setup is a closed list of typed actions that run packaged scripts
+Status: Accepted (V0.15)
+Decision: `SetupAction` is the only way the app installs anything: five installs (local model runtime, Whisper, natural voice, visual model, memory search), permission buttons, Recheck, Select Existing Model Folder. An install runs one script from `JARVIS.app/Contents/Resources/setup/scripts` directly (no shell string, no argument from outside), with the provider environment allowlist, after a confirmation (source, size, destination) and a disk check (1.25× installed size), one at a time, cancellable (process tree), idempotent (pinned revisions / SHA-256 inside the scripts; an existing valid installation is reused). No sudo, no URL or command field, no installer for Claude Code / Codex / OpenCode / MCP servers, no paid dependency, no bundled model. Existing model folders are referenced where they are after validation (config + weights, inside home or an external volume, no escaping link).
+Why: the brief's dependency-manager rules; the scripts already carry the pins; a generic installer would be an authority.
+
+## DEC-240 — JARVIS.app: ad-hoc signed, hardened runtime, one entitlement, not sandboxed, not notarized
+Status: Accepted (V0.15)
+Decision: `scripts/package-app.sh` builds `JARVIS.app` (bundle id unchanged, version 0.15.0, build = commit count, temporary generated icon replaceable by `Resources/AppIcon.icns`). Signing: a keychain identity when one exists, else ad-hoc (this Mac has none). Hardened runtime on; the only entitlement is the microphone. Not sandboxed (Computer Use, provider CLIs, local helpers, Unity and the MCP sandbox cannot live in the App Sandbox); not notarized (private local use; notarization needs credentials and is not claimed). The Info.plist keeps exactly one privacy key. The bundle contains no database, model or fixture (checked by the script and by `guards_v15.sh`).
+Why: V0.15 brief §46–48; honesty about the security model.
+
+## DEC-241 — Launch at Login, single instance and notifications are user-controlled and minimal
+Status: Accepted (V0.15)
+Decision: Launch at Login uses `SMAppService.mainApp` only (one file), OFF by default, state read from macOS, no LaunchAgent / daemon / hand-written plist. A plain launch (no `--flag`) hands over to a running copy through the running-application list; developer and live-test launches are exempt; reopening shows the Compact HUD. Notifications are opt-in, requested only when switched on, generic text, never project content; sub-steps never notify. `verify.sh` guards updated: `SMAppService` and `UNUserNotificationCenter` are allowed in `Readiness/SystemIntegration.swift` only; LaunchAgent/Daemon/launchctl stay forbidden everywhere.
+Why: "no hidden persistence", "user-controlled".
+
+## DEC-242 — Installed mode and development mode are separate
+Status: Accepted (V0.15)
+Decision: the installed app assumes no repository, source tree, `.build`, working directory, test resource or development server (`guards_v15.sh`: `#filePath`, `currentDirectoryPath`, `swift run`, `xcodebuild` only in live-test/dev files; `Bundle.main` only for identity and packaged setup scripts). Mutable state stays in Application Support / Caches. Messages that used to say “run scripts/setup_*.sh” now say “press Set Up in System & Readiness” (development builds keep the script hint).
+Why: the no-Terminal acceptance test.
+
+## DEC-243 — The voice output architecture stays pluggable; the final voice is deferred
+Status: Accepted (V0.15)
+Decision: `TextToSpeechProvider` (+ `SpeechRenderer`, `SpeechChunker`, `VoiceSelection`) is the provider boundary: Apple system voices and the local neural voice are two providers; a final custom voice becomes a third provider without touching `ConversationService` or `TaskEngine`. No voice is selected, cloned or downloaded in V0.15. Task acknowledgements can be silenced (`ConversationMessage.silent`); completions are spoken only when voice is enabled and nothing else is being said.
+Why: Bilal deferred the choice; DEC-057…086 unchanged.
+
+## DEC-244 — Stop speech is not stop task
+Status: Accepted (V0.15)
+Decision: “Sus / sessiz ol / stop talking / stop speaking / quiet” → `.cancelGeneration` (speech and answer generation); “Görevi durdur / stop task / cancel task” → `.stopTask`. The router vocabulary was extended; the executor documents that speech-stop never reaches the task layer. Turkish follow-up words written without diacritics (“onu kullan”) are recognised as Turkish for reply language.
+Why: the brief's interruption semantics.
+
+## DEC-245 — V0.15 is the last feature milestone; V1.0 is validation
+Status: Accepted (V0.15)
+Decision: after V0.15 no major feature is added. V1.0 = real-world validation & stabilization (daily use, Hamam on a copy, real voice, real Computer Use, defects, latency, packaging polish, the final voice provider if chosen). Whiteboard / visual teaching are out of scope and have no placeholder architecture. V1.0 is NOT started.
+Why: the user's roadmap decision; DEC-233.

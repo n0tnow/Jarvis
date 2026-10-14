@@ -1,8 +1,9 @@
 # JARVIS
 
-A native macOS menu-bar AI operating layer (long-term). **V0.14 adaptive layer** (JARVIS learns bounded, evidence-backed lessons, rules and workflows from its own recorded work, keeps a registry of MCP servers and Skills that are inspected and benchmarked in an honest sandbox, and can improve its own source only through an HUD-approved, ordinary orchestrated task — learning is data, never authority) on top of the **V0.13 project operator** (JARVIS says where a project stands from current truth, continues it as ONE bounded task through the single orchestrator, works in the Unity editor through a closed typed operator set, inspects and corrects its own result from measured facts, tests unknowns in disposable environments, and looks at pictures on-device without ever treating them as authority) on top of **V0.12 multi-agent orchestration** (JARVIS orchestrates role-bounded specialists — Analysis, Coding, Research, Unity, Computer, QA, Review — over a validated task graph with typed artifacts, per-role routing reasons, parallel read-only work and approval gates; models and tools are only the engines; a normal V0.4 task, never a new authority). **V0.11 general computer use** (typed, observed, policy-checked, verified control of ordinary macOS applications through Accessibility when no stronger tool exists — capability ladder, secure-field/terminal/purchase protections, window-scoped on-device vision fallback, cancel + ⌃⌥⌘ emergency stop; a normal task, never a new authority) · **V0.10 project memory** (derived, source-backed knowledge about a project — decisions, constraints, failures, research and asset decisions — with contradiction/supersession/staleness, hybrid Turkish/English retrieval, a bounded per-agent Context Builder, and remember/correct/forget/pin; memory is context, never authority) · **V0.9 web research & asset acquisition** (cited, evidence-backed research of the public web; free-price and licence verification where UNKNOWN is never free; quarantined downloads; approval-gated import — no purchases, no sign-ins) · V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.8 natural voice** (opt-in local wake word “Jarvis”, natural endpointing, barge-in, a local neural JARVIS voice — still the same pipeline) · **V0.7 voice I/O** (hold right ⌥ to talk — Turkish or English; the final transcript enters the SAME pipeline as typed text; local/system speech only) · **V0.4 autonomous task engine** (you give a bounded goal; JARVIS plans, executes with agents/tools, validates with real builds/tests, repairs within bounds, reports — user-initiated only) · **V0.3.2 agent observatory** (live sanitized consoles, truthful progress, history, Stop) · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. JARVIS contacts no network host itself.
+A native macOS menu-bar AI operating layer (long-term). **V0.15 daily JARVIS** (an installable `JARVIS.app` that launches from Applications without Terminal; concise, evidence-safe replies with natural depth and “efendim”; bounded follow-ups such as “ikincisini dene”; a System & Readiness screen and typed first-run setup; Launch at Login and opt-in notifications — presentation and lifecycle only, never authority) on top of the **V0.14 adaptive layer** (JARVIS learns bounded, evidence-backed lessons, rules and workflows from its own recorded work, keeps a registry of MCP servers and Skills that are inspected and benchmarked in an honest sandbox, and can improve its own source only through an HUD-approved, ordinary orchestrated task — learning is data, never authority) on top of the **V0.13 project operator** (JARVIS says where a project stands from current truth, continues it as ONE bounded task through the single orchestrator, works in the Unity editor through a closed typed operator set, inspects and corrects its own result from measured facts, tests unknowns in disposable environments, and looks at pictures on-device without ever treating them as authority) on top of **V0.12 multi-agent orchestration** (JARVIS orchestrates role-bounded specialists — Analysis, Coding, Research, Unity, Computer, QA, Review — over a validated task graph with typed artifacts, per-role routing reasons, parallel read-only work and approval gates; models and tools are only the engines; a normal V0.4 task, never a new authority). **V0.11 general computer use** (typed, observed, policy-checked, verified control of ordinary macOS applications through Accessibility when no stronger tool exists — capability ladder, secure-field/terminal/purchase protections, window-scoped on-device vision fallback, cancel + ⌃⌥⌘ emergency stop; a normal task, never a new authority) · **V0.10 project memory** (derived, source-backed knowledge about a project — decisions, constraints, failures, research and asset decisions — with contradiction/supersession/staleness, hybrid Turkish/English retrieval, a bounded per-agent Context Builder, and remember/correct/forget/pin; memory is context, never authority) · **V0.9 web research & asset acquisition** (cited, evidence-backed research of the public web; free-price and licence verification where UNKNOWN is never free; quarantined downloads; approval-gated import — no purchases, no sign-ins) · V0.1 native foundation + HUD · V0.2 text conversation and deterministic command router · V0.3 real intelligence through **your own signed-in Claude Code / Codex** · **V0.8 natural voice** (opt-in local wake word “Jarvis”, natural endpointing, barge-in, a local neural JARVIS voice — still the same pipeline) · **V0.7 voice I/O** (hold right ⌥ to talk — Turkish or English; the final transcript enters the SAME pipeline as typed text; local/system speech only) · **V0.4 autonomous task engine** (you give a bounded goal; JARVIS plans, executes with agents/tools, validates with real builds/tests, repairs within bounds, reports — user-initiated only) · **V0.3.2 agent observatory** (live sanitized consoles, truthful progress, history, Stop) · **V0.3.1 intelligence infrastructure**: durable SQLite persistence + audit trail, a **verified-free OpenCode model pool**, an **on-device Qwen model for lightweight tasks**, a **provider supervisor**, **policy-driven automatic model routing** and a bounded **background-agent foundation**. JARVIS itself has **no API keys, no network client, no macOS permission request, and never touches your credentials**; there is **no paid API anywhere**. JARVIS contacts no network host itself.
 
-- **Version:** V0.14 — **READY FOR MANUAL TEST** (Adaptive Learning, Controlled Self-Improvement & MCP/Skill Registry: Learning and Capabilities screens, closed rule vocabulary, HUD-only approvals, Seatbelt-sandboxed MCP benchmark, typed wrappers; V0.13.1 and earlier remain READY FOR MANUAL TEST) · manual checks: items 1000–1152 below · docs: `docs/ADAPTIVE_LEARNING.md`, `docs/SELF_IMPROVEMENT.md`, `docs/MCP_REGISTRY.md`, `docs/SKILLS.md`
+- **Version:** V0.15 — **READY FOR MANUAL TEST** (Daily JARVIS Experience, Final Voice Integration, Conversational Context, Product Packaging & First-Run Setup: installable JARVIS.app, response depth + address policy, bounded working context, readiness + typed setup, Launch at Login, notifications; V0.14 and earlier remain READY FOR MANUAL TEST) · manual checks: items 1153–1234 below · docs: `docs/DAILY_JARVIS.md`, `docs/CONVERSATIONAL_CONTEXT.md`, `docs/APP_PACKAGING.md`, `docs/FIRST_RUN_SETUP.md`
+- **Previous version:** V0.14 — **READY FOR MANUAL TEST** (Adaptive Learning, Controlled Self-Improvement & MCP/Skill Registry: Learning and Capabilities screens, closed rule vocabulary, HUD-only approvals, Seatbelt-sandboxed MCP benchmark, typed wrappers; V0.13.1 and earlier remain READY FOR MANUAL TEST) · manual checks: items 1000–1152 below · docs: `docs/ADAPTIVE_LEARNING.md`, `docs/SELF_IMPROVEMENT.md`, `docs/MCP_REGISTRY.md`, `docs/SKILLS.md`
 - **Previous version:** V0.13 — **READY FOR MANUAL TEST** (Autonomous Project Operator & General Visual Grounding: derived project continuity — “where are we?” and a bounded “continue” through the single V0.12 orchestrator; the typed Unity development operator with read-back verification and a bounded observe → act → inspect → correct loop; on-device general visual grounding that is perception, never authority; disposable-environment experiments and asset suitability with honest fact classes; V0.12 and earlier remain READY FOR MANUAL TEST) · manual checks: items 824–986 below · docs: `docs/PROJECT_OPERATOR.md`, `docs/UNITY_DEVELOPMENT_OPERATOR.md`, `docs/VISUAL_GROUNDING.md`, `docs/EXPERIMENTATION.md`
 - Handoff for agents: `PROJECT_STATE.md`, `AGENTS.md` (includes the Git workflow: `main` only, linear history)
 
@@ -125,7 +126,7 @@ See `docs/KNOWN_ISSUES.md`. Notably: conversation history is in-memory (the audi
 
 ## Next milestone
 
-V0.15 — Presence, personality & visual teaching — **not started; do not start it until the user approves V0.14** (`docs/ROADMAP.md`, DEC-233). Then V1.0 (integration / stabilization / real-world validation).
+V1.0 — Real-world validation & stabilization — **not started; V0.15 is the last feature milestone** (`docs/ROADMAP.md`, DEC-245). Use the installed JARVIS every day; fix what real use finds. No whiteboard / visual teaching.
 
 ## Manual test checklist (V0.1)
 
@@ -171,6 +172,113 @@ Optional set-up for the local model: `scripts/setup_local_ai.sh` (needs `uv`; th
 37. **STOP GENERATION** while an OpenCode or local answer is running: it stops within a second; no `opencode` / worker process remains.
 38. Quit JARVIS while the local model is loaded → no `jarvis_local_worker.py` process remains. After a force-quit (`kill -9`) the worker also exits by itself.
 39. Data check: `sqlite3 ~/Library/Application\ Support/JARVIS/jarvis.sqlite "select agent_type, engine, model, status from agent_runs order by started_at desc limit 5"` shows your requests (engine/model/status/reason; no prompt text, no secrets).
+
+### V0.15 additions (daily JARVIS, installed app, first run, follow-ups) — MANUAL TEST REQUIRED
+V0.15 is AUTOMATED TESTED and REAL TESTED on this Mac (see `PROJECT_STATE.md`): the installed app was launched through LaunchServices without Terminal, the readiness picture, follow-ups and approval boundary were exercised on disposable fixtures, and nothing real (Hamam, providers, quota) was touched. **Nothing below is manually verified.** Voice quality, real permissions prompts, notifications, Launch at Login and a real day of use need you. Docs: `docs/DAILY_JARVIS.md`, `docs/CONVERSATIONAL_CONTEXT.md`, `docs/APP_PACKAGING.md`, `docs/FIRST_RUN_SETUP.md`.
+
+**Install and launch (no Terminal)**
+1153. Quit every Terminal window and any `swift run` / Xcode session of JARVIS. In Finder open Applications → JARVIS (or press ⌘Space and type JARVIS). It starts; no Terminal window is needed afterwards.
+1154. The Applications copy is `/Applications/JARVIS.app` and Settings → About says “Running as: installed application”, version 0.15.0 and a build number.
+1155. JARVIS has no Dock icon and no window until you ask; a core icon appears in the menu bar within about a second.
+1156. Open JARVIS from Spotlight a second time while it runs: no second menu-bar icon appears and the running copy shows its Compact HUD.
+1157. Double-click JARVIS.app in Finder while it is running: the Compact HUD appears (reopen).
+1158. Quit with the menu-bar menu → Quit JARVIS, then relaunch from Applications: it starts again; your conversation, tasks and settings are still there.
+1159. Quit with ⌘Q while the Full HUD is focused: it quits; Activity Monitor shows no JARVIS, no opencode / claude / codex / python helper / sandbox-exec left behind.
+1160. Run `scripts/verify-installed.sh /Applications/JARVIS.app` (with JARVIS not running): INSTALLED CHECK PASSED.
+1161. Run `/Applications/JARVIS.app/Contents/MacOS/Jarvis --packaging-live-test` from your home folder (not the repository): every check passes.
+1162. Move nothing: confirm `~/Library/Application Support/JARVIS/` still holds your data and `/Applications/JARVIS.app/Contents` contains no `.sqlite` and no model.
+
+**Menu bar, Compact, Full, Settings**
+1163. Left-click the menu-bar icon: the Compact HUD opens, exactly 392 × 448 and unchanged in look.
+1164. Right-click the icon: Open JARVIS, Show Compact HUD, (Working: <task> only while a task runs), Turn Voice On/Off, (Stop Speaking while speaking), System & Readiness, Settings…, Quit JARVIS. Nothing else, nothing overcrowded.
+1165. “Turn Voice Off” switches voice off at once (Settings → Voice agrees); “Turn Voice On” switches it on without opening the microphone.
+1166. “System & Readiness” opens the Full HUD on System with the Readiness card on top.
+1167. Settings opens and scrolls: Startup, Daily JARVIS, … About, with no overlapping or clipped controls.
+1168. Settings → About shows version, build, macOS, architecture, database schema; “Show Diagnostics” shows text that contains no path under your home folder, no account name and no credential.
+
+**First run and readiness**
+1169. On a first launch of the installed app the Full HUD opens on System with “Welcome to JARVIS · step 1 of 6”. Nothing was installed or asked automatically.
+1170. Step through Welcome → Permissions → Intelligence → Local models → Voice → Ready with NEXT; BACK works; every step shows real states.
+1171. “SKIP SETUP” (or FINISH) closes the walk-through for good; the app is fully usable either way; relaunch does not show it again.
+1172. Readiness lists Core, Intelligence, Local AI, Voice, Computer Use, Unity, MCPs, Permissions, Startup; the headline says Ready, “Ready, with N things to look at” or Not ready with the reason.
+1173. Claude Code and Codex show READY only when installed AND signed in; a signed-out one shows SIGN-IN REQUIRED; a missing one NOT INSTALLED. JARVIS never signs in for you.
+1174. The “Paid API” row says it is not used and has no button; there is no way in JARVIS to enable a paid API.
+1175. Qwen, the visual model, Whisper, the natural voice and memory search show AVAILABLE where you installed them (e.g. `~/AI/models/...`) — JARVIS did not download them again; a missing one shows “OPTIONAL · NOT SET UP” with a Set Up button.
+1176. Unity shows its installed versions and “NOT RUNNING”; JARVIS did not start Unity to show this. MCP shows stored counts and says the health is stored, not live.
+1177. Press RECHECK: states refresh, no model, provider run or helper is started (Activity Monitor), and no Claude / Codex quota is used.
+1178. Ask “Her şey hazır mı?” by text and by voice: the same facts, with problems first; “Detaylı anlat.” adds the rest; “Kısa söyle.” shortens it but keeps every problem.
+
+**Permissions**
+1179. Microphone: “Allow Microphone” shows macOS's own prompt only when you press it; after allowing, the row says READY. Denied → PERMISSION NEEDED with “Open Microphone Settings”.
+1180. Accessibility: pressing “Allow Accessibility” shows macOS's own prompt / opens the pane; nothing is granted until you do it; after granting, Recheck shows READY.
+1181. Screen Recording stays OPTIONAL and unrequested until you press its button; Computer Use still works with Accessibility alone.
+1182. Notifications are not requested at launch. Switch “Notify me when a long task finishes…” on: macOS asks once; denying shows PERMISSION NEEDED + “Open Notification Settings”.
+1183. Nothing in JARVIS resets or edits your privacy permissions (`tccutil` is never used).
+1184. Speech Recognition: no prompt appears for Apple's on-device recogniser, and the readiness list does not claim one.
+
+**Voice (needs a human)**
+1185. Hold the right ⌥ key and say in Turkish: “Jarvis durum nedir?” — the transcript is correct, the answer is short, and it is spoken in the chosen voice.
+1186. Hold right ⌥ and say in English: “Is Codex ready?” — same behaviour.
+1187. Say a mixed sentence: “Unity’de Player objesinin Rigidbody’sini kontrol et” — Turkish with technical words is transcribed sensibly.
+1188. Enable the wake word (Settings → Voice, after installing the wake helper). Say “Jarvis.” → JARVIS answers “Efendim?” (or the soft tone, per your acknowledgement setting). Say a command right after.
+1189. Say “Jarvis” and nothing else: nothing is transcribed or sent; JARVIS waits briefly and goes back to listening for the word only.
+1190. Speak over JARVIS while it is talking (barge-in): speech stops within a moment and your sentence is taken.
+1191. Hold right ⌥ while JARVIS speaks: speech stops and you can talk. Press the menu-bar “Stop Speaking”: speech stops.
+1192. While a task runs say “Sus.”: JARVIS stops speaking and the task keeps running. Then say “Görevi durdur.”: the task is cancelled.
+1193. Say “Evet.” while an approval card is showing: JARVIS says approvals are given only with the HUD buttons; the task stays waiting. Press the card's button: it proceeds.
+1194. Listen to the Apple voice and to the natural JARVIS voice: both are intelligible; note which you prefer (the final custom voice is not chosen yet — this is feedback for V1.0).
+1195. With voice enabled and no key held, check Activity Monitor / the orange microphone indicator: the microphone is not in use. With wake mode ON only the small local detector listens.
+1196. Speech rate: change it in Settings → Voice and use “Test Turkish / English”; the speed changes.
+
+**Personality and brevity**
+1197. Ask “Testler geçti mi?”: the answer is one short sentence that matches the real state (and says so if no tests ran).
+1198. Ask the same thing after a failed run: the answer says it failed and which test, even though it is short.
+1199. “Detaylı anlat.” expands the previous answer; “Kısa söyle.” shortens it; neither calls a model for an answer that came from records.
+1200. Say “Hamam’a devam et.” in Turkish: the acknowledgement is short (“Başlıyorum efendim.”). Give a second task within a minute: it does not say “efendim” again.
+1201. Settings → Address style: Natural / Minimal / Off behave as described; English answers never contain a form of address.
+1202. Settings → Response style: Concise vs Balanced vs Detailed changes how much is shown by default; failures are never cut.
+1203. Ask for the same thing twice (“Claude hazır mı?”): the wording is not an annoying copy of the previous reply, and nothing claims more than is known.
+
+**Follow-ups (working context)**
+1204. Run a research request that returns several assets. Say “İkincisini dene.”: JARVIS says “Seçildi: <name>” and starts an asset-suitability analysis for that one; it does not import or download it.
+1205. Say “Onu kullan.” right after: it means the chosen asset. Say “Uygunsa projeye koy.”: it checks suitability first and says importing needs your approval.
+1206. Run a new research, then say “Onu kullan.”: JARVIS asks which one (it lists them); answer “üçüncüsü”: it takes the third.
+1207. Say “Bunu sil.” when several things are in mind: JARVIS asks and says it will not guess a target to delete. Deleting anything still needs the normal approval.
+1208. Say “Biraz sola al.” after a Unity task that named one object: it moves that object a little (in a copy of a project); with two candidate objects it asks.
+1209. Say “Tekrar dene.” after a task: it re-submits your own earlier request through the normal path.
+1210. Say “Hamam’a dön.”: the conversation’s project changes (confirmation says permissions did not change). “Atlantis’e dön.” says it does not know that project and lists the known ones.
+1211. Wait more than 30 minutes (or ~30 messages), then say “Onu kullan.”: JARVIS says it has nothing recent to refer to.
+1212. Settings → “Clear current conversation context” empties it; Project Memory is untouched (check the Memory screen).
+1213. Switch “Conversational follow-ups” off: “Onu kullan.” is an ordinary sentence again.
+
+**Tasks, completion and notifications**
+1214. Start a task by voice: the acknowledgement is short and truthful; switch “Speak task acknowledgements” off and repeat: it is shown but not spoken.
+1215. Let a long task finish while you do something else: with “Speak task completions” on and nothing else being said, JARVIS says a one-line result; with it off, it stays silent.
+1216. With task notifications on, a finished long task posts “JARVIS completed your task.” (no project content); a failed one posts “could not finish”; an approval request posts “needs a decision”.
+1217. No notification appears for hand-offs, tool calls, file writes or benchmark steps.
+1218. A decision needed: JARVIS says what it needs decided in one sentence; the card in the HUD shows the details.
+
+**Launch at Login, relaunch, crash**
+1219. Settings → Launch JARVIS at Login is OFF by default and says “Now: Off”.
+1220. Switch it on: the status becomes On (or “Waiting for your approval in System Settings” — then open Login Items and allow it). System Settings → Login Items lists JARVIS and nothing else was installed.
+1221. Log out and in (or restart): JARVIS starts in the menu bar by itself. Switch it off again and confirm it no longer starts.
+1222. Force-quit JARVIS (`kill -9`) during a task, relaunch: the task is INTERRUPTED, nothing resumes by itself, no orphan helper remains, no stale voice or UI action is replayed.
+1223. Quit while Unity (or Blender) is open: JARVIS quits; Unity / Blender stay open.
+1224. Quit while an MCP server or a local model is loaded: both are gone afterwards.
+
+**Providers, local models, Unity, MCP**
+1225. Sign out of Codex (or rename its executable) and press Recheck: the row changes to SIGN-IN REQUIRED / NOT INSTALLED honestly; restore it and Recheck: READY.
+1226. With JARVIS idle for 10 minutes: no claude / codex / opencode, Qwen, Whisper, vision, MCP, Unity or browser process (Activity Monitor); CPU ≈ 0 %.
+1227. Select Existing Model Folder with a folder that has no config.json: JARVIS refuses it and says why; with your real Qwen folder it is accepted (applies after restart).
+1228. Press Set Up on an optional component only if you want it: the confirmation shows source, size and destination; Cancel mid-way stops it; pressing Set Up again resumes or repairs; JARVIS never installs Claude Code, Codex, OpenCode or an MCP server.
+1229. With the free disk space artificially low (or on a tiny volume) Set Up refuses before starting and says how much space is needed.
+
+**Real-world daily use**
+1230. For a day, use only the installed JARVIS (no Terminal): note every moment you wished you had a Terminal or the repository; those are bugs.
+1231. Use voice for ten real requests (status, continue, readiness): note recognition errors, delays, and any answer that was longer than you wanted or hid something.
+1232. Use follow-ups naturally (“onu kullan”, “ikincisini dene”): note any wrong resolution — a wrong guess is a bug, asking is not.
+1233. Open the real Hamam project only on a COPY and only if you want to; confirm that nothing in the real project changed during V0.15 testing.
+1234. After a day, check Activity Monitor: JARVIS RSS and CPU are modest, no helper is left running, no file under `/Applications/JARVIS.app` changed.
 
 ### V0.14 additions (adaptive learning, controlled self-improvement, MCP/Skill registry) — MANUAL TEST REQUIRED
 V0.14 is AUTOMATED TESTED and REAL TESTED on this Mac (see `PROJECT_STATE.md`), but none of it is MANUALLY VERIFIED. Learning is data and never authority; installs, updates, removals, rule/skill activation and self-changes are decided only by the HUD buttons. Docs: `docs/ADAPTIVE_LEARNING.md`, `docs/SELF_IMPROVEMENT.md`, `docs/MCP_REGISTRY.md`, `docs/SKILLS.md`.

@@ -1,27 +1,26 @@
 # Current Task
 
 Version:
-V0.14 — Adaptive Learning, Controlled Self-Improvement & MCP/Skill Registry — **READY FOR MANUAL TEST** (not complete, not tagged). Base: V0.13.1 (a17b5ff). NOT V0.15.
+V0.15 — Daily JARVIS Experience, Final Voice Integration, Conversational Context, Product Packaging & First-Run Setup — **READY FOR MANUAL TEST** (not complete, not tagged). Base: V0.14 (20579ab). The LAST feature milestone; NOT V1.0.
 
 Task:
-Add a bounded adaptive layer around the existing systems: evidence-backed learning (rules, workflows/Skills, capability gaps), controlled self-improvement through the single V0.12 orchestrator, and an MCP/Skill registry with a sandboxed benchmark — without making any learned item, model, MCP or skill an authority.
+Turn the existing architecture into an installable, everyday macOS assistant: `JARVIS.app` launchable without Terminal, concise evidence-safe conversation, bounded follow-up references, readiness + typed first-run setup, Launch at Login / notifications / single instance — with NO new orchestrator and NO new authority.
 
-V0.14 State:
-* Learning, rules, Skills, gaps, self-improvement, MCP registry, Learning + Capabilities screens, conversation intents: IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (`docs/ADAPTIVE_LEARNING.md`, `SELF_IMPROVEMENT.md`, `MCP_REGISTRY.md`, `SKILLS.md`).
-* `scripts/verify.sh`: VERIFY PASSED (1565 tests / 230 suites; smoke 155/0/2; idle 0.01 CPU-s / 8 s at 75 MB). `--adaptive-live-test` 84/0/0; `--mcp-live-test` 84/0/0; `--mcp-section ui` 19/0/0.
-* Real candidate benchmark (`--mcp-section candidate`): 14/0/0 on the final code (cochlea-mcp built in the sandbox and benchmarked). It needs the unauthenticated GitHub API (60 requests/h): one earlier rerun was rate-limited and honestly reported licence/activity as unknown.
-* MANUAL TEST REQUIRED: README 1000–1152. Not manually verified: everything.
+V0.15 State:
+* Presentation, working context, readiness, setup, packaging, lifecycle: IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (`docs/DAILY_JARVIS.md`, `CONVERSATIONAL_CONTEXT.md`, `APP_PACKAGING.md`, `FIRST_RUN_SETUP.md`).
+* `/Applications/JARVIS.app` installed (0.15.0, ad-hoc signed, hardened runtime, microphone-only entitlement). `scripts/verify-installed.sh --crash` passed; installed `--packaging-live-test` 17/0/0.
+* `scripts/verify.sh`: 1660 tests / 247 suites; smoke 165/0/2; idle 0.02 CPU-s / 8 s at 75 MB. `--daily-jarvis-live-test` 47/0/0, `--setup-live-test` 15/0/0, V0.7 `--voice-live-test` 36/0/0.
+* MANUAL TEST REQUIRED: README 1153–1234 (installed launch, menu bar, first run, permissions, human voice, brevity, follow-ups, notifications, Launch at Login, crash/relaunch, a real day of use).
 
 Next Step:
-Wait for the user's manual V0.14 test. Do not start V0.15 / V1.0 without approval. No tag.
+Wait for Bilal to open JARVIS.app and start real-world use. Do not start V1.0 / any feature work without approval. No tag.
 
 Blocked By:
 Nothing.
 
 Notes:
 * Git: main only, no tags, no AI co-author trailers (the user's brief overrides the harness attribution reminder).
-* Automated tests never touch the user's real Hamam / Unity game; live tests use disposable fixtures; `--adaptive-live-test` / `--mcp-live-test` start from an empty isolated data directory.
-* Nothing in learning, discovery, benchmark or MCP runs while idle (guarded).
-* Known issues: `docs/KNOWN_ISSUES.md` JARVIS-V14-1…8.
+* Automated tests never touch the real Hamam project; no provider quota was spent; no credential store was read; the final custom voice is intentionally not chosen.
+* Known issues: `docs/KNOWN_ISSUES.md` JARVIS-V15-1…10.
 
-Previous task (V0.13.1) summary: READY FOR MANUAL TEST (README 987–999 and 824–986).
+Previous task (V0.14) summary: READY FOR MANUAL TEST (README 1000–1152).

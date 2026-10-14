@@ -1,4 +1,4 @@
-# Guard requirement matrix (V0.13.1 + V0.14)
+# Guard requirement matrix (V0.13.1 + V0.14 + V0.15)
 
 Audit of the protections the V0.13 brief required against what `scripts/verify.sh` and the unit tests actually enforce. "Covered" means a guard or test fails when the protection is removed. Numbers of guards are not a goal; coverage is.
 Legend — **G** = `scripts/verify.sh` guard (substring of its name), **T** = unit test, **L** = real live test.
@@ -58,7 +58,23 @@ Legend — **G** = `scripts/verify.sh` guard (substring of its name), **T** = un
 | 51 | No secret/picture/raw output/reasoning stored by learning (V0.14) | **new** | G "learning stores no secret, no picture…" | v13/v14 schema has no blob/image/transcript/reasoning column |
 | 52 | Learned routing bounded (V0.14) | **new** | G "learned routing nudges are bounded…" | |bias| ≤ 0.2; explicit choice never reads it |
 | 53 | Production repository is never a self-change target (V0.14) | **new** | G "the production repository of JARVIS is never a self-change target…" | `selfRepositoryPath` assigned only by live tests |
+| 54 | No second orchestrator (V0.15 layers) (V0.15) | **new** | G "V0.15 adds no second orchestrator…", T `DailyStructuralTests` | no Voice/Conversation/Personality/Setup/App/Dependency orchestrator; Daily/ and Readiness/ plan nothing, run no agent, submit no task |
+| 55 | Personality / context / readiness cannot touch approval or capability (V0.15) | **new** | G "personality, working context and readiness never touch an approval…", T `DailyStructuralTests` | no approve / deny / pendingApproval / capability reference in Daily/ or Readiness/ |
+| 56 | A spoken or typed yes decides nothing, for every kind of decision (V0.15) | **new** | G "a spoken or typed yes/evet cannot decide anything…", T `DailyFollowUpTests.guardCoversAllDecisions`, L daily conversation (typed + spoken) | guard covers task approval, adaptive request, proposal; runs before follow-up resolution; a bare yes never answers a clarification |
+| 57 | The working context is bounded and ephemeral (V0.15) | **new** | G "conversational working context is bounded and EPHEMERAL…", T `WorkingContextBoundsTests` | 16 items · 30 min · 30 turns; no persistence, no Codable, no memory / learning write |
+| 58 | Destructive follow-ups never guess (V0.15) | **new** | G "a destructive follow-up never guesses its target…", T `DestructiveReferenceTests`, L daily conversation | explicit single choice only, else asks; approval still applies |
+| 59 | Context cannot be poisoned by model / MCP / web text (V0.15) | **new** | T `mcpCannotSmuggle`, `labelsAreSanitised`, `DailyFollowUpTests.smuggling` | instruction- and secret-shaped labels refused; only validated records enter |
+| 60 | Setup is typed and allowlisted (V0.15) | **new** | G "setup is typed and allowlisted…", T `SetupRunnerTests`, `DailyStructuralTests`, L `--setup-live-test` | closed action list; one process launch; no sudo / URL / command / shell / package manager |
+| 61 | Readiness reads no credentials and starts nothing (V0.15) | **new** | G "readiness never enumerates or reads credentials…", G "nothing in Daily/ or Readiness/ runs on a timer…", L readiness | no Keychain / cookie / credential access; no timer or poll; process count unchanged |
+| 62 | No paid API can be enabled by readiness or setup (V0.15) | **new** | G "no paid API can be enabled by readiness or setup…", T `paidAPI` | Paid API row has no action; no setup action names an API, key, subscription or purchase |
+| 63 | The app is self-contained and holds no mutable state (V0.15) | **new** | G "the app is a self-contained bundle…", `package-app.sh` checks, L `--packaging-live-test` | no DB / model / fixture in the bundle; no repository, cwd or server dependency; one entitlement |
+| 64 | No hidden persistence, no self-update (V0.15) | **new** | G "no hidden persistence and no self-update…" (and the amended V0.13 persistence guard) | SMAppService in one file; no LaunchAgent / Daemon / launchctl; nothing builds / installs / replaces the app |
+| 65 | Single instance does not restrict developer launches (V0.15) | **new** | G "a plain launch hands over to the running copy…", T `plainLaunch`, `verify-installed.sh` | only a launch with no `--flag` is restricted |
+| 66 | Presentation cannot reach task state (V0.15) | **new** | G "personality is presentation only…", T `DailyShapeTests` | ResponsePolicy has no engine / store reference; shortening keeps failures |
+| 67 | V0.15 live tests touch no real project and no provider (V0.15) | **new** | G "the V0.15 live tests touch no real project…" | Hamam never named; scripted answers only; temporary fixtures |
 
 Gaps actually found and closed in V0.13.1: **#3** (memory-only known issue could start work), **#17** (no explicit guard), **#18** (rental / cart words were not classified), **#25/26** (no guard), **#29** (no explicit guard). Everything else was already enforced.
 
 V0.14 added 18 guards in `scripts/guards_v14.sh` (sourced by `verify.sh`); each was checked to FAIL when a violation is injected.
+
+V0.15 added 14 guards in `scripts/guards_v15.sh` and amended three older ones narrowly (notification API, System Settings URLs, SMAppService — each allowed in `Readiness/SystemIntegration.swift` only); each new guard was shown to FAIL on an injected violation (rows 54–67).

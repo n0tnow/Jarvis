@@ -695,3 +695,43 @@ Description: `--smoke-test` checks "Composer grows for multiline content" and th
 ### JARVIS-V14-8 — MCP wrappers for real servers are generic
 Status: Open
 Description: typed wrappers validate arguments against the server's own schema and classify risk by name/description/parameters; a domain-specific wrapper (e.g. Blender object creation) still has to be written per accepted server.
+
+### JARVIS-V15-1 — The final custom JARVIS voice is not selected
+Status: Open (intentional)
+Description: the output architecture is pluggable (`TextToSpeechProvider`), Apple system voices and the local neural voice work; the "real" JARVIS voice is chosen later (V1.0). Nothing is cloned or downloaded.
+
+### JARVIS-V15-2 — Human acoustic validation is pending
+Status: Open (manual)
+Description: push-to-talk, wake word, barge-in, Turkish / English recognition and voice naturalness were tested with synthetic speech and fixtures only. README 1153+ asks for human tests.
+
+### JARVIS-V15-3 — Ad-hoc signed, not notarized
+Status: By design (documented)
+Description: this Mac has no code-signing identity; the app is ad-hoc signed with the hardened runtime and not notarized. A local copy opens from Applications; a downloaded copy would show Gatekeeper warnings. Not sandboxed (see `docs/APP_PACKAGING.md`). macOS ties privacy permissions to the signature: a different signature (e.g. a future Developer ID build) will ask for them again.
+
+### JARVIS-V15-4 — Setup needs `uv` and the network, and the app does not install `uv`
+Status: By design
+Description: the five Set Up buttons run the pinned scripts, which use `uv`, PyPI and Hugging Face. Without `uv` the button refuses and says so. The Set Up flow's disk-space numbers are estimates; hash-pinned downloads (wake models, memory model) are verified by the scripts; the Hugging Face model downloads are pinned by revision (no hash is available from the source).
+
+### JARVIS-V15-5 — Launch at Login and notifications need a real login / real delivery to be trusted
+Status: Open (manual)
+Description: the registration state is read and set through `SMAppService`, which may answer "requires approval" for an ad-hoc signed app; actual start-at-login after a reboot and notification delivery (focus modes) were not exercised automatically.
+
+### JARVIS-V15-6 — Follow-up resolution edge cases
+Status: Open
+Description: the resolver is deliberately narrow (short imperatives with an opening or closing verb, ≤ 7 words) and prefers asking to guessing. Unusual phrasings fall through to the normal pipeline (a model answers). Unity-object references exist only after a typed Unity result names them; "biraz sola al" works on a single known object. Turkish suffix handling is prefix-based.
+
+### JARVIS-V15-7 — The first-run walk-through opens the Full HUD on the real data
+Status: By design
+Description: the installed app uses your real Application Support data from its first launch (no separate profile). The walk-through is skippable and requests nothing by itself.
+
+### JARVIS-V15-8 — Spoken completion is skipped while JARVIS is already speaking
+Status: By design
+Description: a completion never interrupts speech in progress and never opens the microphone; it can therefore be silent when the user is mid-conversation (the message is still in the conversation).
+
+### JARVIS-V15-9 — Local model folder change applies after restart
+Status: Open
+Description: "Select Existing Model Folder" stores the path; the local runtime configuration is read at launch.
+
+### JARVIS-V15-10 — Provider authentication is only what the safe probe can tell
+Status: By design
+Description: READY for Claude Code / Codex means the existing status probe succeeded; it does not prove a subscription limit has not been reached or that the account can run a particular model. JARVIS never reads credentials.
