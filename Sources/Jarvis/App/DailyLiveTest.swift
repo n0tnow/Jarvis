@@ -335,6 +335,38 @@ enum DailyLiveTest {
             check("POLICY", "Nothing claims a video was started: no action happened, and none is reported", !tail.lowercased().contains("başlattım") && !tail.lowercased().contains("başlatıyorum"))
         }
 
+        // MARK: apps (V1.0 Phase B) — REAL: Safari through NSWorkspace, visibility grounding, spoken corrections, capability truth; the scripted model answers only what the decision layer passes on
+        if wants("apps") {
+            let safari = "com.apple.Safari"
+            let wasRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: safari).isEmpty
+            let promptsBefore = scripted.prompts.count
+            func memoryCount() -> Int { ((try? repo.database.readOne("SELECT COUNT(*) AS n FROM memory_items"))?.int("n")) ?? -1 }
+            let memoryBefore = memoryCount()
+            let (a1, ms1) = await say("Safari'yi aç.", quiet: true)
+            check("REAL", "“Safari'yi aç.” launches Safari through NSWorkspace; the sentence exists because it is running", !NSRunningApplication.runningApplications(withBundleIdentifier: safari).isEmpty && a1.contains("Safari açık"), "\(a1.prefix(80)) [\(Int(ms1)) ms]")
+            let (a2, _) = await say("Safari'yi açabilir misin?", quiet: true)
+            check("REAL", "The polite form is an action too (already open: still verified)", a2.contains("Safari açık"), a2)
+            let (a3, _) = await say("Safari görebiliyor musun şu anda?", quiet: true)
+            check("REAL", "Running is not visible: with no fresh observation the answer is NOT a yes", !a3.lowercased().hasPrefix("evet") && (a3.contains("gözlem") || a3.lowercased().contains("observ")), a3)
+            let (a4, _) = await say("Chrome açık mı?", quiet: true)
+            check("REAL", "“Chrome açık mı?” comes from the application list and never claims visibility", a4.contains("Uygulama listesine göre") && a4.contains("Chrome"), a4)
+            let (c1, _) = await say("Sofany'yi aç.", quiet: true)
+            check("REAL", "A mis-heard application name opens the ONE matching app and says what it understood", c1.contains("Safari") && c1.contains("anladım"), c1)
+            let (c2, _) = await say("Sofany değil, Safari dedim.", quiet: true)
+            check("REAL", "“Sofany değil, Safari dedim.” is a correction: re-routed once, Safari stays open, no model answer", c2.contains("Safari") && scripted.prompts.count == promptsBefore, c2)
+            let (c3, _) = await say("Hayır Safari dedim.", quiet: true)
+            check("REAL", "“Hayır Safari dedim.” is understood as a restatement (no model answer)", c3.contains("Safari") && scripted.prompts.count == promptsBefore, c3)
+            let (c4, _) = await say("Wisp değil, sesim geliyor mu dedim sana.", quiet: true)
+            check("REAL", "“Wisp değil, sesim geliyor mu dedim sana.” re-asks the voice question and answers it from the voice state", (c4.lowercased().contains("mikrofon") || c4.lowercased().contains("ses")) && scripted.prompts.count == promptsBefore, c4)
+            check("POLICY", "Corrections are ephemeral: nothing was written to Project Memory", memoryCount() == memoryBefore)
+            for q in ["Hangi AI modellerine erişebiliyorsun?", "Claude Code'u kullanabiliyor musun?", "Codex kullanabiliyor musun?", "OpenCode hazır mı?", "Ekranımı görebiliyor musun?", "Dosyaları okuyabiliyor musun?"] {
+                let (r, _) = await say(q, quiet: true)
+                info("   “\(q)” → \(r.replacingOccurrences(of: "\n", with: " ⏎ ").prefix(160))")
+            }
+            check("POLICY", "Capability and provider questions never reached the language model", scripted.prompts.count == promptsBefore, "model prompts: \(scripted.prompts.count - promptsBefore)")
+            if !wasRunning { NSRunningApplication.runningApplications(withBundleIdentifier: safari).forEach { $0.terminate() } }
+        }
+
         // MARK: unity-open (V1.0 Phase B) — REAL: a DISPOSABLE copy of the repository's Unity fixture is opened in a real windowed Unity Editor through the project-open path; never the user's own projects
         if wants("unity-open") {
             let editors = UnityDiscovery.discover()
