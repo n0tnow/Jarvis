@@ -7,9 +7,11 @@ enum WakeStatus: Equatable, Sendable {
     case starting
     case listening
     case unavailable(String)
+    /// “Uyku moduna geç”: the user paused the detector for now. The Wake Word SETTING is unchanged; Push-to-Talk still works.
+    case paused
 
     var label: String {
-        switch self { case .off: "OFF"; case .starting: "STARTING"; case .listening: "LISTENING FOR \"JARVIS\""; case .unavailable: "UNAVAILABLE" }
+        switch self { case .off: "OFF"; case .starting: "STARTING"; case .listening: "LISTENING FOR \"JARVIS\""; case .unavailable: "UNAVAILABLE"; case .paused: "PAUSED (SLEEP MODE)" }
     }
 }
 
@@ -108,6 +110,10 @@ final class HandsFreeCoordinator {
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var times = Times()
     @ObservationIgnored private var wakeDeafUntil: TimeInterval = 0
+    @ObservationIgnored private var sleepingByUser = false
+    @ObservationIgnored private var resumeAfterSystemSleep = false
+    @ObservationIgnored private var recoveryTask: Task<Void, Never>?
+    @ObservationIgnored var recoveryDelays: [Double] = [2, 6]
 
     private struct Times {
         var wake: TimeInterval?; var speechEnd: TimeInterval?; var endpoint: TimeInterval?; var bargeOnset: TimeInterval?; var bargeDecision: TimeInterval?
@@ -143,7 +149,76 @@ final class HandsFreeCoordinator {
     /// Applies the current settings. Idempotent. Wake mode only starts when voice AND wake are enabled, the microphone is allowed, and the sentinel is installed.
     func applySettings() async {
         let s = settings()
-        if s.enabled && s.wakeEnabled { await enable() } else { await disable() }
+        if !(s.enabled && s.wakeEnabled) { sleepingByUser = false; recoveryTask?.cancel(); recoveryTask = nil }
+        if s.enabled && s.wakeEnabled {
+            if sleepingByUser { return }                         // the user paused wake listening; only an explicit resume (or turning the setting off and on) ends it
+            await enable()
+        } else { await disable() }
+    }
+
+    // MARK: Sleep mode and system lifecycle (V1.0 stabilisation fix 2)
+
+    /// The user said “Uyku moduna geç”: the microphone and the detector stop NOW. Not a setting change — the Wake Word switch stays as it is (so a relaunch listens again) — and Push-to-Talk keeps working.
+    @discardableResult
+    func enterSleepMode() async -> Bool {
+        guard subscription != nil || wakeStatus == .listening || wakeStatus == .starting else { return false }
+        sleepingByUser = true
+        recoveryTask?.cancel(); recoveryTask = nil
+        await disable()
+        wakeStatus = .paused
+        onEvent?("Wake mode paused (sleep mode)", .info)
+        return true
+    }
+
+    /// Ends sleep mode (menu, Settings, or “wake word aç”).
+    func resumeFromSleepMode() async {
+        guard sleepingByUser else { return }
+        sleepingByUser = false
+        await applySettings()
+    }
+    var isSleepingByUser: Bool { sleepingByUser }
+
+    /// “Dinlemeyi bırak”: ends the hands-free exchange that is open right now (listening, waiting for a follow-up, transcribing) and returns to wake-only listening. Nothing is submitted.
+    /// Returns false when there was nothing to end. It is NOT the setting, not Stop Speaking and not Stop Task.
+    @discardableResult
+    func endHandsFreeSession() -> Bool {
+        let busy: [HandsFreeState] = [.attentive, .userSpeaking, .endpointing, .transcribing]
+        guard busy.contains(machine.state) else { return false }
+        voice.cancelAll(reason: "stopped listening")
+        dispatch(.reset)
+        return true
+    }
+
+    /// The Mac is going to sleep: nothing may hold the microphone across it.
+    func suspendForSystemSleep() async {
+        resumeAfterSystemSleep = (subscription != nil || wakeStatus == .listening || wakeStatus == .starting) && !sleepingByUser
+        recoveryTask?.cancel(); recoveryTask = nil
+        if resumeAfterSystemSleep { await disable() }
+    }
+
+    /// The Mac woke up: if wake listening was on before, bring it back (bounded retries — audio devices need a moment).
+    func resumeAfterSystemWake() {
+        guard resumeAfterSystemSleep else { return }
+        resumeAfterSystemSleep = false
+        scheduleRecovery(reason: "the Mac woke up")
+    }
+
+    /// Bounded recovery: at most `recoveryDelays.count` attempts, each after its delay; then the state stays UNAVAILABLE with an explicit instruction. No polling, no endless loop.
+    private func scheduleRecovery(reason: String) {
+        recoveryTask?.cancel()
+        let delays = recoveryDelays
+        recoveryTask = Task { @MainActor [weak self] in
+            for delay in delays {
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled, let self else { return }
+                await self.applySettings()
+                if self.wakeStatus == .listening { self.onEvent?("Wake mode recovered after \(reason)", .info); return }
+            }
+            guard !Task.isCancelled, let self else { return }
+            if self.settings().enabled && self.settings().wakeEnabled && !self.sleepingByUser && self.wakeStatus != .listening {
+                self.onEvent?("Wake mode could not be restored after \(reason). Turn Wake Word off and on again to retry.", .warning)
+            }
+        }
     }
 
     func enable() async {
@@ -193,6 +268,7 @@ final class HandsFreeCoordinator {
     /// Application quit: everything stops synchronously, nothing may keep listening.
     func shutdown() {
         generation += 1
+        recoveryTask?.cancel(); recoveryTask = nil
         for (_, t) in timers { t.cancel() }
         timers = [:]
         _ = machine.handle(.shutdown, at: now())
@@ -225,7 +301,8 @@ final class HandsFreeCoordinator {
         guard subscription != nil else { return }
         subscription = nil
         markUnavailable("the audio device changed")
-        // The device may come back (a headset replugged): the user can toggle wake mode, nothing retries silently in a loop.
+        // The device may come back (a headset replugged or switched): a bounded recovery tries twice (2 s, then 6 s later), then waits for the user. Never an endless loop.
+        scheduleRecovery(reason: "an audio device change")
     }
 
     // MARK: Frames

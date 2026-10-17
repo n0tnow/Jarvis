@@ -14,7 +14,7 @@ struct VoiceSettings: Equatable, Sendable {
     var englishVoiceID = ""
     // V0.8 — natural voice. Wake mode is OPT-IN (off by default): nothing listens continuously unless the user turns it on.
     var wakeEnabled = false
-    var wakeAcknowledgement: WakeAcknowledgement = .sound
+    var wakeAcknowledgement: WakeAcknowledgement = .voice
     var bargeInEnabled = true
     var voicePreset: JarvisVoicePreset = .jarvisDefault
 

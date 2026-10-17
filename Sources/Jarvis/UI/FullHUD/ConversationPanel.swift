@@ -5,6 +5,10 @@ import SwiftUI
 struct ConversationPanel: View {
     @Environment(AppContext.self) private var app
     static let visibleLimit = 60
+    /// Scroll stability (V1.0 fix 2): the view follows new text only while the user is at the bottom. A person who scrolled up to read is never dragged down by a streaming reply or a voice-state change;
+    /// their own new message always brings the view to the bottom. The measurement is two numbers, not a timer.
+    @State private var pinnedToBottom = true
+    @State private var viewport = ViewportBox()
 
     var body: some View {
         let messages = Array(app.conversation.messages.suffix(Self.visibleLimit))
@@ -30,11 +34,25 @@ struct ConversationPanel: View {
                                 ConversationRow(message: message)
                             }
                             Color.clear.frame(height: 1).id(Self.bottomID)
+                                .background(GeometryReader { g in Color.clear.preference(key: BottomEdgeKey.self, value: g.frame(in: .named(Self.spaceName)).maxY) })
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .onChange(of: app.conversation.messages.last?.id) { _, id in scrollToEnd(proxy, id) }
-                    .onChange(of: app.conversation.messages.last?.content) { _, _ in scrollToEnd(proxy, app.conversation.messages.last?.id) }
+                    .coordinateSpace(name: Self.spaceName)
+                    .background(GeometryReader { g in Color.clear.preference(key: ViewportHeightKey.self, value: g.size.height) })
+                    .onPreferenceChange(ViewportHeightKey.self) { viewport.height = $0 }
+                    .onPreferenceChange(BottomEdgeKey.self) { y in
+                        let near = y <= viewport.height + Self.pinSlack
+                        if near != pinnedToBottom { pinnedToBottom = near }
+                    }
+                    .onChange(of: app.conversation.messages.last?.id) { _, id in
+                        // The user's own message always brings the conversation to the bottom; a reply only follows when they are already there.
+                        if app.conversation.messages.last?.role == .user { pinnedToBottom = true; scrollToEnd(proxy, id) }
+                        else if pinnedToBottom { scrollToEnd(proxy, id) }
+                    }
+                    .onChange(of: app.conversation.messages.last?.content) { _, _ in
+                        if pinnedToBottom { scrollToEnd(proxy, app.conversation.messages.last?.id) }
+                    }
                     .onAppear { scrollToEnd(proxy, messages.last?.id, animated: false) }
                 }
             }
@@ -44,6 +62,9 @@ struct ConversationPanel: View {
     }
 
     private static let bottomID = "conversation.bottom"
+    private static let spaceName = "conversation.viewport"
+    /// How far below the viewport the end marker may be and still count as “at the bottom”.
+    static let pinSlack: CGFloat = 36
 
     private func scrollToEnd(_ proxy: ScrollViewProxy, _ id: UUID?, animated: Bool = true) {
         guard id != nil else { return }
@@ -109,3 +130,8 @@ struct ConversationRow: View {
         }
     }
 }
+
+/// The viewport height lives in a plain reference box: updating it never invalidates the view.
+final class ViewportBox { var height: CGFloat = 0 }
+private struct ViewportHeightKey: PreferenceKey { static var defaultValue: CGFloat = 0; static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() } }
+private struct BottomEdgeKey: PreferenceKey { static var defaultValue: CGFloat = 0; static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() } }

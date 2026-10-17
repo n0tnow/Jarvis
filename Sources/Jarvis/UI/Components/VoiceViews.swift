@@ -109,6 +109,7 @@ struct CompactVoiceIndicator: View {
                         .accessibilityIdentifier("voice.stopSpeaking")
                 }
             }
+            .frame(height: 22)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(presence.spokenLabel)
         }
@@ -116,49 +117,69 @@ struct CompactVoiceIndicator: View {
 }
 
 /// Full HUD: a single quiet row above the conversation — state, the provisional transcript while listening, a level bar, Stop Speaking.
+///
+/// LAYOUT RULE (V1.0 fix 2): the row has a FIXED reserved height and exists whenever voice can be used, so a change of voice state — idle, listening, transcribing, thinking, speaking, error — only
+/// changes what is drawn INSIDE it. Before this rule the row was inserted above the conversation while a voice session was active and removed afterwards, which resized the conversation viewport
+/// (and moved the scroll position) on every state change. Every line is single-line and truncated; nothing here can make the row taller.
 struct VoiceStrip: View {
     @Environment(AppContext.self) private var app
+    static let reservedHeight: CGFloat = 26
+
+    /// The region exists whenever voice is switched on (or something is happening anyway), independent of the session state.
+    static func reservesSpace(voiceEnabled: Bool, presenceQuiet: Bool, hasPartial: Bool) -> Bool { voiceEnabled || !presenceQuiet || hasPartial }
 
     var body: some View {
         let voice = app.voice
         let presence = app.handsFree.presence
-        if !presence.isQuiet || !voice.partialTranscript.isEmpty {
-            HStack(spacing: Theme.Spacing.s) {
-                VoicePresenceChip(presence: presence)
-                if voice.state == .listening {
-                    // A plain level bar: no animation, nothing to reduce; it updates at most 10 times per second.
-                    GeometryReader { g in
-                        Capsule().fill(Color.white.opacity(0.10))
-                            .overlay(alignment: .leading) { Capsule().fill(Theme.Palette.coral).frame(width: max(3, g.size.width * CGFloat(voice.level))) }
-                    }
-                    .frame(width: 64, height: 5)
-                    .accessibilityHidden(true)
-                }
-                if !voice.partialTranscript.isEmpty {
-                    Text("“\(voice.partialTranscript)”")
-                        .font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary)
-                        .lineLimit(1).truncationMode(.head)
-                        .accessibilityHidden(true)                       // partials change constantly: not announced
-                } else if case .error(let m) = voice.state {
-                    Text(m).font(Theme.Typography.caption).foregroundStyle(Theme.Palette.amber).lineLimit(2)
-                } else if presence == .wake {
-                    Text("Say “Jarvis” — wake word detected locally; nothing is transcribed or kept until then.")
-                        .font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary).lineLimit(1)
-                } else if presence == .attentive {
-                    Text("Go ahead — I’m listening.").font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary).lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                if let line = app.handsFree.latencySummary, presence == .wake || presence == .attentive {
-                    Text(line).font(.system(.caption2, design: .monospaced)).foregroundStyle(Color.jarvisSecondary).lineLimit(1).accessibilityHidden(true)
-                }
-                if voice.state == .speaking || voice.speaker.isActive {
-                    Button("STOP SPEAKING") { voice.stopSpeaking() }
-                        .buttonStyle(.hudSecondary)
-                        .accessibilityIdentifier("voice.stopSpeaking")
-                }
+        let active = !presence.isQuiet || !voice.partialTranscript.isEmpty
+        if Self.reservesSpace(voiceEnabled: app.preferences.voiceEnabled, presenceQuiet: presence.isQuiet, hasPartial: !voice.partialTranscript.isEmpty) {
+            ZStack(alignment: .leading) {
+                if active { row(voice: voice, presence: presence) }
             }
+            .frame(maxWidth: .infinity, minHeight: Self.reservedHeight, maxHeight: Self.reservedHeight, alignment: .leading)
+            .clipped()
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(presence.spokenLabel)
+            .accessibilityLabel(active ? presence.spokenLabel : "Voice status")
+            .accessibilityIdentifier("voice.strip")
         }
+    }
+
+    private func row(voice: VoiceCoordinator, presence: VoicePresence) -> some View {
+        HStack(spacing: Theme.Spacing.s) {
+            VoicePresenceChip(presence: presence).fixedSize()
+            if voice.state == .listening {
+                // A plain level bar of the REAL input level: no animation, nothing to reduce; it updates at most 10 times per second.
+                GeometryReader { g in
+                    Capsule().fill(Color.white.opacity(0.10))
+                        .overlay(alignment: .leading) { Capsule().fill(Theme.Palette.coral).frame(width: max(3, g.size.width * CGFloat(voice.level))) }
+                }
+                .frame(width: 64, height: 5)
+                .accessibilityHidden(true)
+            }
+            if !voice.partialTranscript.isEmpty {
+                Text("“\(voice.partialTranscript)”")
+                    .font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary)
+                    .lineLimit(1).truncationMode(.head)
+                    .accessibilityHidden(true)                       // partials change constantly: not announced
+            } else if case .error(let m) = voice.state {
+                Text(m).font(Theme.Typography.caption).foregroundStyle(Theme.Palette.amber).lineLimit(1).truncationMode(.tail).help(m)
+            } else if presence == .wake {
+                Text("Say “Jarvis” — detected locally; nothing is transcribed or kept until then.")
+                    .font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary).lineLimit(1).truncationMode(.tail)
+            } else if presence == .attentive {
+                Text("Go ahead — I’m listening.").font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if let line = app.handsFree.latencySummary, presence == .wake || presence == .attentive {
+                Text(line).font(.system(.caption2, design: .monospaced)).foregroundStyle(Color.jarvisSecondary).lineLimit(1).accessibilityHidden(true)
+            }
+            if voice.state == .speaking || voice.speaker.isActive {
+                Button("STOP SPEAKING") { voice.stopSpeaking() }
+                    .buttonStyle(.hudSecondary)
+                    .fixedSize()
+                    .accessibilityIdentifier("voice.stopSpeaking")
+            }
+        }
+        .frame(height: Self.reservedHeight)
     }
 }

@@ -17,6 +17,7 @@ struct VoiceSettingsSection: View {
             Toggle("Enable voice (Push-to-Talk)", isOn: $prefs.voiceEnabled).accessibilityIdentifier("settings.voiceEnabled")
             Text("The microphone is off until you HOLD the Push-to-Talk key, and it stops the moment you let go. Nothing is recorded to disk or kept; only the final transcript becomes a normal message.")
                 .font(.caption).foregroundStyle(.secondary)
+            VoiceStatusBlock()
             if prefs.voiceEnabled {
                 Toggle("Push-to-Talk shortcut", isOn: $prefs.voicePushToTalk)
                 LabeledContent("Shortcut") { Text("hold right ⌥").font(.system(size: 14, weight: .medium, design: .rounded)) }
@@ -144,7 +145,7 @@ struct VoiceSettingsSection: View {
             Picker("When I say “Jarvis”", selection: $prefs.voiceWakeAcknowledgement) {
                 ForEach(WakeAcknowledgement.allCases, id: \.self) { Text($0.label).tag($0) }
             }
-            Text("Sound is the default: a short soft tone, no speech, no delay. Voice says “Efendim?” / “Yes?” (adds a little latency and JARVIS’ own voice reaches the microphone). Off acknowledges only on screen.")
+            Text("Voice is the default: JARVIS says “Efendim?” / “Yes?” (a fixed phrase — no model is involved), then listens without any key. Sound is a short soft tone with no speech and no delay; Off acknowledges only on screen. JARVIS’ own acknowledgement reaching the microphone is handled (the detector ignores it).")
                 .font(.caption2).foregroundStyle(.secondary)
             Toggle("Let me interrupt JARVIS by speaking", isOn: $prefs.voiceBargeIn)
             Text("While JARVIS speaks, your voice (clearly louder than JARVIS’ own voice reaching the microphone) stops the speech and starts a new turn. There is no echo canceller: a very quiet voice or a very loud speaker volume may not interrupt; Push-to-Talk and Stop Speaking always work.")

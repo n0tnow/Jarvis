@@ -238,7 +238,7 @@ final class Preferences {
         voiceTurkishVoice = defaults.string(forKey: Key.voiceTrVoice) ?? ""
         voiceEnglishVoice = defaults.string(forKey: Key.voiceEnVoice) ?? ""
         voiceWakeEnabled = defaults.object(forKey: Key.wakeEnabled) as? Bool ?? false
-        voiceWakeAcknowledgement = defaults.string(forKey: Key.wakeAck).flatMap(WakeAcknowledgement.init(rawValue:)) ?? .sound
+        voiceWakeAcknowledgement = defaults.string(forKey: Key.wakeAck).flatMap(WakeAcknowledgement.init(rawValue:)) ?? .voice
         voiceBargeIn = defaults.object(forKey: Key.bargeIn) as? Bool ?? true
         neuralVoiceModelPath = defaults.string(forKey: Key.neuralModelPath) ?? NeuralVoiceRuntime.Config.defaultModelDirectory
         neuralIdleUnloadSeconds = defaults.object(forKey: Key.neuralIdle) as? Double ?? 180

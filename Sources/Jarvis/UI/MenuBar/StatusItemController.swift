@@ -114,6 +114,10 @@ final class StatusItemController: NSObject {
             let on = context.preferences.voiceWakeEnabled
             let item = menu.addItem(withTitle: on ? "Turn Wake Mode Off" : "Turn Wake Mode On", action: #selector(toggleWake), keyEquivalent: "")
             item.target = self
+            // The microphone is in use for the local wake detector only while this says so — never silent.
+            let state = menu.addItem(withTitle: "Wake: \(context.handsFree.wakeStatus.label.capitalized)", action: nil, keyEquivalent: "")
+            state.isEnabled = false
+            if context.handsFree.isSleepingByUser { menu.addItem(withTitle: "Resume Wake Listening", action: #selector(resumeWake), keyEquivalent: "").target = self }
             if case .unavailable(let why) = context.handsFree.wakeStatus {
                 let note = menu.addItem(withTitle: "Wake mode unavailable: \(why)", action: nil, keyEquivalent: "")
                 note.isEnabled = false
@@ -139,5 +143,6 @@ final class StatusItemController: NSObject {
     @objc private func toggleVoice() { context.preferences.voiceEnabled.toggle() }
     @objc private func openReadiness() { context.windows.showFullHUD(section: .system) }
     @objc private func toggleWake() { context.preferences.voiceWakeEnabled.toggle() }
+    @objc private func resumeWake() { Task { @MainActor in await context.handsFree.resumeFromSleepMode() } }
     @objc private func quit() { NSApp.terminate(nil) }
 }
