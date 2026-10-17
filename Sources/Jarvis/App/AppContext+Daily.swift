@@ -47,6 +47,7 @@ extension AppContext {
         actionService = ActionService(launcher: stub ? StubbedApplicationLauncher() : SystemApplicationLauncher(), windows: windows,
                                       selfState: { [weak self] in SelfUIState(section: hud.section, fullOpen: self?.windows.isFullHUDOpen ?? false, compactOpen: self?.windows.isCompactHUDOpen ?? false, renderedSection: hud.renderedSection, requiresRenderAck: !stub) })
         actionService.log = { [weak self] message, kind in self?.store.log(message, kind: kind) }
+        if !stub { actionService.unityOpener = SystemUnityProjectOpener() }          // automated runs never start an editor
         if stub { actionService.candidateApps = { AppCatalog.known.map { AppTarget(display: $0.display, bundleID: $0.bundleID) } } }
         // Recogniser biasing (Fix 4): names that exist on this Mac now, from structured sources only, read once when an utterance starts (nothing runs while idle).
         let service = actionService!

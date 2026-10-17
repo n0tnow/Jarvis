@@ -72,6 +72,9 @@ final class ActionService {
     /// After a navigation reads back correctly, wait this long and read again: a selection that something resets a moment later (the page that was drawn is not the page that was asked for) is not "open".
     var navigationSettle: TimeInterval = 0.15
     var now: () -> Date = { Date() }
+    /// V1.0 Phase B: opens a Unity project in the user's editor (nil: a Unity project falls back to revealing its folder).
+    var unityOpener: (any UnityProjectOpening)?
+    var isUnityProject: (String) -> Bool = { UnityProjectDetector.isUnityProject(root: $0) }
     var installedLookup: ActionIntentParser.InstalledAppLookup = { name in AppCatalog.installed(named: name).map { AppTarget(display: $0.name ?? name, bundleID: $0.bundleID ?? "") } }
 
     init(launcher: any ApplicationLaunching, windows: any JarvisWindowControlling, ledger: ActionLedger? = nil, selfState: @escaping () -> SelfUIState) {
@@ -137,7 +140,8 @@ final class ActionService {
         case .showFullHUD: showFull(into: &r)
         case .showCompactHUD: showCompact(into: &r)
         case .closeHUD: closeHUD(into: &r)
-        case .openProject(let name, let path): await openProjectFolder(name: name, path: path, into: &r)
+        case .openProject(let name, let path):
+            if usesUnity(path) { await openUnityProject(name: name, path: path, into: &r) } else { await openProjectFolder(name: name, path: path, into: &r) }
         }
         ledger.record(r)
         switch r.status {
@@ -150,7 +154,10 @@ final class ActionService {
     }
 
     private func executorName(_ i: ActionIntent) -> String {
-        switch i { case .launchApp, .openFolder, .openProject: "NSWorkspace"; default: "JARVIS HUD" }
+        switch i {
+        case .openProject(_, let path): usesUnity(path) ? "Unity Editor (NSWorkspace)" : "NSWorkspace"
+        case .launchApp, .openFolder: "NSWorkspace"
+        default: "JARVIS HUD" }
     }
     private func verbPhrase(_ i: ActionIntent) -> String {
         switch i {
@@ -182,6 +189,28 @@ final class ActionService {
         let ok = await waitUntil { self.launcher.frontmostBundleID() == "com.apple.finder" }
         if ok { r.succeed(ActionVerification(method: "frontmost application", passed: true, detail: "Finder is frontmost, showing \(folder.display)"), now: now()) }
         else { r.markUnverified(ActionVerification(method: "frontmost application", passed: nil, detail: "the folder was opened but Finder did not become frontmost"), now: now()) }
+    }
+
+    private func usesUnity(_ path: String) -> Bool { unityOpener != nil && !path.isEmpty && isUnityProject(path) }
+
+    /// A Unity project in the user's editor (Phase B). Success needs an editor process whose -projectPath is this project AND its Temp/UnityLockfile; anything less is UNVERIFIED or FAILED, never "open".
+    private func openUnityProject(name: String, path: String, into r: inout ActionReceipt) async {
+        guard let opener = unityOpener else { r.fail("Unity cannot be opened from here"); return }
+        guard case .allowed = ComputerPathPolicy.validate(path, quarantineRoot: nil, forReveal: true) else { r.fail("that folder is in a protected location"); return }
+        switch await opener.open(projectRoot: path) {
+        case .alreadyOpen(let pid, _, let front):
+            if front { r.succeed(ActionVerification(method: "Unity editor process with this -projectPath + frontmost", passed: true, detail: "an editor (pid \(pid)) already had \(name) open and is now frontmost"), now: now()) }
+            else { r.markUnverified(ActionVerification(method: "Unity editor process with this -projectPath", passed: nil, detail: "an editor (pid \(pid)) has \(name) open, but it did not become frontmost"), now: now()) }
+        case .launched(let pid, let version, let lock):
+            if lock { r.succeed(ActionVerification(method: "Unity editor process with this -projectPath + Temp/UnityLockfile", passed: true, detail: "Unity \(version) (pid \(pid)) is running with \(name) and holds the project"), now: now()) }
+            else { r.markUnverified(ActionVerification(method: "Unity editor process with this -projectPath", passed: nil, detail: "Unity \(version) (pid \(pid)) started with \(name) but the project is not confirmed open yet (it may still be importing or waiting for a licence/sign-in)"), now: now()) }
+        case .notAUnityProject: r.fail("that folder is not a Unity project any more")
+        case .noEditorInstalled(let declared): r.fail("no Unity editor is installed for this project (it declares \(declared ?? "an unknown version"))")
+        case .needsUpgradeApproval(let declared, let candidate): r.fail("this project needs Unity \(declared), which is not installed; Unity \(candidate) is, but opening it there would upgrade the project, so I did not")
+        case .unknownDeclaredVersion: r.fail("I cannot read which Unity version this project uses")
+        case .launchFailed(let why): r.fail("macOS could not start Unity: \(why)")
+        case .processNotFound: r.markUnverified(ActionVerification(method: "Unity editor process with this -projectPath", passed: nil, detail: "I asked macOS to start Unity, but no editor with \(name) appeared"), now: now())
+        }
     }
 
     /// A known project: the path comes from the project registry and is re-checked here (current truth: the folder must exist). Revealing it in Finder is read-only; nothing in the project is touched.
@@ -269,7 +298,8 @@ enum ActionPhrasebook {
             case .launchApp: return t(l, "\(name) is open.", "\(name) açık.")
             case .openFolder: return t(l, "The \(name) folder is open.", "\(name) klasörü açık.")
             case .navigate: return t(l, "The \(name) page is open.", "\(trPageTitle(name)) sayfası açık.")
-            case .openProject: return t(l, "The \(name) project folder is open in Finder.", "\(name) proje klasörü Finder'da açık.")
+            case .openProject:
+                return r.executor.hasPrefix("Unity") ? t(l, "\(name) is open in Unity.", "\(name) Unity'de açık.") : t(l, "The \(name) project folder is open in Finder.", "\(name) proje klasörü Finder'da açık.")
             case .showFullHUD: return t(l, "The full JARVIS screen is open.", "Tam JARVIS ekranı açık.")
             case .showCompactHUD: return t(l, "The compact view is open.", "Kompakt görünüm açık.")
             case .closeHUD: return t(l, "Closed. I'm still here in the menu bar.", "Kapattım. Menü çubuğunda çalışmaya devam ediyorum.")
@@ -310,6 +340,7 @@ enum ActionPhrasebook {
         case .launchApp: return t(l, "I could not open \(r.target): \(why).", "\(r.target) açılamadı: \(why).")
         case .openFolder: return t(l, "I could not open the \(r.target) folder: \(why).", "\(r.target) klasörü açılamadı: \(why).")
         case .navigate: return t(l, "I could not open the \(r.target) page: \(why).", "\(r.target) sayfası açılamadı: \(why).")
+        case .openProject: return t(l, "I could not open \(r.target): \(why).", "\(r.target) açılamadı: \(why).")
         default: return t(l, "I could not do that: \(why).", "Bu yapılamadı: \(why).")
         }
     }

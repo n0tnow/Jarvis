@@ -388,7 +388,9 @@ final class ConversationService {
                 if receipt.successIsClaimable {
                     self.workingContext.projectChanged(to: project.key)
                     self.workingContext.note(kind: .project, refID: project.key, label: project.name, source: .userStated, evidence: "user-request")
-                    line += language == .tr ? " Unity Editor'ünü açmadım; Unity işleri gerektiğinde ayrı ve izinli çalışır." : " I did not launch the Unity Editor; Unity work runs separately when a task needs it."
+                    if !receipt.executor.hasPrefix("Unity") {          // a folder reveal never started an editor — say so; a Unity open did
+                        line += language == .tr ? " Unity Editor'ünü açmadım; Unity işleri gerektiğinde ayrı ve izinli çalışır." : " I did not launch the Unity Editor; Unity work runs separately when a task needs it."
+                    }
                 }
                 self.conversation.appendJarvis(self.presenter.present(full: line, language: language, evidence: true), tone: receipt.successIsClaimable ? .normal : .notice, route: .command)
                 self.announceLatestReply()
