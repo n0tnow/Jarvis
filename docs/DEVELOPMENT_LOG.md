@@ -574,4 +574,5 @@ HEAD = origin/main = a8e5646 (docs-only) at the start; the installed app embedde
 
 ### Not done / human
 Real wake word in the room, real microphone, installed-UI visual check: README 1243–1258. Ad-hoc signing: macOS permissions must be granted again after installing this build (JARVIS-V15-11); no stable signing identity exists (`security find-identity`: 0 valid).
+* Installed: `/Applications/JARVIS.app` 0.15.0 build 97 (commit dc4fd06; replaces build 93 in place, Application Support / database / settings / models untouched, nothing re-downloaded). `verify-installed.sh --crash` PASSED (cold launch: process 77 ms, menu bar 735 ms, idle RSS 108 MB, idle 0.12 CPU-s / 8 s, Compact 574 ms, Full 408 ms, crash relaunch ok); `--packaging-live-test` 16/0/0. Process-leak scan clean; secret scan: only the pre-existing test-fixture strings. The intermediate commit 884730a does not build alone (AppContext.demoMode lands in dc4fd06); HEAD builds and passes.
 
