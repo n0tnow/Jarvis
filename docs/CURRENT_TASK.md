@@ -20,8 +20,10 @@ V1.0 stabilisation fix 3 (DEC-254…259): macOS productization — one installed
 
 V1.0 stabilisation fix 4 (DEC-260…266): action execution with receipts, structured system status, self-echo safety (envelope-confirmed barge-in, provenance phantom guard), contextual vocabulary, media goal — AUTOMATED VERIFIED / HUMAN ACTION + VOICE TEST REQUIRED (README 1268–1277).
 
+V1.0 decision milestone, Phase A (DEC-267…274): typed Decision layer in front of the existing pipeline (deterministic grammar first), verified self-navigation (state + render acknowledgement + settled re-read), grounded voice-status / visibility / project-open answers, bounded spoken restatements, an upstream pathological-transcript guard, an OPTIONAL remote classifier (Jev) as a disabled-by-default adapter with mocks only, a 353-case decision corpus + runner, and a local-model benchmark harness — IMPLEMENTED · pure logic AUTOMATED TESTED on Linux · macOS glue UNCOMPILED (JARVIS-V1D-1) · MANUAL TEST REQUIRED (README 1278–1294). Phase B handoff: `docs/V1_DECISION_INTELLIGENCE_PHASE_B.md`.
+
 Next Step:
-Wait for Bilal's human acceptance of fix 4 (README 1268–1277: actions, system status, voice self-echo, permissions for build 110). No Fix 5, no V1.1, no Higgsfield, no Hamam work without approval. No tag.
+Phase B (local Claude Code on the Mac): `scripts/verify.sh` first, then the manual checks and the optional Jev / local-model benchmarks in `docs/V1_DECISION_INTELLIGENCE_PHASE_B.md`. Still waiting for Bilal's human acceptance of fix 4 (README 1268–1277: actions, system status, voice self-echo, permissions for build 110). No Fix 5, no V1.1, no Higgsfield, no Hamam work without approval. No tag.
 
 Blocked By:
 Nothing.

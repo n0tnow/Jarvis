@@ -607,3 +607,22 @@ Design approval, wake word in the room, permissions for build 101 (macOS asks ag
 
 ### Not done / human
 Wake-idle and TTS-speaking CPU in a real room (needs the microphone permission for this build), real-player media test, gain-ducking probe, platform AEC (V0.8 measured ≈ 15 % of a core), acoustic validation with Bilal's hardware — see README 1268–1277 and KNOWN_ISSUES JARVIS-V1F4-1…5.
+
+## V1.0 decision milestone — Phase A (Cloud): decision intelligence & command understanding
+
+Context: build 110 passed its automated tests, then real use showed the remaining failures: "Sistem durumunu söyler misin?" sometimes answered by a model ("Elimde doğrulanmış bir durum bilgisi yok"), "Jarvis System Panelini aç" answered "Sistem sayfası açık." over a Dashboard, "Safari görebiliyor musun" answered "Evet" from imagination, project commands ("Hamam projesini aç", "Hamam'da kaldığımız yerden devam et") reaching conversation or the wrong project, and the recogniser feeding "Kutu, Kutu, Kutu, …" to the conversation. Three problems, kept apart: command decision, conversational intelligence, voice reliability.
+
+### What was built
+* `Sources/Jarvis/Decision/`: `DecisionTypes` (typed advisory `Decision`, `GatedPolicy`), `DeterministicCommandRecognizer` (closed TR/EN/mixed grammar reusing the existing parsers; new: voice status, tolerant system status, stop-speech vs cancel-task, project open/continue, media/observe, visibility, restatements, blocked requests), `DecisionPlanner` (pure: Decision + facts → existing capability), `DecisionGrounding` (`VoiceStatusComposer`, `ObservationGrounding`, `ProjectOpenResolver`), `JevDecisionProvider` (adapter, minimised context, strict parser, `DecisionPolicy`, budget, breaker, usage), `DecisionEngine` (+ audit log, shadow report, gated consult), `DecisionBenchmark`, `LocalModelBenchmark`.
+* `Voice/Natural/PathologicalTranscriptGuard` + `VoiceCoordinator` (guard before everything, `VoiceSignal.transcriptRejected`, `origin.*` diagnostics).
+* `ConversationService.submit`: decision step after the approval guard / correction flow, before typed actions and models; gated hook at the end; `execute(plan)` calls the same verified code as before.
+* `ActionService.navigate` (state + render acknowledgement + settle), `ActionIntent.openProject`, `HUDState.renderedSection` + `FullHUDView` acknowledgement, `ReadinessSnapshot.tiles` (page and spoken status share it), `ComputerRuntime.observedApps`, three `Preferences` keys (Jev mode default disabled), `SettingsIntentParser` accepts "az önceki ayarı geri al", `AppCatalog.match` takes a case suffix on a 3-letter last word ("Unity Hub'ı").
+* `Benchmarks/decision_corpus.json` (353), `Benchmarks/local_model_probes.json` (41), `scripts/guards_decision.sh` (8 guards, sourced by `verify.sh`), `docs/V1_DECISION_INTELLIGENCE_PHASE_B.md`, DEC-267…274, JARVIS-V1D-1…10, README 1278–1294.
+
+### How it was verified (and how it was not)
+* No Swift toolchain existed in the container; a native Swift 6.0.3 compiler was obtained from the SwiftWasm release (its host tools compile Linux code with Foundation). A harness assembled the new files plus slices of the REAL sources (`ActionIntentParser`, `ReadinessIntentParser`, `ContinuityIntent`, `SettingsIntentParser`, `ResearchIntake`, `CorrectionParser`, `AppCatalog`, `ComputerText`, `RiskClass`, `OutputSanitizer`) with tiny shims, compiled them, and ran the Swift Testing files through a regex converter: `DecisionCoreTests.swift` 50 tests / 439 checks, 0 failures. The harness found real bugs in existing grammar that the new layer now works around or fixes: "geri al" read as navigation, "Unity Hub'ı" not matched, the media object "müziği", "Hamam projesinin durumu" not recognised, a fragment "Hayır istemiyorum" read as a correction.
+* NOT done: `swift build` / `swift test` / `scripts/verify.sh` on macOS, the macOS-only suites (`DecisionIntegrationTests.swift`: self-navigation, conversation routing, gated mode, pathological transcript through `VoiceCoordinator`, defaults), any real window, microphone, application, Computer Use, model or network. The grep guards were run on Linux (8/8 PASS) but not inside `verify.sh`.
+* No Jev request was made, no credential was read or stored, no model was downloaded or loaded, Hamam was not touched.
+
+### Result of the corpus run (deterministic grammar only; Cloud)
+353 cases · answered 296 (83 %) · intent accuracy on answered 100 % · exact 295 · 0 wrong executing answers · every case labelled deterministic is decided exactly. Authoring-time fit, see JARVIS-V1D-2.

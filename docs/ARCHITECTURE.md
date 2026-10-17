@@ -286,3 +286,19 @@ Same orchestrator, same experiment engine: the Input System ops extend `UnityDev
 
 ## V1.0 stabilisation fix 4 — where the new pieces sit
 `Actions/` (`ActionReceipt` + `ActionLedger`, `ActionIntent` grammar, `ActionService` + `ActionPhrasebook`, `PhoneticAppResolver`) above `ConversationService` · `Readiness/SystemStatus` (`SystemStatusSnapshot`/`Composer`) · `Voice/Natural/BargeInDetector` (`echoMatch`) · `Voice/Natural/EchoProvenance` (`UtteranceProvenance`, `PhantomGuard`, `VoiceDiagnostics`) wired in `HandsFreeCoordinator`/`VoiceCoordinator` · `Voice/SpeechToText` (`VoiceVocabulary` contextual terms) · `Computer/ComputerGoalParser` (media pattern) + AX pre-flight in `Tasks/GoalIntake`. See DEC-260…266.
+
+## Decision Intelligence (V1.0 decision milestone, DEC-267…274)
+
+```
+voice ─► PathologicalTranscriptGuard ─✗ rejected: counts only, nothing downstream sees it
+typed ─┐
+voice ─┴► approval guard ─► correction flow ─► DecisionEngine.decide ─► DeterministicCommandRecognizer (Level 0)
+                                                       │                    └─ optional: Jev shadow (compare only) / gated (read-only set)
+                                                       ▼
+                                              DecisionPlanner (pure) ─► passThrough ─► existing actions / settings / readiness / continuity / memory / router
+                                                       │
+                              answer · systemStatus · action · settings · stop/cancel · openProject · continueProject · computer · reroute
+                                                       ▼
+                                  existing executors ─► verify ─► ActionReceipt ─► grounded reply  (audit: DecisionAuditLog)
+```
+The Decision is advisory; execution, approval and verification stay where they were. `Benchmarks/` holds the ground-truth corpus and the local-model probes; `DecisionBenchmarkRunner` and `LocalModelBenchmark` measure any decider / model against them.

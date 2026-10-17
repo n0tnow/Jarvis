@@ -76,3 +76,12 @@ The router is unchanged and still decides eligibility (price re-verified at runt
 * Visual grounding is routed by privacy class (on-device › subscription › free cloud) and sensitivity (desktop / project / synthetic); desktop and project pictures never go to a cloud provider; no cloud provider is registered.
 * The local vision model is chosen in Settings (Qwen3-VL 4B or 2B, applies after relaunch); it is never selected by name inside the engine.
 * A real continuation of a documented one-file fix routed to OpenCode FREE / Claude Code through the V0.12 router like any other graph.
+
+## Routing levels and the Decision layer (V1.0 decision milestone, DEC-267…274)
+A philosophy, not a second router — the V0.3.1 `ModelRouter` and the V0.12 orchestrator are unchanged:
+* **Level 0 — deterministic.** Known status / navigation / settings / stop / project-open / media / visibility commands (`DeterministicCommandRecognizer`): no model, no network, microseconds.
+* **Level 1 — decision intelligence.** The optional remote classifier (Jev; disabled by default; shadow = compare only; gated = a closed read-only set) for what Level 0 does not understand.
+* **Level 2 — local conversational model** (today Qwen3.5-4B): natural conversation and small transformations; whether a larger local model is worth it is measured in Phase B (`LocalModelBenchmark`), never assumed.
+* **Level 3 — verified-free OpenCode**: coding / review / tests / research where the V0.3.1 price rules allow.
+* **Level 4 — Claude Code / Codex**: hard reasoning and escalation, as before.
+`DecisionPlanner.passThrough` hands everything it does not own to the existing pipeline and `ModelRouter`; a classifier's confidence never replaces approval, verification, risk policy, an `ActionReceipt` or a tool permission.

@@ -794,3 +794,45 @@ A rapid sequence of page commands can show a reply after a later question (repli
 
 ### JARVIS-V1F4-5 — Permissions are lost again with the new ad-hoc build
 Build 110 reports Accessibility false, Screen Recording false, Microphone not determined (cdhash 3a9064ac); macOS ties permissions to the exact ad-hoc build (see JARVIS-V1F3-1).
+
+## V1.0 decision milestone (Phase A, Cloud) — JARVIS-V1D-1…10
+
+### JARVIS-V1D-1 — The macOS glue was written without a compiler
+Status: Open · MANUAL VERIFICATION REQUIRED (first thing Phase B does: `scripts/verify.sh`)
+The Cloud container had no Xcode and no macOS SDK. The pure logic (grammar, planner, grounding, Jev adapter, guard, benchmarks, 50 tests / 439 checks) was compiled and RUN on Linux against slices of the real sources. `ConversationService`, `ActionService`, `VoiceCoordinator`, `HandsFreeCoordinator`, `FullHUDView`, `AppContext+Daily`, `Preferences`, `ComputerRuntime`, `ReadinessModel`/`SystemStatus` edits were checked for syntax only, and `DecisionIntegrationTests.swift` has not run. Expect compile errors or a failing test there; fix them without weakening a test or a guard.
+
+### JARVIS-V1D-2 — The deterministic numbers are an authoring-time fit
+Status: Open · NON-BLOCKING
+`Benchmarks/decision_corpus.json` was written next to the grammar: 296/353 answered, 100 % of those correct, 0 wrong executing answers is NOT a held-out result (three labels were corrected where the grammar's reading was the right one: "Show me the last report" → page, "Push notification ayarlarını aç" → settings, "Hayır, yavaşlat" → reroute). Phase B must add fresh utterances before trusting it, and the same corpus is what Jev is measured on.
+
+### JARVIS-V1D-3 — Jev has no transport and no credential store
+Status: Open · FUTURE (Phase B, needs the user's go-ahead and a new decision)
+`UnconfiguredJevTransport` is the only `JevTransport`; there is no Keychain code and no network code (AGENTS.md: never handle credentials). `shadow`/`gated` therefore find the classifier unavailable (`credentialMissing`) and JARVIS carries on. The TypeSafe API contract (endpoint, model discovery, response shape, usage fields) is unverified — the adapter (`JevPrompt`, `JevResponseParser`) is the only place to change.
+
+### JARVIS-V1D-4 — "Open the project" does not launch the Unity Editor
+Status: Open · by design for Phase A (DEC-272)
+It reveals the folder in Finder, verifies it, and makes the project the conversation's project. No executor exists that opens the Unity GUI for the user; Unity editors are started only by typed Unity tasks. Whether "Hamam projesini aç" should also start the editor is the user's decision.
+
+### JARVIS-V1D-5 — The render acknowledgement is conservative
+Status: Open · MANUAL TEST REQUIRED
+A page change is claimed only if `FullHUDView` reports it drew the page (`HUDState.renderedSection`). If SwiftUI's `onChange` does not fire in some window state (e.g. a window re-shown without a view update), the reply is "I could not confirm" even though the page is correct. That is the safe direction; fix the acknowledgement, never the check.
+
+### JARVIS-V1D-6 — Phrases the grammar still does not take
+Status: Open · NON-BLOCKING
+They fall through to the previous pipeline (unchanged behaviour): "Hamam'ı aç" (no project word; could be an application), "Chrome açık mı?" (running state of an application), "Mikrofonu test eder misin", "Hamamda devam" (no anchor), "Görevi bitir". "Claude Code'u kullan." is only CLASSIFIED (`provider_capability / prefer_provider`, asks "for which task?" in the decision) — it does not select an engine. Grammar coverage on the corpus is 83 %; the rest is the router's or, in Phase B, Jev's job.
+
+### JARVIS-V1D-7 — The typed action grammar alone still reads "geri al" as "go back"
+Status: Open · NON-BLOCKING
+"Az önceki ayarı geri al" is now routed to settings because the Decision step runs first and `SettingsIntentParser` accepts it. `ActionIntentParser.parse` on its own still returns `.navigate(.settings)` for it (existing Fix 4 grammar, untouched). Anything that calls the action parser without the Decision layer (tests, live tests) sees the old reading.
+
+### JARVIS-V1D-8 — Visibility evidence is application-level only
+Status: Open · NON-BLOCKING
+`ComputerRuntime.observedApps` records which application a real Computer Use observation covered and when — not windows, titles or what is on screen. "Can you see this video?" can therefore only be answered "not verified" unless a task observed that application a moment ago.
+
+### JARVIS-V1D-9 — Gated mode adds latency while the classifier is slow
+Status: Open · NON-BLOCKING (gated is OFF by default)
+Only for utterances the grammar did not understand, a gated consult waits up to `timeoutSeconds` (4 s default) before the normal route runs. Phase B decides from measured p95 latency whether gated mode is acceptable for speech.
+
+### JARVIS-V1D-10 — The pathological-transcript thresholds are unmeasured on a real recogniser
+Status: Open · MANUAL TEST REQUIRED
+The thresholds were chosen from the two observed loops and from legitimate repetition ("hayır hayır hayır", "dur dur dur", "çok çok önemli"); they have not been tried against Apple's recogniser or Whisper output on the real Mac. A genuine very fast or very repetitive utterance could be rejected (the user simply repeats it); a subtler hallucination could pass.

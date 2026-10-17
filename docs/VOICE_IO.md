@@ -212,3 +212,6 @@ Voice commands stay distinct: Sus (speech/generation), Dinlemeyi bırak (end the
 
 ## V1.0 stabilisation fix 3
 Voice, Push-to-Talk and Wake Word are three switches in Settings with their real state; none of them has an approval path.
+
+## Pathological transcripts and utterance origin (V1.0 decision milestone, DEC-269)
+`PathologicalTranscriptGuard` judges every FINAL transcript before the hands-free filters and before `deliver`: dominant token, one-token run, periodic 2–6-word loop, looping tail, tiny vocabulary for the length, runaway length, impossible words-per-second. Legitimate repetition ("hayır hayır hayır", "dur dur dur", "çok çok önemli") is accepted. A rejection keeps a reason code and counts (never text or audio), reaches no model / decision / memory / conversation turn, and capture recovers (`VoiceSignal.transcriptRejected`). `VoiceDiagnostics` `origin.*` counters separate the three things a bad transcript can be: `selfEcho` (JARVIS' own voice: SelfSpeechFilter / PhantomGuard / the barge-in envelope), `decoderHallucination` (this guard) and `userInterruption` / `userTurn` (a person). Thresholds are unmeasured on a real recogniser (JARVIS-V1D-10).

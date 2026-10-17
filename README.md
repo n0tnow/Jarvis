@@ -331,6 +331,28 @@ V0.15 is AUTOMATED TESTED and REAL TESTED on this Mac (see `PROJECT_STATE.md`): 
 1276. I. Say "approve"/"evet" while an approval is pending: nothing is approved (only the HUD button decides).
 1277. J. Report anything that still interrupts itself, any phantom message, and the Activity log's voice lines.
 
+### V1.0 decision milestone (decision intelligence & command understanding) — MANUAL TEST REQUIRED (Phase B; nothing below was verified on a real Mac)
+
+Run `scripts/verify.sh` first (the macOS glue was written without a compiler; expect to fix it). Then, on the installed build, one command at a time. Full procedure and the Jev / local-model benchmarks: `docs/V1_DECISION_INTELLIGENCE_PHASE_B.md`.
+
+1278. “Sistem durumunu söyler misin?” and “System Durumu Nedir?” → a status answer (no “Elimde doğrulanmış bir durum bilgisi yok”); the Ready / Needs attention / Optional numbers it speaks equal the three tiles on the System page.
+1279. “Jarvis System Panelini aç.” with the Full HUD closed, on Dashboard, and already on System → the System page is really drawn, and the reply comes after it. If it says it could not confirm while the page is visibly open, report it (the render acknowledgement is not firing).
+1280. Dashboard, Tasks, Agents, Memory by voice (“Dashboard'a dön”, “Tasks sayfasına geç”, “Agents panelini aç”, “Memory'yi aç”) → each page is drawn; never “açık” without it.
+1281. “Sesim geliyor mu?” typed (must NOT claim it hears you) and by voice (must say it hears you); “Beni duyuyor musun?” with Voice off and with the microphone permission denied.
+1282. “Safari'yi aç.” / “Safari'yi açabilir misin?” → Safari opens (receipt-worded reply); then “Safari görebiliyor musun şu anda?” with no prior look → “not observed yet”, never “Evet”; after “Ekranıma bak” → may answer with an age; 30 s later → “last observation is N s old”.
+1283. “Tarayıcıda açık olan videoyu devam ettirir misin?” with a video page open → a Computer Use task; success only if the playback state really changed, an honest failure is correct.
+1284. “Hamam projesini aç.” → the folder is revealed in Finder (the Unity Editor is NOT launched), the conversation's project becomes Hamam, nothing in the project changes; “Unity projesini aç.” asks which one if several Unity projects exist; “En son çalıştığımız projeyi aç.” opens the most recent one or asks.
+1285. “Hamam'da kaldığımız yerden devam et.” → one bounded continuation task for Hamam (check the task title), not a chat answer, and not another project.
+1286. “Sofany değil, Safari dedim.” right after a mis-heard sentence → the previous sentence is corrected and answered; “Wisp değil, sesim geliyor mu dedim sana.” → answered as “Sesim geliyor mu?”; no Project Memory answer.
+1287. “Az önceki ayarı geri al.” after “Biraz daha hızlı konuş.” → the speech speed returns (it does not open the Settings page).
+1288. “GitHub'a pushla.”, “Satın al.”, “Şifremi göster.” → refused in one sentence; nothing is run; “Dosyayı sil.” does not delete anything without an approval button.
+1289. Voice reliability: hold the key over silence / a cough / a TV → no “Kutu, Kutu, …” turn appears; Activity shows “dropped an implausible transcript”; the next utterance works. “hayır hayır hayır” and “dur dur dur” still arrive as normal turns.
+1290. Self-echo / barge-in regression (Fix 4 scenarios): a long answer plays to the end; “Sus” stops it at once.
+1291. Defaults: Settings/diagnostics show the remote classifier (Jev) OFF; `defaults read dev.jarvis.Jarvis prefs.decision.jev.mode` is absent or `disabled`; JARVIS behaves identically with no network.
+1292. Only if you choose to use Jev (Phase B): shadow mode first — JARVIS must behave exactly as before; compare the agreement report; never enable gated mode before the benchmark justifies it.
+1293. Local model benchmark (Phase B): the current Qwen3.5-4B vs a few candidates on the M5 — no production model switch without your decision.
+1294. Final acceptance: “Jarvis, Hamam projesini aç.” works by voice. Only then may Hamam autonomous work begin.
+
 ### V0.14 additions (adaptive learning, controlled self-improvement, MCP/Skill registry) — MANUAL TEST REQUIRED
 V0.14 is AUTOMATED TESTED and REAL TESTED on this Mac (see `PROJECT_STATE.md`), but none of it is MANUALLY VERIFIED. Learning is data and never authority; installs, updates, removals, rule/skill activation and self-changes are decided only by the HUD buttons. Docs: `docs/ADAPTIVE_LEARNING.md`, `docs/SELF_IMPROVEMENT.md`, `docs/MCP_REGISTRY.md`, `docs/SKILLS.md`.
 
