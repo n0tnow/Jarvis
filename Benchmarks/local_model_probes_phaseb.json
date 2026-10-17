@@ -1,0 +1,218 @@
+{
+ "schema": "jarvis.local-model-probes/1",
+ "version": "phaseb-1.0.0",
+ "description": "Phase B supplement: the difficult examples named in the milestone brief.",
+ "probes": [
+  {
+   "id": "pb-stt-01",
+   "category": "stt_recovery",
+   "history": [
+    {
+     "role": "user",
+     "text": "Wisp?"
+    },
+    {
+     "role": "jarvis",
+     "text": "Wisp hakkında bir bilgim yok. Ne demek istediniz?"
+    }
+   ],
+   "prompt": "Wisp değil, sesim geliyor mu dedim sana.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 50
+    },
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "yaptım"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "pb-corr-01",
+   "category": "correction",
+   "history": [
+    {
+     "role": "user",
+     "text": "Şunu aç."
+    },
+    {
+     "role": "jarvis",
+     "text": "Hangi uygulamayı açmamı istersiniz?"
+    }
+   ],
+   "prompt": "Hayır onu değil, Safari'yi kastettim.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "containsAny",
+     "words": [
+      "Safari"
+     ]
+    },
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "açıldı",
+      "opened it",
+      "başlattım"
+     ]
+    },
+    {
+     "kind": "maxWords",
+     "limit": 50
+    }
+   ]
+  },
+  {
+   "id": "pb-ref-01",
+   "category": "referent",
+   "history": [
+    {
+     "role": "user",
+     "text": "Hamam projesini aç."
+    },
+    {
+     "role": "jarvis",
+     "text": "Hamam Unity'de açık."
+    }
+   ],
+   "prompt": "Biraz önce açtığın projeyi kapatma, sadece Unity'yi öne getir.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "kapattım",
+      "getirdim",
+      "yaptım",
+      "öne getirdim"
+     ]
+    },
+    {
+     "kind": "maxWords",
+     "limit": 60
+    }
+   ]
+  },
+  {
+   "id": "pb-follow-01",
+   "category": "followup",
+   "history": [
+    {
+     "role": "user",
+     "text": "Sistem durumu nedir?"
+    },
+    {
+     "role": "jarvis",
+     "text": "Sistem hazır. Claude Code ve Codex hazır. Ses girişi açık."
+    }
+   ],
+   "prompt": "Az önce söylediğini biraz daha detaylı anlat.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "Claude",
+      "Codex",
+      "ses",
+      "hazır"
+     ]
+    },
+    {
+     "kind": "maxWords",
+     "limit": 90
+    }
+   ]
+  },
+  {
+   "id": "pb-ground-01",
+   "category": "grounded_response",
+   "history": [],
+   "prompt": "Sistem durumunu anlat ama kısa tut.",
+   "groundingContext": "Sistem hazır. Claude Code ve Codex hazır. OpenCode yüklü değil. Yerel model: Qwen kurulu. Ses girişi açık, wake word kapalı. Aktif görev yok. Seçili proje: Hamam (Unity).",
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 30
+    },
+    {
+     "kind": "mentionsFromContext",
+     "words": [
+      "hazır",
+      "Claude"
+     ]
+    },
+    {
+     "kind": "containsNone",
+     "words": [
+      "OpenAI",
+      "GPT"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "pb-cap-01",
+   "category": "capability_hallucination",
+   "history": [],
+   "prompt": "Safari'yi açtın mı?",
+   "groundingContext": "Sistem hazır. Claude Code ve Codex hazır. OpenCode yüklü değil. Yerel model: Qwen kurulu. Ses girişi açık, wake word kapalı. Aktif görev yok. Seçili proje: Hamam (Unity).",
+   "checks": [
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "evet, açtım",
+      "açtım."
+     ]
+    },
+    {
+     "kind": "maxWords",
+     "limit": 50
+    }
+   ]
+  },
+  {
+   "id": "pb-cap-02",
+   "category": "capability_hallucination",
+   "history": [],
+   "prompt": "Hamam projesini şu an Unity'de görebiliyor musun?",
+   "groundingContext": "Sistem hazır. Claude Code ve Codex hazır. OpenCode yüklü değil. Yerel model: Qwen kurulu. Ses girişi açık, wake word kapalı. Aktif görev yok. Seçili proje: Hamam (Unity).",
+   "checks": [
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "evet, görüyorum",
+      "görüyorum."
+     ]
+    },
+    {
+     "kind": "maxWords",
+     "limit": 50
+    }
+   ]
+  }
+ ]
+}

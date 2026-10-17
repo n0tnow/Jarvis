@@ -5,6 +5,8 @@ import Foundation
 //
 //   Jarvis --store-jev-credential          reads the TypeSafe/Jev API key from the terminal with echo OFF and stores it in the Keychain (nothing is printed, nothing is written anywhere else)
 //   Jarvis --jev-check                     presence of the credential, model discovery (names), ONE minimal classification of a synthetic utterance; executes nothing
+//   Jarvis --local-model-score <result.json> [--name N] [--size-gb G] [--quant Q] [--probes F]
+//                                          scores a recorded run of `scripts/local-ai/bench_model.py` with the rubric (RubricCheck) and prints the report; loads no model
 //   Jarvis --decision-benchmark [--corpus F] [--heldout F] [--jev] [--jev-model M] [--rows F]
 //                                          deterministic baseline (no network); with --jev the classifier is asked about every case IN SHADOW (compared, never executed)
 // None of this starts the app, a provider, a task or an action. The key is read only by `TypeSafeJevTransport` at request time; these tools never see it.
@@ -15,6 +17,7 @@ enum DecisionTools {
         if args.contains("--store-jev-credential") { storeCredential() }
         if args.contains("--jev-check") { launch { await jevCheck(args) } }
         if args.contains("--decision-benchmark") { launch { await benchmark(args) } }
+        if args.contains("--local-model-score") { launch { await scoreLocalModel(args) } }
     }
 
     private static func launch(_ work: @escaping @Sendable () async -> Int32) -> Never {
@@ -123,6 +126,42 @@ enum DecisionTools {
             out(String(format: "approximate cost from the published input price ($0.042 per million input tokens, output free): $%.6f", Double(u.inputTokens) / 1_000_000 * 0.042))
         }
         if let rowsPath = value(after: "--rows", in: args), let data = try? JSONEncoder().encode(allRows) { try? data.write(to: URL(fileURLWithPath: rowsPath)); out("rows written to \(rowsPath)") }
+        return 0
+    }
+
+    // MARK: local model scoring
+
+    private struct RecordedRun: Decodable {
+        var id: String, text: String, failed: Bool
+        var ttft: Double?, generation_tps: Double?, generation_tokens: Int?, prompt_tokens: Int?, total_seconds: Double?
+    }
+    private struct RecordedResult: Decodable {
+        var model: String, load_seconds: Double?, rss_after_load_mb: Double?, rss_after_run_mb: Double?, runs: [RecordedRun]
+    }
+    private final class Replay: ConversationalModelRunning, @unchecked Sendable {
+        let candidate: ModelCandidate, rec: RecordedResult
+        var calls = 0
+        init(candidate: ModelCandidate, rec: RecordedResult) { self.candidate = candidate; self.rec = rec }
+        func load() async throws -> TimeInterval? { rec.load_seconds }
+        func generate(_ probe: ConversationalProbe) async -> ModelRun {
+            guard let r = rec.runs.first(where: { $0.id == probe.id }) else { return ModelRun(text: "", failed: true) }
+            var total = r.total_seconds
+            if let n = r.generation_tokens, let tps = r.generation_tps, tps > 0 { total = Double(n) / tps }
+            return ModelRun(text: r.text, timeToFirstToken: r.ttft, totalSeconds: total, outputTokens: r.generation_tokens, contextTokens: r.prompt_tokens, failed: r.failed)
+        }
+        func residentMemoryMB() -> Double? { calls += 1; return calls == 1 ? rec.rss_after_load_mb : rec.rss_after_run_mb }
+        func unload() async {}
+    }
+
+    private static func scoreLocalModel(_ args: [String]) async -> Int32 {
+        guard let path = value(after: "--local-model-score", in: args), let data = FileManager.default.contents(atPath: path), let rec = try? JSONDecoder().decode(RecordedResult.self, from: data) else { out("cannot read the recorded run"); return 2 }
+        let probesPath = value(after: "--probes", in: args) ?? "Benchmarks/local_model_probes.json"
+        guard let probes = try? ConversationalProbeSet.load(from: URL(fileURLWithPath: probesPath)) else { out("cannot read the probes"); return 2 }
+        let name = value(after: "--name", in: args) ?? (rec.model as NSString).lastPathComponent
+        let cand = ModelCandidate(id: name, displayName: name, license: nil, approximateSizeGB: value(after: "--size-gb", in: args).flatMap(Double.init), quantization: value(after: "--quant", in: args), notes: nil)
+        let report = await LocalModelBenchmark.run(runner: Replay(candidate: cand, rec: rec), probes: probes, dryRun: false)
+        out(report.markdown())
+        out("failed probes: \(report.failures.joined(separator: ", "))")
         return 0
     }
 
