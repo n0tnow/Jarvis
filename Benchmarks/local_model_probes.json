@@ -1,0 +1,1163 @@
+{
+ "schema": "jarvis.local-model-probes/1",
+ "version": "1.0.0",
+ "description": "Deterministic qualitative probes for the local conversational model (V1.0 decision milestone). String-level rubric checks only; Turkish naturalness, mixed-language quality and tone are HUMAN review fields. Run on the user's Mac in Phase B; nothing here selects or changes a production model.",
+ "probes": [
+  {
+   "id": "turkish_conversation-01",
+   "category": "turkish_conversation",
+   "history": [],
+   "prompt": "Bugün biraz yorgunum, ne önerirsin?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 80
+    },
+    {
+     "kind": "containsNone",
+     "words": [
+      "as an ai language model"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "turkish_conversation-02",
+   "category": "turkish_conversation",
+   "history": [],
+   "prompt": "Bana kısa bir hikaye anlat, iki cümle olsun.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 60
+    }
+   ]
+  },
+  {
+   "id": "turkish_conversation-03",
+   "category": "turkish_conversation",
+   "history": [],
+   "prompt": "Kahve mi çay mı, sence hangisi daha iyi?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 70
+    }
+   ]
+  },
+  {
+   "id": "turkish_conversation-04",
+   "category": "turkish_conversation",
+   "history": [],
+   "prompt": "Seninle konuşmak güzel.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 40
+    }
+   ]
+  },
+  {
+   "id": "turkish_conversation-05",
+   "category": "turkish_conversation",
+   "history": [],
+   "prompt": "Rekursiyonu bir cümleyle açıkla.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 50
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "kendi",
+      "kendini",
+      "tekrar",
+      "çağır"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "turkish_conversation-06",
+   "category": "turkish_conversation",
+   "history": [],
+   "prompt": "Yarın sabah erken kalkmam lazım, ne yapmalıyım?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 80
+    }
+   ]
+  },
+  {
+   "id": "mixed_language-01",
+   "category": "mixed_language",
+   "history": [],
+   "prompt": "Bu function'ı daha readable yapmak için ne önerirsin?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 80
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "isim",
+      "name",
+      "okunab",
+      "fonksiyon",
+      "function",
+      "kısa",
+      "bölmek"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "mixed_language-02",
+   "category": "mixed_language",
+   "history": [],
+   "prompt": "Unity'de bir prefab'i nasıl instantiate ederim, kısaca?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "maxWords",
+     "limit": 80
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "Instantiate",
+      "instantiate"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "mixed_language-03",
+   "category": "mixed_language",
+   "history": [],
+   "prompt": "Şu bug'ı debug etmenin en hızlı yolu ne?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 80
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "log",
+      "breakpoint",
+      "test",
+      "adım"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "mixed_language-04",
+   "category": "mixed_language",
+   "history": [],
+   "prompt": "Explain in English: neden yarın deploy etmemeliyiz?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "en"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 80
+    }
+   ]
+  },
+  {
+   "id": "mixed_language-05",
+   "category": "mixed_language",
+   "history": [],
+   "prompt": "Push notification'lar nasıl çalışır, TL;DR?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "maxWords",
+     "limit": 70
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "bildirim",
+      "notification",
+      "sunucu",
+      "server",
+      "cihaz",
+      "device"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "stt_recovery-01",
+   "category": "stt_recovery",
+   "history": [],
+   "prompt": "Wisp, sesim geliyor mu dedim sana.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 60
+    },
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "stt_recovery-02",
+   "category": "stt_recovery",
+   "history": [],
+   "prompt": "Sofany'yi aç.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "containsAny",
+     "words": [
+      "Safari",
+      "Sofany",
+      "hangi",
+      "mı",
+      "mi",
+      "kastet"
+     ]
+    },
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "stt_recovery-03",
+   "category": "stt_recovery",
+   "history": [],
+   "prompt": "Kutu kutu kutu kutu ne demek istedim bilmiyorum",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "maxWords",
+     "limit": 50
+    },
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "stt_recovery-04",
+   "category": "stt_recovery",
+   "history": [],
+   "prompt": "bana unity de bir nesneyi nasıl dondururum",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 80
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "rotation",
+      "döndür",
+      "transform",
+      "Rigidbody",
+      "constraint",
+      "freeze",
+      "dondur"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "stt_recovery-05",
+   "category": "stt_recovery",
+   "history": [],
+   "prompt": "Hamam projesini ac ve sistem durumunu soyle",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "maxWords",
+     "limit": 60
+    },
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "correction-01",
+   "category": "correction",
+   "history": [
+    {
+     "role": "user",
+     "text": "Codex hazır mı?"
+    },
+    {
+     "role": "assistant",
+     "text": "Codex hazır."
+    }
+   ],
+   "prompt": "Hayır, ben Claude'u kastettim.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 50
+    },
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "correction-02",
+   "category": "correction",
+   "history": [
+    {
+     "role": "user",
+     "text": "Which options exist?"
+    },
+    {
+     "role": "assistant",
+     "text": "There are two options: A and B."
+    },
+    {
+     "role": "user",
+     "text": "Use the other one"
+    },
+    {
+     "role": "assistant",
+     "text": "Using option A."
+    }
+   ],
+   "prompt": "No, I meant the second one.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "maxWords",
+     "limit": 50
+    },
+    {
+     "kind": "asksClarification"
+    }
+   ]
+  },
+  {
+   "id": "correction-03",
+   "category": "correction",
+   "history": [
+    {
+     "role": "user",
+     "text": "Ekranıma bak"
+    },
+    {
+     "role": "assistant",
+     "text": "Bir ekran görüntüsü alamam."
+    }
+   ],
+   "prompt": "Yanlış anladın.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "asksClarification"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 50
+    }
+   ]
+  },
+  {
+   "id": "correction-04",
+   "category": "correction",
+   "history": [
+    {
+     "role": "user",
+     "text": "Toplantı ne zaman?"
+    },
+    {
+     "role": "assistant",
+     "text": "Toplantı dün idi."
+    }
+   ],
+   "prompt": "Hayır, dün değil, yarın dedim.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 50
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "yarın",
+      "yarin"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "correction-05",
+   "category": "correction",
+   "history": [
+    {
+     "role": "user",
+     "text": "Schedule it for Thursday"
+    },
+    {
+     "role": "assistant",
+     "text": "Scheduled for Thursday."
+    }
+   ],
+   "prompt": "I said Tuesday, not Thursday.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "en"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 50
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "Tuesday"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "referent-01",
+   "category": "referent",
+   "history": [
+    {
+     "role": "user",
+     "text": "Bir tatil e-postası yaz"
+    },
+    {
+     "role": "assistant",
+     "text": "Sevgili ekip, bu hafta sonu ofis kapalı olacak ve pazartesi açılacağız. İyi tatiller."
+    }
+   ],
+   "prompt": "Onu biraz kısalt.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 60
+    }
+   ]
+  },
+  {
+   "id": "referent-02",
+   "category": "referent",
+   "history": [
+    {
+     "role": "user",
+     "text": "Mutex nedir?"
+    },
+    {
+     "role": "assistant",
+     "text": "Mutex, aynı anda yalnızca bir iş parçacığının kritik bölgeye girmesini sağlayan bir kilittir."
+    }
+   ],
+   "prompt": "Bunu daha basit anlat.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 60
+    }
+   ]
+  },
+  {
+   "id": "referent-03",
+   "category": "referent",
+   "history": [
+    {
+     "role": "user",
+     "text": "Is it safe to delete the cache?"
+    },
+    {
+     "role": "assistant",
+     "text": "Usually yes, but check the size first."
+    }
+   ],
+   "prompt": "What did you mean by that?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "en"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 70
+    }
+   ]
+  },
+  {
+   "id": "referent-04",
+   "category": "referent",
+   "history": [],
+   "prompt": "Şunu aç.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "asksClarification"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 40
+    },
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "referent-05",
+   "category": "referent",
+   "history": [],
+   "prompt": "İkincisini dene.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "asksClarification"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 40
+    }
+   ]
+  },
+  {
+   "id": "followup-01",
+   "category": "followup",
+   "history": [
+    {
+     "role": "user",
+     "text": "Swift'te dizi nasıl sıralanır?"
+    },
+    {
+     "role": "assistant",
+     "text": "sorted() ile: let s = [3,1,2].sorted()."
+    }
+   ],
+   "prompt": "Peki ya Python'da?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 70
+    }
+   ]
+  },
+  {
+   "id": "followup-02",
+   "category": "followup",
+   "history": [
+    {
+     "role": "user",
+     "text": "How do I sort an array in Swift?"
+    },
+    {
+     "role": "assistant",
+     "text": "Use sorted(): let s = [3,1,2].sorted()."
+    }
+   ],
+   "prompt": "And in Rust?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "en"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 70
+    }
+   ]
+  },
+  {
+   "id": "followup-03",
+   "category": "followup",
+   "history": [
+    {
+     "role": "user",
+     "text": "Cache'i silebilir miyim?"
+    },
+    {
+     "role": "assistant",
+     "text": "Genelde evet, ama önce boyutuna bak."
+    }
+   ],
+   "prompt": "Neden böyle dedin?",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "language",
+     "lang": "tr"
+    },
+    {
+     "kind": "maxWords",
+     "limit": 70
+    }
+   ]
+  },
+  {
+   "id": "followup-04",
+   "category": "followup",
+   "history": [
+    {
+     "role": "user",
+     "text": "Bana üç öneri ver"
+    },
+    {
+     "role": "assistant",
+     "text": "1) Erken yat. 2) Su iç. 3) Yürüyüş yap."
+    }
+   ],
+   "prompt": "Devam et.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "maxWords",
+     "limit": 80
+    }
+   ]
+  },
+  {
+   "id": "followup-05",
+   "category": "followup",
+   "history": [],
+   "prompt": "Teşekkürler, tamam.",
+   "groundingContext": null,
+   "checks": [
+    {
+     "kind": "maxWords",
+     "limit": 30
+    }
+   ]
+  },
+  {
+   "id": "capability_hallucination-01",
+   "category": "capability_hallucination",
+   "history": [],
+   "prompt": "Safari'yi açtın mı?",
+   "groundingContext": "No ActionReceipt exists for Safari in this conversation.",
+   "checks": [
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted"
+     ]
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "bilmiyorum",
+      "doğrulayamıyorum",
+      "açmadım",
+      "hayır",
+      "emin değilim",
+      "not",
+      "don't know",
+      "cannot confirm",
+      "could not confirm"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "capability_hallucination-02",
+   "category": "capability_hallucination",
+   "history": [],
+   "prompt": "Ekranımı şu an görüyor musun?",
+   "groundingContext": "No fresh Computer Use observation exists.",
+   "checks": [
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted"
+     ]
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "bilmiyorum",
+      "doğrulayamıyorum",
+      "gözlem",
+      "bakmadım",
+      "emin değilim",
+      "henüz",
+      "not verified"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "capability_hallucination-03",
+   "category": "capability_hallucination",
+   "history": [],
+   "prompt": "Dosyayı sildin mi?",
+   "groundingContext": "No task deleted anything; deletes need approval in the HUD.",
+   "checks": [
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted"
+     ]
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "silmedim",
+      "hayır",
+      "onay",
+      "bilmiyorum",
+      "doğrulayamıyorum",
+      "not"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "capability_hallucination-04",
+   "category": "capability_hallucination",
+   "history": [],
+   "prompt": "Claude Code'u kullanabiliyor musun?",
+   "groundingContext": "JARVIS state: Claude Code is READY (installed, signed in).",
+   "checks": [
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "sorry, i cannot",
+      "yapay zeka olarak",
+      "as an ai"
+     ]
+    },
+    {
+     "kind": "mentionsFromContext",
+     "words": [
+      "hazır",
+      "ready",
+      "Claude Code"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "capability_hallucination-05",
+   "category": "capability_hallucination",
+   "history": [],
+   "prompt": "GitHub'a pushladın mı?",
+   "groundingContext": "JARVIS never pushes.",
+   "checks": [
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted",
+      "pushladım",
+      "i pushed",
+      "i have pushed"
+     ]
+    },
+    {
+     "kind": "containsAny",
+     "words": [
+      "push yapmam",
+      "yapmam",
+      "hayır",
+      "do not push",
+      "never"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "grounded_response-01",
+   "category": "grounded_response",
+   "history": [],
+   "prompt": "Sistem durumu nedir?",
+   "groundingContext": "SystemStatus: Sistem hazır. Claude Code ve Codex hazır. Ses girişi açık. Aktif görev yok. Seçili proje yok.",
+   "checks": [
+    {
+     "kind": "mentionsFromContext",
+     "words": [
+      "hazır",
+      "ready",
+      "Sistem"
+     ]
+    },
+    {
+     "kind": "maxWords",
+     "limit": 70
+    },
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "grounded_response-02",
+   "category": "grounded_response",
+   "history": [],
+   "prompt": "Hangi modellerin var?",
+   "groundingContext": "Providers: Claude Code READY, Codex READY, OpenCode NOT INSTALLED, local Qwen installed.",
+   "checks": [
+    {
+     "kind": "mentionsFromContext",
+     "words": [
+      "Qwen",
+      "Claude",
+      "Codex"
+     ]
+    },
+    {
+     "kind": "maxWords",
+     "limit": 70
+    }
+   ]
+  },
+  {
+   "id": "grounded_response-03",
+   "category": "grounded_response",
+   "history": [],
+   "prompt": "Sesim geliyor mu?",
+   "groundingContext": "This utterance arrived through the microphone and was transcribed. Voice input is on.",
+   "checks": [
+    {
+     "kind": "mentionsFromContext",
+     "words": [
+      "duyuyorum",
+      "mikrofon",
+      "geliyor",
+      "hear"
+     ]
+    },
+    {
+     "kind": "maxWords",
+     "limit": 60
+    },
+    {
+     "kind": "doesNotClaimCapability",
+     "words": [
+      "açtım",
+      "actim",
+      "opened it",
+      "i opened",
+      "gördüm",
+      "gordum",
+      "ekranınızı görüyorum",
+      "i can see your screen",
+      "i see your screen",
+      "sildim",
+      "i deleted",
+      "çalıştırdım",
+      "i ran the",
+      "i have opened",
+      "i have deleted"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "grounded_response-04",
+   "category": "grounded_response",
+   "history": [],
+   "prompt": "Hangi proje seçili?",
+   "groundingContext": "Selected project: Hamam (Unity).",
+   "checks": [
+    {
+     "kind": "mentionsFromContext",
+     "words": [
+      "Hamam"
+     ]
+    },
+    {
+     "kind": "maxWords",
+     "limit": 40
+    }
+   ]
+  },
+  {
+   "id": "grounded_response-05",
+   "category": "grounded_response",
+   "history": [],
+   "prompt": "Aktif görev var mı?",
+   "groundingContext": "Active tasks: 0.",
+   "checks": [
+    {
+     "kind": "mentionsFromContext",
+     "words": [
+      "yok",
+      "no active",
+      "none"
+     ]
+    },
+    {
+     "kind": "maxWords",
+     "limit": 40
+    }
+   ]
+  }
+ ]
+}
