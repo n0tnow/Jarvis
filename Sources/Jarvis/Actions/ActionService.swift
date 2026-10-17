@@ -71,7 +71,50 @@ final class ActionService {
         self.launcher = launcher; self.windows = windows; self.ledger = ledger ?? ActionLedger(); self.selfState = selfState
     }
 
-    func recognizes(_ text: String) -> ActionIntent? { ActionIntentParser.parse(text, installed: installedLookup) }
+    /// Names of applications this Mac has (known catalog + a directory listing), cached for a minute; read-only, never launches anything.
+    private var appCandidatesCache: (at: Date, apps: [AppTarget])?
+    var candidateApps: () -> [AppTarget] = {
+        var apps = AppCatalog.known.map { AppTarget(display: $0.display, bundleID: $0.bundleID) }
+        for d in ["/Applications", "/System/Applications", "/System/Applications/Utilities", NSHomeDirectory() + "/Applications"] {
+            guard let items = try? FileManager.default.contentsOfDirectory(atPath: d) else { continue }
+            for item in items.prefix(400) where item.hasSuffix(".app") {
+                if let b = Bundle(path: d + "/" + item)?.bundleIdentifier, !apps.contains(where: { $0.bundleID == b }) { apps.append(AppTarget(display: String(item.dropLast(4)), bundleID: b)) }
+            }
+        }
+        return apps
+    }
+    /// Spoken corrections of an application name for THIS conversation only (“Sofany değil, Safari dedim”): bounded, expiring, never global vocabulary, never persisted.
+    private(set) var sessionCorrections: [(heard: String, app: AppTarget, at: Date)] = []
+    static let correctionLifetime: TimeInterval = 30 * 60
+
+    private func phoneticLookup(_ name: String) -> AppTarget? {
+        let key = ComputerText.fold(name)
+        let cutoff = now().addingTimeInterval(-Self.correctionLifetime)
+        sessionCorrections.removeAll { $0.at < cutoff }
+        if let c = sessionCorrections.first(where: { $0.heard == key }) { var a = c.app; a.heardAs = name; return a }
+        if appCandidatesCache == nil || now().timeIntervalSince(appCandidatesCache!.at) > 60 { appCandidatesCache = (now(), candidateApps()) }
+        return PhoneticAppResolver.resolve(heard: name, candidates: appCandidatesCache?.apps ?? [])
+    }
+
+    func recognizes(_ text: String) -> ActionIntent? {
+        let intent = ActionIntentParser.parse(text, installed: installedLookup, phonetic: { [unowned self] in self.phoneticLookup($0) })
+        // A restated name is remembered for this conversation so the same mis-hearing resolves next time (bounded, expiring).
+        if case .launchApp(let app)? = intent, let wrong = app.heardAs, ComputerText.tokens(text).contains(where: { $0 == "dedim" || $0 == "demistim" || $0 == "said" }) {
+            let key = ComputerText.fold(wrong)
+            if !key.isEmpty {
+                sessionCorrections.removeAll { $0.heard == key }
+                sessionCorrections.append((key, AppTarget(display: app.display, bundleID: app.bundleID), now()))
+                if sessionCorrections.count > 16 { sessionCorrections.removeFirst(sessionCorrections.count - 16) }
+            }
+        }
+        return intent
+    }
+    /// Display names of the applications on this Mac (cached with the phonetic candidates).
+    func candidateAppNames() -> [String] {
+        if appCandidatesCache == nil || now().timeIntervalSince(appCandidatesCache!.at) > 60 { appCandidatesCache = (now(), candidateApps()) }
+        return appCandidatesCache?.apps.map(\.display) ?? []
+    }
+    func clearSessionCorrections() { sessionCorrections.removeAll() }
 
     /// Performs one action end to end and returns its receipt (also recorded in the ledger and the activity feed).
     func perform(_ intent: ActionIntent) async -> ActionReceipt {

@@ -245,8 +245,13 @@ final class ConversationService {
             guard let self, let actions else { return }
             defer { self.pendingTaskAcks -= 1 }
             let receipt = await actions.perform(intent)
-            let text = ActionPhrasebook.render(receipt, language: language)
+            var text = ActionPhrasebook.render(receipt, language: language)
             let ok = receipt.successIsClaimable
+            // A sound-shape match is a guess: say what was understood (only when it worked; a wrong guess is then visible and one sentence from being corrected).
+            if ok, case .launchApp(let app) = intent, let heard = app.heardAs, ComputerText.fold(heard) != ComputerText.fold(app.display) {
+                let prefix = language == .tr ? "“\(heard)” için \(app.display) uygulamasını anladım. " : "I took “\(heard)” to mean \(app.display). "
+                text = prefix + text
+            }
             self.conversation.appendJarvis(self.presenter.present(full: text, language: language, evidence: true), tone: ok ? .normal : .notice, route: .command)
             self.announceLatestReply()
         }

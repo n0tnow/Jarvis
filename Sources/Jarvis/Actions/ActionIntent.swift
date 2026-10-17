@@ -9,6 +9,8 @@ import Foundation
 struct AppTarget: Equatable, Sendable {
     var display: String
     var bundleID: String
+    /// Set when the name was NOT heard exactly: what the recogniser produced ("Sofany"), so the reply can say what was understood.
+    var heardAs: String? = nil
 }
 
 enum KnownFolder: String, CaseIterable, Sendable {
@@ -43,6 +45,8 @@ enum ActionIntent: Equatable, Sendable {
 enum ActionIntentParser {
     /// Resolves a spoken/typed name that is not in the built-in catalog to an installed application (directory listing only). Injected so the grammar stays pure.
     typealias InstalledAppLookup = (String) -> AppTarget?
+    /// Sound-shape fallback for a name that matches no installed application (action context only). Injected; nil = off.
+    typealias PhoneticAppLookup = (String) -> AppTarget?
 
     private static let openVerbs: Set<String> = ["ac", "acar", "acabilir", "acin", "acsana", "baslat", "baslatir", "baslatabilir", "calistir", "calistirir", "calistirabilir", "open", "launch", "start", "opens"]
     private static let selfVerbs: Set<String> = ["ac", "acar", "acabilir", "goster", "gosterir", "gosterebilir", "git", "gec", "don", "donebilir", "geri", "open", "show", "go", "switch", "back", "return", "gotoa", "bring", "take"]
@@ -52,7 +56,7 @@ enum ActionIntentParser {
         "uygulamasini", "uygulamasi", "uygulama", "application", "app", "programi", "programini", "program", "ve", "tamam", "ok", "okay", "peki", "ama", "olur", "mu", "mi", "if", "possible", "rica", "ederim",
     ]
 
-    static func parse(_ raw: String, installed: InstalledAppLookup = { _ in nil }) -> ActionIntent? {
+    static func parse(_ raw: String, installed: InstalledAppLookup = { _ in nil }, phonetic: PhoneticAppLookup = { _ in nil }) -> ActionIntent? {
         let t = ComputerText.tokens(raw)
         guard !t.isEmpty, t.count <= 12 else { return nil }
         let words = Set(t)
@@ -83,6 +87,9 @@ enum ActionIntentParser {
             if let folder, residual(t, removing: ["klasor", "klasoru", "klasorunu", "klasorumu", "folder", "dosyalar", "dosyalarim", "indirilenler", "indirilenleri", "belgeler", "belgelerim", "documents", "downloads", "desktop", "masaustu", "masaustunu", "home", "ev", "evi"]).isEmpty { return .openFolder(folder) }
         }
 
+        // 2b. a spoken correction of an application name: “Sofany değil, Safari dedim.” / “I said Safari, not Sofany.”
+        if let corr = nameCorrection(t, installed: installed) { return .launchApp(corr) }
+
         // 3. an application ---------------------------------------------------------------------------------------------------------------
         guard openVerb else { return nil }
         if let m = AppCatalog.match(tokens: t) {
@@ -100,7 +107,43 @@ enum ActionIntentParser {
             let name = (head.isEmpty ? "" : head + " ") + String(last.dropLast(cut))
             if let app = installed(name) { return .launchApp(app) }
         }
+        // a name that is not installed: the sound-shape fallback, in this explicit open-verb context only
+        // (short words are kept here: a mis-heard name may well be split into short words — “so funny”)
+        let spoken = t.filter { w in !openVerbs.contains(w) && !noise.contains(w) && !w.hasPrefix("acab") && !w.hasPrefix("acar") }
+        if !spoken.isEmpty, spoken.count <= 3 {
+            let pHead = spoken.dropLast().joined(separator: " "), pLast = spoken[spoken.count - 1]
+            for cut in 0...3 where pLast.count - cut >= 2 {
+                let name = (pHead.isEmpty ? "" : pHead + " ") + String(pLast.dropLast(cut))
+                if let app = phonetic(name) { return .launchApp(app) }
+            }
+        }
         return nil
+    }
+
+    /// “X değil, Y dedim” / “Y dedim, X değil” / “I said Y”: the user restates the name. Y must resolve to a known or installed application; X is returned as `heardAs`.
+    private static func nameCorrection(_ t: [String], installed: InstalledAppLookup) -> AppTarget? {
+        let said = t.contains { $0 == "dedim" || $0 == "demistim" || $0 == "dedimki" } || (t.first == "i" && t.dropFirst().first == "said")
+        guard said else { return nil }
+        let negation = t.firstIndex { $0 == "degil" || $0 == "not" }
+        var wrong: String?
+        var rightTokens = t
+        if let n = negation {
+            if n > 0, t[0] != "i" { wrong = t[0..<n].joined(separator: " "); rightTokens = Array(t[(n + 1)...]) }
+            else { wrong = t[(n + 1)...].joined(separator: " "); rightTokens = Array(t[..<n]) }
+        }
+        rightTokens = rightTokens.filter { $0 != "dedim" && $0 != "demistim" && $0 != "dedimki" && $0 != "i" && $0 != "said" && $0 != "degil" && $0 != "not" }
+        guard !rightTokens.isEmpty, rightTokens.count <= 3 else { return nil }
+        var target: AppTarget?
+        if let m = AppCatalog.match(tokens: rightTokens), residual(rightTokens, removing: [], dropping: m.range).isEmpty { target = AppTarget(display: m.app.display, bundleID: m.app.bundleID) }
+        else {
+            let head = rightTokens.dropLast().joined(separator: " "), last = rightTokens[rightTokens.count - 1]
+            for cut in 0...3 where last.count - cut >= 3 {
+                if let app = installed((head.isEmpty ? "" : head + " ") + String(last.dropLast(cut))) { target = app; break }
+            }
+        }
+        guard var found = target else { return nil }
+        found.heardAs = wrong
+        return found
     }
 
     // MARK: Helpers

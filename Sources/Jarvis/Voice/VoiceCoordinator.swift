@@ -67,6 +67,8 @@ final class VoiceCoordinator {
     /// Set by the hands-free coordinator right before an utterance starts: how the capture relates to JARVIS' own playback (Fix 4). Push-to-Talk never sets it.
     var utteranceProvenance: UtteranceProvenance = .clean
     @ObservationIgnored var diagnostics: VoiceDiagnostics?
+    /// Names that exist on this Mac now (apps, pages, providers, project, foreground app) for recogniser biasing; read once per utterance.
+    @ObservationIgnored var vocabularyProvider: (() -> [String])?
     @ObservationIgnored var diagnosticsClock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     /// Settings → Voice previews a preset without changing the saved choice; cleared when the preview ends.
     @ObservationIgnored let presetOverride: PresetOverride
@@ -293,6 +295,7 @@ final class VoiceCoordinator {
     }
 
     private func startCapture(token mine: UUID, settings s: VoiceSettings, prefill: [AudioFrame] = []) {
+        if let provider = vocabularyProvider { VoiceVocabulary.setContextual(provider()) }
         let device = makeInput()
         let (stream, sink) = AsyncStream<AudioFrame>.makeStream(bufferingPolicy: .bufferingNewest(Self.preBufferFrames))
         do {

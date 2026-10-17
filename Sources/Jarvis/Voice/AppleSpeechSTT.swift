@@ -83,6 +83,13 @@ final class AppleSTTSession: STTSession {
         let transcriber = DictationTranscriber(locale: locale, contentHints: [], transcriptionOptions: [.punctuation],
                                                reportingOptions: [.volatileResults, .frequentFinalization], attributeOptions: [])
         analyzer = SpeechAnalyzer(modules: [transcriber])
+        // Names that exist on this Mac now bias the recogniser (a hint, never a command); an unsupported/failed context never blocks recognition.
+        let hints = VoiceVocabulary.allTerms
+        if !hints.isEmpty {
+            let context = AnalysisContext()
+            context.contextualStrings[.general] = hints
+            try? await analyzer.setContext(context)
+        }
         let (stream, builder) = AsyncStream<AnalyzerInput>.makeStream()
         input = builder
         let (events, cont) = AsyncStream<SpeechTranscriptEvent>.makeStream(bufferingPolicy: .bufferingNewest(64))

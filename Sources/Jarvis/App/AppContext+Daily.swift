@@ -47,6 +47,16 @@ extension AppContext {
         actionService = ActionService(launcher: stub ? StubbedApplicationLauncher() : SystemApplicationLauncher(), windows: windows,
                                       selfState: { [weak self] in SelfUIState(section: hud.section, fullOpen: self?.windows.isFullHUDOpen ?? false, compactOpen: self?.windows.isCompactHUDOpen ?? false) })
         actionService.log = { [weak self] message, kind in self?.store.log(message, kind: kind) }
+        if stub { actionService.candidateApps = { AppCatalog.known.map { AppTarget(display: $0.display, bundleID: $0.bundleID) } } }
+        // Recogniser biasing (Fix 4): names that exist on this Mac now, from structured sources only, read once when an utterance starts (nothing runs while idle).
+        let service = actionService!
+        voice.vocabularyProvider = { [weak self] in
+            VoiceVocabulary.build(foreground: stub ? nil : NSWorkspace.shared.frontmostApplication?.localizedName,
+                                  project: self.flatMap { $0.preferences.projectRoot }.map { URL(fileURLWithPath: $0).lastPathComponent },
+                                  destinations: HUDSection.allCases.map { $0.rawValue.capitalized },
+                                  providers: ProviderID.allCases.map(\.displayName),
+                                  apps: service.candidateAppNames())
+        }
         let hf = handsFree
         settingsAssistant.wakeIsActive = { hf.wakeStatus == .listening || hf.wakeStatus == .starting }
         settingsAssistant.endListening = { hf.endHandsFreeSession() }
