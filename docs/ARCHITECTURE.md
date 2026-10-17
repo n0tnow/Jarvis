@@ -283,3 +283,6 @@ Same orchestrator, same experiment engine: the Input System ops extend `UnityDev
 
 ## V1.0 stabilisation fix 3 — where the new pieces sit
 `Persistence/StorageIsolation` (protected runs, isolated defaults/data, hard guards) · `Readiness/CodeIdentity` + permission rows in `ReadinessService` · `Services/Windows/FullHUDFramePolicy` (frame policy + `WindowDragRegion`) · `UI/Components/DesignSystem` + `Theme.Grid` · `UI/FullHUD/Settings/SettingsPageView`, `UI/Settings/VoiceControlCards` · `App/UICapture` (`--ui-capture`) and `App/PermissionReport` (`--permission-report`). See DEC-254…259.
+
+## V1.0 stabilisation fix 4 — where the new pieces sit
+`Actions/` (`ActionReceipt` + `ActionLedger`, `ActionIntent` grammar, `ActionService` + `ActionPhrasebook`, `PhoneticAppResolver`) above `ConversationService` · `Readiness/SystemStatus` (`SystemStatusSnapshot`/`Composer`) · `Voice/Natural/BargeInDetector` (`echoMatch`) · `Voice/Natural/EchoProvenance` (`UtteranceProvenance`, `PhantomGuard`, `VoiceDiagnostics`) wired in `HandsFreeCoordinator`/`VoiceCoordinator` · `Voice/SpeechToText` (`VoiceVocabulary` contextual terms) · `Computer/ComputerGoalParser` (media pattern) + AX pre-flight in `Tasks/GoalIntake`. See DEC-260…266.

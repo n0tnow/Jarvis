@@ -779,3 +779,18 @@ Description: Unity's own player preferences for the disposable fixture projects 
 ### JARVIS-V1F3-3 — The visual design is judged by a person
 Status: HUMAN UI APPROVAL REQUIRED
 Description: layout, alignment and rendering were checked with rendered captures of the installed binary and geometry tests; whether it feels like a finished macOS product is Bilal's call (README 1259–1267).
+
+### JARVIS-V1F4-1 — Real acoustic self-echo behaviour is not automated
+The envelope confirmation and the provenance guard are proven on synthetic level series and on the hands-free coordinator with a fake microphone (observed chain reproduced by the legacy detector, fixed by the new one). Whether they hold in Bilal's room, with his speakers/headset and the neural voice's buffering, is a human test (README 1268–1277). A delay above 0.7 s (some Bluetooth chains) is outside the searched range. The gain-ducking probe and a platform echo canceller are NOT implemented.
+
+### JARVIS-V1F4-2 — Media control is not yet proven against a real player
+The Play/Pause press is unit-tested on a virtual UI and needs Accessibility; `Tests/Fixtures/media-player.page` (rename to .html to open) is a local page for a manual check. Sites whose player controls are not exposed as buttons named Play/Pause are not handled.
+
+### JARVIS-V1F4-3 — Apple dictation contextual strings have an unmeasured effect
+The vocabulary is passed through `AnalysisContext.contextualStrings`; whether it changes recognition of "Safari" was not measured. The sound-shape fallback in action context covers the observed mis-hearings without it.
+
+### JARVIS-V1F4-4 — Typed actions reply after their read-back
+A rapid sequence of page commands can show a reply after a later question (replies land once verified). `ConversationService.waitUntilIdle` waits for them.
+
+### JARVIS-V1F4-5 — Permissions are lost again with the new ad-hoc build
+Build 110 reports Accessibility false, Screen Recording false, Microphone not determined (cdhash 3a9064ac); macOS ties permissions to the exact ad-hoc build (see JARVIS-V1F3-1).

@@ -82,3 +82,5 @@ V0.15 added 14 guards in `scripts/guards_v15.sh` and amended three older ones na
 V1.0 stabilisation fix 2 added 5 guards in `scripts/guards_v15.sh` (production UI truth, provider identity firewall, settings registry/order/read-back, correction & transcript-repair authority, hands-free lifecycle & layout reservation) and the `ProductionTruthTests` / `VoiceLayoutStabilityTests` source and frame guards.
 
 V1.0 stabilisation fix 3 added 4 guards in `scripts/guards_v15.sh` (storage isolation, window policy, app identity / staging, Full HUD design system & settings) plus `StorageIsolationTests`, `PermissionTruthTests`, `WindowGeometryTests`.
+
+V1.0 stabilisation fix 4 added 2 guards in `scripts/guards_v15.sh` (actions: completion wording only for a verified receipt, claim guard, no approval path, no model reach, structured status; voice: envelope-confirmed barge-in, provenance phantom guard, diagnostics without audio/text, bounded vocabulary, no voice-processing unit) plus `Fix4ActionTests`, `Fix4StatusTests`, `Fix4MediaTests`, `Fix4VoiceEchoTests`, `Fix4VocabularyTests` and 6 smoke checks.

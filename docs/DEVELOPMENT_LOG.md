@@ -593,3 +593,17 @@ Real wake word in the room, real microphone, installed-UI visual check: README 1
 ### Not done / human
 Design approval, wake word in the room, permissions for build 101 (macOS asks again for each new ad-hoc build). Commit note: the installed build 101 embeds commit 6e37560; later commits are documentation only.
 
+## 2026-10-17 — V1.0 stabilisation fix 4 (action execution · system truth · full-duplex voice / self-echo safety)
+
+### Findings (real session evidence, read-only copy of the activity log)
+* A false barge-in fired ≈ 3 s after an answer, the residual audio was transcribed by Whisper in auto-language (short English nonsense: "Move it.", "Defend him.") and submitted as a user turn; the loop repeated. Cause: JARVIS' own voice reaches the microphone later than the 0.3 s reference window (output + room delay); additionally the coupling was learned from a microphone that had not yet received the echo (noise floor), making the echo look louder than predicted.
+* "Safari'yi açabilir misin?" went to the model, which said it was opening Safari; no action existed. "Sistem durumunu söyler misin?" went to the model too.
+
+### Evidence (automated, this Mac)
+* `scripts/verify.sh` PASSED: 1822 tests / 277 suites, 183 PASS / 0 FAIL / 2 SKIP (first run failed on a stale readiness expectation, a guard that matched the new smoke lines / an HTML fixture / a comment word, and four V0.2 smoke checks that assumed synchronous page replies — all fixed, none weakened).
+* Closed loop on the real `HandsFreeCoordinator` with a fake microphone: a 7 s answer over a 0.65 s-delayed echo — legacy detector interrupts, new one: 0 barge-ins, 0 stops, stop reason "completed" (3 repeated runs stable). A real interruption stops speech ≈ 0.19 s after the first loud frame (3 runs: 181/186/191 ms). Phantom fixtures ("Move it.", "Defend him.", "So funny.", …) are rejected only when the capture overlapped JARVIS' playback; the identical transcript with a clean capture becomes a normal turn (control test). 0 self-triggered wakes while speaking.
+* Installed build 110: `verify-installed.sh --crash` PASSED (cold launch 79 ms, menu bar 140 ms, idle 0.13 CPU-s / 8 s, 108 MB RSS, Compact 596 ms, Full 430 ms, quit 173 ms). `--permission-report` (via Launch Services): Accessibility false, Screen Recording false, Microphone not determined, cdhash 3a9064ac.
+* Native launch: Calculator through NSWorkspace 406 ms cold, system-status reply 67 ms, router/grammar decisions are microseconds. Envelope confirmation runs only when a barge-in candidate exists (≈ 6 µs per 20 ms slice measured over the unit fixtures).
+
+### Not done / human
+Wake-idle and TTS-speaking CPU in a real room (needs the microphone permission for this build), real-player media test, gain-ducking probe, platform AEC (V0.8 measured ≈ 15 % of a core), acoustic validation with Bilal's hardware — see README 1268–1277 and KNOWN_ISSUES JARVIS-V1F4-1…5.

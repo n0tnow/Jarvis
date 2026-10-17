@@ -18,8 +18,10 @@ V1.0 stabilisation fix 2 (DEC-247…253): real capability grounding, hands-free 
 
 V1.0 stabilisation fix 3 (DEC-254…259): macOS productization — one installed app, permission truth, storage isolation (fixture incident), Settings destination with Wake Word, window policy and header-only drag, Full HUD design system — AUTOMATED VERIFIED / HUMAN UI + WAKE TEST REQUIRED (README 1259–1267).
 
+V1.0 stabilisation fix 4 (DEC-260…266): action execution with receipts, structured system status, self-echo safety (envelope-confirmed barge-in, provenance phantom guard), contextual vocabulary, media goal — AUTOMATED VERIFIED / HUMAN ACTION + VOICE TEST REQUIRED (README 1268–1277).
+
 Next Step:
-Wait for Bilal's human acceptance of fix 3 (README 1259–1267: design, wake word, permissions for build 101). No Fix 4, no V1.1, no Higgsfield, no Hamam work without approval. No tag.
+Wait for Bilal's human acceptance of fix 4 (README 1268–1277: actions, system status, voice self-echo, permissions for build 110). No Fix 5, no V1.1, no Higgsfield, no Hamam work without approval. No tag.
 
 Blocked By:
 Nothing.

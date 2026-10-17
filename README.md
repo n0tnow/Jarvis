@@ -319,6 +319,18 @@ V0.15 is AUTOMATED TESTED and REAL TESTED on this Mac (see `PROJECT_STATE.md`): 
 1266. Say "Jarvis" → "Efendim?" → ask something → spoken answer → wake again (the human wake test: false wakes, your room, your microphone).
 1267. Judge the look: Dashboard, System, Tasks, Agents, Settings, Conversation — alignment, spacing, readability, empty states, whether it feels like one coherent macOS product. Report what still feels wrong.
 
+**V1.0 stabilisation fix 4 — manual checks (short script; nothing below is marked verified until you did it):**
+1268. A. Allow build 110 again (System Settings → Privacy: Microphone, and Accessibility if you want computer actions), then System page → Recheck.
+1269. B. Say or type "Sistem durumunu söyler misin?": a short real status (no "söyleyemem"); then "detaylı anlat": the long form that agrees with the System page.
+1270. C. "Safari'yi açabilir misin?": Safari opens and JARVIS says it is open (it must never say it opened before it did). Quit Safari and ask in English: "Can you open Safari?".
+1271. D. "System panelini aç", "Dashboard'a dön", "Tam JARVIS ekranını aç": the pages really change and the wording follows.
+1272. E. Open the local page `Tests/Fixtures/media-player.page` (copy as .html) in Safari and say "Videoyu oynat" / "Videoyu durdur" (needs Accessibility): the state text on the page changes; if it cannot, JARVIS says so.
+1273. F. Wake mode on, speakers (not headset): ask for a long answer and stay silent. JARVIS must finish it without cutting itself off and without any "Move it."-style user message afterwards.
+1274. G. During a long answer say "Sus": it stops at once. Speak a full sentence over the answer: it stops and answers your sentence.
+1275. H. Say "Safari'yi aç" in a mumbled way until it mis-hears ("So funny"): it opens Safari and says what it understood; say "Sofany değil, Safari dedim" and try again.
+1276. I. Say "approve"/"evet" while an approval is pending: nothing is approved (only the HUD button decides).
+1277. J. Report anything that still interrupts itself, any phantom message, and the Activity log's voice lines.
+
 ### V0.14 additions (adaptive learning, controlled self-improvement, MCP/Skill registry) — MANUAL TEST REQUIRED
 V0.14 is AUTOMATED TESTED and REAL TESTED on this Mac (see `PROJECT_STATE.md`), but none of it is MANUALLY VERIFIED. Learning is data and never authority; installs, updates, removals, rule/skill activation and self-changes are decided only by the HUD buttons. Docs: `docs/ADAPTIVE_LEARNING.md`, `docs/SELF_IMPROVEMENT.md`, `docs/MCP_REGISTRY.md`, `docs/SKILLS.md`.
 
