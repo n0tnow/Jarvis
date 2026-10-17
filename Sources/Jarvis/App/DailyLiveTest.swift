@@ -219,6 +219,58 @@ enum DailyLiveTest {
             check("REAL", "“Kısa söyle.” then shortens that same subject", short.contains("Qwen") || short.contains("model") || short.contains("doğrulanmış"), short)
         }
 
+        // MARK: grounding (V1.0 stabilisation fix 2) — JARVIS answers about itself from its own state; settings requests really change typed settings; a correction is re-resolved; nothing reaches a model.
+        if wants("grounding") {
+            let savedRate = prefs.voiceSpeechRate, savedNotify = prefs.notifyOnTaskEvents, savedVoice = prefs.voiceEnabled
+            prefs.responseStyle = .concise; prefs.addressStyle = .off; prefs.voiceSpeechRate = 1.0
+            svc.workingContext.clear(); svc.presenter.reset()
+            let project = await makeProject(); prefs.projectRoot = project
+            let snapshot = context.readiness.refresh()
+            let ax = snapshot.item("computer.ax")?.state
+            let modelCallsBefore = scripted.prompts.count
+            let (screen, _) = await say("Ekranımı görebiliyor musun?")
+            let (files, _) = await say("Dosya okuyabiliyor musun?")
+            let (web, _) = await say("Web araştırması yapabiliyor musun?")
+            let (memory, _) = await say("Projelerimi hatırlıyor musun?")
+            let (caps, _) = await say("Başka neler yapabiliyorsun?")
+            let (sys, _) = await say("Sistem durumunu kısaca özetle")
+            let (enScreen, _) = await say("Can you see my screen?")
+            let wrong = ["göremiyorum", "okuyamam", "özelliğim yok", "I cannot", "I can't", "I do not have"]
+            check("REAL", "Ability questions (screen, files, web, memory, capabilities, system status) never reached a model", scripted.prompts.count == modelCallsBefore)
+            check("REAL", "“Ekranımı görebiliyor musun?” agrees with the Accessibility record (\(ax?.label ?? "—")) and separates can from doing", (ax == .ready) == screen.hasPrefix("Evet") && screen.contains(ax == .ready ? "sürekli izlemem" : "Henüz değil") && (enScreen.hasPrefix("Yes") || enScreen.hasPrefix("Not yet")), screen)
+            check("REAL", "“Dosya okuyabiliyor musun?” is project-scoped and names the chosen folder", files.contains("proje klasörünüzün") && files.contains((project as NSString).lastPathComponent) && files.contains("dışındaki"), files)
+            check("REAL", "“Web araştırması yapabiliyor musun?” states the read-only limits", web.contains("yalnızca okuma") && web.contains("Şu anda hiçbir şey araştırılmıyor"), web)
+            check("REAL", "“Projelerimi hatırlıyor musun?” describes Project Memory truthfully (per project, not whole conversations)", memory.contains("Proje Hafızası") && memory.contains("saklamam"), memory)
+            check("REAL", "No answer denies a capability JARVIS has", ![screen, files, web, memory, caps, sys].contains { a in wrong.contains { a.contains($0) } })
+            check("POLICY", "“Ekranıma bak” is a Computer Use request (observation of the front window), not a question", { if case .computer(let plan) = ComputerGoalParser.classify("Ekranıma bak", context: GoalContext(projectRoot: nil, unityProjectOpen: false, visionEnabled: false)) { return plan.steps.first?.actions.first?.kind == .observe }; return false }())
+            check("REAL", "“Sistem durumunu kısaca özetle” is built from the readiness records", sys.contains("kullanılabilir") || sys.contains("hazır") || sys.contains("Hazır değil"), sys)
+            // settings reality
+            let (up, _) = await say("Konuşma hızını biraz arttır")
+            let persisted = Preferences(defaults: .standard)            // what a relaunch would read
+            check("REAL", "“Konuşma hızını biraz arttır” changed the typed setting (1.00× → 1.05×), it persisted, and the reply shows the value that was read back", abs(prefs.voiceSpeechRate - 1.05) < 0.001 && abs(persisted.voiceSpeechRate - 1.05) < 0.001 && up.contains("1.05×"), up)
+            let (back, _) = await say("Eski haline getir")
+            check("REAL", "“Eski haline getir” restored the previous value", abs(prefs.voiceSpeechRate - 1.0) < 0.001 && (back.contains("Geri aldım") || back.contains("Restored")), back)
+            let (addr, _) = await say("Bana bundan sonra efendim diye hitap edebilir misin?")
+            let (where_, _) = await say("Bunu nereye kaydettin?")
+            check("REAL", "“efendim” is a persisted SETTING (not Project Memory): it changed, persisted, and the storage answer says KALICI AYAR", prefs.addressStyle == .natural && Preferences(defaults: .standard).addressStyle == .natural && addr.contains("Ayar olarak kaydedildi") && where_.contains("[KALICI AYAR]"), addr + " | " + where_)
+            let (list, _) = await say("Hangi ayarları özelleştirebilirsin?")
+            check("REAL", "The list of customisable settings comes from the real registry and excludes permissions, approvals and security", list.contains("konuşma hızı") && list.contains("wake word") && list.contains("İzinler, onaylar ve güvenlik ayarları bunların arasında değil"), list)
+            let (last, _) = await say("Az önce hangi ayarı değiştirdin?")
+            check("REAL", "“Az önce hangi ayarı değiştirdin?” answers from the change record", last.contains("hitap biçimi") || last.contains("konuşma hızı"), last)
+            let (none, _) = await say("Bunu hatırlayacak mısın?")
+            check("REAL", "A question about remembering something that was never stored says so (no false ‘saved’)", none.contains("Az önce hiçbir şey kaydedilmedi") || none.contains("[KALICI AYAR]"), none)
+            // correction
+            _ = await say("Claude hazır mı?", quiet: true)
+            let (fixed, _) = await say("Hayır, Codex hazır mı demek istedim")
+            check("REAL", "A correction is re-resolved from scratch (Codex answered, no model call, no repeat of the old route)", fixed.contains("Codex") && !fixed.contains("Claude Code") && scripted.prompts.count == modelCallsBefore, fixed)
+            let (ask, _) = await say("Yanlış anladın")
+            check("POLICY", "A bare ‘you misunderstood’ asks what was meant", ask.contains("Asıl neyi kastettiniz"), ask)
+            check("POLICY", "A spoken ‘evet’ with a decision pending still approves nothing (voice has no authority)", { svc.hasPendingDecision = { true }; defer { svc.hasPendingDecision = { false } }; return ApprovalGuard.isApprovalUtterance("Evet") }())
+            // restore the user's real profile
+            prefs.voiceSpeechRate = savedRate; prefs.notifyOnTaskEvents = savedNotify; prefs.voiceEnabled = savedVoice
+            check("POLICY", "The live test restored the real profile (speech rate, notifications, voice)", prefs.voiceSpeechRate == savedRate && prefs.notifyOnTaskEvents == savedNotify && prefs.voiceEnabled == savedVoice)
+        }
+
         // MARK: latency
         if wants("latency") {
             prefs.responseStyle = .concise; prefs.conversationFollowUps = true

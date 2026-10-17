@@ -206,3 +206,6 @@ A spoken "Playwright hakkında ne karar vermiştik?" is a normal final transcrip
 
 ## V0.12 — voice and the orchestrator
 No new voice path. A spoken compound goal is `ConversationService.submit(source: .voice)` → the same orchestrated task (`input_channel = voice`) with a short acknowledgement (what JARVIS will do, not each internal step); “Durum ne?”, “Hangi agent çalışıyor?”, “Testler geçti mi?” are deterministic commands answered from the graph (no provider call); “görevi durdur” stops the task while “sus / stop talking” stops speech; a spoken “yes/evet/onayla” never releases an approval gate.
+
+## V1.0 stabilisation fix 2
+Voice commands stay distinct: Sus (speech/generation), Dinlemeyi bırak (end the exchange), Uyku moduna geç (pause wake listening), Wake word'ü kapat (persisted setting), Görevi durdur (stop the task). A spoken “evet” never approves anything. The voice status strip has a fixed reserved height (DEC-253).

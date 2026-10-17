@@ -37,3 +37,8 @@ Settings → Startup (Launch at Login, Open Compact on launch), Daily JARVIS (re
 
 ## Evidence (this Mac)
 `--daily-jarvis-live-test`: see `PROJECT_STATE.md` (conversation 47 checks, latency p50/p95, readiness without starting anything).
+
+## V1.0 stabilisation fix 2
+* Ability questions (screen, files, web, memory, “what else can you do”, “system status”) are answered from state with no model; “Ekranıma bak” is a Computer Use observation. A language model that states JARVIS' abilities is replaced by JARVIS' own statement (DEC-248).
+* Natural settings requests (speech speed, “efendim”, answer length, wake word, voice input, notifications, Launch at Login) change typed settings with read-back evidence; undo / “what did you change” / “which settings can you change” work; “where did you save that?” is answered from the storage ledger (DEC-249). The address preference is a persisted setting changed only by explicit request.
+* Corrections (“Hayır, … demek istedim”) are re-resolved from scratch (DEC-250); a model's “efendim” follows the same cadence as JARVIS' own (DEC-251). Production shows only real data (`docs/PRODUCTION_TRUTH.md`).

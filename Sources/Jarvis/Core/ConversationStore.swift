@@ -61,6 +61,16 @@ final class ConversationStore {
         if let m = messages.last(where: { $0.id == id }) { setFeedback(m.content) }
     }
 
+    /// Replaces the text of a finished or streaming response (the capability-claim firewall: a claim about JARVIS made by the engine is never kept).
+    func replaceContent(_ id: UUID, with text: String) {
+        update(id) { $0.content = text; $0.tone = .notice }
+    }
+
+    /// Rewrites the text of a response without changing its tone (presentation-only edits such as the “efendim” cadence).
+    func rewriteContent(_ id: UUID, with text: String) {
+        update(id) { $0.content = text }
+    }
+
     func fail(_ id: UUID, reason: String) {
         update(id) {
             if $0.content.isEmpty { $0.content = reason }

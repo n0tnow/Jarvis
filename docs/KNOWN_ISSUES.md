@@ -747,3 +747,24 @@ Description: the installed app starts with Voice off, so holding the right ⌥ k
 ### JARVIS-V15-13 — A capability question phrased outside the recognised grammar still reaches the conversation model
 Status: Open
 Description: the introspection grammar is deliberately strict (it must not swallow real requests such as “Can you use Claude Code to fix the bug?”). An unusual phrasing of a capability question falls through to the model, which knows nothing about this installation. Report such phrasings and they are added as tests.
+
+### JARVIS-V15-13 (update, V1.0 fix 2)
+Status: Mitigated
+Description: the provider identity firewall (DEC-248) now also replaces an engine reply that denies or overclaims an ability, and the engine instruction no longer says “you cannot read files”. A capability question still has to match the strict grammar to be answered without a model; the firewall is the second line of defence.
+
+### JARVIS-V1F2-1 — A false engine claim is visible for the length of one streamed reply before the firewall replaces it
+Status: Open (by design)
+Description: `CapabilityClaimGuard` runs on the finished reply; the text streams first. In a spoken turn the claim is replaced before the reply is spoken (speech starts after the answer completes). Report any phrasing it misses so the sentence list can be extended.
+
+### JARVIS-V1F2-2 — Real acoustic wake-word behaviour is not automated
+Status: MANUAL TEST REQUIRED
+Description: the V0.8 benchmark and the closed-loop live test measure the detector, latency and resources with synthetic audio; whether “Jarvis” wakes the installed app from your voice, in your room, with your Mac's microphone, and how often ordinary talk wakes it, can only be judged by you. Microphone permission for the ad-hoc signed installed app must be granted again after every rebuild (JARVIS-V15-11).
+
+### JARVIS-V1F2-3 — Wake recovery after sleep or a device change is bounded
+Status: By design
+Description: after the Mac wakes or the audio device changes, wake listening is retried twice (2 s, 6 s). If the device is still unavailable it stays UNAVAILABLE with an instruction; turn the Wake Word off and on again (Settings, menu bar or “wake word'ü kapat / aç”) to retry. Nothing retries forever.
+
+### JARVIS-V1F2-4 — “Show Developer Controls” no longer shows the state simulator in the installed app
+Status: Resolved by design (DEC-247)
+Description: the simulator, demo tasks and agent simulation exist only in developer launches (`--dev-demo`, `--capture`, `--smoke-test`).
+

@@ -90,6 +90,8 @@ final class AppContext {
     /// V0.15: what is ready (read-only), the typed setup runner, opt-in notifications. Created by `installDailyJarvis()`.
     @ObservationIgnored var readiness: ReadinessService!
     @ObservationIgnored var readinessAssistant: ReadinessAssistant!
+    @ObservationIgnored var settingsAssistant: SettingsAssistant!
+    @ObservationIgnored let storageLedger = StorageLedger()
     @ObservationIgnored var setupRunner: SetupRunner!
     @ObservationIgnored var notifier: JarvisNotifier!
     /// Set by the app delegate: the Push-to-Talk key monitor's counters (read by Settings and Readiness; never polled).
@@ -102,7 +104,13 @@ final class AppContext {
     var windows: any JarvisWindowControlling { windowManager }
 
     /// `voiceRig`: only the natural-voice live test passes one (a scripted microphone + simulated speaker in a closed acoustic loop; no hardware).
-    init(seedDemoData: Bool = true, stubIntelligence: Bool = false, dataDirectory: URL? = nil, voiceRig: VoiceTestRig? = nil) {
+    /// True ONLY for developer / capture / smoke launches: the simulated V0.1 tasks, agents, project and activity exist, the simulator controls are shown and every simulated item is labelled. A normal launch of
+    /// the installed app is NEVER a demo environment: its screens show real persisted / runtime state or an honest empty state (V1.0 stabilisation fix 2).
+    let demoMode: Bool
+    /// The V0.1 state simulator / simulated-task / simulated-agent controls: only in a demo environment AND only when the developer switch is on. Never in the installed app.
+    var simulatorControlsVisible: Bool { demoMode && preferences.showDeveloperControls }
+
+    init(seedDemoData: Bool = false, stubIntelligence: Bool = false, dataDirectory: URL? = nil, voiceRig: VoiceTestRig? = nil) {
         store = JarvisStore()
         hud = HUDState()
         preferences = Preferences()
@@ -145,7 +153,8 @@ final class AppContext {
         agents = AgentRunManager(coordinator: coordinator, resources: resources)
         benchmarks = BenchmarkRunner(repository: repo, artifacts: artifacts)
         observatory = AgentObservatory(hub: hub, supervisor: supervisor, openCode: openCode, local: localRuntime, repository: repo, artifacts: artifacts)
-        observatory.demo = ObservatoryDemo(hub: hub)
+        demoMode = seedDemoData
+        if seedDemoData { observatory.demo = ObservatoryDemo(hub: hub) }
         leases = FileLeaseManager(repository: repo)
         taskEngine = TaskEngine(repository: repo, artifacts: artifacts, audit: audit, leases: leases, agents: ManagerAgentRunner(manager: agents))
         unity = UnityService()
@@ -320,6 +329,11 @@ final class AppContext {
         if !stubIntelligence {
             observeContinuously(track: { _ = voicePrefs.voiceEnabled; _ = voicePrefs.voiceWakeEnabled }, onChange: { [weak self] in Task { @MainActor in await self?.handsFree.applySettings() } })
             Task { @MainActor [weak self] in await self?.handsFree.applySettings() }          // wake mode returns after launch only if the user left it on (and the microphone is allowed)
+            // The Mac sleeping must not hold the microphone; waking brings wake listening back (bounded retries) only if it was on.
+            let wsn = NSWorkspace.shared.notificationCenter
+            let hf = handsFree
+            sleepObservers.append(wsn.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in Task { @MainActor in await hf.suspendForSystemSleep() } })
+            sleepObservers.append(wsn.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in Task { @MainActor in hf.resumeAfterSystemWake() } })
         }
         observeContinuously(track: { [weak self] in _ = self?.conversation.messages; _ = self?.conversationService.isAnswering },
                             onChange: { [weak self] in self?.voice.conversationChanged() })

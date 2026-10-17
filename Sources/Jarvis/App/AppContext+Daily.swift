@@ -31,6 +31,18 @@ extension AppContext {
         readiness.onEvent = { [weak self] message, kind in self?.store.log(message, kind: kind, persist: false) }
         self.readiness = readiness
         readinessAssistant = ReadinessAssistant(service: readiness)
+        readinessAssistant.projectRoot = { [weak self] in self?.preferences.projectRoot }
+        settingsAssistant = SettingsAssistant(preferences: preferences, ledger: storageLedger)
+        let hf = handsFree
+        settingsAssistant.wakeIsActive = { hf.wakeStatus == .listening || hf.wakeStatus == .starting }
+        settingsAssistant.endListening = { hf.endHandsFreeSession() }
+        settingsAssistant.enterSleep = {
+            guard hf.wakeStatus == .listening || hf.wakeStatus == .starting else { return false }
+            Task { @MainActor in await hf.enterSleepMode() }
+            return true
+        }
+        settingsAssistant.isSleeping = { hf.isSleepingByUser }
+        settingsAssistant.resumeFromSleep = { Task { @MainActor in await hf.resumeFromSleepMode() } }
         configureDailyConversation(on: conversationService)
 
         // What can be known cheaply is evaluated once after launch (provider availability lists; starts nothing, asks for nothing).
@@ -66,6 +78,8 @@ extension AppContext {
             return await self.continuity.focus(projectNamed: name)
         }
         service.readinessHandler = readinessAssistant
+        service.settingsHandler = settingsAssistant
+        service.storageLedger = storageLedger
     }
 
     /// The right ⌥ key was held while Voice is OFF: say so, visibly, once in a while — instead of ignoring the hold in silence. Nothing is switched on and the microphone stays closed; the

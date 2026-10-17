@@ -179,6 +179,35 @@ struct AddressPolicy: Sendable {
         }
     }
 
+    /// Removes “efendim” from `text` (every occurrence, or all but the first when `keepFirst`). A reply that is nothing but “Efendim?” is left alone.
+    static func strip(from text: String, keepFirst: Bool) -> String {
+        guard text.range(of: "efendim", options: .caseInsensitive) != nil else { return text }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("efendim") && trimmed.count <= 9 { return text }
+        var out = text
+        var seen = 0
+        var from = 0                                                    // character offset: indices are recomputed after every edit
+        while from <= out.count,
+              let r = out.range(of: "efendim", options: .caseInsensitive, range: out.index(out.startIndex, offsetBy: from)..<out.endIndex) {
+            seen += 1
+            if keepFirst && seen == 1 { from = out.distance(from: out.startIndex, to: r.upperBound); continue }
+            var lower = r.lowerBound, upper = r.upperBound
+            let before = out[..<lower].trimmingCharacters(in: .whitespaces)
+            let atSentenceStart = before.isEmpty || ".!?…\n".contains(before.last!)
+            if atSentenceStart {                                       // “Efendim, hallettim.” → “Hallettim.”
+                while upper < out.endIndex, out[upper] == "," || out[upper] == " " { upper = out.index(after: upper) }
+                out.removeSubrange(lower..<upper)
+                if lower < out.endIndex, out[lower].isLowercase { out.replaceSubrange(lower...lower, with: String(out[lower]).uppercased()) }
+            } else {                                                   // “Tamam, efendim.” → “Tamam.”   “Tamam efendim, hallettim” → “Tamam, hallettim”
+                while lower > out.startIndex, out[out.index(before: lower)] == " " { lower = out.index(before: lower) }
+                if lower > out.startIndex, out[out.index(before: lower)] == "," { lower = out.index(before: lower) }
+                out.removeSubrange(lower..<upper)
+            }
+            from = min(out.distance(from: out.startIndex, to: min(lower, out.endIndex)), out.count)
+        }
+        return out.trimmingCharacters(in: .whitespaces).isEmpty ? text : out
+    }
+
     /// Inserts “efendim” after the first clause of `text` (“Başlıyorum.” → “Başlıyorum efendim.”). Idempotent; empty text is untouched.
     static func insert(into text: String) -> String {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -258,6 +287,16 @@ final class ResponsePresenter {
         }
         remember(out, ShapedReply(shown: out, full: base.full, wasShortened: out.count < base.full.count))
         return out
+    }
+
+    /// A model-written answer (typed or spoken — it is one text) is held to the same cadence as JARVIS' own sentences: at most one “efendim”, and only when the spacing allows it (V1.0 fix 2).
+    /// Off and Minimal never keep one in an ordinary answer; English never does.
+    func constrainModelOutput(_ text: String, language: ReplyLanguage) -> String {
+        address.style = addressStyle()
+        guard text.range(of: "efendim", options: [.caseInsensitive, .diacriticInsensitive]) != nil else { return text }
+        guard language == .tr, address.style == .natural else { return AddressPolicy.strip(from: text, keepFirst: false) }
+        if address.allows(.taskAccepted, language: language) { return AddressPolicy.strip(from: text, keepFirst: true) }      // reserves the use when it is allowed
+        return AddressPolicy.strip(from: text, keepFirst: false)
     }
 
     func addressed(_ text: String, moment: ReplyMoment, language: ReplyLanguage) -> String {

@@ -14,8 +14,10 @@ V0.15 State:
 
 V1.0 stabilisation fix 1 (DEC-246): capability introspection, response-depth target and Push-to-Talk visibility fixed after the first real use — AUTOMATED VERIFIED / HUMAN PTT TEST REQUIRED (README 1235–1242).
 
+V1.0 stabilisation fix 2 (DEC-247…253): real capability grounding, hands-free lifecycle, production UI truth, conversation/state truth — AUTOMATED VERIFIED / HUMAN WAKE + UI TEST REQUIRED (README 1243–1258). Audit table: `docs/PRODUCTION_TRUTH.md`.
+
 Next Step:
-Wait for Bilal to open JARVIS.app and start real-world use. Do not start V1.0 / any feature work without approval. No tag.
+Wait for Bilal's human acceptance tests of fix 2 (README 1243–1258: wake word in the room, voice states, installed UI). No Fix 3, no V1.1, no feature work without approval. No tag.
 
 Blocked By:
 Nothing.

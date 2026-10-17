@@ -250,6 +250,16 @@ enum ComputerGoalParser {
             ])], apps: [app])
         }
 
+        // 7b. “Ekranıma bak” / “Look at my screen” / “what is on my screen”: an explicit REQUEST to look. It observes the frontmost application window through Accessibility (labels only, one observation,
+        // no continuous watching); a window picture is only taken by the separate, permission-gated vision path. A QUESTION about the ability (“can you see my screen?”) never gets here — it is answered from state.
+        let screenWords: Set<String> = ["ekran", "ekrani", "ekranim", "ekranima", "ekranimi", "ekranimda", "ekraninda", "ekranda", "screen", "desktop", "masaustu", "masaustume", "masaustumu"]
+        let lookVerbs: Set<String> = ["bak", "bakar", "bakin", "bakarmisin", "incele", "inceler", "look", "describe", "check", "inspect", "analyze", "analiz", "oku", "read", "goster", "show"]
+        if t.count <= 8, !words.isDisjoint(with: screenWords), words.isDisjoint(with: clickVerbs), !words.isDisjoint(with: lookVerbs) || (words.contains("var") && (words.contains("ne") || words.contains("neler"))) || ["what is on", "what s on", "whats on"].contains(where: { ComputerText.tokens(raw).joined(separator: " ").contains($0) }) {
+            return goal([GoalStep(title: language == .tr ? "Ekrandaki pencereye bakılıyor" : "Looking at the front window", actions: [
+                ComputerAction(kind: .observe, target: ActionTarget(app: AppRef()), summary: "Observe the frontmost application window"),
+            ])], apps: [])
+        }
+
         // 8. switch to an application
         if let app = known, !words.isDisjoint(with: switchVerbs) {
             return goal(launchSteps(app, verb: "switch"), apps: [app])

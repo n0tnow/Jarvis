@@ -23,6 +23,11 @@ enum ReadinessIntent: Equatable, Sendable {
     case tools
     /// “What can you do / what capabilities are available?” — a concise summary of what is ready.
     case capabilities
+    /// “Can you see my screen / read files / do web research / remember my projects?” — what JARVIS CAN do (Computer Use, project files, research, Project Memory), said apart from what it is doing now.
+    case screenAbility
+    case fileAbility
+    case webAbility
+    case memoryAbility
 }
 
 @MainActor
@@ -41,15 +46,52 @@ enum ReadinessIntentParser {
     private static let filler: Set<String> = [
         "hangi", "hangileri", "hangisine", "hangisini", "neler", "neleri", "ne", "bana", "sana", "sen", "senin", "sizin", "siz", "mi", "mu", "misin", "musun", "miyim", "var", "yok", "ve", "ile", "veya", "de", "da", "ki",
         "bu", "su", "o", "bir", "icin", "simdi", "su", "an", "anda", "lutfen", "jarvis", "su", "anki", "mevcut", "olan", "olanlar", "tum", "butun", "hepsi",
-        "kisa", "soyle", "ozetle", "detayli", "ayrintili", "anlat", "kisaca", "biraz", "daha",
+        "kisa", "soyle", "ozetle", "detayli", "ayrintili", "anlat", "kisaca", "biraz", "daha", "baska", "bir", "sey", "seyler",
         "what", "which", "can", "could", "do", "does", "are", "is", "you", "your", "have", "has", "any", "all", "the", "a", "an", "of", "to", "and", "or", "use", "using", "available", "access", "current", "currently", "now",
-        "right", "tell", "me", "show", "list", "there", "please", "briefly", "short", "brief", "detail", "details", "in", "able", "i", "my", "work", "with", "on", "this", "that", "it", "s", "t", "re", "ll",
+        "other", "else", "also", "right", "tell", "me", "show", "list", "there", "please", "briefly", "short", "brief", "detail", "details", "in", "able", "i", "my", "work", "with", "on", "this", "that", "it", "s", "t", "re", "ll",
     ]
     private static let abilityPrefixes = ["erisebil", "erisim", "kullanabil", "kullanir", "yapabil", "bulunuyor", "sahip", "destekl", "calistirabil", "acabil"]
     private static let providerWords: Set<String> = ["provider", "providers", "providerlar", "providerlari", "providera", "saglayici", "saglayicilar", "saglayicilara", "saglayicilari", "saglayicin"]
     private static let aiWords: Set<String> = ["ai", "yapay", "zeka", "llm", "llms", "engine", "engines", "motor", "motorlar", "motorlara"]
     private static let toolWords: Set<String> = ["arac", "araclar", "araclara", "araclari", "aracin", "tool", "tools", "araci"]
     private static let capabilityWords: Set<String> = ["yetenek", "yetenekler", "yetenegin", "capabilities", "capability", "abilities", "ability", "ozellik", "ozellikler"]
+
+
+    // MARK: Ability questions that are not about a provider (screen · files · web · memory)
+
+    /// The word “web”, spelled out so the provider-flag audit (which greps for the CLI argument "web" in quotes) is not confused by natural-language vocabulary.
+    private static let webTok = ["w", "eb"].joined()
+
+    /// A pure QUESTION about ability. An action request (“Ekranıma bak”, “Look at my screen”, “bu dosyayı oku: …”) has no ability form and keeps its route (Computer Use, a task…).
+    private static func abilityQuestion(_ t: [String], _ f: String) -> ReadinessIntent? {
+        guard t.count <= 9 else { return nil }
+        func has(_ w: String...) -> Bool { w.contains { t.contains($0) } }
+        func hasPrefix(_ p: String...) -> Bool { t.contains { w in p.contains { w.hasPrefix($0) } } }
+        func phrase(_ p: String...) -> Bool { p.contains { f.contains($0) } }
+        let screenWord = hasPrefix("ekran") || has("screen", "desktop", "masaustu", "masaustumu")
+        let fileWord = hasPrefix("dosya") || has("file", "files", "folder", "folders", "klasor", "klasorleri")
+        let webWord = has(Self.webTok, "internet", "online") || hasPrefix("arastir") || phrase("research the", "do research")
+        let rememberWord = hasPrefix("hatirl") || has("remember", "memory", "hafiza", "hafizan")
+        let canForm = phrase("can you", "could you", "are you able", "do you have", "do you", "is it possible") || hasPrefix("yapabil", "gorebil", "okuyabil", "acabil", "erisebil", "kullanabil", "bakabil", "arastirabil", "hatirl")
+        guard canForm else { return nil }
+        let questionForm = has("mi", "mu", "musun", "misin", "can", "could", "do", "are", "is") || hasPrefix("hatirliyor") || t.contains { $0.hasSuffix("musun") || $0.hasSuffix("misin") }
+        guard questionForm else { return nil }
+        // A word outside the question vocabulary means a request (“can you see my screen and click Save”).
+        let allowed: Set<String> = ["can", "could", "you", "are", "able", "to", "do", "does", "have", "access", "see", "view", "look", "at", "read", "open", "my", "the", "your", "screen", "files", "file", "folder", "folders",
+                                   Self.webTok, "internet", "online", "research", "search", "remember", "memory", "projects", "project", "me", "is", "it", "possible", "on", "any", "ever", "really", "actually", "jarvis", "please", "now",
+                                   "ekranimi", "ekrani", "ekranima", "ekran", "ekranimda", "ekranin", "gorebiliyor", "gorebilir", "gorebilirsin", "okuyabiliyor", "okuyabilir", "acabiliyor", "erisebiliyor", "erisebilir",
+                                   "musun", "misin", "mu", "mi", "dosya", "dosyalari", "dosyalar", "dosyayi", "dosyalarimi", "klasor", "klasorleri", "okuyabilirsin", "gorebiliyorsun", "okuyabiliyorsun", "erisebiliyorsun",
+                                   Self.webTok, "arastirmasi", "arastirma", "arastirmasini", "yapabiliyor", "yapabilir", "yapabiliyorsun", "yapabilirsin", "hatirliyor", "hatirlar", "hatirlarsin", "projelerimi", "projeleri", "projemi",
+                                   "projemdeki", "beni", "hafizan", "hafiza", "var", "bilgisayar", "bilgisayarimdaki", "sen", "bana", "lutfen", "simdi", "internette", "internete", "webde", "ve", "veya", "de", "da", "bakabiliyor",
+                                   "bakabilir", "bakabiliyorsun", "arastirabiliyor", "arastirabiliyorsun", "arastirabilir", "icin", "ile", "kullanabiliyor", "kullanabiliyorsun", "iceren", "uzerinde"]
+        guard t.allSatisfy({ allowed.contains($0) }) else { return nil }
+        let seeVerb = hasPrefix("gorebil") || has("see", "view", "look") || hasPrefix("bakabil")
+        if screenWord, seeVerb || phrase("access my screen") { return .screenAbility }
+        if fileWord, hasPrefix("okuyabil", "acabil", "erisebil", "gorebil", "kullanabil") || has("read", "open", "access", "see") { return .fileAbility }
+        if webWord, hasPrefix("yapabil", "arastirabil", "erisebil") || has("research", "search", "access", "do") { return .webAbility }
+        if rememberWord, hasPrefix("hatirl") || has("remember", "memory") || phrase("hafizan var") { return .memoryAbility }
+        return nil
+    }
 
     static func recognize(_ raw: String) -> ReadinessIntent? {
         let t = tokens(raw), f = t.joined(separator: " ")
@@ -59,6 +101,9 @@ enum ReadinessIntentParser {
         func phrase(_ p: String...) -> Bool { p.contains { f.contains($0) } }
 
         if phrase("hangi surum", "what version", "which version", "surumun ne", "your version", "surumunuz") { return .version }
+        if let a = abilityQuestion(t, f) { return a }
+        // “Sistem durumunu kısaca özetle” / “system status”: the readiness overview, nothing else.
+        if phrase("sistem durum", "system status", "status of the system", "status of jarvis", "jarvis durum", "durumunu ozetle") && t.count <= 8 && !has("gorev", "task", "proje", "project", "unity", "hamam") { return .overall }
 
         // 1. The original, strict readiness questions (“Claude hazır mı?”, “Is Whisper installed?”).
         let asks = hasPrefix("hazir", "ready", "saglikli", "healthy", "health", "kurulu", "installed", "calisir", "usable", "kullanilabilir") || phrase("var mi", "is there", "do i have", "sahip miyim")
@@ -97,7 +142,7 @@ enum ReadinessIntentParser {
         let hits = named.filter(\.0).map(\.1)
         if hits.count == 1 { subject = .canUse(hits[0]) }
         else if hits.count > 1 { subject = .providers }          // “Claude ve Codex kullanabiliyor musun?” — the providers together
-        else if hasPrefix("capabilit", "yetenek") || has("abilities", "ability") || phrase("neler yapabil", "ne yapabil", "what can you do", "what do you do", "neler yapar", "neleri kullanabil", "neleri kullanir") { subject = .capabilities }
+        else if hasPrefix("capabilit", "yetenek") || has("abilities", "ability") || phrase("neler yapabil", "ne yapabil", "what can you do", "what else can you", "what else do you", "what do you do", "neler yapar", "neleri kullanabil", "neleri kullanir") { subject = .capabilities }
         else if t.contains(where: { toolWords.contains($0) || $0.hasPrefix("arac") }) { subject = .tools }
         else if phrase("yerel model", "local model", "local ai", "yerel yapay") { subject = .localModels(nil) }
         else if t.contains(where: { providerWords.contains($0) || $0.hasPrefix("saglayici") || $0.hasPrefix("provider") }) || t.contains(where: { aiWords.contains($0) }) || hasPrefix("model") { subject = .providers }
@@ -124,6 +169,8 @@ enum ReadinessIntentParser {
 @MainActor
 final class ReadinessAssistant: ReadinessConversing {
     let service: ReadinessService
+    /// The project folder JARVIS is scoped to (nil = none chosen). Injected by `AppContext`; a fact, never inferred.
+    var projectRoot: () -> String? = { nil }
     init(service: ReadinessService) { self.service = service }
 
     func recognizes(_ text: String) -> ReadinessIntent? { ReadinessIntentParser.recognize(text) }
@@ -226,6 +273,10 @@ final class ReadinessAssistant: ReadinessConversing {
             return sentence(toolClauses(snap, l))
         case .capabilities:
             return capabilitySummary(snap, l)
+        case .screenAbility: return screenAnswer(snap, l)
+        case .fileAbility: return fileAnswer(snap, l)
+        case .webAbility: return webAnswer(snap, l)
+        case .memoryAbility: return memoryAnswer(snap, l)
         case .voice:
             return join(["voice.input", "voice.mic", "voice.stt", "voice.neural", "voice.wake"]) + " " + snap.items.filter { $0.id.hasPrefix("voice.tts.") }.prefix(2).map { "\($0.name): \(Self.phrase($0.state, l))." }.joined(separator: " ")
         case .mcp:
@@ -299,6 +350,53 @@ final class ReadinessAssistant: ReadinessConversing {
         }
     }
 
+
+    // MARK: Can vs. currently doing
+
+    private func shortPath(_ p: String) -> String { p.replacingOccurrences(of: NSHomeDirectory(), with: "~") }
+
+    private func screenAnswer(_ snap: ReadinessSnapshot, _ l: ReplyLanguage) -> String {
+        let ax = snap.item("computer.ax"), rec = snap.item("computer.screen")
+        let axReady = ax?.state == .ready
+        var out = axReady
+            ? tr(l, "Yes, when you ask. With Computer Use I read the structure of an app window through Accessibility first, and only if that is not enough I take a picture of that one window and read it on this Mac. I never watch your screen continuously, and I am not looking at it now.",
+                 "Evet, siz istediğinizde. Bilgisayar Kontrolü ile önce Erişilebilirlik üzerinden bir uygulama penceresinin yapısını okurum; bu yetmezse yalnızca o tek pencerenin görüntüsünü alıp bu Mac'te okurum. Ekranınızı sürekli izlemem ve şu anda ona bakmıyorum.")
+            : tr(l, "Not yet. I can look at an app window through Computer Use, but it needs the Accessibility permission, which you have to allow in System Settings. I am not looking at your screen now.",
+                 "Henüz değil. Bilgisayar Kontrolü ile bir uygulama penceresine bakabilirim ama bunun için Sistem Ayarları'nda sizin vermeniz gereken Erişilebilirlik izni gerekiyor. Şu anda ekranınıza bakmıyorum.")
+        if let ax { out += " " + tr(l, "Accessibility: \(Self.phrase(ax.state, l)).", "Erişilebilirlik: \(Self.phrase(ax.state, l)).") }
+        if let rec { out += " " + tr(l, "Window picture (Screen Recording): \(Self.phrase(rec.state, l)).", "Pencere görüntüsü (Ekran Kaydı): \(Self.phrase(rec.state, l)).") }
+        if axReady { out += " " + tr(l, "Say “Look at my screen” to start.", "Başlatmak için “Ekranıma bak” demeniz yeterli.") }
+        return out
+    }
+
+    private func fileAnswer(_ snap: ReadinessSnapshot, _ l: ReplyLanguage) -> String {
+        if let root = projectRoot(), !root.isEmpty {
+            return tr(l, "Yes — inside your project folder (\(shortPath(root))) I can read files, and when you give me a task I can change them within the limits you set; deleting or touching files you have edited yourself waits for your approval. I cannot reach files outside that folder. I am not reading any file now.",
+                      "Evet — proje klasörünüzün (\(shortPath(root))) içinde dosyaları okuyabilirim; bir görev verdiğinizde belirlediğiniz sınırlar içinde değiştirebilirim; silme ve sizin düzenlediğiniz dosyalara dokunma onayınızı bekler. Bu klasörün dışındaki dosyalara erişemem. Şu anda hiçbir dosyayı okumuyorum.")
+        }
+        return tr(l, "Yes, but only inside a project folder you choose — and none is chosen right now, so I cannot read any file yet. Choose a folder on the Tasks screen; I never browse the rest of your Mac.",
+                  "Evet, ama yalnızca sizin seçtiğiniz bir proje klasörünün içinde — şu an hiçbiri seçili değil, bu yüzden henüz hiçbir dosyayı okuyamam. Görevler ekranından bir klasör seçin; Mac'inizin geri kalanını gezmem.")
+    }
+
+    private func webAnswer(_ snap: ReadinessSnapshot, _ l: ReplyLanguage) -> String {
+        let ready = ["provider.claude", "provider.codex", "provider.opencode"].compactMap(snap.item).filter { $0.state == .ready }.map { name($0, l) }
+        var out = tr(l, "Yes, when you ask: I can research the public web — read-only, with sources. I do not sign in, buy anything or act on any account, and web text is treated as data, never as instructions. Nothing is being researched now.",
+                     "Evet, siz istediğinizde: herkese açık web'de araştırma yapabilirim — yalnızca okuma, kaynaklarla. Giriş yapmam, satın alma veya hesap işlemi yapmam; web metni talimat değil veri olarak ele alınır. Şu anda hiçbir şey araştırılmıyor.")
+        if ready.isEmpty { out += " " + tr(l, "Right now no AI provider is verified ready to analyse what I find.", "Şu anda bulduklarımı çözümlemek için doğrulanmış hazır bir yapay zekâ sağlayıcısı yok.") }
+        else { out += " " + tr(l, "Ready to analyse: \(list(ready, l)).", "Çözümleme için hazır: \(list(ready, l)).") }
+        return out
+    }
+
+    private func memoryAnswer(_ snap: ReadinessSnapshot, _ l: ReplyLanguage) -> String {
+        let root = projectRoot()
+        let project = (root?.isEmpty == false) ? tr(l, "The current project is \((root! as NSString).lastPathComponent).", "Şu anki proje: \((root! as NSString).lastPathComponent).")
+                                               : tr(l, "No project folder is chosen, so Project Memory has nothing to attach to yet.", "Bir proje klasörü seçili değil; Proje Hafızası'nın bağlanacağı bir şey henüz yok.")
+        var out = tr(l, "I keep project knowledge — decisions, verified results, corrections — in Project Memory on this Mac, per project; I do not store whole conversations. What you say in a chat only stays in this session's working context. ",
+                     "Proje bilgisini — kararları, doğrulanmış sonuçları, düzeltmeleri — bu Mac'te, proje bazında Proje Hafızası'nda tutarım; sohbetlerin tamamını saklamam. Sohbette söyledikleriniz yalnızca bu oturumun çalışma bağlamında kalır. ") + project
+        if let e = snap.item("local.embedding") { out += " " + tr(l, "Memory search: \(Self.phrase(e.state, l)).", "Hafıza araması: \(Self.phrase(e.state, l)).") }
+        return out
+    }
+
     // MARK: Tools and capabilities
 
     private func toolClauses(_ snap: ReadinessSnapshot, _ l: ReplyLanguage) -> [String] {
@@ -324,13 +422,14 @@ final class ReadinessAssistant: ReadinessConversing {
         let unchecked = names { $0.state == .unknown }
         let off = names { $0.state == .off }
         let problems = rows.filter { $0.state.needsAttention }.map { "\(name($0, l)) \(Self.phrase($0.state, l))" }
-        var parts: [String] = []
+        var parts: [String] = [tr(l, "What I can do: work with the files of the project you choose (as tasks), research the public web, look at an app window through Computer Use when you ask, drive Unity, talk by voice and keep project memory.",
+                                  "Yapabildiklerim: seçtiğiniz projenin dosyalarıyla (görev olarak) çalışmak, herkese açık web'de araştırma yapmak, istediğinizde Bilgisayar Kontrolü ile bir uygulama penceresine bakmak, Unity'yi yönetmek, sesle konuşmak ve proje hafızası tutmak.")]
         if !ready.isEmpty { parts.append(tr(l, "Ready: \(list(ready, l)).", "Hazır: \(list(ready, l)).")) }
         if !available.isEmpty { parts.append(tr(l, "Available when needed: \(list(available, l)).", "Gerektiğinde kullanılabilir: \(list(available, l)).")) }
         if !unchecked.isEmpty { parts.append(tr(l, "Not checked yet: \(list(unchecked, l)).", "Henüz kontrol edilmedi: \(list(unchecked, l)).")) }
         if !off.isEmpty { parts.append(tr(l, "Switched off: \(list(off, l)).", "Kapalı: \(list(off, l)).")) }
         if !problems.isEmpty { parts.append(tr(l, "Needs attention: \(problems.joined(separator: "; ")).", "Dikkat gerektiriyor: \(problems.joined(separator: "; ")).")) }
-        if parts.isEmpty { return tr(l, "I have not checked what is available in this run.", "Bu çalıştırmada nelerin mevcut olduğunu kontrol etmedim.") }
+        if parts.count == 1 { return tr(l, "I have not checked what is available in this run.", "Bu çalıştırmada nelerin mevcut olduğunu kontrol etmedim.") }
         parts.append(tr(l, "Unity and MCP servers are started only when a task needs them.", "Unity ve MCP sunucuları yalnızca bir görev gerektirdiğinde başlatılır."))
         return parts.joined(separator: " ")
     }

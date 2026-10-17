@@ -553,3 +553,25 @@ Wait for the manual test (README 1153–1234). V1.0 is not started.
 
 ### Evidence
 Synthetic right ⌥ HID events (`CGEvent` flagsChanged, keyCode 61) change the session flag state exactly like a key (raw 0x40) and reach the installed app: Voice OFF → hint logged; Voice ON (non-persistent `-prefs.voice.enabled '<true/>'` override) → “hold reached — voice input requested”, voice state “requesting permission”, “released”. After reinstalling, Microphone / Accessibility read PERMISSION NEEDED (ad-hoc signature, JARVIS-V15-11).
+
+## 2026-10-17 — V1.0 stabilisation fix 2 (capability grounding · hands-free · production truth · conversation truth)
+
+### Provenance
+HEAD = origin/main = a8e5646 (docs-only) at the start; the installed app embedded a0825ff (build 93), the real code commit and an ancestor of HEAD — nothing was missing. Fix 2 is committed in focused commits on main; the installed build number is in the final report.
+
+### Root causes
+* **Demo data in production:** `AppContext(seedDemoData:)` defaulted to true (V0.1), so a normal launch seeded a fake task/project/agents/tools/activity and every approval card said DEMO; “Show Developer Controls” also exposed the simulator. → DEC-247.
+* **False capability answers:** the engine instruction told the model it “cannot … read or modify files”, and nothing stopped it from speaking about JARVIS' abilities; screen/file/web/memory ability questions were not in the readiness grammar. → DEC-248.
+* **“efendim”/memory/settings:** preference sentences had no typed route; “hafızaya kaydet” went to Project Memory (per-project, no project → error) and settings requests were acknowledged without any change. → DEC-249/250/251.
+* **Voice layout shift:** `VoiceStrip` was inserted/removed above the conversation per voice state, resizing the viewport. → DEC-253.
+* **Wake lifecycle gaps:** no recovery after Mac sleep or an audio-device change; no sleep mode / end-of-exchange command; no single status overview. → DEC-252.
+
+### Evidence (automated, this Mac)
+* `scripts/verify.sh` PASSED: 1752 tests / 260 suites; smoke 172 PASS / 0 FAIL / 2 SKIP (7 new fix-2 checks); guards 5 new; release bundle + package-app step; idle CPU < 5 % of one core.
+* `--daily-jarvis-live-test --daily-section grounding`: 20 PASS / 0 FAIL — real conversation stack, real readiness snapshot, real persisted preferences (read back from a second `Preferences` instance), zero model calls; it found two real defects before release (an operator-precedence bug that made “Can you see my screen?” a settings listing, and a fragment-completion bug), both fixed with regression tests.
+* `--natural-voice-live-test` (closed acoustic loop, synthetic audio, real helpers, silent): 55 PASS / 0 FAIL / 1 SKIP. Wake detected 98 ms (p50) after the end of the word, 4 of 4 positive variants; 0 false wakes in 24 s of ordinary speech, 0 of 6 look-alike words; wake mode in a quiet room: 0.0 s of audio sent to the helper, helper 0.00 CPU-s, JARVIS 0.03–0.11 % of a core (no HUD / Compact / Full HUD), RSS 174–188 MB with the neural voice loaded (sentinel helper 118 MB; JARVIS alone 89 MB at idle); end of user speech → first audio: EN 1.3 s, TR one-breath 1.4 s, TR two-step 2.8 s; barge-in decision → silence ≈ 45 ms.
+* Layout regression test fails on the old behaviour (mutation-checked).
+
+### Not done / human
+Real wake word in the room, real microphone, installed-UI visual check: README 1243–1258. Ad-hoc signing: macOS permissions must be granted again after installing this build (JARVIS-V15-11); no stable signing identity exists (`security find-identity`: 0 valid).
+

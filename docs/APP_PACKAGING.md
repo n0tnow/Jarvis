@@ -25,3 +25,6 @@ Status: IMPLEMENTED · AUTOMATED TESTED · REAL TESTED (installed copy launched 
 
 ## Verification (this Mac)
 See `PROJECT_STATE.md` (package checks, installed-app check, `--packaging-live-test`, cold launch, idle).
+
+## V1.0 stabilisation fix 2
+Signing identity check: this Mac has no stable Developer ID / development identity usable for JARVIS (see the final report of fix 2), so the app stays ad-hoc signed; every rebuild invalidates the macOS Microphone / Accessibility grants (JARVIS-V15-11) — grant them once after installing the build you will keep using. TCC was not reset and no credential was touched. Application Support, the database, settings and models are untouched by an install.

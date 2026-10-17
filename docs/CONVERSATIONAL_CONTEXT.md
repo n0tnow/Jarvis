@@ -22,3 +22,6 @@ Settings → Daily JARVIS → *Conversational follow-ups* (off = follow-ups are 
 
 ## Tests
 `FollowUpParsingTests`, `ReferenceResolutionTests`, `DestructiveReferenceTests`, `WorkingContextBoundsTests`, `DailyFollowUpTests`, `DailyProjectFocusTests`, structural tests; live: `--daily-jarvis-live-test` (resolution p50 ≈ 0.01 ms).
+
+## V1.0 stabilisation fix 2 — the context also remembers the last turn
+`ConversationWorkingContext.lastTurn` / `correction` keep (bounded, memory only, cleared with the context) the previous user utterance, how JARVIS interpreted it, its answer and a correction marker, so “Hayır, demek istediğim …” can be re-resolved instead of repeating the old route. A short fragment after a settings change (“yavaşlat”) takes that setting as its subject. Nothing here is persisted or authoritative; Project Memory is never used for preferences.

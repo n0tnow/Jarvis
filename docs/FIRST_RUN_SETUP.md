@@ -28,3 +28,6 @@ Large models are never bundled in the app; an already installed model is referen
 
 ## Disposable setup fixture
 `--setup-live-test` (15 checks): missing tool, existing installation, interrupted `.part` then atomic resume, checksum mismatch, insufficient disk, cancel, duplicate request, non-executable and linked scripts, no URL/command action, no paid dependency, model-folder link escape, archive traversal / symlink rejection.
+
+## V1.0 stabilisation fix 2
+Wake Word remains OFF by default and is switched by you (Settings → Voice, the menu bar, or “wake word'ü aç”); the Hands-free overview shows Voice, Push-to-Talk, Wake Word, the detector state, the microphone, recognition, output and the session state in one place.

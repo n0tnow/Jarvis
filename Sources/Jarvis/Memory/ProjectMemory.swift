@@ -21,6 +21,9 @@ protocol MemoryConversing: AnyObject {
     /// A bounded memory packet for an ordinary conversational question, or nil when nothing in memory is relevant (or memory is off).
     func conversationContext(for prompt: String) async -> ConversationMemoryContext?
     func recordConversationUse(_ c: ConversationMemoryContext, runID: UUID?)
+    /// True when the LAST command wrote a record into Project Memory (remember / correct). The conversation's storage ledger records what really happened, never what was intended.
+    var lastCommandStored: Bool { get }
+    var currentProjectName: String? { get }
 }
 
 struct ConversationMemoryContext: Sendable { var text: String; var packet: ContextPacket; var project: ProjectIdentity }
@@ -66,6 +69,8 @@ final class ProjectMemory: MemoryConversing {
     @ObservationIgnored var modelCall: (@MainActor (TaskRecord, String) async -> (text: String, model: String)?)?
 
     private(set) var currentProject: ProjectIdentity?
+    private(set) var lastCommandStored = false
+    var currentProjectName: String? { currentProject?.name }
     private(set) var lastIngest: String?
     private(set) var lastRetrievalMs: Double?
     private(set) var lastContext: String?
@@ -152,14 +157,16 @@ final class ProjectMemory: MemoryConversing {
     private func tr(_ l: ReplyLanguage, _ en: String, _ trk: String) -> String { l == .tr ? trk : en }
 
     func reply(to command: MemoryCommand, language l: ReplyLanguage) async -> String? {
+        lastCommandStored = false
         guard let project = await refreshCurrentProject() else {
-            return tr(l, "Project memory is per project, so I need a project folder first. Open Tasks and choose one (Choose folder…), then ask again.", "Proje hafızası projeye özgüdür; önce bir proje klasörü gerekiyor. Tasks ekranından klasör seçip tekrar sorun.")
+            return tr(l, "Project memory is per project and no project folder is chosen, so NOTHING was saved. Open Tasks and choose one (Choose folder…), then say it again. If this is a personal preference rather than project knowledge, I can save it as a setting instead — for example “call me efendim”, “answer shorter”.", "Proje hafızası projeye özgüdür ve şu an seçili bir proje klasörü yok; bu yüzden HİÇBİR ŞEY kaydedilmedi. Tasks ekranından bir klasör seçip tekrar söyleyin. Bu proje bilgisi değil kişisel bir tercihse, onu ayar olarak kaydedebilirim — örneğin “bana efendim diye hitap et”, “daha kısa cevap ver”.")
         }
         switch command {
         case .none: return ""
         case .remember(let text):
             switch service.remember(text, projectKey: project.key, projectRoot: project.rootPath) {
             case .created(let id), .merged(let id), .superseded(let id, _), .disputed(let id, _):
+                lastCommandStored = true
                 _ = await index.sync(projectKey: project.key)
                 let m = (try? repository.memory(id)) ?? nil
                 return tr(l, "Remembered for project \(project.name): “\(MemoryText.clip(m?.summary ?? text, 160))”. You can review, pin or correct it on the Project Memory screen.", "\(project.name) projesi için hatırlayacağım: “\(MemoryText.clip(m?.summary ?? text, 160))”. Project Memory ekranında inceleyebilir, sabitleyebilir veya düzeltebilirsiniz.")
@@ -173,6 +180,7 @@ final class ProjectMemory: MemoryConversing {
             if let best = hits.first, best.score >= 0.5, hits.count == 1 || best.score - (hits.dropFirst().first?.score ?? 0) >= 0.2 {
                 do {
                     let id = try service.correct(best.item.id, with: text, projectRoot: project.rootPath)
+                    lastCommandStored = true
                     _ = await index.sync(projectKey: project.key)
                     return tr(l, "Corrected. The new record replaces “\(MemoryText.clip(best.item.summary, 110))”; the old one stays in history, marked as superseded.", "Düzelttim. Yeni kayıt “\(MemoryText.clip(best.item.summary, 110))” kaydının yerini aldı; eski kayıt geçmişte “değiştirildi” olarak duruyor.") + (id == best.item.id ? "" : "")
                 } catch let e as MemoryUserError { return e.description }
@@ -180,6 +188,7 @@ final class ProjectMemory: MemoryConversing {
             }
             if hits.isEmpty {
                 if case .rejected(let why) = service.remember(text, projectKey: project.key, projectRoot: project.rootPath) { return tr(l, "I found no earlier record to replace and I did not store that: \(why).", "Değiştirilecek bir kayıt bulamadım ve bunu saklamadım: \(why).") }
+                lastCommandStored = true
                 _ = await index.sync(projectKey: project.key)
                 return tr(l, "I found no earlier record to replace, so I stored your statement as a new note for \(project.name).", "Değiştirilecek bir kayıt bulamadım; ifadenizi \(project.name) için yeni bir not olarak kaydettim.")
             }

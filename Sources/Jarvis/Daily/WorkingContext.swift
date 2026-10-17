@@ -70,6 +70,9 @@ final class ConversationWorkingContext {
     private(set) var turn = 0
     /// A question JARVIS asked to resolve an ambiguity; the next short answer may complete it.
     private(set) var clarification: Clarification?
+    /// The last accepted turn (what the user said, how JARVIS read it, what it answered) and, after a correction, the turn that was corrected. Bounded; never an authority.
+    private(set) var lastTurn: TurnMemory?
+    private(set) var correction: CorrectionMarker?
 
     struct Clarification: Equatable, Sendable {
         var verb: FollowUpVerb
@@ -95,7 +98,10 @@ final class ConversationWorkingContext {
     }
 
     /// “Clear current conversation context” (Settings) and a topic change. Project Memory is untouched.
-    func clear() { items.removeAll(); clarification = nil }
+    func clear() { items.removeAll(); clarification = nil; lastTurn = nil; correction = nil }
+
+    func recordTurn(_ t: TurnMemory) { lastTurn = TurnMemory(userText: TurnMemory.clip(t.userText), interpretation: t.interpretation, answer: TurnMemory.clip(t.answer)) }
+    func markCorrection(of previous: TurnMemory) { correction = CorrectionMarker(previous: previous, turn: turn) }
 
     /// A project transition drops everything that belonged to the old project (assets, objects, documents, completed actions).
     func projectChanged(to newKey: String?) {

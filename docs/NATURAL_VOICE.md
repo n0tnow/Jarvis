@@ -205,3 +205,7 @@ Hands-free turns and barge-in are unchanged; a memory question asked after the w
 
 ## V0.11 — wake word and Computer Use
 Wake is activation, not authentication (unchanged): "Jarvis, open Finder" after a wake reaches the same conversation path as typed text and creates a computer task under the same rules; nothing about the wake sentinel, VAD or barge-in touches Computer Use, and Computer Use never reads the microphone. The emergency stop is a modifier chord (⌃⌥⌘) sampled only while a computer session runs, separate from the HUD chords (⌥⌘ / ⌥⌘⌘) and Push-to-Talk (right ⌥): holding Control first prevents the HUD chord.
+
+## V1.0 stabilisation fix 2 — hands-free lifecycle (wake word)
+* Wake stays opt-in. Flow: “Jarvis” → spoken “Efendim?” (default acknowledgement, fixed phrase, no model) → listens without any key → STT → the typed pipeline → spoken answer → back to wake; 8 s follow-up window; single-breath wake already supported.
+* New: sleep mode (“Uyku moduna geç”), end-of-exchange (“Dinlemeyi bırak”), Mac sleep/wake recovery, bounded recovery after an audio-device change (2 s, 6 s, then UNAVAILABLE), Settings → Voice “Hands-free overview”, menu-bar wake state. Privacy unchanged: before the wake word only the local sentinel hears bounded in-memory audio (energy gate: a quiet room sends it nothing).

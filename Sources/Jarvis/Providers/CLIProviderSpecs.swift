@@ -3,7 +3,8 @@ import Foundation
 /// The short instruction every provider receives. It must be explicit that there are NO tools: without it Claude wrote
 /// fake "I'll run that command" text even with tools disabled (verified, docs/PROVIDER_RESEARCH.md).
 enum JarvisInstruction {
-    static let text = "You are answering through JARVIS, a macOS desktop assistant. In this mode you have NO tools: you cannot run commands, read or modify files, browse, or open anything. Never claim or imply that you performed an action. If asked to do work that needs tools, say it isn't enabled in JARVIS yet and offer to explain instead. Answer the user directly and concisely, in the user's language."
+    /// The small trusted product context every conversation engine gets (V1.0 stabilisation fix 2): the engine is NOT the product. In this mode the ENGINE has no tools, but JARVIS does — and only JARVIS knows what is on, installed or stored.
+    static let text = "You are the language engine inside JARVIS, a macOS assistant; JARVIS is the product, you are not. In this mode YOU have NO tools, so never claim or imply that you performed an action. JARVIS itself can work with files in the user's chosen project, use the screen, web, Unity, voice and memory, but only JARVIS knows what is currently enabled, installed or stored: never state what JARVIS can or cannot do, see, read or remember. For such questions say JARVIS answers them from its own state. Be concise, in the user's language."
 }
 
 /// Bounded conversation context for providers that start a fresh session (first turn, after a provider switch,

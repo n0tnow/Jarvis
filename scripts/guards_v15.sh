@@ -18,9 +18,9 @@ g15_noauthority() {
 v09_none "personality, working context and readiness never touch an approval, a decision or a capability: no approve / deny / pendingApproval / capability reference in Daily/ or Readiness/" "$(g15_noauthority)"
 
 g15_guardline() {
-  has Sources/Jarvis/Services/Conversation/ConversationService.swift '(store.pendingApproval != nil || hasPendingDecision()), ApprovalGuard.isApprovalUtterance(text)'
+  has Sources/Jarvis/Services/Conversation/ConversationService.swift '(store.pendingApproval != nil || hasPendingDecision()), ApprovalGuard.isApprovalUtterance(text0)'
   grep -n 'ReferenceResolver.resolve' Sources/Jarvis/Services/Conversation/ConversationService.swift | head -1 | cut -d: -f1 > /tmp/.g15_resolve
-  grep -n 'ApprovalGuard.isApprovalUtterance(text)' Sources/Jarvis/Services/Conversation/ConversationService.swift | head -1 | cut -d: -f1 > /tmp/.g15_approval
+  grep -n 'ApprovalGuard.isApprovalUtterance(text0)' Sources/Jarvis/Services/Conversation/ConversationService.swift | head -1 | cut -d: -f1 > /tmp/.g15_approval
   [ "$(cat /tmp/.g15_approval)" -lt "$(cat /tmp/.g15_resolve)" ] || echo "the approval guard must run BEFORE follow-up resolution"
   has $DY/WorkingContext.swift 'ApprovalGuard.isApprovalUtterance(text)'
 }
@@ -29,7 +29,7 @@ v09_none "a spoken or typed yes/evet cannot decide anything: the approval guard 
 g15_ephemeral() {
   # the working context is memory-only: not Codable, not persisted, not written to Project Memory or the learning layer
   grep -nE 'UserDefaults|JSONEncoder|JSONDecoder|NSKeyedArchiver|PropertyListEncoder|\.write\(to:|createFile\(|repository|JarvisRepository|SQLite|ProjectMemory|MemoryService|memory\.|LearningService|learning\.|Codable' $DY/WorkingContext.swift | nonc
-  grep -rnE 'workingContext' Sources --include=*.swift | grep -vE "^Sources/Jarvis/(Daily/|Services/Conversation/ConversationService\.swift|App/AppContext\+Daily\.swift|App/DailyLiveTest\.swift|UI/Settings/DailySettingsSection\.swift)" | nonc
+  grep -rnE 'workingContext' Sources --include='*.swift' | grep -vE "^Sources/Jarvis/(Daily/|Services/Conversation/ConversationService\.swift|App/AppContext\+Daily\.swift|App/DailyLiveTest\.swift|UI/Settings/DailySettingsSection\.swift)" | nonc
 }
 v09_none "conversational working context is bounded and EPHEMERAL: no persistence, no Codable, no Project Memory or learning write; only ConversationService, the daily wiring, Settings and the live test touch it" "$(g15_ephemeral)"
 
@@ -87,7 +87,7 @@ g15_persistence() {
   # no automatic update or replacement of the app by the app
   grep -rnE 'Sparkle|SUUpdater|package-app|install-app|replaceItemAt|\.dmg' Sources | grep -vE '^Sources/Jarvis/App/SetupLiveTest\.swift' | nonc
   # notifications and Launch at Login are asked for only from a user action
-  grep -rnE 'requestAuthorization\(\)|LaunchAtLogin\.set\(' Sources | grep -vE '^Sources/Jarvis/(Readiness/|UI/Settings/DailySettingsSection\.swift|App/PackagingLiveTest\.swift)' | nonc
+  grep -rnE 'requestAuthorization\(\)|LaunchAtLogin\.set\(' Sources | grep -vE '^Sources/Jarvis/(Readiness/|Daily/SettingsAssistant\.swift|UI/Settings/DailySettingsSection\.swift|App/PackagingLiveTest\.swift)' | nonc
 }
 v09_none "no hidden persistence and no self-update: Launch at Login is SMAppService only (one file), no LaunchAgent/Daemon/launchctl, nothing in the app builds, installs or replaces the app, and notification / login-item requests come only from Readiness actions and Settings" "$(g15_persistence)"
 
@@ -119,3 +119,69 @@ g15_livetests() {
   grep -nE '\.claudeCode|openCode\.(refresh|start|run|stop)|ProviderID|providers\.resolve|coordinator\.|supervisor\.|\.agents\.run' Sources/Jarvis/App/DailyLiveTest.swift Sources/Jarvis/App/SetupLiveTest.swift | nonc
 }
 v09_none "the V0.15 live tests touch no real project (Hamam is never named) and ask no provider (scripted answers only)" "$(g15_livetests)"
+
+# ───────────────────────── V1.0 stabilisation fix 2 (real capability grounding · hands-free lifecycle · production UI truth · conversation/state truth) ─────────────────────────
+g1f2_demo() {
+  # production never seeds demo data: the default is false and only a developer launch option turns it on
+  has Sources/Jarvis/App/AppContext.swift 'init(seedDemoData: Bool = false'
+  has Sources/Jarvis/App/AppDelegate.swift 'seedDemoData: options.isDemoEnvironment'
+  has Sources/Jarvis/App/AppContext.swift 'var simulatorControlsVisible: Bool { demoMode && preferences.showDeveloperControls }'
+  # every simulator control in the UI is gated on simulatorControlsVisible (same or previous line)
+  for f in $(grep -rlE 'DevStateStrip\(|\{ demoTasks \}|\{ simulateMenu \}' Sources/Jarvis/UI | grep -v DevStateStrip.swift); do
+    awk -v F="$f" '{ if ($0 ~ /DevStateStrip\(|\{ demoTasks \}|\{ simulateMenu \}/ && $0 !~ /simulatorControlsVisible/ && prev !~ /simulatorControlsVisible/) print F":"NR": ungated simulator control"; prev=$0 }' "$f"
+  done
+  # no placeholder statuses in the UI
+  grep -rnE 'DEMO · NOT CONNECTED|PLANNED · V0\.8|Lorem ipsum' Sources/Jarvis/UI | nonc
+  # demo / fixture types are referenced only from developer, capture, live-test and wiring files
+  grep -rlE 'DemoScenario|TaskDemo|ResearchDemo|AdaptiveDemo|OrchestrationDemo|DemoAgentRunner' Sources | grep -vE '^Sources/Jarvis/(Services/Demo/|App/(SmokeTest|DevCapture|AppDelegate|AppContext|[A-Za-z]*LiveTest)\.swift|UI/Components/DevStateStrip\.swift)' | nonc
+  # the voice-state simulation hooks are called only by smoke / capture
+  grep -rnE '(voice|hf|handsFree)\.simulate\(' Sources | grep -vE '^Sources/Jarvis/App/(SmokeTest|DevCapture)\.swift' | nonc
+}
+v09_none "production UI truth: demo seeding is opt-in (developer launch options only), every simulator control is gated on simulatorControlsVisible, no placeholder statuses ship, and demo / fixture types and voice-state simulation are reachable only from developer, capture and live-test files" "$(g1f2_demo)"
+
+g1f2_firewall() {
+  # the engine is told it is an engine; a finished reply that states JARVIS' abilities is replaced; ability questions never reach a model
+  has Sources/Jarvis/Providers/CLIProviderSpecs.swift 'language engine inside JARVIS'
+  has Sources/Jarvis/Services/Conversation/ConversationService.swift 'applyCapabilityFirewall(to: messageID'
+  has Sources/Jarvis/Readiness/CapabilityClaimGuard.swift 'enum CapabilityClaimGuard'
+  # the old wording that made the engine say “I can't read files” must not come back
+  grep -nH 'cannot run commands, read or modify files' Sources/Jarvis/Providers/CLIProviderSpecs.swift | nonc
+  # the guard and the ability answers touch no approval, capability or network
+  grep -nHE '\.approve\(|pendingApproval|CapabilitySet|URLSession|Process\(' Sources/Jarvis/Readiness/CapabilityClaimGuard.swift | nonc
+}
+v09_none "provider identity firewall: the engine instruction says the engine is not the product and forbids stating JARVIS' abilities, the old 'cannot read files' wording is gone, and a finished reply that claims or denies abilities is replaced from readiness state" "$(g1f2_firewall)"
+
+g1f2_settings() {
+  # the closed settings registry: presentation and voice conveniences only — never an approval, a permission, a capability, an autonomy or provider/security choice
+  grep -nHE '\.approve\(|ApprovalPolic|pendingApproval|autonomyMode|providerPreference|computerUseEnabled|webResearchEnabled|allowFreeCloud|allowLocalInAuto|visualGroundingMode|projectContinuationEnabled|experimentsEnabled|adaptiveLearningEnabled|memoryAutoLearn|AXIsProcessTrusted|CGPreflight|requestAuthorization' Sources/Jarvis/Daily/SettingsAssistant.swift | nonc
+  # settings requests and storage questions are handled BEFORE Project Memory, so a preference can never become a memory command
+  s=$(grep -n 'settings.recognizes(text)' Sources/Jarvis/Services/Conversation/ConversationService.swift | head -1 | cut -d: -f1)
+  m=$(grep -n 'memory.recognizes(text)' Sources/Jarvis/Services/Conversation/ConversationService.swift | head -1 | cut -d: -f1)
+  [ -n "$s" ] && [ -n "$m" ] && [ "$s" -lt "$m" ] || echo "settings requests must be handled before Project Memory"
+  # a side effect is reported only after the typed value was read back
+  grep -c 'guard p\.' Sources/Jarvis/Daily/SettingsAssistant.swift | awk '$1 < 5 { print "settings actions must verify the value that was set" }'
+}
+v09_none "settings requests change only the closed registry (voice / address / answer-length / wake / notifications / login item), are read back before they are reported, never touch approvals, permissions, capabilities or security, and run before Project Memory" "$(g1f2_settings)"
+
+g1f2_correction() {
+  # a correction is routed again from scratch, carries no authority, and is bounded memory-only context
+  grep -nHE '\.approve\(|pendingApproval|CapabilitySet|\.decide\(' Sources/Jarvis/Daily/CorrectionIntent.swift | nonc
+  grep -nHE 'Codable|UserDefaults|repository|sqlite' Sources/Jarvis/Daily/CorrectionIntent.swift Sources/Jarvis/Daily/StorageLedger.swift | nonc
+  # the transcript repair table never contains an approval or destructive word
+  grep -nHiE '\("(approve|onay|evet|yes|delete|sil|remove|kaldır)' Sources/Jarvis/Daily/CorrectionIntent.swift | nonc
+}
+v09_none "corrections and transcript repair carry no authority (no approval/decision reference), are memory-only (no persistence), and the repair table holds no approval or destructive word" "$(g1f2_correction)"
+
+g1f2_wake() {
+  # sleep mode / system sleep / device change are bounded and only the hands-free coordinator owns them; wake stays OFF by default
+  has Sources/Jarvis/Voice/Natural/HandsFreeCoordinator.swift 'func enterSleepMode'
+  has Sources/Jarvis/Voice/Natural/HandsFreeCoordinator.swift 'func suspendForSystemSleep'
+  has Sources/Jarvis/Voice/Natural/HandsFreeCoordinator.swift 'var recoveryDelays: [Double] = [2, 6]'
+  has Sources/Jarvis/Core/Preferences.swift 'voiceWakeEnabled = defaults.object(forKey: Key.wakeEnabled) as? Bool ?? false'
+  # no global event monitors / taps were added for hands-free
+  grep -rnE 'addGlobalMonitorForEvents|CGEventTapCreate|RegisterEventHotKey' Sources | grep -vE '^Sources/Jarvis/(Computer/AXBackend|App/[A-Za-z]*LiveTest)\.swift' | nonc
+  # the Voice settings overview exists and the voice strip has a fixed reserved height
+  has Sources/Jarvis/UI/Settings/VoiceStatusRows.swift 'enum VoiceStatusRows'
+  has Sources/Jarvis/UI/Components/VoiceViews.swift 'static let reservedHeight: CGFloat = 26'
+}
+v09_none "hands-free lifecycle: sleep mode, Mac sleep/wake and audio-device changes are handled by the hands-free coordinator with bounded recovery, wake stays opt-in, no global event monitor exists, the Voice overview rows exist and the voice strip has a fixed reserved height" "$(g1f2_wake)"

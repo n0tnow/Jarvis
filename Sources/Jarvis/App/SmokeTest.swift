@@ -698,6 +698,22 @@ enum SmokeTest {
             await settle(200)
             check("V0.15 the Compact HUD stays 392×448", compactWindow()?.frame.size == CompactHUDLayout.size, "\(compactWindow()?.frame.size ?? .zero)")
             w.hideCompactHUD(); context.hud.section = .dashboard
+        }
+
+        // --- V1.0 stabilisation fix 2: production truth, grounded self-knowledge, settings reality, voice layout. Nothing here starts a process or asks for a permission.
+        do {
+            let c = context
+            let prod = AppContext(seedDemoData: false, stubIntelligence: true, dataDirectory: FileManager.default.temporaryDirectory.appendingPathComponent("jarvis-smoke-prod-\(UUID().uuidString)"))
+            check("V1.0 fix 2: a production context (no demo flag) has zero tasks, project, agents, tools, approvals and no simulator", !prod.demoMode && prod.store.allTasks.isEmpty && prod.store.project == nil && prod.store.agents.isEmpty && prod.store.tools.isEmpty && prod.store.pendingApproval == nil && prod.observatory.demo == nil)
+            let devControlsBefore = prod.preferences.showDeveloperControls            // the smoke binary shares this profile: restore it afterwards
+            prod.preferences.showDeveloperControls = true
+            check("V1.0 fix 2: Show Developer Controls never reveals the state simulator in production", !prod.simulatorControlsVisible)
+            prod.preferences.showDeveloperControls = devControlsBefore
+            check("V1.0 fix 2: ability questions are answered from state (screen, files, web, memory), requests keep their route", ReadinessIntentParser.recognize("Ekranımı görebiliyor musun?") == .screenAbility && ReadinessIntentParser.recognize("Dosya okuyabiliyor musun?") == .fileAbility && ReadinessIntentParser.recognize("Ekranıma bak") == nil)
+            check("V1.0 fix 2: the settings grammar and the storage ledger are wired into the conversation", c.conversationService.settingsHandler != nil && c.conversationService.storageLedger != nil && SettingsIntentParser.recognize("Konuşma hızını biraz arttır") == .speechRate(.faster(0.05)))
+            check("V1.0 fix 2: a model's claim about JARVIS' abilities is detected", !CapabilityClaimGuard.findings(in: "I can't see your screen and I cannot access your files.").isEmpty && CapabilityClaimGuard.findings(in: "The screen is blue.").isEmpty)
+            check("V1.0 fix 2: the voice strip reserves a fixed height whenever voice is on", VoiceStrip.reservedHeight == 26 && VoiceStrip.reservesSpace(voiceEnabled: true, presenceQuiet: true, hasPartial: false))
+            check("V1.0 fix 2: wake mode is opt-in (fresh profile) and the wake acknowledgement is the spoken “Efendim?”", { let n = "jarvis-smoke2-\(UUID().uuidString)"; let d = UserDefaults(suiteName: n)!; defer { d.removePersistentDomain(forName: n) }; let f = Preferences(defaults: d); return !f.voiceWakeEnabled && f.voiceWakeAcknowledgement == .voice }())
             await resetWorld()
         }
 

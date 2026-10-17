@@ -83,6 +83,10 @@ final class ConversationService {
     @ObservationIgnored let workingContext = ConversationWorkingContext()
     /// V0.15: “Is Claude ready?”, “Ses sistemi hazır mı?” — answered from the readiness picture. nil = not wired.
     @ObservationIgnored weak var readinessHandler: (any ReadinessConversing)?
+    /// Natural requests that change a typed setting (speech speed, address, answer length, wake word …): applied, read back, then reported. Never a model call.
+    @ObservationIgnored weak var settingsHandler: (any SettingsConversing)?
+    /// What really went where (setting / Project Memory / task record / nowhere) — answers “nereye kaydettin?” and “will you remember that?”.
+    @ObservationIgnored var storageLedger: StorageLedger?
     /// V0.15: true while any decision (approval, adaptive request, proposal) waits for a HUD button — a bare “yes” is then caught by `ApprovalGuard`, whatever kind of decision it is.
     @ObservationIgnored var hasPendingDecision: () -> Bool = { false }
     /// Settings → Speak task acknowledgements. Off: the acknowledgement is still shown, just not spoken.
@@ -118,30 +122,62 @@ final class ConversationService {
     /// Returns the routing decision taken (nil for blank input, which does nothing).
     @discardableResult
     func submit(_ raw: String, origin: InputOrigin = .fullHUD, source: InputSource = .typed) -> RouteDecision? {
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return nil }
+        let shown = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !shown.isEmpty else { return nil }
+        // A voice transcript gets the closed repair table for JARVIS' own vocabulary (“weak word” → “wake word”); what the user sees stays what was heard.
+        let text0 = source == .voice ? SpeechTranscriptRepair.repair(shown) : shown
 
         onSubmit?(source)
-        conversation.appendUser(text, source: source)
-        let depth = presenter.beginTurn(text)
+        let previousTurn = capturePreviousTurn()                   // read BEFORE this message joins the transcript
+        let interpretedBefore = currentInterpretation
+        currentInterpretation = "conversation"
+        conversation.appendUser(shown, source: source)
+        let initialDepth = presenter.beginTurn(text0)
         workingContext.beginTurn()
-        let inputLanguage = InputNormalizer.normalize(text).language
+        storageLedger?.beginTurn()
+        let inputLanguage = InputNormalizer.normalize(shown).language
         defer { announceLatestReply() }
         // "yes" / "approve" never approves anything — typed or spoken. Approvals are HUD buttons only (V0.7, DEC-066). V0.15: that holds for EVERY kind of pending decision.
-        if (store.pendingApproval != nil || hasPendingDecision()), ApprovalGuard.isApprovalUtterance(text) {
+        if (store.pendingApproval != nil || hasPendingDecision()), ApprovalGuard.isApprovalUtterance(text0) {
             let lang = inputLanguage
             conversation.appendJarvis(ApprovalGuard.notice(lang), tone: .notice, route: .local)
             return .localResponse(.approvalNeedsHUD, lang)
         }
+        // A correction (“Hayır, demek istediğim …”, “No, I meant …”): the corrected sentence is routed again from scratch, with the previous turn kept in the bounded working context. A bare
+        // “yanlış anladın” asks what was meant. It carries no authority and passes every check the corrected request would have passed on its own.
+        let text: String
+        switch resolveCorrection(text0, previous: previousTurn, interpretedBefore: interpretedBefore, language: inputLanguage) {
+        case .none: text = text0
+        case .ask(let question):
+            conversation.appendJarvis(question, tone: .notice, route: .local)
+            return .localResponse(.contextual, inputLanguage)
+        case .reroute(let corrected): text = corrected; currentInterpretation = "correction"
+        }
+        let depth = text == text0 ? initialDepth : ResponseDepthDetector.detect(text)
+        // Settings requests (“Konuşma hızını biraz arttır”, “Bana efendim diye hitap et”, “Wake word'ü kapat”): typed, validated, read back, then reported (V1.0 fix 2). Strict grammar, so a real
+        // request keeps its route; the language model is never asked and Project Memory is never used for a preference.
+        if let settings = settingsHandler, let intent = settings.recognizes(text) {
+            currentInterpretation = "settings: \(intent)"
+            conversation.appendJarvis(presenter.present(full: settings.perform(intent, language: inputLanguage), language: inputLanguage, evidence: true), route: .local)
+            return .localResponse(.contextual, inputLanguage)
+        }
+        // “Bunu nereye kaydettin?” / “Kalıcı mı?” / “Will you remember that?”: answered from what was REALLY written, never from habit.
+        if let ledger = storageLedger, let q = StorageQuestionParser.recognize(text) {
+            currentInterpretation = "storage"
+            conversation.appendJarvis(presenter.present(full: ledger.reply(to: q, language: inputLanguage), language: inputLanguage, evidence: true), route: .local)
+            return .localResponse(.contextual, inputLanguage)
+        }
         // “Detaylı anlat.” / “Kısa söyle.” on its own: the answer IMMEDIATELY BEFORE this request again, at that depth (no model). The target is read from the conversation itself — the last
         // JARVIS message of the previous turn — so it can never be an older answer.
         if let d = depth, d.bare, !d.weak {          // “Explain it again” / “Neden?” are questions for the model, not a depth change
+            currentInterpretation = "depth"
             let again = presenter.rerender(previous: previousAnswerForDepthRequest(), depth: d.depth, language: inputLanguage)
             conversation.appendJarvis(again, route: .local)
             return .localResponse(.contextual, inputLanguage)
         }
         // “Hamam’a dön”: the conversation's project changes (and what belonged to the old one is dropped). Nothing is selected for writing.
         if let request = ProjectSwitchParser.parse(text), let focus = focusProject, !isNavigationCommand(text) {
+            currentInterpretation = "project"
             handleProjectFocus(request, original: text, origin: origin, source: source, focus: focus, language: inputLanguage)
             return .localResponse(.contextual, inputLanguage)
         }
@@ -152,12 +188,14 @@ final class ConversationService {
             conversation.appendJarvis(question, tone: .notice, route: .local)
             return .localResponse(.contextual, inputLanguage)
         case .resolved(let goal, let chosen, let id):
+            currentInterpretation = "follow-up"
             workingContext.select(id)
             conversation.appendJarvis(chosen, route: .local)
             return dispatch(goal, origin: origin, source: source)
         }
         // Project continuity: project status questions and “continue” are resolved against CURRENT project truth (no model, no invention); “continue” becomes an ordinary bounded task.
         if let continuity = continuityHandler, let intent = continuity.recognizes(text) {
+            currentInterpretation = "continuity"
             let lang = InputNormalizer.normalize(text).language
             handleContinuity(intent, language: lang, source: source)
             return .localResponse(.continuity, lang)
@@ -173,6 +211,7 @@ final class ConversationService {
         }
         // Readiness questions (“Claude hazır mı?”, “is the voice system ready?”): answered from the readiness picture; nothing is started or installed.
         if let readiness = readinessHandler, let intent = readiness.recognizes(text) {
+            currentInterpretation = "readiness: \(intent)"
             let lang = inputLanguage
             let full = readiness.reply(to: intent, language: lang)
             conversation.appendJarvis(presenter.present(full: full, language: lang, evidence: true), route: .local)
@@ -182,12 +221,62 @@ final class ConversationService {
         if let memory = memoryHandler {
             let command = memory.recognizes(text)
             if command != .none {
+                currentInterpretation = "memory"
                 let lang = InputNormalizer.normalize(text).language
                 handleMemoryCommand(command, text: text, language: lang, memory: memory, origin: origin, source: source)
                 return .localResponse(.memory, lang)
             }
         }
         return dispatch(text, origin: origin, source: source)
+    }
+
+    // MARK: Corrections (V1.0 fix 2)
+
+    /// The interpretation JARVIS gave the PREVIOUS turn (“readiness”, “settings”, “memory”, “conversation”…): part of the bounded working context, never an authority.
+    @ObservationIgnored private var currentInterpretation = "conversation"
+
+    private func capturePreviousTurn() -> (user: String, answer: String)? {
+        let msgs = conversation.messages
+        guard let uIdx = msgs.lastIndex(where: { $0.role == .user }) else { return nil }
+        let answer = msgs[(uIdx + 1)...].last(where: { $0.role == .jarvis })?.content ?? ""
+        return (msgs[uIdx].content, answer)
+    }
+
+    private enum CorrectionResolution { case none, ask(String), reroute(String) }
+
+    private func resolveCorrection(_ text: String, previous: (user: String, answer: String)?, interpretedBefore: String, language l: ReplyLanguage) -> CorrectionResolution {
+        guard let c = CorrectionParser.parse(text), let prev = previous else { return .none }
+        let pendingDecision = store.pendingApproval != nil || hasPendingDecision()
+        // A bare “hayır” answers a question that is waiting (a decision, a clarification) or corrects a Project Memory record: neither is a conversational correction.
+        if c.strength == .weak, interpretedBefore.hasPrefix("memory") { return .none }
+        if c.remainder.isEmpty, c.strength == .weak, pendingDecision || workingContext.clarification != nil { return .none }
+        let turn = TurnMemory(userText: prev.user, interpretation: interpretedBefore, answer: prev.answer)
+        workingContext.recordTurn(turn)
+        workingContext.markCorrection(of: turn)
+        if c.remainder.isEmpty {
+            let what = TurnMemory.clip(prev.user)
+            return .ask(l == .tr ? "Yanlış anladıysam özür dilerim. “\(what)” demiştiniz; ben bunu “\(Self.describe(interpretedBefore, l))” diye okudum. Asıl neyi kastettiniz?"
+                                 : "Sorry if I misunderstood. You said “\(what)”, and I read it as “\(Self.describe(interpretedBefore, l))”. What did you mean?")
+        }
+        // A short fragment (“yavaşlat”) after a SETTINGS change takes that setting as its subject; after anything else it is just the corrected request.
+        let isFragment = c.remainder.split(whereSeparator: { $0.isWhitespace }).count <= 3
+        let completed = (interpretedBefore.hasPrefix("settings") && isFragment) ? settingsHandler?.completeFragment(c.remainder) : nil
+        return .reroute(completed ?? c.remainder)
+    }
+
+    private static func describe(_ interpretation: String, _ l: ReplyLanguage) -> String {
+        let base = interpretation.split(separator: ":").first.map(String.init) ?? interpretation
+        switch (base, l) {
+        case ("readiness", .tr): return "bir durum/yetenek sorusu"; case ("readiness", .en): return "a question about my status or abilities"
+        case ("settings", .tr): return "bir ayar isteği"; case ("settings", .en): return "a settings request"
+        case ("storage", .tr): return "nereye kaydedildiği sorusu"; case ("storage", .en): return "a question about where something was saved"
+        case ("memory", .tr): return "bir proje hafızası komutu"; case ("memory", .en): return "a Project Memory command"
+        case ("depth", .tr): return "daha kısa/uzun anlatma isteği"; case ("depth", .en): return "a request for a shorter or longer answer"
+        case ("project", .tr): return "bir proje değişikliği"; case ("project", .en): return "a project switch"
+        case ("continuity", .tr): return "bir proje durumu isteği"; case ("continuity", .en): return "a project status request"
+        case ("follow-up", .tr): return "bir devam isteği"; case ("follow-up", .en): return "a follow-up"
+        default: return l == .tr ? "genel bir soru/istek" : "a general question or request"
+        }
     }
 
     /// The normal routing of one user message (commands, local replies, tasks, research, provider). Split out so a loosely phrased memory question that memory is NOT
@@ -262,6 +351,7 @@ final class ConversationService {
             defer { self.pendingTaskAcks -= 1 }
             switch await submitter.submitTask(goal: prompt, intent: intent, channel: channel) {
             case .started(let title):
+                self.storageLedger?.record(.taskRecord, title)
                 let readOnly = intent.kind == .readOnlyAnalysis
                 let full = compound ? Phrasebook.orchestratedStarted(title, language) : Phrasebook.taskStarted(title, readOnly: readOnly, language)
                 let brief = compound ? DailyPhrasebook.orchestratedAccepted(language) : DailyPhrasebook.taskAccepted(readOnly: readOnly, language)
@@ -304,6 +394,12 @@ final class ConversationService {
             guard let self else { return }
             defer { self.pendingTaskAcks -= 1 }
             if let reply = await memory.reply(to: command, language: language) {
+                switch command {
+                case .remember(let what), .correct(let what):
+                    if memory.lastCommandStored { self.storageLedger?.record(.projectMemory, (language == .tr ? "“\(MemoryText.clip(what, 60))” — \(memory.currentProjectName ?? "proje")" : "“\(MemoryText.clip(what, 60))” — \(memory.currentProjectName ?? "project")")) }
+                    else { self.storageLedger?.record(.notStored, language == .tr ? "Proje Hafızası'na kaydedilmedi; \(MemoryText.clip(what, 60)) hiçbir yerde saklanmıyor." : "It was not saved to Project Memory; “\(MemoryText.clip(what, 60))” is stored nowhere.") }
+                default: break
+                }
                 self.conversation.appendJarvis(self.presenter.present(full: reply, language: language, evidence: true), route: .local)
                 self.announceLatestReply()
             } else {
@@ -328,6 +424,7 @@ final class ConversationService {
                 defer { self.pendingTaskAcks -= 1 }
                 switch await submitter.submitComputer(goal: prompt, channel: channel) {
                 case .started(let title):
+                    self.storageLedger?.record(.taskRecord, title)
                     self.conversation.appendJarvis(self.acknowledgement(full: Phrasebook.computerStarted(title, language), brief: DailyPhrasebook.computerAccepted(language), language: language), route: .worker, silent: !self.speakTaskAcknowledgements())
                     self.workingContext.note(kind: .completedAction, refID: "last-request", label: title, source: .userStated, evidence: "task-request", payload: prompt)
                 case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
@@ -347,6 +444,7 @@ final class ConversationService {
             defer { self.pendingTaskAcks -= 1 }
             switch await submitter.submitResearch(goal: prompt, channel: channel) {
             case .started(let title):
+                self.storageLedger?.record(.taskRecord, title)
                 self.conversation.appendJarvis(self.acknowledgement(full: Phrasebook.researchStarted(title, language), brief: DailyPhrasebook.researchAccepted(language), language: language), route: .worker, silent: !self.speakTaskAcknowledgements())
                 self.workingContext.note(kind: .completedAction, refID: "last-request", label: title, source: .userStated, evidence: "task-request", payload: prompt)
             case .needsProject: self.conversation.appendJarvis(Phrasebook.needsProject(language), tone: .notice, route: .worker)
@@ -457,6 +555,8 @@ final class ConversationService {
         let outcome = attempt.outcome
         switch outcome {
         case .completed:
+            applyCapabilityFirewall(to: messageID, language: language)
+            applyAddressCadence(to: messageID, language: language)
             conversation.finish(messageID)
             store.log("\(resolved.name) response completed", kind: .success)
         case .cancelled:
@@ -474,6 +574,23 @@ final class ConversationService {
         }
         endResponse(messageID)
         announceLatestReply()
+    }
+
+    /// Provider identity firewall: an engine's claim about what JARVIS can or cannot do (screen, files, memory, computer) is replaced by JARVIS' own statement from its readiness state.
+    private func applyCapabilityFirewall(to messageID: UUID, language: ReplyLanguage) {
+        guard let text = conversation.messages.last(where: { $0.id == messageID })?.content else { return }
+        let found = CapabilityClaimGuard.findings(in: text)
+        guard !found.isEmpty else { return }
+        let grounded = readinessHandler?.reply(to: .capabilities, language: language) ?? ""
+        conversation.replaceContent(messageID, with: CapabilityClaimGuard.replacement(for: found, grounded: grounded, language: language))
+        store.log("Engine reply contained a claim about JARVIS' abilities — replaced by JARVIS' own state", kind: .warning)
+    }
+
+    /// The “efendim” cadence holds for a model's answer as much as for JARVIS' own sentences (typed and spoken replies are the same text).
+    private func applyAddressCadence(to messageID: UUID, language: ReplyLanguage) {
+        guard let text = conversation.messages.last(where: { $0.id == messageID })?.content else { return }
+        let constrained = presenter.constrainModelOutput(text, language: language)
+        if constrained != text { conversation.rewriteContent(messageID, with: constrained) }
     }
 
     /// One provider attempt: start → stream (coalesced) → wait until the provider is really gone → report.
