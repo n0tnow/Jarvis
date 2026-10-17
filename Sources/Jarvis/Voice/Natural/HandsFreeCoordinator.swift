@@ -97,6 +97,12 @@ final class HandsFreeCoordinator {
     @ObservationIgnored private var ring = AudioRing(maxSeconds: 3.0)
     @ObservationIgnored private var gate = EnergyGate()
     @ObservationIgnored private var bargeIn = BargeInDetector()
+    /// Fix 4: when JARVIS' last ANSWER playback ended (acknowledgement cues do not count) and when a barge-in was last confirmed — the provenance of the next capture.
+    @ObservationIgnored private var lastAnswerPlaybackEnd: TimeInterval?
+    @ObservationIgnored private var lastBargeConfirmedAt: TimeInterval?
+    @ObservationIgnored let diagnostics = VoiceDiagnostics()
+    /// Seconds after an answer during which a capture counts as overlapping JARVIS' own voice (tests shorten it to control the timing).
+    @ObservationIgnored var postSpeechGuard: TimeInterval = PhantomGuard.postSpeechGuard
     @ObservationIgnored private var bandFilter = SpeechBandFilter()
     @ObservationIgnored private var subscription: UUID?
     @ObservationIgnored private var pump: Task<Void, Never>?
@@ -322,11 +328,17 @@ final class HandsFreeCoordinator {
                 if let d = bargeIn.pushMic(db: AudioLevel.db(Array(band[index..<end])), duration: length, at: sliceEnd) {
                     times.bargeDecision = t; times.bargeOnset = t - d.onsetAgo
                     lastBargeIn = "excess +\(Int(d.excessDB)) dB over the expected echo (coupling \(Int(bargeIn.coupling)) dB), onset \(Int(d.onsetAgo * 1000)) ms before the decision"
+                    lastBargeConfirmedAt = t
+                    diagnostics.note("bargeIn.confirmed", "excess \(Int(d.excessDB)) dB, envelope correlation \(d.echoCorrelation.map { String(format: "%.2f", $0) } ?? "n/a")", at: t)
                     dispatch(.bargeIn(onsetAgo: d.onsetAgo))
                     break
                 }
                 index = end
             }
+        }
+        if bargeIn.rejectedAsEcho != lastRejectedEchoCount {
+            diagnostics.note("bargeIn.rejectedAsEcho", "envelope correlation \(bargeIn.lastRejectedCorrelation.map { String(format: "%.2f", $0) } ?? "n/a")", at: t)
+            lastRejectedEchoCount = bargeIn.rejectedAsEcho
         }
         // Gate: in a quiet room the sentinel receives nothing; any active conversation state keeps it fed.
         let active = machine.state != .wakeListening
@@ -345,6 +357,7 @@ final class HandsFreeCoordinator {
         ring.append(frame)
     }
     @ObservationIgnored private var levelStamp: TimeInterval = 0
+    @ObservationIgnored private var lastRejectedEchoCount = 0
 
     /// Level of what JARVIS is playing right now (from the output player's meter). Only used while JARVIS speaks.
     func referenceLevel(_ db: Float, at t: TimeInterval) { bargeIn.pushReference(db: db, at: t) }
@@ -393,6 +406,7 @@ final class HandsFreeCoordinator {
             bargeIn.beginPlayback(at: now())
             dispatch(.speechPlaybackStarted)
         case .playbackEnded:
+            if machine.state != .attentive { lastAnswerPlaybackEnd = now() }          // a wake acknowledgement is not an answer: the user answers it at once
             bargeIn.endPlayback()
             // The room still rings and the detector's history holds JARVIS' own voice: forget both before wake detection resumes.
             ring.clear(); sentinelFlowing = false; wakeDeafUntil = now() + 0.7
@@ -461,6 +475,8 @@ final class HandsFreeCoordinator {
         switch effect {
         case .startUtterance(let preroll):
             times.endpoint = nil
+            voice.utteranceProvenance = provenanceForNewUtterance(at: t)
+            voice.diagnostics = diagnostics
             voice.beginUtterance(prefill: ring.tail(seconds: preroll))
         case .endUtterance:
             times.endpoint = t
@@ -488,6 +504,15 @@ final class HandsFreeCoordinator {
         case .note(let text):
             onEvent?("Voice: \(text)", .info)
         }
+    }
+
+    /// How the capture that starts now relates to JARVIS' own voice (see `UtteranceProvenance`). Timing only; no audio, no text.
+    func provenanceForNewUtterance(at t: TimeInterval) -> UtteranceProvenance {
+        let sinceEnd = lastAnswerPlaybackEnd.map { t - $0 }
+        let confirmed = lastBargeConfirmedAt.map { t - $0 < 1.5 } ?? false
+        let playing = bargeIn.isPlaying
+        let guarded = sinceEnd.map { $0 >= 0 && $0 < postSpeechGuard } ?? false
+        return UtteranceProvenance(overlappedPlayback: playing || confirmed || guarded, confirmedBargeIn: confirmed, secondsSincePlaybackEnd: sinceEnd.flatMap { $0 < 10 ? $0 : nil })
     }
 
     private func syncSentinelMode() {

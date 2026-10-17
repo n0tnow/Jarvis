@@ -26,12 +26,25 @@ struct BargeInDetector: Sendable {
         var referenceMinDelay: TimeInterval = 0.04
         var audibleReferenceDB: Float = -55
         var minimumPlayback: TimeInterval = 0.25   // nothing fires in the very first instants of a playback
+        /// Fix 4 — envelope confirmation. JARVIS' own voice reaches the microphone with an output + room delay (up to ≈ 0.6 s with the neural player's buffering), which the
+        /// short `referenceWindow` does not cover: the echo of a syllable arrives when the reference already shows the next gap and looks like "a louder-than-expected voice".
+        /// Before a decision is confirmed, the microphone's speech-band envelope is compared with the REFERENCE envelope at every plausible delay; an echo follows the
+        /// reference (high correlation), a person talking over it does not.
+        var confirmEnvelope = true
+        var echoCorrelation: Double = 0.62         // at or above this normalised correlation at some delay, the "speech" is JARVIS' own voice
+        var echoLagRange: ClosedRange<TimeInterval> = 0.04 ... 0.70
+        var confirmWindow: TimeInterval = 1.00     // how much of the recent past is compared (20 ms slices); long enough to contain the start of the phrase
+        var couplingTolerance: Float = 10          // dB around the learned coupling within which a delayed copy of the reference counts as explaining the microphone
+        var certainExcessDB: Float = 24            // a voice this far above any plausible echo is the user, whatever the envelope looks like (a shout over the answer)
+        var slice: TimeInterval = 0.02
     }
 
     struct Decision: Equatable, Sendable {
         /// How long ago (seconds, relative to the deciding frame) the user's speech began — the capture pre-roll starts there.
         var onsetAgo: TimeInterval
         var excessDB: Float
+        /// Highest envelope correlation with JARVIS' own output over the plausible delays (nil when there was not enough history to judge).
+        var echoCorrelation: Double? = nil
     }
 
     var config: Config
@@ -44,6 +57,10 @@ struct BargeInDetector: Sendable {
     private var gap: TimeInterval = 0
     private var runStart: TimeInterval?
     private var calibrated = false
+    private var micHistory: [(t: TimeInterval, db: Float)] = []
+    /// Candidates rejected because their envelope followed JARVIS' own output (diagnostics; bounded count, no audio).
+    private(set) var rejectedAsEcho = 0
+    private(set) var lastRejectedCorrelation: Double?
 
     init(config: Config = Config()) {
         self.config = config
@@ -57,11 +74,13 @@ struct BargeInDetector: Sendable {
         playbackStart = t
         reference.removeAll(keepingCapacity: true)
         run = 0; hot = 0; gap = 0; runStart = nil; calibrated = false
+        micHistory.removeAll(keepingCapacity: true)
     }
 
     mutating func endPlayback() {
         playbackStart = nil
         reference.removeAll(keepingCapacity: true)
+        micHistory.removeAll(keepingCapacity: true)
         run = 0; hot = 0; gap = 0; runStart = nil
     }
 
@@ -78,13 +97,15 @@ struct BargeInDetector: Sendable {
     /// One microphone slice of `duration` seconds that ENDS at `t`. Returns a decision when the user has clearly started to speak.
     mutating func pushMic(db: Float, duration: TimeInterval, at t: TimeInterval) -> Decision? {
         guard let start = playbackStart else { return nil }
+        micHistory.append((t, db))
+        if let first = micHistory.firstIndex(where: { $0.t >= t - config.confirmWindow - 0.1 }), first > 0 { micHistory.removeFirst(first) }
         let lo = t - config.referenceWindow, hi = t - config.referenceMinDelay
         let recent = reference.filter { $0.t >= lo && $0.t <= hi }.map(\.db).max()
         let refDB = recent ?? -90
         let elapsed = t - start
         // Learn the coupling while the user is presumed silent.
         if elapsed < config.minimumPlayback { return nil }                     // the echo has not reached the microphone yet (output + room delay)
-        if elapsed <= config.minimumPlayback + config.calibration, refDB > config.audibleReferenceDB {
+        if elapsed <= config.minimumPlayback + config.calibration, refDB > config.audibleReferenceDB, db > config.floorDB + 6 {          // a microphone at its noise floor is a DELAYED echo, not a weak coupling
             // A user who interrupts straight away must not corrupt the estimate: what is learned can exceed the conservative prior by `calibrationHeadroom` at most.
             let observed = min(db - refDB, config.priorCoupling + config.calibrationHeadroom)
             coupling = min(config.couplingRange.upperBound, max(config.couplingRange.lowerBound, 0.8 * coupling + 0.2 * observed))
@@ -98,15 +119,91 @@ struct BargeInDetector: Sendable {
             if runStart == nil { runStart = t - duration }
             run += duration + gap; hot += duration
             gap = 0
-            if run >= config.sustain, hot / run >= config.minimumDuty, let s = runStart { return Decision(onsetAgo: t - s, excessDB: excess) }
+            if run >= config.sustain, hot / run >= config.minimumDuty, let s = runStart {
+                let corr = config.confirmEnvelope ? echoCorrelation(until: t) : nil
+                if let corr, corr >= config.echoCorrelation, excess < config.certainExcessDB {
+                    // Not the user: the microphone is following JARVIS' own output. Learn from it (the echo is louder / later than predicted) and keep playing.
+                    rejectedAsEcho += 1; lastRejectedCorrelation = corr
+                    let refPeak = reference.map(\.db).max() ?? refDB
+                    coupling = min(config.couplingRange.upperBound, max(coupling, min(config.couplingRange.upperBound, db - max(refPeak, config.floorDB) )))
+                    run = 0; hot = 0; gap = 0; runStart = nil
+                    return nil
+                }
+                return Decision(onsetAgo: t - s, excessDB: excess, echoCorrelation: corr)
+            }
         } else if runStart != nil {
             gap += duration
             if gap > config.gapTolerance { run = 0; hot = 0; gap = 0; runStart = nil }
-        } else if excess < 3, refDB > config.audibleReferenceDB {
+        } else if excess < 3, refDB > config.audibleReferenceDB, db > config.floorDB + 6 {
             // slow tracking of a drifting coupling (volume change) while nothing unusual is happening
             coupling = min(config.couplingRange.upperBound, max(config.couplingRange.lowerBound, 0.98 * coupling + 0.02 * (db - refDB)))
         }
         return nil
+    }
+}
+
+extension BargeInDetector {
+    /// Highest Pearson correlation between the microphone's recent speech-band level series and JARVIS' own reference level series, over the plausible output delays.
+    /// Both series are sampled on a 20 ms grid ending at `end`; levels are floored so silence does not dominate. nil: not enough history to judge (never a rejection).
+    func echoCorrelation(until end: TimeInterval) -> Double? {
+        let n = Int(config.confirmWindow / config.slice + 0.5)
+        guard n >= 12, micHistory.count >= n / 2, reference.count >= 4 else { return nil }
+        func value(of series: [(t: TimeInterval, db: Float)], at t: TimeInterval) -> Float? {
+            // the loudest sample within ± one slice of `t` (series are sparse or denser than the grid; max is robust to both)
+            var best: Float?
+            for e in series where abs(e.t - t) <= config.slice * 1.01 { best = max(best ?? -120, e.db) }
+            return best
+        }
+        let floorDB: Float = -80
+        var mic: [Float] = []
+        for i in 0..<n {
+            let t = end - Double(n - 1 - i) * config.slice
+            mic.append(max(floorDB, value(of: micHistory, at: t) ?? floorDB))
+        }
+        let micStd = Self.std(mic)
+        let micFlat = micStd <= 1.0
+        // The level the echo must have relative to the reference: the learned speaker-to-microphone coupling, with some tolerance for the band filter and the room.
+        // A person talking over the answer is 12–30 dB hotter than the echo, so a candidate far above the coupling is never explained away.
+        let plausible = (coupling - config.couplingTolerance) ... (coupling + config.couplingTolerance)
+        var best: Double?
+        var lag = config.echoLagRange.lowerBound
+        while lag <= config.echoLagRange.upperBound + 1e-9 {
+            var ref: [Float] = []
+            var present = 0
+            for i in 0..<n {
+                let t = end - Double(n - 1 - i) * config.slice - lag
+                if let v = value(of: reference, at: t) { ref.append(max(floorDB, v)); present += 1 } else { ref.append(floorDB) }
+            }
+            lag += config.slice
+            guard present >= n / 2 else { continue }
+            // mean level difference where JARVIS is audible at this delay: must be a plausible speaker-to-microphone coupling
+            var diff: Float = 0, count: Float = 0
+            for i in 0..<n where ref[i] > config.audibleReferenceDB { diff += mic[i] - ref[i]; count += 1 }
+            guard count >= Float(n) * 0.25, plausible.contains(diff / count) else { continue }
+            if micFlat {
+                // A sustained, steady microphone level has no shape to correlate. It is JARVIS' own voice when, at this delay, the reference is audible for
+                // (nearly) the whole window and sits at a plausible coupling below it: a person's voice is never this steady.
+                if count >= Float(n) * 0.8 { best = max(best ?? -1, 0.99) }
+            } else if Self.std(ref) > 1.0, let c = Self.pearson(mic, ref) {
+                best = max(best ?? -1, c)
+            }
+        }
+        return best
+    }
+
+    static func std(_ x: [Float]) -> Float {
+        guard x.count > 1 else { return 0 }
+        let m = x.reduce(0, +) / Float(x.count)
+        return (x.reduce(0) { $0 + ($1 - m) * ($1 - m) } / Float(x.count)).squareRoot()
+    }
+
+    static func pearson(_ a: [Float], _ b: [Float]) -> Double? {
+        guard a.count == b.count, a.count > 1 else { return nil }
+        let ma = a.reduce(0, +) / Float(a.count), mb = b.reduce(0, +) / Float(b.count)
+        var num: Float = 0, da: Float = 0, db: Float = 0
+        for i in 0..<a.count { let x = a[i] - ma, y = b[i] - mb; num += x * y; da += x * x; db += y * y }
+        guard da > 1e-6, db > 1e-6 else { return nil }
+        return Double(num / (da * db).squareRoot())
     }
 }
 

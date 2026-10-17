@@ -64,6 +64,10 @@ final class VoiceCoordinator {
     /// Language of the current hands-free conversation (kept across turns inside one attentive session).
     @ObservationIgnored var languageContinuity = LanguageContinuity()
     private(set) var handsFreeUtterance = false
+    /// Set by the hands-free coordinator right before an utterance starts: how the capture relates to JARVIS' own playback (Fix 4). Push-to-Talk never sets it.
+    var utteranceProvenance: UtteranceProvenance = .clean
+    @ObservationIgnored var diagnostics: VoiceDiagnostics?
+    @ObservationIgnored var diagnosticsClock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     /// Settings → Voice previews a preset without changing the saved choice; cleared when the preview ends.
     @ObservationIgnored let presetOverride: PresetOverride
     final class PresetOverride { var value: JarvisVoicePreset? }
@@ -416,6 +420,13 @@ final class VoiceCoordinator {
                 if SelfSpeechFilter.isEcho(heard: text, spoken: speaker.recentSpoken) {         // JARVIS' own voice must never become a user turn
                     partialTranscript = ""; handsFreeUtterance = false; metrics.outcome = "selfSpeech"; lastMetrics = metrics
                     onEvent?("Voice: dropped a transcript that quoted JARVIS' own speech", .info)
+                    finishSession(); onSignal?(.selfSpeech); return
+                }
+                let detected: VoiceLanguage? = event?.language.map { $0.hasPrefix("tr") ? .turkish : ($0.hasPrefix("en") ? .english : .auto) }
+                if case .rejectSelfEcho(let reason) = PhantomGuard.verdict(text: text, detectedLanguage: detected, conversationLanguage: languageContinuity.current, provenance: utteranceProvenance) {
+                    partialTranscript = ""; handsFreeUtterance = false; metrics.outcome = "selfEcho"; lastMetrics = metrics
+                    diagnostics?.note("phantom.rejected", reason, at: diagnosticsClock())
+                    onEvent?("Voice: dropped a short transcript captured over JARVIS' own speech (\(text.count) characters)", .info)
                     finishSession(); onSignal?(.selfSpeech); return
                 }
             }
