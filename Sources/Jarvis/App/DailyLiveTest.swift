@@ -335,6 +335,44 @@ enum DailyLiveTest {
             check("POLICY", "Nothing claims a video was started: no action happened, and none is reported", !tail.lowercased().contains("başlattım") && !tail.lowercased().contains("başlatıyorum"))
         }
 
+        // MARK: unity-open (V1.0 Phase B) — REAL: a DISPOSABLE copy of the repository's Unity fixture is opened in a real windowed Unity Editor through the project-open path; never the user's own projects
+        if wants("unity-open") {
+            let editors = UnityDiscovery.discover()
+            let fixtureSource = FileManager.default.currentDirectoryPath + "/UnityBridge/Fixture"
+            if editors.isEmpty || !FileManager.default.fileExists(atPath: fixtureSource + "/ProjectSettings/ProjectVersion.txt") {
+                skip("Unity project open", "no Unity editor is installed or the fixture is missing (run from the repository root)")
+            } else {
+                let name = "UnityOpenFixture"
+                let dir = NSTemporaryDirectory() + "jarvis-unity-open-\(UUID().uuidString)/" + name
+                try? FileManager.default.createDirectory(atPath: (dir as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+                try? FileManager.default.copyItem(atPath: fixtureSource, toPath: dir)
+                projects.append((dir as NSString).deletingLastPathComponent)
+                let canonical = UnityProcessScanner.canonical(dir)
+                let known = KnownProject(key: "path:" + dir, name: name, rootPath: dir, kind: "unity", lastSeen: Date())
+                svc.knownProjects = { [known] }
+                var env = UnityOpenEnvironment(); env.processTimeout = 60; env.readyTimeout = 420
+                context.actionService.unityOpener = SystemUnityProjectOpener(env: env)
+                let before = UnityProcessScanner.editors().count
+                let (reply, ms) = await say("\(name) projesini aç.", quiet: true)
+                _ = await waitUntil(480) { !svc.isAnswering }
+                let (final, _) = (convo.last?.content ?? reply, 0.0)
+                info("   → “\(final.prefix(220))”  [\(Int(ms)) ms to acknowledge]")
+                let running = UnityProcessScanner.editor(for: canonical, among: UnityProcessScanner.editors())
+                let receipt = context.actionService.ledger.receipts.last { $0.kind == .openProject }
+                check("REAL", "The Unity Editor of the project's own version was started with -projectPath = the fixture, and it holds the project (process + Temp/UnityLockfile)", running != nil && FileManager.default.fileExists(atPath: canonical + "/Temp/UnityLockfile") && FileManager.default.fileExists(atPath: canonical + "/Library/EditorInstance.json"), "editors before \(before), now \(UnityProcessScanner.editors().count)")
+                check("REAL", "The receipt is verified and the sentence says it is open in Unity", receipt?.successIsClaimable == true && final.contains("Unity'de açık"), "\(receipt?.status.rawValue ?? "no receipt") · \(receipt?.verification?.detail ?? "")")
+                let again = await say("\(name) projesini aç.", quiet: true)
+                check("REAL", "Asking again brings the SAME editor forward — no second editor on the project", UnityProcessScanner.editors().filter { $0.projectPath == canonical && !$0.isImportWorker }.count <= 1 && again.0.contains("Unity'de açık"), again.0)
+                // cleanup: the test started this editor (and only this one) — quit it normally, never force
+                if let e = running {
+                    NSRunningApplication(processIdentifier: e.pid)?.terminate()
+                    if !(await waitUntil(20) { UnityProcessScanner.editor(for: canonical, among: UnityProcessScanner.editors()) == nil }) { kill(e.pid, SIGTERM) }
+                    let gone = await waitUntil(60) { !UnityProcessScanner.editors().contains { $0.projectPath == canonical && !$0.isImportWorker } }
+                    check("REAL", "The editor the test started is gone again (nothing else was touched)", gone)
+                }
+            }
+        }
+
         // MARK: voice (voice-equivalent: the same service, source .voice; no microphone, no audio)
         if wants("voice") {
             prefs.responseStyle = .concise; prefs.addressStyle = .natural

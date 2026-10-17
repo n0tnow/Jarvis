@@ -202,8 +202,9 @@ final class ActionService {
             if front { r.succeed(ActionVerification(method: "Unity editor process with this -projectPath + frontmost", passed: true, detail: "an editor (pid \(pid)) already had \(name) open and is now frontmost"), now: now()) }
             else { r.markUnverified(ActionVerification(method: "Unity editor process with this -projectPath", passed: nil, detail: "an editor (pid \(pid)) has \(name) open, but it did not become frontmost"), now: now()) }
         case .launched(let pid, let version, let lock):
-            if lock { r.succeed(ActionVerification(method: "Unity editor process with this -projectPath + Temp/UnityLockfile", passed: true, detail: "Unity \(version) (pid \(pid)) is running with \(name) and holds the project"), now: now()) }
+            if lock { r.succeed(ActionVerification(method: "Unity editor process with this -projectPath + Temp/UnityLockfile + Library/EditorInstance.json", passed: true, detail: "Unity \(version) (pid \(pid)) is running with \(name) and holds the project"), now: now()) }
             else { r.markUnverified(ActionVerification(method: "Unity editor process with this -projectPath", passed: nil, detail: "Unity \(version) (pid \(pid)) started with \(name) but the project is not confirmed open yet (it may still be importing or waiting for a licence/sign-in)"), now: now()) }
+        case .heldHeadless(let pid): r.fail("a background Unity editor (pid \(pid), used by a JARVIS task) holds \(name); I did not start a second one")
         case .notAUnityProject: r.fail("that folder is not a Unity project any more")
         case .noEditorInstalled(let declared): r.fail("no Unity editor is installed for this project (it declares \(declared ?? "an unknown version"))")
         case .needsUpgradeApproval(let declared, let candidate): r.fail("this project needs Unity \(declared), which is not installed; Unity \(candidate) is, but opening it there would upgrade the project, so I did not")

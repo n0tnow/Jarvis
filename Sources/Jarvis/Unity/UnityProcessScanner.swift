@@ -8,6 +8,10 @@ enum UnityProcessScanner {
         var pid: pid_t
         var executable: String
         var projectPath: String?          // canonical absolute path, when the editor was started with -projectPath
+        /// Unity starts helper processes of the SAME executable with the editor's -projectPath (`-name AssetImportWorker…`); they are not editors and must never be chosen as "the editor".
+        var isImportWorker = false
+        /// `-batchmode`: a windowless editor (JARVIS' own agent editor is one). It holds the project but has no window to bring forward.
+        var isBatchMode = false
     }
 
     static func isUnityEditorExecutable(_ path: String) -> Bool { path.hasSuffix("/Unity.app/Contents/MacOS/Unity") }
@@ -25,7 +29,9 @@ enum UnityProcessScanner {
             let exe = String(cString: pathBuf)
             guard isUnityEditorExecutable(exe) else { continue }
             let args = arguments(of: pid)
-            out.append(Editor(pid: pid, executable: exe, projectPath: args.flatMap(projectPath(from:)).map(canonical)))
+            let lowered = (args ?? []).map { $0.lowercased() }
+            out.append(Editor(pid: pid, executable: exe, projectPath: args.flatMap(projectPath(from:)).map(canonical),
+                              isImportWorker: lowered.contains { $0.hasPrefix("assetimportworker") } || lowered.contains("-adb2"), isBatchMode: lowered.contains("-batchmode")))
         }
         return out
     }
@@ -33,7 +39,7 @@ enum UnityProcessScanner {
     /// The editor that has `projectPath` open, if any (compared on canonical paths).
     static func editor(for projectPath: String, among editors: [Editor]) -> Editor? {
         let target = canonical(projectPath)
-        return editors.first { $0.projectPath == target }
+        return editors.first { $0.projectPath == target && !$0.isImportWorker }
     }
 
     static func canonical(_ path: String) -> String {

@@ -8,13 +8,16 @@ import Foundation
 //   · the path comes from the project registry and is re-validated here (Assets/ + ProjectSettings/ProjectVersion.txt exist);
 //   · the editor version comes from the project's own `ProjectVersion.txt` and `UnityDiscovery` (no version is hard-coded); a different version is NEVER opened silently (it would migrate the project);
 //   · an editor that already has this project open is brought forward, not duplicated; an editor with another project is left alone;
-//   · evidence of "open": a running Unity process whose `-projectPath` is this project (process table) AND the project's `Temp/UnityLockfile` (Unity creates it while it holds the project);
+//   · evidence of "open": a running Unity process whose `-projectPath` is this project (process table), the project's `Temp/UnityLockfile` (Unity creates it while it holds the project) AND
+//     `Library/EditorInstance.json` naming THAT process (the editor writes it once it has the project open);
 //   · no JARVIS file is written into the project; opening a project in Unity necessarily lets Unity itself update its own Library/Temp folders.
 
 enum UnityOpenOutcome: Equatable, Sendable {
+    /// A windowless editor (a JARVIS agent task's) holds the project: Unity cannot open it twice, so nothing was started.
+    case heldHeadless(pid: Int32)
     /// An editor already had the project open; `frontmost` tells whether it is now the frontmost application.
     case alreadyOpen(pid: Int32, version: String?, frontmost: Bool)
-    /// Started now; `lockfile` = the project's Temp/UnityLockfile exists (the editor holds the project).
+    /// Started now; `lockfile` = the editor holds the project: Temp/UnityLockfile exists AND Library/EditorInstance.json names this process.
     case launched(pid: Int32, version: String, lockfile: Bool)
     case notAUnityProject
     case noEditorInstalled(declared: String?)
@@ -42,6 +45,11 @@ struct UnityOpenEnvironment {
     var activate: (Int32) -> Void = { NSRunningApplication(processIdentifier: $0)?.activate() }
     var frontmostPID: () -> Int32? = { NSWorkspace.shared.frontmostApplication?.processIdentifier }
     var lockfileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0 + "/Temp/UnityLockfile") }
+    /// `Library/EditorInstance.json` is written by the editor once it has the project open; it names the editor's process. nil = not there (yet).
+    var editorInstancePID: (String) -> Int32? = { root in
+        guard let data = FileManager.default.contents(atPath: root + "/Library/EditorInstance.json"), let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        return (obj["process_id"] as? NSNumber)?.int32Value
+    }
     var sleep: (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
     /// Bounded waits: how long the editor may take to appear and to hold the project (a cold start with an import can take minutes; the answer then is honest, not hopeful).
     var processTimeout: TimeInterval = 30
@@ -72,6 +80,7 @@ final class SystemUnityProjectOpener: UnityProjectOpening {
 
         // 1. already open: bring it forward, do not start a second editor on the same project (Unity would refuse it anyway)
         if let running = UnityProcessScanner.editor(for: root, among: env.editors()) {
+            if running.isBatchMode { return .heldHeadless(pid: running.pid) }
             env.activate(running.pid)
             var front = false
             let deadline = env.processTimeout
@@ -100,11 +109,12 @@ final class SystemUnityProjectOpener: UnityProjectOpening {
             }
             guard let editor = found else { return .processNotFound }
             // … that holds the project (lock file), within the readiness limit
+            func holds() -> Bool { env.lockfileExists(root) && env.editorInstancePID(root) == editor.pid }
             while waited <= env.readyTimeout {
-                if env.lockfileExists(root) { return .launched(pid: editor.pid, version: install.version.description, lockfile: true) }
+                if holds() { return .launched(pid: editor.pid, version: install.version.description, lockfile: true) }
                 await env.sleep(env.poll); waited += env.poll
             }
-            return .launched(pid: editor.pid, version: install.version.description, lockfile: env.lockfileExists(root))
+            return .launched(pid: editor.pid, version: install.version.description, lockfile: holds())
         }
     }
 }

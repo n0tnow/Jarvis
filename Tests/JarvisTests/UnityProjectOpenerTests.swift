@@ -42,6 +42,7 @@ struct UnityProjectOpenerTests {
         env.activate = { w.activated.append($0); w.front = $0 }
         env.frontmostPID = { w.front }
         env.lockfileExists = { _ in w.lock }
+        env.editorInstancePID = { _ in w.lock ? 4242 : nil }
         env.sleep = { _ in }
         env.processTimeout = 1; env.readyTimeout = 2; env.poll = 0.5
         return SystemUnityProjectOpener(env: env)
@@ -97,14 +98,14 @@ struct UnityProjectOpenerTests {
         #expect(await opener(w).open(projectRoot: root) == .processNotFound)
     }
 
-    @Test("a started editor that does not hold the project yet is reported as started, not as open")
+    @Test("a started editor whose EditorInstance.json does not name it yet is reported as started, not as open")
     func notReady() async {
         let w = World(); w.installs = [install("6000.0.23f1")]
         let root = makeProject()
         var env = UnityOpenEnvironment()
         env.installs = { w.installs }; env.editors = { w.editors }
         env.launch = { app, project in w.editors.append(.init(pid: 9, executable: app, projectPath: project)); return nil }
-        env.lockfileExists = { _ in false }; env.sleep = { _ in }; env.processTimeout = 1; env.readyTimeout = 2
+        env.lockfileExists = { _ in true }; env.editorInstancePID = { _ in nil }; env.sleep = { _ in }; env.processTimeout = 1; env.readyTimeout = 2
         let o = await SystemUnityProjectOpener(env: env).open(projectRoot: root)
         #expect(o == .launched(pid: 9, version: "6000.0.23f1", lockfile: false))
     }
@@ -126,5 +127,26 @@ struct UnityProjectOpenerTests {
         fake.outcome = .needsUpgradeApproval(declared: "6000.0.23f1", candidate: "2022.3.1f1")
         let up = await service.perform(.openProject(name: "Hamam", path: root))
         #expect(up.status == .failed && ActionPhrasebook.render(up, language: .tr).contains("2022.3.1f1"))
+    }
+}
+
+@MainActor
+@Suite("V1.0 Phase B · Unity process table")
+struct UnityProcessTableTests {
+    @Test("an asset-import worker (same executable, same -projectPath) is never chosen as the editor; a windowless editor is reported as holding the project")
+    func workersAndHeadless() async {
+        let root = NSTemporaryDirectory() + "unity-proc-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: root + "/Assets", withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(atPath: root + "/ProjectSettings", withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: root + "/ProjectSettings/ProjectVersion.txt", contents: Data("m_EditorVersion: 6000.0.23f1\n".utf8))
+        let canon = UnityProcessScanner.canonical(root)
+        let worker = UnityProcessScanner.Editor(pid: 5, executable: "/x/Unity", projectPath: canon, isImportWorker: true, isBatchMode: true)
+        let main = UnityProcessScanner.Editor(pid: 4, executable: "/x/Unity", projectPath: canon)
+        #expect(UnityProcessScanner.editor(for: root, among: [worker, main])?.pid == 4)
+        #expect(UnityProcessScanner.editor(for: root, among: [worker]) == nil)
+        var env = UnityOpenEnvironment()
+        env.editors = { [UnityProcessScanner.Editor(pid: 9, executable: "/x/Unity", projectPath: canon, isBatchMode: true)] }
+        env.installs = { [] }; env.sleep = { _ in }
+        #expect(await SystemUnityProjectOpener(env: env).open(projectRoot: root) == .heldHeadless(pid: 9))
     }
 }
