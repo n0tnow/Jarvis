@@ -118,7 +118,7 @@ final class AppContext {
         hud = HUDState()
         // Production defaults only for a plain launch; every test / developer / live-test run gets an isolated suite (named after its data directory so a
         // restart child process sees the same state) and StorageIsolation fails hard if production storage would be touched.
-        preferences = Preferences(defaults: StorageIsolation.defaultsForRun(tag: dataDirectory.map { $0.lastPathComponent }))
+        preferences = Preferences(defaults: StorageIsolation.defaultsForRun(tag: stubIntelligence ? nil : dataDirectory.map { $0.lastPathComponent }))
         if let dataDirectory { StorageIsolation.assertNotProduction(dataRoot: dataDirectory) }
         // Self-heal for state written by an older build's live tests: a fixture project selection never belongs to the installed app (see docs/PRODUCTION_TRUTH.md, "fixture incident").
         if !StorageIsolation.isProtectedRun, StorageIsolation.isTestFixturePath(preferences.projectRoot) {

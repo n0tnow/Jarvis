@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var liveData = options.dailyLiveFolder.map { JarvisPaths.liveTestsRoot.appendingPathComponent($0, isDirectory: true) } ?? legacyLiveData
         // V1.0 fix 3: every developer / live-test / smoke / capture launch keeps its data OUTSIDE the production support folder and uses an isolated defaults suite
         // (StorageIsolation). `--use-production-data` is the explicit developer override; tests never pass it.
-        if liveData == nil, StorageIsolation.isProtectedRun { liveData = JarvisPaths.liveTestsRoot.appendingPathComponent("dev-run", isDirectory: true) }
+        if liveData == nil, StorageIsolation.isProtectedRun { liveData = JarvisPaths.liveTestsRoot.appendingPathComponent("dev-run", isDirectory: true); StorageIsolation.wipe(tag: "dev-run") }          // a plain developer run always starts from a clean profile
         // V0.14: the adaptive and MCP live tests judge what is learned from THEIR OWN generated history, so they start from an empty isolated directory every time
         // (a second run on top of the first would find a 24-run workflow and fail for the wrong reason). Only these two JARVIS-created test directories are ever removed.
         if let liveData, ["live-test-adaptive", "live-test-mcp", "live-test-daily", "live-test-packaging", "live-test-setup"].contains(liveData.lastPathComponent), liveData.deletingLastPathComponent().standardizedFileURL == JarvisPaths.liveTestsRoot.standardizedFileURL {
