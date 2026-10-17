@@ -28,12 +28,20 @@ enum ReadinessIntent: Equatable, Sendable {
     case fileAbility
     case webAbility
     case memoryAbility
+    /// “Sistem durumunu söyle”, “Her şey hazır mı?”, “Neler çalışıyor?”, “Wake word çalışıyor mu?”: the whole picture, from the SAME state the HUD shows (V1.0 fix 4).
+    case systemStatus(StatusScope)
 }
 
 @MainActor
 protocol ReadinessConversing: AnyObject {
     func recognizes(_ text: String) -> ReadinessIntent?
     func reply(to intent: ReadinessIntent, language: ReplyLanguage) -> String
+    /// The same reply in two sizes when the intent has a short spoken form and a detailed one (system status): `short` is shown by default, `full` after “detaylı anlat”.
+    func replyForms(to intent: ReadinessIntent, language: ReplyLanguage) -> (full: String, short: String?)
+}
+
+extension ReadinessConversing {
+    func replyForms(to intent: ReadinessIntent, language: ReplyLanguage) -> (full: String, short: String?) { (reply(to: intent, language: language), nil) }
 }
 
 enum ReadinessIntentParser {
@@ -102,8 +110,14 @@ enum ReadinessIntentParser {
 
         if phrase("hangi surum", "what version", "which version", "surumun ne", "your version", "surumunuz") { return .version }
         if let a = abilityQuestion(t, f) { return a }
-        // “Sistem durumunu kısaca özetle” / “system status”: the readiness overview, nothing else.
-        if phrase("sistem durum", "system status", "status of the system", "status of jarvis", "jarvis durum", "durumunu ozetle") && t.count <= 8 && !has("gorev", "task", "proje", "project", "unity", "hamam") { return .overall }
+        // “Sistem durumunu söyler misin?” / “system status” / “Her şey hazır mı?” / “Neler çalışıyor?” / “Wake word çalışıyor mu?”: answered from the structured system state.
+        let projectish = has("gorev", "task", "proje", "project", "unity", "hamam") || hasPrefix("gorevi", "projeyi")
+        let compact = f.replacingOccurrences(of: " ", with: "")            // speech recognisers split and join words freely (“sistemdurumu”, “sistem durum nu”)
+        if phrase("sistem durum", "system status", "status of the system", "status of jarvis", "jarvis durum", "durumunu ozetle", "her sey hazir", "everything ready", "is everything ready", "all systems", "sistemler hazir", "how are you doing", "ne durumdasin", "durumun ne") || compact.contains("sistemdurum") || compact.contains("systemstatus"), t.count <= 10, !projectish { return .systemStatus(.all) }
+        if phrase("neler calisiyor", "ne calisiyor", "what is running", "what s running", "whats running", "what are you running") , t.count <= 8 { return .systemStatus(.running) }
+        if phrase("hangi ozellik", "which features", "what features", "hangi ozellikler"), hasPrefix("aktif", "acik", "active", "on", "calis"), t.count <= 9 { return .systemStatus(.features) }
+        if (has("wake") || phrase("uyandirma", "wake word", "wakeword")), phrase("calisiyor", "running", "aktif", "acik mi", "is it on", "durumu", "status", "dinliyor", "listening"), t.count <= 9, !phrase("kapat", "turn off", "ac ", "turn on") { return .systemStatus(.wake) }
+        if has("providerlarin", "providerlar", "saglayicilarin", "providers") && phrase("durum", "status", "ne durumda", "how are"), t.count <= 9 { return .providers }
 
         // 1. The original, strict readiness questions (“Claude hazır mı?”, “Is Whisper installed?”).
         let asks = hasPrefix("hazir", "ready", "saglikli", "healthy", "health", "kurulu", "installed", "calisir", "usable", "kullanilabilir") || phrase("var mi", "is there", "do i have", "sahip miyim")
@@ -171,9 +185,19 @@ final class ReadinessAssistant: ReadinessConversing {
     let service: ReadinessService
     /// The project folder JARVIS is scoped to (nil = none chosen). Injected by `AppContext`; a fact, never inferred.
     var projectRoot: () -> String? = { nil }
+    /// The full structured system state (readiness + preferences + detector + tasks + agents). Set by `AppContext`; the HUD reads the same sources.
+    var statusProvider: (() -> SystemStatusSnapshot)?
     init(service: ReadinessService) { self.service = service }
 
     func recognizes(_ text: String) -> ReadinessIntent? { ReadinessIntentParser.recognize(text) }
+
+    func replyForms(to intent: ReadinessIntent, language l: ReplyLanguage) -> (full: String, short: String?) {
+        if case .systemStatus(let scope) = intent, let provider = statusProvider {
+            let snapshot = provider()
+            return (SystemStatusComposer.compose(snapshot, focus: scope, language: l, detailed: true), SystemStatusComposer.compose(snapshot, focus: scope, language: l, detailed: false))
+        }
+        return (reply(to: intent, language: l), nil)
+    }
 
     private func tr(_ l: ReplyLanguage, _ en: String, _ trk: String) -> String { l == .tr ? trk : en }
 
@@ -292,6 +316,9 @@ final class ReadinessAssistant: ReadinessConversing {
             }
         case .unity:
             return join(["unity.editor", "unity.bridge"])
+        case .systemStatus(let focus):
+            if let provider = statusProvider { return SystemStatusComposer.compose(provider(), focus: focus, language: l, detailed: false) }
+            return reply(to: .overall, language: l)
         case .overall:
             let attention = snap.attention
             var parts: [String] = []

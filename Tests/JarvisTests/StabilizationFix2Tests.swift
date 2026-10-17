@@ -109,8 +109,8 @@ struct CapabilityGroundingTests {
         #expect(r("Başka neler yapabiliyorsun?") == .capabilities)
         #expect(r("Ne yapabiliyorsun?") == .capabilities)
         #expect(r("What else can you do?") == .capabilities)
-        #expect(r("Sistem durumunu kısaca özetle") == .overall)
-        #expect(r("Summarize the system status") == .overall || r("Summarize the system status") == nil)
+        #expect(r("Sistem durumunu kısaca özetle") == .systemStatus(.all))
+        #expect(r("Summarize the system status") == .systemStatus(.all))
         #expect(r("Unity kullanabiliyor musun?") == .canUse("unity"))
         #expect(r("Bilgisayar kontrolü yapabiliyor musun?") == .canUse("computer"))
     }

@@ -91,6 +91,7 @@ final class AppContext {
     @ObservationIgnored var readiness: ReadinessService!
     @ObservationIgnored var readinessAssistant: ReadinessAssistant!
     @ObservationIgnored var settingsAssistant: SettingsAssistant!
+    @ObservationIgnored var actionService: ActionService!
     @ObservationIgnored let storageLedger = StorageLedger()
     @ObservationIgnored var setupRunner: SetupRunner!
     @ObservationIgnored var notifier: JarvisNotifier!

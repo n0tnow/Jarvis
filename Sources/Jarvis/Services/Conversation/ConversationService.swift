@@ -87,6 +87,8 @@ final class ConversationService {
     @ObservationIgnored weak var settingsHandler: (any SettingsConversing)?
     /// What really went where (setting / Project Memory / task record / nowhere) — answers “nereye kaydettin?” and “will you remember that?”.
     @ObservationIgnored var storageLedger: StorageLedger?
+    /// Typed actions (open an application, a folder, a JARVIS page): executed deterministically, verified, and reported from an `ActionReceipt` (V1.0 fix 4). Never a model call.
+    @ObservationIgnored weak var actionService: ActionService?
     /// V0.15: true while any decision (approval, adaptive request, proposal) waits for a HUD button — a bare “yes” is then caught by `ApprovalGuard`, whatever kind of decision it is.
     @ObservationIgnored var hasPendingDecision: () -> Bool = { false }
     /// Settings → Speak task acknowledgements. Off: the acknowledgement is still shown, just not spoken.
@@ -154,6 +156,13 @@ final class ConversationService {
         case .reroute(let corrected): text = corrected; currentInterpretation = "correction"
         }
         let depth = text == text0 ? initialDepth : ResponseDepthDetector.detect(text)
+        // An action request — “Safari'yi aç”, “Safari'yi açabilir misin?”, “System panelini aç”, “Dashboard'a dön”: executed, verified, and answered from the RECEIPT. A polite question about doing
+        // something JARVIS can do is a request, not a conversation; the language model is never involved and never gets to say it was done.
+        if let actions = actionService, let intent = actions.recognizes(text) {
+            currentInterpretation = "action"
+            handleAction(intent, with: actions, language: inputLanguage)
+            return .localResponse(.contextual, inputLanguage)
+        }
         // Settings requests (“Konuşma hızını biraz arttır”, “Bana efendim diye hitap et”, “Wake word'ü kapat”): typed, validated, read back, then reported (V1.0 fix 2). Strict grammar, so a real
         // request keeps its route; the language model is never asked and Project Memory is never used for a preference.
         if let settings = settingsHandler, let intent = settings.recognizes(text) {
@@ -213,8 +222,8 @@ final class ConversationService {
         if let readiness = readinessHandler, let intent = readiness.recognizes(text) {
             currentInterpretation = "readiness: \(intent)"
             let lang = inputLanguage
-            let full = readiness.reply(to: intent, language: lang)
-            conversation.appendJarvis(presenter.present(full: full, language: lang, evidence: true), route: .local)
+            let forms = readiness.replyForms(to: intent, language: lang)
+            conversation.appendJarvis(presenter.present(full: forms.full, short: forms.short, language: lang, evidence: forms.short == nil), route: .local)
             return .localResponse(.contextual, lang)
         }
         // Project Memory: explicit remember / correct / forget and direct questions about the project's history are answered from RECORDS (no model, no invention).
@@ -228,6 +237,19 @@ final class ConversationService {
             }
         }
         return dispatch(text, origin: origin, source: source)
+    }
+
+    private func handleAction(_ intent: ActionIntent, with actions: ActionService, language: ReplyLanguage) {
+        pendingTaskAcks += 1
+        Task { @MainActor [weak self, weak actions] in
+            guard let self, let actions else { return }
+            defer { self.pendingTaskAcks -= 1 }
+            let receipt = await actions.perform(intent)
+            let text = ActionPhrasebook.render(receipt, language: language)
+            let ok = receipt.successIsClaimable
+            self.conversation.appendJarvis(self.presenter.present(full: text, language: language, evidence: true), tone: ok ? .normal : .notice, route: .command)
+            self.announceLatestReply()
+        }
     }
 
     // MARK: Corrections (V1.0 fix 2)
@@ -579,6 +601,14 @@ final class ConversationService {
     /// Provider identity firewall: an engine's claim about what JARVIS can or cannot do (screen, files, memory, computer) is replaced by JARVIS' own statement from its readiness state.
     private func applyCapabilityFirewall(to messageID: UUID, language: ReplyLanguage) {
         guard let text = conversation.messages.last(where: { $0.id == messageID })?.content else { return }
+        // (1) An engine reply that claims it DID something has no receipt behind it: the engine cannot execute anything.
+        let actionClaims = ActionClaimGuard.claims(in: text)
+        if !actionClaims.isEmpty {
+            conversation.replaceContent(messageID, with: ActionClaimGuard.replacement(for: text, claims: actionClaims, language: language))
+            store.log("Engine reply claimed an action that no receipt backs — replaced by a true notice", kind: .warning)
+            return
+        }
+        // (2) Claims about what JARVIS can or cannot do.
         let found = CapabilityClaimGuard.findings(in: text)
         guard !found.isEmpty else { return }
         let grounded = readinessHandler?.reply(to: .capabilities, language: language) ?? ""

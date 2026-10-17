@@ -40,7 +40,13 @@ extension AppContext {
         self.readiness = readiness
         readinessAssistant = ReadinessAssistant(service: readiness)
         readinessAssistant.projectRoot = { [weak self] in self?.preferences.projectRoot }
+        readinessAssistant.statusProvider = { [unowned self] in self.systemStatusSnapshot() }
         settingsAssistant = SettingsAssistant(preferences: preferences, ledger: storageLedger)
+        // Typed actions: the real launcher only in the installed / developer app; an automated (stubbed) run can never open a real application.
+        let hud = self.hud
+        actionService = ActionService(launcher: stub ? StubbedApplicationLauncher() : SystemApplicationLauncher(), windows: windows,
+                                      selfState: { [weak self] in SelfUIState(section: hud.section, fullOpen: self?.windows.isFullHUDOpen ?? false, compactOpen: self?.windows.isCompactHUDOpen ?? false) })
+        actionService.log = { [weak self] message, kind in self?.store.log(message, kind: kind) }
         let hf = handsFree
         settingsAssistant.wakeIsActive = { hf.wakeStatus == .listening || hf.wakeStatus == .starting }
         settingsAssistant.endListening = { hf.endHandsFreeSession() }
@@ -99,7 +105,25 @@ extension AppContext {
         }
         service.readinessHandler = readinessAssistant
         service.settingsHandler = settingsAssistant
+        service.actionService = actionService
         service.storageLedger = storageLedger
+    }
+
+    /// ONE structured system state — the same sources the Dashboard, System and Settings read (readiness records, preferences, the hands-free detector, the task engine, the agent hub).
+    /// The conversation answers "sistem durumu" from this; it never asks a model.
+    func systemStatusSnapshot() -> SystemStatusSnapshot {
+        let detector: WakeDetectorProbe
+        switch handsFree.wakeStatus {
+        case .listening: detector = .running
+        case .starting: detector = .starting
+        case .paused: detector = .paused
+        case .unavailable(let why): detector = .error(why)
+        case .off: detector = .stopped
+        }
+        let root = preferences.projectRoot
+        return SystemStatusSnapshot(state: store.state, versionLine: AppInfo.versionLine, readiness: readiness.refresh(), project: root.isEmpty ? nil : (root as NSString).lastPathComponent,
+                                    activeTasks: taskEngine.activeCount, activeAgents: hub.activeRuns.count, voiceOn: preferences.voiceEnabled, pushToTalkOn: preferences.voicePushToTalk,
+                                    wakeEnabled: preferences.voiceWakeEnabled, wakeDetector: detector, providerPreference: preferences.providerPreference.displayName)
     }
 
     /// The right ⌥ key was held while Voice is OFF: say so, visibly, once in a while — instead of ignoring the hold in silence. Nothing is switched on and the microphone stays closed; the
