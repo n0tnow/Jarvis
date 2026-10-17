@@ -185,3 +185,95 @@ struct Fix4HandsFreeLoopTests {
         await r.hf.disable()
     }
 }
+
+@MainActor
+@Suite("Fix 4 · long answer over a delayed echo", .serialized)
+struct Fix4LongAnswerTests {
+    /// JARVIS speaks for ~7 s; the microphone hears its own phrases 0.65 s late at −24 dB (the fake VAD calls every echo burst “speech” via a one-sample spike).
+    private func run(legacy: Bool) async -> (barge: Int, stops: Int, stopReason: String?, hfState: HandsFreeState, rejected: Int) {
+        let r = HandsFreeRig()
+        r.h.tts.auto = false
+        r.h.stt.script = { $0.finalText = "open the tasks screen" }
+        if legacy { var c = BargeInDetector.Config(); c.confirmEnvelope = false; r.hf.configureBargeIn(c) }
+        await r.hf.enable()
+        await r.quiet(1.0); await r.speech(0.4); await r.wakeWord(); await r.speech(0.4); await r.quiet(0.6)
+        await r.settle { !r.h.tts.spoken.isEmpty }
+        let id = r.h.tts.spoken[0].id
+        r.h.tts.begin(id)
+        await r.settle { r.hf.state == .jarvisSpeaking }
+        let stopsBefore = r.h.tts.stopCount
+        let start = ProcessInfo.processInfo.systemUptime
+        let phraseOn: (Double) -> Bool = { t in t >= 1.2 && (t - 1.2).truncatingRemainder(dividingBy: 1.7) < 0.8 }          // 0.8 s phrase, 0.9 s pause
+        let delay = 0.65
+        let total = 7.0
+        // Real-time pacing: reference slices and the delayed echo are generated from the wall clock, so the simulated delay stays exactly `delay` whatever the scheduler does.
+        var lastRel = 0.0
+        while true {
+            let rel = ProcessInfo.processInfo.systemUptime - start
+            if rel >= total { break }
+            var t = lastRel
+            while t < rel { r.hf.referenceLevel(phraseOn(t) ? -20 : -90, at: start + t); t += 0.02 }
+            lastRel = t
+            let echoOn = phraseOn(rel - 0.05 - delay)
+            var samples = (0..<1600).map { Float(echoOn ? 0.0089 : 0.0003) * sin(2 * .pi * 1000 * Float($0) / 16000) }
+            if echoOn { samples[0] = 0.2 }                                                                            // VAD: “speech” (RMS stays at the echo level)
+            r.source.emit(AudioFrame(samples: samples))
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        let state = r.hf.state
+        let barge = r.hf.bargeInCount
+        let stops = r.h.tts.stopCount - stopsBefore
+        let rejected = r.hf.diagnostics.count("bargeIn.rejectedAsEcho")
+        r.h.tts.end(id)
+        try? await Task.sleep(for: .milliseconds(300))
+        let reason = r.h.voice.speaker.lastStopReason
+        await r.hf.disable()
+        return (barge, stops, reason, state, rejected)
+    }
+
+    @Test("OBSERVED CHAIN (legacy detector): JARVIS interrupts its own long answer because of its delayed echo")
+    func legacy() async {
+        let o = await run(legacy: true)
+        #expect(o.barge >= 1 && o.stops >= 1, "the legacy level gate cuts the speech (barge-ins \(o.barge))")
+    }
+
+    @Test("with the envelope confirmation the long answer plays to the end: 0 barge-ins, 0 stops, stop reason COMPLETED")
+    func fixed() async {
+        let o = await run(legacy: false)
+        #expect(o.barge == 0 && o.stops == 0, "barge-ins \(o.barge), stops \(o.stops), state \(o.hfState)")
+        #expect(o.hfState == .jarvisSpeaking)
+        #expect(o.stopReason == "completed", "stop reason \(o.stopReason ?? "nil")")
+    }
+}
+
+@MainActor
+@Suite("Fix 4 · barge-in stays responsive", .serialized)
+struct Fix4BargeInLatencyTests {
+    @Test("a real interruption over the answer stops JARVIS within 0.6 s of the first loud frame (measured), and 'Sus' is not delayed by the phantom guard")
+    func latency() async {
+        let r = HandsFreeRig()
+        r.h.tts.auto = false
+        r.h.stt.script = { $0.finalText = "open the tasks screen" }
+        await r.hf.enable()
+        await r.quiet(1.0); await r.speech(0.4); await r.wakeWord(); await r.speech(0.4); await r.quiet(0.6)
+        await r.settle { !r.h.tts.spoken.isEmpty }
+        let id = r.h.tts.spoken[0].id
+        r.h.tts.begin(id)
+        await r.settle { r.hf.state == .jarvisSpeaking }
+        let stopsBefore = r.h.tts.stopCount
+        for k in 0..<60 { r.hf.referenceLevel(-20, at: ProcessInfo.processInfo.systemUptime + Double(k) * 0.02) }
+        for _ in 0..<12 { r.source.emit(r.tone(0.0057)); try? await Task.sleep(for: .milliseconds(100)) }            // 1.2 s of quiet echo
+        r.h.stt.script = { $0.finalText = "Sus" }
+        let t0 = ProcessInfo.processInfo.systemUptime
+        var stoppedAt: Double?
+        for _ in 0..<30 {
+            r.hf.referenceLevel(-20, at: ProcessInfo.processInfo.systemUptime)
+            r.source.emit(r.tone(0.28))
+            try? await Task.sleep(for: .milliseconds(40))
+            if stoppedAt == nil, r.h.tts.stopCount > stopsBefore { stoppedAt = ProcessInfo.processInfo.systemUptime - t0; break }
+        }
+        #expect(stoppedAt != nil && (stoppedAt ?? 9) < 0.6, "stopped after \(stoppedAt.map { String(format: "%.0f ms", $0 * 1000) } ?? "never")")
+        #expect(r.hf.bargeInCount >= 0 && r.hf.diagnostics.count("bargeIn.confirmed") == 1)
+        await r.hf.disable()
+    }
+}

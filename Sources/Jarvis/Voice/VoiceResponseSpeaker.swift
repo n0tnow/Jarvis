@@ -22,6 +22,8 @@ final class VoiceResponseSpeaker {
     private(set) var isActive = false
     /// True only while audio is actually playing (a started phrase that has not finished).
     private(set) var isSpeaking = false
+    /// Why the last turn's speech ended: "completed" (it played to the end) or the reason of the stop (barge-in, "stopped by you", a new push-to-talk, shutdown…). Diagnostics only.
+    private(set) var lastStopReason: String?
 
     @ObservationIgnored var provider: (() -> (any TextToSpeechProvider)?)?
     @ObservationIgnored var settings: () -> VoiceOutputSettings = { VoiceOutputSettings() }
@@ -139,6 +141,7 @@ final class VoiceResponseSpeaker {
 
     /// Silences playback NOW and ends the turn. Safe to call at any time.
     func stop(reason: String = "stopped") {
+        lastStopReason = reason
         let had = isActive || isSpeaking || !queue.isEmpty || !inFlight.isEmpty
         queue.removeAll(); inFlight.removeAll()
         resetTurn()                                  // the turn is over BEFORE the provider reports its cancellations
@@ -251,6 +254,7 @@ final class VoiceResponseSpeaker {
     private func finishIfDrained() {
         guard isActive, inputComplete, queue.isEmpty, inFlight.isEmpty else { return }
         setSpeaking(false)
+        lastStopReason = "completed"
         var m = metrics
         m.spokenSeconds = spokenTotal > 0 ? spokenTotal : nil
         m.ttsProvider = provider?()?.id

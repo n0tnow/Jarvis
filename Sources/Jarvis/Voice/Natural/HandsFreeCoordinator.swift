@@ -360,6 +360,9 @@ final class HandsFreeCoordinator {
     @ObservationIgnored private var lastRejectedEchoCount = 0
 
     /// Level of what JARVIS is playing right now (from the output player's meter). Only used while JARVIS speaks.
+    /// Replaces the barge-in tuning (tests prove the legacy behaviour with `confirmEnvelope = false`; production uses the defaults).
+    func configureBargeIn(_ config: BargeInDetector.Config) { bargeIn = BargeInDetector(config: config) }
+
     func referenceLevel(_ db: Float, at t: TimeInterval) { bargeIn.pushReference(db: db, at: t) }
 
     // MARK: Sentinel events

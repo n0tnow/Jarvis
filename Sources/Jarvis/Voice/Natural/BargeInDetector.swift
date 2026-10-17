@@ -35,7 +35,7 @@ struct BargeInDetector: Sendable {
         var echoLagRange: ClosedRange<TimeInterval> = 0.04 ... 0.70
         var confirmWindow: TimeInterval = 1.00     // how much of the recent past is compared (20 ms slices); long enough to contain the start of the phrase
         var couplingTolerance: Float = 10          // dB around the learned coupling within which a delayed copy of the reference counts as explaining the microphone
-        var certainExcessDB: Float = 24            // a voice this far above any plausible echo is the user, whatever the envelope looks like (a shout over the answer)
+        var residualLimitDB: Float = 10            // even when the envelope matches, a microphone this far (90th percentile) ABOVE the delayed reference + coupling holds a second, louder voice: the user
         var slice: TimeInterval = 0.02
     }
 
@@ -120,16 +120,15 @@ struct BargeInDetector: Sendable {
             run += duration + gap; hot += duration
             gap = 0
             if run >= config.sustain, hot / run >= config.minimumDuty, let s = runStart {
-                let corr = config.confirmEnvelope ? echoCorrelation(until: t) : nil
-                if let corr, corr >= config.echoCorrelation, excess < config.certainExcessDB {
-                    // Not the user: the microphone is following JARVIS' own output. Learn from it (the echo is louder / later than predicted) and keep playing.
-                    rejectedAsEcho += 1; lastRejectedCorrelation = corr
-                    let refPeak = reference.map(\.db).max() ?? refDB
-                    coupling = min(config.couplingRange.upperBound, max(coupling, min(config.couplingRange.upperBound, db - max(refPeak, config.floorDB) )))
+                let match = config.confirmEnvelope ? echoMatch(until: t) : nil
+                if let m = match, m.correlation >= config.echoCorrelation, m.residualDB < config.residualLimitDB {
+                    // Not the user: the microphone follows JARVIS' own output at a plausible coupling. Learn from it (the echo is louder / later than predicted) and keep playing.
+                    rejectedAsEcho += 1; lastRejectedCorrelation = m.correlation
+                    coupling = min(config.couplingRange.upperBound, max(coupling, m.gainDB))
                     run = 0; hot = 0; gap = 0; runStart = nil
                     return nil
                 }
-                return Decision(onsetAgo: t - s, excessDB: excess, echoCorrelation: corr)
+                return Decision(onsetAgo: t - s, excessDB: excess, echoCorrelation: match?.correlation)
             }
         } else if runStart != nil {
             gap += duration
@@ -145,7 +144,17 @@ struct BargeInDetector: Sendable {
 extension BargeInDetector {
     /// Highest Pearson correlation between the microphone's recent speech-band level series and JARVIS' own reference level series, over the plausible output delays.
     /// Both series are sampled on a 20 ms grid ending at `end`; levels are floored so silence does not dominate. nil: not enough history to judge (never a rejection).
-    func echoCorrelation(until end: TimeInterval) -> Double? {
+    struct EchoMatch: Equatable, Sendable {
+        var correlation: Double
+        /// 90th percentile of (microphone − delayed reference) minus the learned coupling, in dB: ≈ 0 for pure echo, large when a second voice rides on it.
+        var residualDB: Float
+        /// Median level of the microphone relative to the delayed reference (the echo path's gain).
+        var gainDB: Float
+    }
+
+    private var anyCoupling: ClosedRange<Float> { (config.couplingRange.lowerBound - 12) ... (config.couplingRange.upperBound + 8) }
+
+    func echoMatch(until end: TimeInterval) -> EchoMatch? {
         let n = Int(config.confirmWindow / config.slice + 0.5)
         guard n >= 12, micHistory.count >= n / 2, reference.count >= 4 else { return nil }
         func value(of series: [(t: TimeInterval, db: Float)], at t: TimeInterval) -> Float? {
@@ -165,7 +174,7 @@ extension BargeInDetector {
         // The level the echo must have relative to the reference: the learned speaker-to-microphone coupling, with some tolerance for the band filter and the room.
         // A person talking over the answer is 12–30 dB hotter than the echo, so a candidate far above the coupling is never explained away.
         let plausible = (coupling - config.couplingTolerance) ... (coupling + config.couplingTolerance)
-        var best: Double?
+        var best: EchoMatch?
         var lag = config.echoLagRange.lowerBound
         while lag <= config.echoLagRange.upperBound + 1e-9 {
             var ref: [Float] = []
@@ -176,16 +185,25 @@ extension BargeInDetector {
             }
             lag += config.slice
             guard present >= n / 2 else { continue }
-            // mean level difference where JARVIS is audible at this delay: must be a plausible speaker-to-microphone coupling
-            var diff: Float = 0, count: Float = 0
-            for i in 0..<n where ref[i] > config.audibleReferenceDB { diff += mic[i] - ref[i]; count += 1 }
-            guard count >= Float(n) * 0.25, plausible.contains(diff / count) else { continue }
+            // The gain of the echo path at this delay: the MEDIAN of (microphone − reference) where JARVIS is audible (robust to a few misaligned slices and to a second voice
+            // that covers less than half of the window).
+            var diffs: [Float] = []
+            for i in 0..<n where ref[i] > config.audibleReferenceDB { diffs.append(mic[i] - ref[i]) }
+            guard diffs.count >= n / 4 else { continue }
+            diffs.sort()
+            let gain = diffs[diffs.count / 2]
+            // how far the loudest tenth of the audible samples sits above "this delayed reference + the coupling learned for this playback" (a second voice makes this large)
+            let p90 = diffs[min(diffs.count - 1, Int(Float(diffs.count) * 0.9))] - coupling
             if micFlat {
-                // A sustained, steady microphone level has no shape to correlate. It is JARVIS' own voice when, at this delay, the reference is audible for
-                // (nearly) the whole window and sits at a plausible coupling below it: a person's voice is never this steady.
-                if count >= Float(n) * 0.8 { best = max(best ?? -1, 0.99) }
-            } else if Self.std(ref) > 1.0, let c = Self.pearson(mic, ref) {
-                best = max(best ?? -1, c)
+                // A sustained, steady microphone level has no shape to correlate. It is JARVIS' own voice when, at this delay, the reference is audible for (nearly) the whole
+                // window and the gain is what the speaker-to-microphone coupling LEARNED at the start of this playback predicts: a person's voice is never this steady.
+                guard plausible.contains(gain), diffs.count >= n * 8 / 10 else { continue }
+                if best == nil || best!.correlation < 0.99 { best = EchoMatch(correlation: 0.99, residualDB: p90, gainDB: gain) }
+            } else {
+                // Shape follows shape: the microphone envelope tracks the delayed reference at a gain that any speaker/room/microphone could have (never a voice far hotter than the
+                // output could ever couple).
+                guard gain >= anyCoupling.lowerBound, gain <= anyCoupling.upperBound, Self.std(ref) > 1.0, let c = Self.pearson(mic, ref) else { continue }
+                if best == nil || c > best!.correlation { best = EchoMatch(correlation: c, residualDB: p90, gainDB: gain) }
             }
         }
         return best
