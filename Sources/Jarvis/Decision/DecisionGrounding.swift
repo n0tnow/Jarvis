@@ -184,6 +184,8 @@ enum ProjectOpenResolver {
     private static func fold(_ s: String) -> String { DecisionText.fold(s).filter { $0.isLetter || $0.isNumber } }
 
     /// `spoken` equals `name`, or is `name` plus one closed case suffix. Prefix matches are NOT accepted ("ham" must not open "hamam"): a guess about a project is a wrong project.
+    static func nameMatches(spoken: String, name: String) -> Bool { matches(fold(spoken), fold(name)) }
+
     private static func matches(_ spoken: String, _ name: String) -> Bool {
         guard name.count >= 2 else { return false }
         return suffixes.contains { spoken == name + $0 }

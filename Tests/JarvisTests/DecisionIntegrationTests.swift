@@ -108,6 +108,7 @@ private final class DecisionRig {
         svc.continuityHandler = continuity
         var parsers = DecisionParsers()
         parsers.action = { text in service.recognizes(text) }
+        parsers.isKnownProjectName = { [unowned self] spoken in self.projects.contains { p in ([p.name] + p.aliases).contains { ProjectOpenResolver.nameMatches(spoken: spoken, name: $0) } } }
         engine.recognizer = DeterministicCommandRecognizer(parsers: parsers)
         svc.decisionEngine = engine
         launcher.installed["com.apple.Safari"] = URL(fileURLWithPath: "/Applications/Safari.app")
@@ -348,5 +349,45 @@ struct DecisionDefaultsTests {
         defaults.set(0.01, forKey: "prefs.decision.jev.minConfidence")
         #expect(Preferences(defaults: defaults).decisionJevMinConfidence >= 0.5, "the gated threshold has a floor")
         UserDefaults().removePersistentDomain(forName: suite)
+    }
+}
+
+// MARK: Phase B — bare names resolved against the registry only
+
+@MainActor
+@Suite("V1.0 decision · Phase B grammar gaps (bare project names, running questions)")
+struct DecisionBareNameTests {
+    private let hamam = KnownProject(key: "hamam", name: "Hamam", rootPath: "/tmp/hamam", kind: "unity", lastSeen: Date())
+
+    @Test("“Hamam'ı aç” / “Hamamı aç” / “Hamam'da devam et” name the registry project; “Spotify'ı aç” stays an application")
+    func bareNames() async {
+        let rig = DecisionRig()
+        rig.projects = [hamam]
+        let r = rig.engine.recognizer
+        for s in ["Hamam'ı aç", "Hamamı aç", "Hamam'ı açar mısın?"] {
+            let d = r.recognize(s)
+            #expect(d?.intent == .projectOpen && d?.action == "open_bare", Comment(rawValue: s))
+        }
+        let c = r.recognize("Hamam'da devam et")
+        #expect(c?.intent == .projectTask && c?.action == "continue")
+        #expect(r.recognize("Spotify'ı aç")?.intent != .projectOpen, "an unknown name is not claimed as a project")
+        #expect(r.recognize("Safari'yi aç")?.intent == .macosApplicationAction)
+    }
+
+    @Test("a bare name the registry does not know is passed on, so the application grammar's phonetic fallback still sees “Sofany'yi aç”")
+    func unknownPassesThrough() {
+        var f = DecisionFacts(language: .tr, source: .typed, voice: VoiceStatusFacts(voiceOn: true, pushToTalkOn: true, wakeEnabled: false, wakeRunning: false, microphone: .granted, recogniserReady: true, heardViaVoice: false))
+        f.projects = [hamam]
+        let d = Decision(intent: .projectOpen, confidence: 0.6, target: "sofany", action: "open_bare", execution: true, projectResolution: true)
+        #expect(DecisionPlanner.plan(d, text: "Sofany'yi aç", facts: f) == .passThrough)
+    }
+
+    @Test("“Chrome açık mı?” is answered from the application list and never claims visibility")
+    func runningQuestion() {
+        var f = DecisionFacts(language: .tr, source: .typed, voice: VoiceStatusFacts(voiceOn: true, pushToTalkOn: true, wakeEnabled: false, wakeRunning: false, microphone: .granted, recogniserReady: true, heardViaVoice: false))
+        f.isAppRunning = { _ in true }
+        let d = DeterministicCommandRecognizer().recognize("Chrome açık mı?")
+        #expect(d?.action == "running_query")
+        if case .answer(let t, _) = DecisionPlanner.plan(d!, text: "Chrome açık mı?", facts: f) { #expect(t.contains("çalışıyor") && t.contains("göründüğü anlamına gelmez")) } else { #expect(Bool(false)) }
     }
 }

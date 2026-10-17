@@ -71,8 +71,16 @@ enum DecisionPlanner {
         case .projectOpen: return planOpen(d, f)
         case .projectTask:
             guard d.action == "continue" else { return .passThrough }          // delete / task / queue: the task engine's own policy and approvals decide
-            if let name = d.target, !name.isEmpty { return .continueProject(sentence: l == .tr ? "\(name) projesine devam et" : "continue the \(name) project") }
-            return .passThrough
+            guard let name = d.target, !name.isEmpty else { return .passThrough }
+            // The NAME is resolved against the registry (closed case suffixes only): the sentence handed to continuity carries the registry's own name, never a guess and never "whatever is focused".
+            switch ProjectOpenResolver.resolve(name: name, wantsLast: false, projects: f.projects, currentRoot: nil, pathExists: f.pathExists, isKind: f.isKind) {
+            case .resolved(let p): return .continueProject(sentence: l == .tr ? "\(p.name) projesine devam et" : "continue the \(p.name) project")
+            case .ambiguous(let candidates): return .answer(t(l, "Which project do you mean? I know: \(candidates.prefix(4).map(\.name).joined(separator: ", ")).", "Hangi projeyi kastediyorsunuz? Bildiklerim: \(candidates.prefix(4).map(\.name).joined(separator: ", "))."), tone: .notice)
+            case .pathMissing(let p): return .answer(t(l, "I know “\(p.name)”, but its folder is not on disk any more, so I did not continue anything.", "“\(p.name)” projesini biliyorum ama klasörü artık diskte yok; bu yüzden hiçbir şeye devam etmedim."), tone: .notice)
+            case .unknown, .noKnownProjects:
+                // not in the registry under that name: the continuity grammar gets the explicit sentence (it knows more names than the registry list) — it asks if it cannot resolve it
+                return .continueProject(sentence: l == .tr ? "\(name) projesine devam et" : "continue the \(name) project")
+            }
         case .computerUse:
             switch d.action ?? "" {
             case "visibility_query":
@@ -80,6 +88,13 @@ enum DecisionPlanner {
                 let running = ObservationGrounding.fold(target) == "browser" ? nil : f.isAppRunning(target)
                 let answer = ObservationGrounding.evaluate(target: target, observations: f.observations, now: f.now)
                 return .answer(ObservationGrounding.reply(answer, target: target, running: running, language: l), tone: answer.mayClaimVisible ? .normal : .notice)
+            case "running_query":
+                let target = d.target ?? "?"
+                switch f.isAppRunning(target) {
+                case true?: return .answer(t(l, "The application list says \(target) is running — that does not mean it is visible on screen.", "Uygulama listesine göre \(target) çalışıyor — bu, ekranda göründüğü anlamına gelmez."), tone: .normal)
+                case false?: return .answer(t(l, "The application list says \(target) is not running.", "Uygulama listesine göre \(target) çalışmıyor."), tone: .normal)
+                case nil: return .answer(t(l, "I cannot tell whether \(target) is running right now.", "\(target) şu an çalışıyor mu bilmiyorum."), tone: .notice)
+                }
             case "media", "observe":
                 return f.computerAvailable ? .computer(prompt: text) : .passThrough
             default: return .passThrough
@@ -126,9 +141,11 @@ enum DecisionPlanner {
             let names = candidates.prefix(4).map(\.name).joined(separator: ", ")
             return .answer(t(l, "Which project do you mean? I know: \(names).", "Hangi projeyi kastediyorsunuz? Bildiklerim: \(names)."), tone: .notice)
         case .unknown(let n, let known):
+            if d.action == "open_bare" { return .passThrough }            // “Sofany'yi aç”: not a project — the application grammar (and its sound-shape fallback) gets the sentence unchanged
             let list = known.isEmpty ? "" : t(l, " Known projects: \(known.joined(separator: ", ")).", " Bildiğim projeler: \(known.joined(separator: ", ")).")
             return .answer(t(l, "I do not know a project called “\(n)”.", "“\(n)” adında bir proje tanımıyorum.") + list, tone: .notice)
         case .noKnownProjects:
+            if d.action == "open_bare" { return .passThrough }
             return .answer(t(l, "I do not know any project yet. Choose a project folder in Settings first.", "Henüz hiçbir proje tanımıyorum. Önce Ayarlar'dan bir proje klasörü seçin."), tone: .notice)
         case .pathMissing(let p):
             return .answer(t(l, "I know “\(p.name)”, but its folder is not on disk any more, so I did not open anything.", "“\(p.name)” projesini biliyorum ama klasörü artık diskte yok; bu yüzden hiçbir şey açmadım."), tone: .notice)

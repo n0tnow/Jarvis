@@ -127,6 +127,13 @@ extension AppContext {
         let engine = DecisionEngine()
         var parsers = DecisionParsers()
         parsers.action = { [weak self] text in MainActor.assumeIsolated { self?.actionService.recognizes(text) } }
+        parsers.isKnownProjectName = { [weak self] spoken in
+            guard let self else { return false }
+            let rows = (try? self.repository?.memoryProjects()) ?? []
+            var names = rows.flatMap { [$0.name] + $0.aliases }
+            if !self.preferences.projectRoot.isEmpty { names.append((self.preferences.projectRoot as NSString).lastPathComponent) }
+            return names.contains { ProjectOpenResolver.nameMatches(spoken: spoken, name: $0) }
+        }
         engine.recognizer = DeterministicCommandRecognizer(parsers: parsers)
         engine.jev = JevDecisionProvider()
         engine.config = { JevConfig(mode: JevMode(rawValue: prefs.decisionJevMode) ?? .disabled, gatedMinimumConfidence: prefs.decisionJevMinConfidence, modelAlias: prefs.decisionJevModel) }

@@ -363,7 +363,10 @@ struct DecisionGroundingTests {
         if case .answer(let t, _) = DecisionPlanner.plan(decide("Unity projesini aç.")!, text: "", facts: f) { #expect(t.contains("Hangi proje")) } else { #expect(Bool(false)) }
         f.pathExists = { _ in false }
         if case .answer(let t, _) = DecisionPlanner.plan(decide("Hamam projesini aç.")!, text: "", facts: f) { #expect(t.contains("diskte yok")) } else { #expect(Bool(false)) }
-        #expect(DecisionPlanner.plan(decide("Hamam'da kaldığımız yerden devam et.")!, text: "", facts: f) == .continueProject(sentence: "hamam projesine devam et"))
+        // a registry project whose folder is gone is reported, never continued; with the folder present the REGISTRY's own name goes to continuity
+        if case .answer(let t, _) = DecisionPlanner.plan(decide("Hamam'da kaldığımız yerden devam et.")!, text: "", facts: f) { #expect(t.contains("diskte yok")) } else { #expect(Bool(false)) }
+        f.pathExists = { _ in true }
+        #expect(DecisionPlanner.plan(decide("Hamam'da kaldığımız yerden devam et.")!, text: "", facts: f) == .continueProject(sentence: "Hamam projesine devam et"))
         #expect(DecisionPlanner.plan(decide("Kaldığımız yerden devam et")!, text: "", facts: f) == .passThrough, "the current project continues through the existing continuity route")
     }
 }

@@ -50,6 +50,8 @@ struct DecisionParsers {
     var research: (String) -> Bool = { ResearchIntake.isResearchRequest($0) }
     var correction: (String) -> Correction? = { CorrectionParser.parse($0) }
     var knownApp: ([String]) -> String? = { AppCatalog.match(tokens: $0)?.app.display }
+    /// Does the project registry know a project (or alias) by this spoken name (closed case suffixes only)? Default: none — a bare “X'ı aç” is then NOT claimed as a project.
+    var isKnownProjectName: (String) -> Bool = { _ in false }
 }
 
 struct DeterministicCommandRecognizer {
@@ -78,6 +80,9 @@ struct DeterministicCommandRecognizer {
         if let d = settingsChange(text) { return d }
         if let d = mediaOrObserve(w, question: question) { return d }
         if let d = selfAndApplications(text) { return d }
+        if let d = appRunningQuestion(w, question: question) { return d }
+        if let d = bareProjectOpen(w) { return d }
+        if let d = bareContinuation(w) { return d }
         if let d = providerChoice(w, question: question) { return d }
         if let d = capabilityQuestion(text, w) { return d }
         if parsers.research(text) { return Decision(intent: .research, confidence: 0.95, normalized: "Research this topic on the web", action: "web_research", execution: true, provenance: .existingParser) }
@@ -194,6 +199,39 @@ struct DeterministicCommandRecognizer {
         let object: String? = appName ?? (w.pre("tarayici", "browser") ? "browser" : (w.pre("pencere", "window") ? "window" : (w.pre("video") ? "video" : nil)))
         guard let object else { return nil }               // “Ekranımı görebiliyor musun?” is a CAPABILITY question (below), not a visibility query about a thing
         return Decision(intent: .computerUse, confidence: 0.92, normalized: "Is \(object) visible on screen right now?", target: object, action: "visibility_query", execution: false, computerUse: true, provenance: .deterministicGrammar)
+    }
+
+
+    // MARK: Bare names (Phase B): “Hamam'ı aç”, “Hamam'da devam et”, “Chrome açık mı?”
+
+    /// Words that are never a project or application NAME in a bare sentence.
+    private static let bareStop: Set<String> = ["bunu", "sunu", "onu", "it", "this", "that", "hepsini", "all", "everything", "hersey", "yeni", "new", "tekrar", "again", "pencereyi", "window", "ekrani", "screen"]
+
+    /// “Chrome açık mı?” / “Is Safari open?”: a question about the application LIST (is it running). Answered as exactly that — never as visibility.
+    private func appRunningQuestion(_ w: W, question: Bool) -> Decision? {
+        guard question, w.t.count <= 6 else { return nil }
+        let runWord = w.t.contains { ["acik", "calisiyor", "calisir", "running", "open", "opened", "calismakta"].contains($0) } || w.pre("calisiy")
+        guard runWord, let app = parsers.knownApp(w.t) else { return nil }
+        return Decision(intent: .computerUse, confidence: 0.9, normalized: "Is \(app) running right now?", target: app, action: "running_query", execution: false, computerUse: true, provenance: .deterministicGrammar)
+    }
+
+    /// An open verb plus ONE or TWO unknown words (no project word, no application, no page): the name of a project — if the registry knows it. Resolved by `ProjectOpenResolver` (closed case suffixes only);
+    /// when nothing matches, the planner passes the sentence on unchanged, so “Sofany'yi aç” still reaches the application grammar and its phonetic fallback.
+    private func bareProjectOpen(_ w: W) -> Decision? {
+        guard w.t.count <= 4, w.t.contains(where: { ["ac", "acar", "acin", "acsana", "open", "launch", "load"].contains($0) }) else { return nil }
+        let rest = w.t.filter { !["ac", "acar", "acin", "acsana", "open", "launch", "load", "misin", "musun", "mi", "mu", "lutfen", "please", "can", "could", "you", "acabilir", "acabilirmisin"].contains($0) && !DecisionText.noise.contains($0) && !Self.bareStop.contains($0) }
+        guard (1...2).contains(rest.count), !rest.contains(where: { Self.projectWords.contains($0) || DecisionVocabulary.pages.contains($0) }), parsers.knownApp(w.t) == nil else { return nil }
+        let name = rest.joined(separator: " ")
+        guard parsers.isKnownProjectName(name) else { return nil }          // an unknown bare name may be an application (“Spotify'ı aç”): the application grammar owns it
+        return Decision(intent: .projectOpen, confidence: 0.6, normalized: "Open the \(name) project, if there is a project of that name", target: name, action: "open_bare", execution: true, projectResolution: true, provenance: .deterministicGrammar)
+    }
+
+    /// “Hamam'da devam et” / “Hamam'a devam edelim”: continue the NAMED project (the name is never dropped).
+    private func bareContinuation(_ w: W) -> Decision? {
+        guard w.t.count <= 5, w.t.contains(where: { ["devam", "continue", "resume"].contains($0) }), w.t.contains(where: { ["et", "edelim", "ettir", "edin", "edebilir", "edebilirmisin"].contains($0) }) || w.has("continue", "resume") else { return nil }
+        let rest = w.t.filter { !["devam", "et", "edelim", "ettir", "edin", "edebilir", "edebilirmisin", "misin", "musun", "mi", "mu", "continue", "resume", "on", "with", "lutfen", "please"].contains($0) && !DecisionText.noise.contains($0) && !Self.bareStop.contains($0) }
+        guard rest.count == 1, !Self.projectWords.contains(where: { rest[0].hasPrefix($0) }), !DecisionVocabulary.pages.contains(rest[0]), parsers.knownApp(w.t) == nil, rest[0].count >= 3, parsers.isKnownProjectName(rest[0]) else { return nil }
+        return Decision(intent: .projectTask, confidence: 0.7, normalized: "Continue the work in \(rest[0])", target: rest[0], action: "continue", execution: true, projectResolution: true, provenance: .deterministicGrammar)
     }
 
     // MARK: Projects
