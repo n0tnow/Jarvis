@@ -13,7 +13,7 @@ final class StatusItemController: NSObject {
         self.context = context
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         // A stable name: macOS keeps the item's position across launches and hosts its window under this name (an unnamed item is shown as "Item-0", which cannot be told apart from other apps').
-        statusItem.autosaveName = Bundle.main.bundleIdentifier ?? "dev.jarvis.Jarvis"
+        statusItem.autosaveName = AppInfo.bundleIdentifier
         super.init()
 
         if let button = statusItem.button {
