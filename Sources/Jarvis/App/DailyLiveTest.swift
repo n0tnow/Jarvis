@@ -315,6 +315,26 @@ enum DailyLiveTest {
             check("POLICY", "Daily conversation answers the readiness questions from this picture", await say("Claude hazır mı?", quiet: true).0.contains("Claude"))
         }
 
+        // MARK: actions (V1.0 fix 4) — REAL: the system's own launcher opens a built-in application and the result is verified; no model is involved
+        if wants("actions") {
+            let bundle = "com.apple.calculator"
+            let wasRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: bundle).isEmpty
+            let (sys, sysMs) = await say("Sistem durumunu söyler misin?", quiet: true)
+            check("REAL", "“Sistem durumunu söyler misin?” is answered from the structured state (no refusal, no model)", !sys.isEmpty && !sys.lowercased().contains("söyleyemem") && !sys.lowercased().contains("cannot tell"), "\(sys.prefix(120)) [\(Int(sysMs)) ms]")
+            _ = await say("Dashboard'a dön", quiet: true)
+            _ = await say("System panelini aç", quiet: true)
+            check("REAL", "“System panelini aç” changes the actual Full HUD page and the reply is worded from the read-back", context.hud.section == .system && context.windowManager.isFullHUDOpen)
+            _ = await say("Dashboard'a dön", quiet: true)
+            check("REAL", "“Dashboard'a dön” returns to the Dashboard", context.hud.section == .dashboard)
+            let (open, openMs) = await say("Hesap makinesini açabilir misin?", quiet: true)
+            let running = !NSRunningApplication.runningApplications(withBundleIdentifier: bundle).isEmpty
+            check("REAL", "A polite “can you open …?” launches the application through NSWorkspace; the success sentence exists only because the app is really running", running && (open.contains("açık") || open.contains("open")), "\(open.prefix(100)) [\(Int(openMs)) ms]")
+            check("REAL", "The action left a verified receipt in the ledger", context.actionService.ledger.receipts.contains { $0.kind == .launchApp && $0.successIsClaimable })
+            if !wasRunning { NSRunningApplication.runningApplications(withBundleIdentifier: bundle).forEach { $0.terminate() } }
+            let (tail, _) = await say("Peki videoyu başlattın mı?", quiet: true)
+            check("POLICY", "Nothing claims a video was started: no action happened, and none is reported", !tail.lowercased().contains("başlattım") && !tail.lowercased().contains("başlatıyorum"))
+        }
+
         // MARK: voice (voice-equivalent: the same service, source .voice; no microphone, no audio)
         if wants("voice") {
             prefs.responseStyle = .concise; prefs.addressStyle = .natural

@@ -144,6 +144,15 @@ final class TaskIntake: TaskSubmitting, ResearchSubmitting, ComputerSubmitting {
 
     func submitComputer(goal: String, channel: InputSource) async -> TaskSubmission {
         guard case .computer(let parsed) = classifyComputer(goal) else { return .rejected("That is not something Computer Use does.") }
+        // Permission readiness up front (Fix 4): a goal that needs the Accessibility API is not started — and never reported as done — while JARVIS (this exact build) lacks the permission.
+        // Launching / activating applications and opening files or Settings panes use NSWorkspace and need none.
+        let needsAX = parsed.steps.flatMap(\.actions).contains { ![.launchApplication, .activateApplication, .openFile, .revealFile, .openSettingsPane].contains($0.kind) }
+        if needsAX, let computer = engine.computer, !computer.refreshPermissions().accessibility.isGranted {
+            let tr = InputNormalizer.normalize(goal).language == .tr
+            return .rejected(tr
+                ? "Bunu yapmak için Erişilebilirlik izni gerekiyor ve bu JARVIS sürümünde verilmemiş. Sistem Ayarları → Gizlilik ve Güvenlik → Erişilebilirlik bölümünden bu sürüme izin verip yeniden dene; JARVIS'in Sistem sayfasındaki İzinler satırı durumu yeniden okur. İzin verilene kadar bu işlemi yapmıyorum."
+                : "This needs the Accessibility permission, which this JARVIS build does not have. Allow this build in System Settings → Privacy & Security → Accessibility and try again; the Permissions row on JARVIS' System page re-reads the state. I won't attempt this until then.")
+        }
         let preference = preferences.providerPreference
         switch await engine.submitComputer(goal: goal, steps: parsed.steps, capability: parsed.capability, apps: parsed.apps, preference: preference == .auto ? nil : preference, inputChannel: channel) {
         case .success(let id): return .started(title: engine.view(id)?.task.title ?? goal)

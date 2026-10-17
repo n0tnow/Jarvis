@@ -277,3 +277,28 @@ struct Fix4BargeInLatencyTests {
         await r.hf.disable()
     }
 }
+
+@MainActor
+@Suite("Fix 4 · wake word never triggers on JARVIS' own voice", .serialized)
+struct Fix4WakeSelfEchoTests {
+    @Test("the wake marker heard while JARVIS speaks, and in the room-ringing window after it, wakes nothing")
+    func noSelfWake() async {
+        let r = HandsFreeRig()
+        r.h.tts.auto = false
+        r.h.stt.script = { $0.finalText = "open the tasks screen" }
+        await r.hf.enable()
+        await r.quiet(1.0); await r.speech(0.4); await r.wakeWord(); await r.speech(0.4); await r.quiet(0.6)
+        await r.settle { !r.h.tts.spoken.isEmpty }
+        let id = r.h.tts.spoken[0].id
+        r.h.tts.begin(id)
+        await r.settle { r.hf.state == .jarvisSpeaking }
+        let wakes = r.hf.wakeCount, turns = r.h.userMessages.count
+        await r.speech(0.3); await r.wakeWord(); await r.speech(0.2)                       // “Jarvis” inside its own answer (a quote, an echo)
+        #expect(r.hf.wakeCount == wakes && r.hf.state == .jarvisSpeaking, "no wake while speaking")
+        r.h.tts.end(id)
+        await r.wakeWord()                                                                  // and in the ringing window right after the answer
+        try? await Task.sleep(for: .milliseconds(150))
+        #expect(r.hf.wakeCount == wakes && r.h.userMessages.count == turns, "no wake, no user turn from JARVIS' own speech")
+        await r.hf.disable()
+    }
+}

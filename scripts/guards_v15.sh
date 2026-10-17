@@ -230,3 +230,33 @@ g1f3_ui() {
   grep -nE 'resolveApproval|decideApproval|\.approve\(' Sources/Jarvis/UI/Settings/VoiceControlCards.swift Sources/Jarvis/UI/FullHUD/Settings/SettingsPageView.swift | nonc
 }
 v09_none "Full HUD: Settings is a destination, pages are built on the shared design system (PageScaffold, Card, Theme.Grid), and the settings pages contain no approval path" "$(g1f3_ui)"
+
+# ───────────────────────── V1.0 stabilisation fix 4 (action execution · system truth · self-echo safety) ─────────────────────────
+g1f4_actions() {
+  # NO VERIFIED ACTION → NO COMPLETION CLAIM: success wording is only rendered for a claimable receipt, and the model's first-person action claims are stripped
+  has Sources/Jarvis/Actions/ActionReceipt.swift 'var successIsClaimable: Bool { status == .succeeded && verification?.passed == true }'
+  has Sources/Jarvis/Actions/ActionService.swift 'case .succeeded where r.successIsClaimable:'
+  has Sources/Jarvis/Services/Conversation/ConversationService.swift 'ActionClaimGuard'
+  # a model has no execution path: the action service is reached only from ConversationService.handleAction, never from provider/model code
+  grep -rln 'actionService' Sources/Jarvis/Providers Sources/Jarvis/Intelligence 2>/dev/null | nonc
+  # actions never carry authority: no approval API in the action layer
+  grep -rnE 'resolveApproval|decideApproval|\.approve\(|grantCapability' Sources/Jarvis/Actions | nonc
+  # system status comes from the structured state, not a model
+  has Sources/Jarvis/Readiness/ReadinessAssistant.swift 'case systemStatus(StatusScope)'
+}
+v09_none "actions: a completion sentence exists only for a verified receipt, the model's action claims are stripped, the action layer has no approval path and no model reaches it, system status is a structured intent" "$(g1f4_actions)"
+
+g1f4_voice() {
+  # barge-in needs an envelope confirmation (JARVIS' own delayed voice is recognised) and the phantom guard decides by provenance, not by text
+  has Sources/Jarvis/Voice/Natural/BargeInDetector.swift 'var confirmEnvelope = true'
+  has Sources/Jarvis/Voice/Natural/EchoProvenance.swift 'enum PhantomGuard'
+  has Sources/Jarvis/Voice/VoiceCoordinator.swift 'PhantomGuard.verdict('
+  # provenance, diagnostics and the guard hold no audio, no transcript and write nothing
+  grep -nE 'AudioFrame|\[Float\]|forWriting|FileHandle|write\(|transcript' Sources/Jarvis/Voice/Natural/EchoProvenance.swift | grep -vE '^[0-9]+:[[:space:]]*(///|//)' | nonc
+  # voice has no authority: no approval path in the echo/provenance code and the vocabulary is plain structured names
+  grep -nE 'approve|Approval|grant' Sources/Jarvis/Voice/Natural/EchoProvenance.swift Sources/Jarvis/Actions/PhoneticAppResolver.swift | grep -vE '^[0-9]+:[[:space:]]*(///|//)' | nonc
+  has Sources/Jarvis/Voice/SpeechToText.swift 'static let maximumContextual = 40'
+  # no platform echo canceller / voice-processing audio unit was introduced (not verified stable; layered rejection is used instead)
+  grep -rnE 'kAudioUnitSubType_VoiceProcessingIO|setVoiceProcessingEnabled|isVoiceProcessingEnabled' Sources | nonc
+}
+v09_none "voice: barge-in is envelope-confirmed, short transcripts over JARVIS' own speech are rejected by provenance, diagnostics hold no audio or text, the vocabulary is bounded, voice has no approval path, no voice-processing unit" "$(g1f4_voice)"
