@@ -51,7 +51,7 @@ enum ActionIntentParser {
     typealias PhoneticAppLookup = (String) -> AppTarget?
 
     private static let openVerbs: Set<String> = ["ac", "acar", "acabilir", "acin", "acsana", "baslat", "baslatir", "baslatabilir", "calistir", "calistirir", "calistirabilir", "open", "launch", "start", "opens"]
-    private static let selfVerbs: Set<String> = ["ac", "acar", "acabilir", "goster", "gosterir", "gosterebilir", "git", "gec", "don", "donebilir", "geri", "open", "show", "go", "switch", "back", "return", "gotoa", "bring", "take"]
+    private static let selfVerbs: Set<String> = ["ac", "acar", "acabilir", "goster", "gosterir", "gosterebilir", "git", "gec", "don", "donebilir", "geri", "open", "show", "go", "switch", "back", "return", "gotoa", "bring", "take", "gecelim", "gidelim", "gecsek", "gitsek", "gecebilir", "gidebilir"]
     private static let closeVerbs: Set<String> = ["kapat", "kapatir", "kapatabilir", "gizle", "gizler", "close", "hide", "dismiss"]
     private static let noise: Set<String> = [
         "misin", "musun", "mi", "mu", "miyim", "lutfen", "please", "can", "could", "would", "you", "jarvis", "hey", "sen", "bana", "benim", "icin", "hemen", "simdi", "bir", "the", "for", "me", "to", "now",

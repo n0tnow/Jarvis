@@ -85,7 +85,8 @@ struct DeterministicCommandRecognizer {
         if let d = bareContinuation(w) { return d }
         if let d = providerChoice(w, question: question) { return d }
         if let d = capabilityQuestion(text, w) { return d }
-        if parsers.research(text) { return Decision(intent: .research, confidence: 0.95, normalized: "Research this topic on the web", action: "web_research", execution: true, provenance: .existingParser) }
+        // “Araştırma sayfasına geçelim” names JARVIS' own Research PAGE: a page noun means navigation territory, never a web research request
+        if parsers.research(text), !w.pre("sayfa", "ekran", "panel", "sekme", "page", "screen", "tab ") { return Decision(intent: .research, confidence: 0.95, normalized: "Research this topic on the web", action: "web_research", execution: true, provenance: .existingParser) }
         if let d = projectQuery(text) { return d }
         if let d = smallTalk(w) { return d }
         return nil

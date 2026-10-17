@@ -505,14 +505,14 @@ struct DecisionJevTests {
         #expect(awaited9 == .unavailable(.notConfigured))
 
         struct Scripted: JevTransport {
-            var reply: @Sendable () async throws -> JevRawResponse
-            func complete(system: String, user: String, modelAlias: String, timeout: TimeInterval) async throws -> JevRawResponse { try await reply() }
+            var reply: @Sendable () async throws -> JevClassification
+            func complete(_ request: JevClassifyRequest, modelAlias: String, timeout: TimeInterval) async throws -> JevClassification { try await reply() }
         }
-        let good = JevDecisionProvider(transport: Scripted { JevRawResponse(text: #"{"intent":"system_status","confidence":0.9}"#, inputTokens: 100, outputTokens: 20) }, credentialAvailable: { true })
+        let good = JevDecisionProvider(transport: Scripted { JevClassification(intent: "system_status", confidence: 0.9, model: "jev-1.13.0", inputTokens: 100, outputTokens: 20) }, credentialAvailable: { true })
         if case .decision(let d, _) = await good.decide(ctx, config: cfg) { #expect(d.intent == .systemStatus && d.provider == .jev) } else { #expect(Bool(false)) }
         #expect(good.usage.requests == 1 && good.usage.inputTokens == 100 && good.usage.estimatedCost(pricePer1kTokens: nil) == nil, "cost is unknown unless a price is configured — never invented")
 
-        let budget = JevDecisionProvider(transport: Scripted { JevRawResponse(text: #"{"intent":"conversation","confidence":0.9}"#) }, credentialAvailable: { true })
+        let budget = JevDecisionProvider(transport: Scripted { JevClassification(intent: "conversation", confidence: 0.9) }, credentialAvailable: { true })
         var tight = cfg; tight.maxRequestsPerHour = 2
         _ = await budget.decide(ctx, config: tight); _ = await budget.decide(ctx, config: tight)
         let awaited10 = await budget.decide(ctx, config: tight)
@@ -525,7 +525,7 @@ struct DecisionJevTests {
         #expect(awaited12 == .unavailable(.unavailable), "after ‘out of balance’ the circuit is open: no further requests")
         #expect(broken.usage.requests == 1 && broken.usage.skippedByBreaker == 1)
 
-        let slow = JevDecisionProvider(transport: Scripted { try await Task.sleep(for: .seconds(30)); return JevRawResponse(text: "") }, credentialAvailable: { true })
+        let slow = JevDecisionProvider(transport: Scripted { try await Task.sleep(for: .seconds(30)); return JevClassification(intent: "unknown", confidence: 0) }, credentialAvailable: { true })
         var quick = cfg; quick.timeoutSeconds = 0.1
         let awaited13 = await slow.decide(ctx, config: quick)
         #expect(awaited13 == .unavailable(.timeout))
@@ -539,8 +539,8 @@ struct DecisionJevTests {
         #expect(c.previousInterpretation == "settings" && c.projectNames.count == 8 && c.source == "voice")
         let long = JevContextBuilder.build(utterance: String(repeating: "word ", count: 500), language: "en", source: .typed, previousInterpretation: "conversation", projectNames: [])!
         #expect(long.utterance.count <= 300)
-        let sent = JevPrompt.system + JevPrompt.user(c)
-        for word in ["password", "api_key", "token", "keychain", "screen contents", "audio"] where word != "screen contents" { #expect(!JevPrompt.user(c).lowercased().contains(word) || word == "token", "the request must not carry \(word)") }
+        let sent = JevRequestBuilder.request(for: c).state
+        for word in ["password", "api_key", "keychain", "audio"] { #expect(!sent.lowercased().contains(word), "the request must not carry \(word)") }
         #expect(!sent.contains("/Users"))
     }
 

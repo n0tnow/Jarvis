@@ -3,6 +3,7 @@ import AppKit
 // The JARVIS-owned MCP fixture server (V0.14) is a headless mode of this same binary: it must answer before any UI object exists.
 PermissionReport.runIfRequested()        // V1.0 fix 3: a headless one-shot, answers before any UI object exists
 MCPFixtureServer.runIfRequested()
+DecisionTools.runIfRequested()          // V1.0 Phase B: headless credential entry / Jev connectivity / decision benchmark (inert without its launch argument)
 LiveUIChild.runIfRequested()          // V0.14 live tests: a child that clicks JARVIS' own HUD through Accessibility (inert without its launch argument)
 
 // Menu bar agent: no Dock icon (also enforced by LSUIElement in Info.plist).
