@@ -156,7 +156,7 @@ struct ReadinessQuestionTests {
         #expect(r("Is Whisper installed?") == .localModels("whisper"))
         #expect(r("İzinler tamam mı, accessibility hazır mı?") == .permissions)
         #expect(r("Unity hazır mı?") == .unity)
-        #expect(r("Her şey hazır mı?") == .overall)
+        #expect(r("Her şey hazır mı?") == .systemStatus(.all))
         #expect(r("Hangi sürümdesin?") == .version)
     }
 

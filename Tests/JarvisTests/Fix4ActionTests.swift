@@ -203,7 +203,7 @@ struct ActionReceiptTests {
     func ownNavigation() async {
         let r = ActionRig()
         var text = await r.say("System panelini aç.")
-        #expect(r.windows.hud.section == .system && text == "System sayfası açık.", Comment(rawValue: text))
+        #expect(r.windows.hud.section == .system && text == "Sistem sayfası açık.", Comment(rawValue: text))
         text = await r.say("Dashboard'a dön.")
         #expect(r.windows.hud.section == .dashboard && text == "Dashboard sayfası açık.", Comment(rawValue: text))
         text = await r.say("Tam JARVIS ekranını aç.")

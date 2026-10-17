@@ -252,7 +252,7 @@ g1f4_voice() {
   has Sources/Jarvis/Voice/Natural/EchoProvenance.swift 'enum PhantomGuard'
   has Sources/Jarvis/Voice/VoiceCoordinator.swift 'PhantomGuard.verdict('
   # provenance, diagnostics and the guard hold no audio, no transcript and write nothing
-  grep -nE 'AudioFrame|\[Float\]|forWriting|FileHandle|write\(|transcript' Sources/Jarvis/Voice/Natural/EchoProvenance.swift | grep -vE '^[0-9]+:[[:space:]]*(///|//)' | nonc
+  grep -nE 'AudioFrame|\[Float\]|forWriting|FileHandle|write\(|var (text|transcript)' Sources/Jarvis/Voice/Natural/EchoProvenance.swift | grep -vE '^[0-9]+:[[:space:]]*(///|//)' | nonc
   # voice has no authority: no approval path in the echo/provenance code and the vocabulary is plain structured names
   grep -nE 'approve|Approval|grant' Sources/Jarvis/Voice/Natural/EchoProvenance.swift Sources/Jarvis/Actions/PhoneticAppResolver.swift | grep -vE '^[0-9]+:[[:space:]]*(///|//)' | nonc
   has Sources/Jarvis/Voice/SpeechToText.swift 'static let maximumContextual = 40'

@@ -365,6 +365,9 @@ final class ConversationService {
     /// Waits until no provider response is in flight (tests, smoke, shutdown).
     func waitUntilIdle() async {
         while let task = responseTask { await task.value; if responseTask == nil { break } }
+        // typed actions / task acknowledgements land after their read-back; idle means those replies are in the conversation too (bounded)
+        let deadline = Date().addingTimeInterval(10)
+        while pendingTaskAcks > 0, Date() < deadline { try? await Task.sleep(for: .milliseconds(10)) }
     }
 
     // MARK: Task path (V0.4)

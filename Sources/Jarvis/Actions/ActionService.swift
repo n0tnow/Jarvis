@@ -231,7 +231,7 @@ enum ActionPhrasebook {
             switch r.kind {
             case .launchApp: return t(l, "\(name) is open.", "\(name) açık.")
             case .openFolder: return t(l, "The \(name) folder is open.", "\(name) klasörü açık.")
-            case .navigate: return t(l, "The \(name) page is open.", "\(name) sayfası açık.")
+            case .navigate: return t(l, "The \(name) page is open.", "\(trPageTitle(name)) sayfası açık.")
             case .showFullHUD: return t(l, "The full JARVIS screen is open.", "Tam JARVIS ekranı açık.")
             case .showCompactHUD: return t(l, "The compact view is open.", "Kompakt görünüm açık.")
             case .closeHUD: return t(l, "Closed. I'm still here in the menu bar.", "Kapattım. Menü çubuğunda çalışmaya devam ediyorum.")
@@ -251,11 +251,17 @@ enum ActionPhrasebook {
         }
     }
 
+    /// Turkish names of JARVIS' own pages (the receipt carries the English page name).
+    private static func trPageTitle(_ name: String) -> String {
+        ["dashboard": "Dashboard", "tasks": "Görevler", "agents": "Ajanlar", "research": "Araştırma", "report": "Rapor", "system": "Sistem", "memory": "Hafıza",
+         "computer": "Bilgisayar", "learning": "Öğrenme", "capabilities": "Yetenekler", "settings": "Ayarlar"][name.lowercased()] ?? name
+    }
+
     private static func label(_ r: ActionReceipt, _ l: ReplyLanguage, inProgress: Bool) -> String {
         switch r.kind {
         case .launchApp: return t(l, "Opening \(r.target)…", "\(r.target) açılıyor…")
         case .openFolder: return t(l, "Opening the \(r.target) folder…", "\(r.target) klasörünü açıyorum…")
-        case .navigate: return t(l, "Opening the \(r.target) page…", "\(r.target) sayfasını açıyorum…")
+        case .navigate: return t(l, "Opening the \(r.target) page…", "\(trPageTitle(r.target)) sayfasını açıyorum…")
         default: return t(l, "Working on it…", "Yapıyorum…")
         }
     }

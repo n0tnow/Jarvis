@@ -336,9 +336,10 @@ enum SmokeTest {
         await resetWorld()
         w.showCompactHUD(); _ = await only("compact", "s1-pre")
         svc.submit("Open the report.", origin: .compactHUD)
+        await svc.waitUntilIdle()          // (V1.0 fix 4: opening a page is a typed action with a read-back; its reply lands once the page is verified)
         check("V0.2 #1 'Open the report.' → Compact closes, Full opens on Report, both messages stored",
               await only("full", "s1") && hud.section == .report && convo.messages.map(\.role) == [.user, .jarvis]
-              && convo.messages.first?.content == "Open the report." && lastReply() == "Opening the report.")
+              && convo.messages.first?.content == "Open the report." && lastReply() == "The Report page is open.")
 
         // 2. "What are you doing?" — from real state, no network/LLM, no state change
         let stateBefore = store.state
@@ -357,8 +358,9 @@ enum SmokeTest {
         // 4. Turkish
         hud.section = .dashboard
         svc.submit("raporu aç")
+        await svc.waitUntilIdle()
         check("V0.2 #4 'raporu aç' navigates exactly like the English command (Turkish reply)",
-              hud.section == .report && lastReply() == "Raporu açıyorum." && w.isFullHUDOpen && !w.isCompactHUDOpen)
+              hud.section == .report && lastReply() == "Rapor sayfası açık." && w.isFullHUDOpen && !w.isCompactHUDOpen, "section \(hud.section) reply “\(lastReply())”")
 
         // 5. Reasoning-required, no fake intelligence
         let windowsBefore = (w.isCompactHUDOpen, w.isFullHUDOpen), stateBefore5 = store.state
@@ -366,7 +368,7 @@ enum SmokeTest {
         await svc.waitUntilIdle()
         check("V0.2 #5 'Explain quantum mechanics.' → reasoning-required, truthful no-provider-ready reply (providers stubbed), no state/window change",
               decision?.kind == .reasoning && lastReply().contains("No intelligence provider is ready") && convo.messages.last?.tone == .notice
-              && store.state == stateBefore5 && windowsBefore == (w.isCompactHUDOpen, w.isFullHUDOpen))
+              && store.state == stateBefore5 && windowsBefore == (w.isCompactHUDOpen, w.isFullHUDOpen), "kind \(String(describing: decision?.kind)) reply “\(lastReply())” tone \(String(describing: convo.messages.last?.tone))")
 
         // 6. From Compact: "Show tasks." — Compact disappears, Full on Tasks, Compact geometry unaffected
         w.showCompactHUD(); _ = await only("compact", "s6-pre")
@@ -392,6 +394,7 @@ enum SmokeTest {
         var expectedMessages = 0
         for cmd in script + script {
             svc.submit(cmd); expectedMessages += 2
+            await svc.waitUntilIdle()                       // (V1.0 fix 4: a page change is an action whose reply lands after the read-back)
             exclusive("s7 \(cmd)")
             if cmd == "open dashboard" || cmd == "ayarları aç" { await settle(60) }
         }
