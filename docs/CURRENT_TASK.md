@@ -16,8 +16,10 @@ V1.0 stabilisation fix 1 (DEC-246): capability introspection, response-depth tar
 
 V1.0 stabilisation fix 2 (DEC-247…253): real capability grounding, hands-free lifecycle, production UI truth, conversation/state truth — AUTOMATED VERIFIED / HUMAN WAKE + UI TEST REQUIRED (README 1243–1258). Audit table: `docs/PRODUCTION_TRUTH.md`.
 
+V1.0 stabilisation fix 3 (DEC-254…259): macOS productization — one installed app, permission truth, storage isolation (fixture incident), Settings destination with Wake Word, window policy and header-only drag, Full HUD design system — AUTOMATED VERIFIED / HUMAN UI + WAKE TEST REQUIRED (README 1259–1267).
+
 Next Step:
-Wait for Bilal's human acceptance tests of fix 2 (README 1243–1258: wake word in the room, voice states, installed UI). No Fix 3, no V1.1, no feature work without approval. No tag.
+Wait for Bilal's human acceptance of fix 3 (README 1259–1267: design, wake word, permissions for build 101). No Fix 4, no V1.1, no Higgsfield, no Hamam work without approval. No tag.
 
 Blocked By:
 Nothing.

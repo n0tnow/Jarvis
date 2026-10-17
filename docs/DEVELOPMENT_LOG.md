@@ -576,3 +576,20 @@ HEAD = origin/main = a8e5646 (docs-only) at the start; the installed app embedde
 Real wake word in the room, real microphone, installed-UI visual check: README 1243–1258. Ad-hoc signing: macOS permissions must be granted again after installing this build (JARVIS-V15-11); no stable signing identity exists (`security find-identity`: 0 valid).
 * Installed: `/Applications/JARVIS.app` 0.15.0 build 97 (commit dc4fd06; replaces build 93 in place, Application Support / database / settings / models untouched, nothing re-downloaded). `verify-installed.sh --crash` PASSED (cold launch: process 77 ms, menu bar 735 ms, idle RSS 108 MB, idle 0.12 CPU-s / 8 s, Compact 574 ms, Full 408 ms, crash relaunch ok); `--packaging-live-test` 16/0/0. Process-leak scan clean; secret scan: only the pre-existing test-fixture strings. The intermediate commit 884730a does not build alone (AppContext.demoMode lands in dc4fd06); HEAD builds and passes.
 
+## 2026-10-17 — V1.0 stabilisation fix 3 (macOS productization · permissions · storage isolation · Full HUD design)
+
+### Findings
+* **Artifacts:** `/Applications/JARVIS.app` (build 97, hardened), `build/package/JARVIS.app` (staging, identical bits) and `build/Jarvis.app` (developer build, different code identity) all had bundle id `dev.jarvis.Jarvis`; `JarvisFixture.app` (`com.jarvis.fixture`) is the Computer Use test dummy. Fixed: dev bundle `build/dev/JarvisDev.app` (`dev.jarvis.Jarvis.dev`), staging removed after install / verify.
+* **Fixture project:** production defaults held `prefs.tasks.projectRoot = …/T/jarvis-continuity-fixture` (the folder no longer existed). Writers: live tests sharing the production defaults domain; the continuity crash scenario SIGKILLs itself without restoring; other live tests deleted real keys in their cleanup. Fixed by `StorageIsolation` (DEC-254); the verified key was deleted; 3 271 UUID-named test preference files and the stale `live-test-*` folders in the production support directory were removed / moved.
+* **Permissions:** the installed process was judged by its own code identity. The headless `--permission-report` on build 101 launched through Launch Services: Accessibility false, Screen Recording false, Microphone not determined, ad-hoc cdhash 1e5003a5. macOS binds a permission to the exact ad-hoc build, so entries granted for another build (build 97 or the developer bundle that shared the id) do not apply; the UI now says so and Recheck re-reads everything. The state of build 97 itself could not be re-measured after it was replaced.
+* **Window:** `isMovableByWindowBackground = true` on the borderless HUD made any non-handling view drag the window.
+
+### Evidence (automated, this Mac)
+* `scripts/verify.sh` PASSED: 1771 tests / 264 suites; 177 PASS / 0 FAIL / 2 SKIP; guards incl. 4 new; package step; the staging folder is gone afterwards.
+* Smoke (dev bundle): Full HUD frame = visibleFrame − 6 pt inset (2548×1308 on a 2560×1320 usable area), normal resizable window, not full screen, background not draggable, Settings is a destination, isolated storage, Compact 392×448. `--daily-jarvis-live-test` 73/0/0 with the isolated profile.
+* Installed (build 101): `verify-installed.sh --crash` PASSED (cold launch 61 ms, menu bar 114 ms, idle 0.12 CPU-s / 8 s, 113 MB, Full HUD ready 555 ms, Compact 583 ms). Full HUD open for 10 s: Dashboard 0.48 CPU-s (≈ 4.8 % of a core, animated core + background network), System 0.21 CPU-s (≈ 2.1 %), 146–154 MB.
+* Rendered captures of the installed binary (`--ui-capture`, production mode, isolated state) of every destination and Settings category were inspected; layout was iterated from them.
+
+### Not done / human
+Design approval, wake word in the room, permissions for build 101 (macOS asks again for each new ad-hoc build). Commit note: the installed build 101 embeds commit 6e37560; later commits are documentation only.
+
