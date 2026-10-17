@@ -22,8 +22,10 @@ V1.0 stabilisation fix 4 (DEC-260…266): action execution with receipts, struct
 
 V1.0 decision milestone, Phase A (DEC-267…274): typed Decision layer in front of the existing pipeline (deterministic grammar first), verified self-navigation (state + render acknowledgement + settled re-read), grounded voice-status / visibility / project-open answers, bounded spoken restatements, an upstream pathological-transcript guard, an OPTIONAL remote classifier (Jev) as a disabled-by-default adapter with mocks only, a 353-case decision corpus + runner, and a local-model benchmark harness — IMPLEMENTED · pure logic AUTOMATED TESTED on Linux · macOS glue UNCOMPILED (JARVIS-V1D-1) · MANUAL TEST REQUIRED (README 1278–1294). Phase B handoff: `docs/V1_DECISION_INTELLIGENCE_PHASE_B.md`.
 
+V1.0 decision milestone Phase B (DEC-275…279): Cloud Phase A integrated and verified on macOS; Jev transport + Keychain credential; Unity project open; held-out and Jev benchmarks; local model benchmark; installed build — AUTOMATED TESTED / REAL TESTED (parts) / MANUAL TEST REQUIRED (README 1295–1305, see docs/V1_DECISION_INTELLIGENCE_PHASE_B.md "Phase B results").
+
 Next Step:
-Phase B (local Claude Code on the Mac): `scripts/verify.sh` first, then the manual checks and the optional Jev / local-model benchmarks in `docs/V1_DECISION_INTELLIGENCE_PHASE_B.md`. Still waiting for Bilal's human acceptance of fix 4 (README 1268–1277: actions, system status, voice self-echo, permissions for build 110). No Fix 5, no V1.1, no Higgsfield, no Hamam work without approval. No tag.
+Wait for Bilal: re-grant the permissions for the new build, point JARVIS at the real Hamam folder (JARVIS-V1PB-1), then README 1295–1305 and the still-open fix 4 checks (1268–1277). Only after "Jarvis, Hamam projesini aç." opens the real project and the voice tests pass may controlled Hamam work be discussed. No V1.1, no Hamam development, no Higgsfield without approval. No tag. No tag.
 
 Blocked By:
 Nothing.

@@ -836,3 +836,27 @@ Only for utterances the grammar did not understand, a gated consult waits up to 
 ### JARVIS-V1D-10 — The pathological-transcript thresholds are unmeasured on a real recogniser
 Status: Open · MANUAL TEST REQUIRED
 The thresholds were chosen from the two observed loops and from legitimate repetition ("hayır hayır hayır", "dur dur dur", "çok çok önemli"); they have not been tried against Apple's recogniser or Whisper output on the real Mac. A genuine very fast or very repetitive utterance could be rejected (the user simply repeats it); a subtler hallucination could pass.
+
+### JARVIS-V1PB-1 — The Hamam project is not on this Mac and the project registry is empty
+Status: OPEN · needs the user
+`memory_projects` has no rows; no Unity project named Hamam/Hammam exists under the home folder ("Turkish Hammam Simulator" is a git repository with only `.gitignore`; `~/Downloads/HammamSim` has art folders). "Jarvis, Hamam projesini aç." therefore correctly answers that no project by that name is known. To make the final acceptance possible: choose the real project folder on the Tasks page (it is registered with the folder's name; a folder spelled "Hammam" needs the alias "Hamam" — there is no fuzzy name matching by design). The Unity-open path itself is REAL TESTED on a disposable fixture.
+
+### JARVIS-V1PB-2 — Permissions were lost again with the new ad-hoc build
+Status: OPEN · MANUAL TEST REQUIRED. Build 12x reports Accessibility false, Screen Recording false, Microphone not determined (see JARVIS-V1F3-1). Computer Use (media, "Ekranıma bak"), the wake word and every voice test need them re-granted by the user for `/Applications/JARVIS.app`.
+
+### JARVIS-V1PB-3 — The Jev key is bound to the program that stored it
+Status: OPEN. The Keychain item's access list names the storing binary (ad-hoc cdhash). The key was stored with a frozen copy used for the benchmark (`~/Library/Application Support/JARVIS-LiveTests/jev-tools`). The installed app (and every future ad-hoc build) gets a Keychain prompt, or needs `Jarvis --store-jev-credential` run once with ITS binary. Jev is disabled by default, so nothing asks for it until the user turns shadow on.
+
+### JARVIS-V1PB-4 — `verify.sh` / live tests kill running JARVIS binaries
+Status: OPEN · NON-BLOCKING. The credential prompt (a JARVIS binary in a terminal) was killed twice by process cleanup in `verify.sh` while it waited. Do not run `verify.sh` while a JARVIS prompt is open.
+
+### JARVIS-V1PB-5 — Jev evidence is small
+Status: OPEN. 431 requests (78 held-out); only 6 non-conversation routes where the grammar abstains. Gated mode is not justified yet (see the results). Shadow data from real use is the next step.
+
+### JARVIS-V1PB-6 — The status item name
+Status: RESOLVED · AUTOMATED TESTED + REAL TESTED. macOS 26.4 names an unnamed status item "Item-0"; the installed check could not find it. The item now has `autosaveName = bundle id`.
+
+### Updates (Phase B)
+* JARVIS-V1D-3 (Jev has no transport/credential): transport + Keychain store implemented (DEC-275/276), REAL TESTED; still disabled by default.
+* JARVIS-V1D-4 (open project does not launch Unity): RESOLVED for Unity projects (DEC-277), REAL TESTED on a fixture.
+* JARVIS-V1D-6 (phrases the grammar does not take): "Hamam'ı aç" and "Chrome açık mı?" are taken now (DEC-278).

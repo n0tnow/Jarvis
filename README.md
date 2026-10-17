@@ -1584,3 +1584,16 @@ Report anything odd and I'll add it to `docs/KNOWN_ISSUES.md`.
 821. Run `scripts/verify.sh` → VERIFY PASSED; `git status` clean; no `captures/`, SQLite, screenshots or live-test directories tracked.
 822. Real user workflow: use JARVIS for a real (copied) project task for a day — note any case where a template should exist or a node was unnecessary (feeds V1.0).
 823. Real user workflow: confirm nothing in your real Unity game or other projects was modified by any V0.12 test.
+
+**V1.0 decision milestone, Phase B — manual checks (you; nothing is marked verified until you did it):**
+1295. Allow `/Applications/JARVIS.app` again (Microphone; Accessibility and Screen Recording if you want computer actions) and press Recheck on the System page.
+1296. Choose the real Hamam folder on the Tasks page (alias "Hamam" if the folder is spelled Hammam). Say "Jarvis, Hamam projesini aç." — Unity opens THAT project in the project's own editor version, and JARVIS says "Hamam Unity'de açık." only after it is open. Say "Hamam'da kaldığımız yerden devam et." — it names Hamam and plans; stop before any change.
+1297. "Sistem durumunu söyler misin?" then "Biraz daha detaylı anlat." — the same snapshot, longer; the numbers equal the System page.
+1298. "System panelini aç.", "Dashboard'a dön.", "Tasks sayfasına geç." — the page really changes, then JARVIS speaks.
+1299. "Safari'yi aç." / "Safari'yi açabilir misin?" / "Safari görebiliyor musun?" (no, not observed) / "Ekranıma bak." then again (yes, with an age).
+1300. Open any harmless video in Safari and say "Tarayıcıda açık olan videoyu devam ettir." — success only if it really plays; an honest failure is fine.
+1301. "Sofany değil, Safari dedim." / "Hayır Safari dedim." / "Wisp değil, sesim geliyor mu dedim sana."
+1302. Wake mode on, speakers: a 7-second answer must finish by itself; "Sus" stops it at once; a full sentence over the answer interrupts it.
+1303. Hold the key in silence, cough, or put a TV on: no "YOU" message may appear ("Kutu, Kutu …" must never reach the conversation). Then "hayır hayır hayır", "dur dur dur", "çok çok önemli" must arrive as normal turns.
+1304. Jev (optional): `"/Applications/JARVIS.app/Contents/MacOS/Jarvis" --store-jev-credential` in a terminal, then `defaults write dev.jarvis.Jarvis prefs.decision.jev.mode shadow`; relaunch. Do nothing else — gated stays off.
+1305. Local model: ask the same ten Turkish questions to Qwen3.5-4B and Gemma 4 E4B (`~/AI/models`) and decide which one sounds right; the production model changes only on your decision.

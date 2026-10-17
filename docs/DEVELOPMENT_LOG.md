@@ -626,3 +626,16 @@ Context: build 110 passed its automated tests, then real use showed the remainin
 
 ### Result of the corpus run (deterministic grammar only; Cloud)
 353 cases · answered 296 (83 %) · intent accuracy on answered 100 % · exact 295 · 0 wrong executing answers · every case labelled deterministic is decided exactly. Authoring-time fit, see JARVIS-V1D-2.
+
+## 2026-10-18 — V1.0 decision milestone, Phase B (local macOS integration · Jev · benchmarks · installed build)
+
+### What happened
+* Phase A (3 commits from the Cloud branch) was fast-forwarded into `main`; the macOS glue compiled on the first try; two test-only defects fixed; 1898 tests passed, then 3 older guards flagged the new grammar's word lists (narrow file-level exemptions, plus a `JARVIS_VERIFY_SKIP_TESTS=1` guard-iteration switch that prints SKIP and is never a verification).
+* Deterministic probe of the 18 brief utterances, then gaps closed: bare project names (registry-gated), bare continuation, "Chrome açık mı?", navigation verbs; the first held-out measurement found a real wrong executing answer (a page noun was read as web research).
+* Unity project open implemented and run against a real Unity 6000.5.1f1 on a disposable fixture; the real run exposed two defects the unit tests could not (import-worker processes counted as editors; lock file weaker than `EditorInstance.json`). Two stray test editors were closed by me afterwards.
+* Jev: the real API is a calibrated choice classifier, not a text model → adapter rewritten (DEC-276); Keychain store + hidden-prompt entry (DEC-275); connectivity, model discovery, 431-request shadow benchmark; analysis in the results document.
+* Local models: three candidates through the production worker; no switch.
+* Process notes: `verify.sh` killed the waiting credential prompt twice (JARVIS-V1PB-4); macOS 26.4 names unnamed status items "Item-0" so the installed check lost the menu-bar item — fixed with an explicit `autosaveName`.
+
+### Evidence
+See docs/V1_DECISION_INTELLIGENCE_PHASE_B.md "Phase B results". Not done: anything needing a microphone, a speaker, a granted permission, or the real Hamam project.

@@ -54,3 +54,51 @@ Accessibility · Screen Recording · Microphone · wake word · acoustic self-ec
 ## 3. Rules that still apply
 
 No paid API is enabled automatically; Jev stays `disabled` unless the user sets it. No auto-refill. Jev only ever produces a `Decision`; policy re-derives its risk and gate; it cannot approve, execute or claim completion. A classifier's confidence is not execution proof; only the existing verified-receipt semantics create a completion claim. No raw audio, no transcript of a rejected utterance, no credential in a log. JARVIS must work with Jev disabled, offline, out of balance, rate limited or timed out.
+
+---
+
+# Phase B results (local Mac, 2026-10-17/18) — truth states
+
+Legend: AUTOMATED TESTED = a test or `scripts/verify.sh` ran it here · REAL TESTED = the real system (NSWorkspace, Unity Editor, TypeSafe API, MLX models) did it on this Mac, driven by a live-test/CLI, no human · MANUAL TEST REQUIRED = needs a person (microphone, speakers, permissions, the real Hamam project).
+
+## 1. Integration and build
+* Phase A (`eb836b6…3e10fcb`) was fast-forwarded into `main` (no merge commit, no history rewrite). macOS build: clean. `scripts/verify.sh` first run: 1898 tests passed, 3 guards failed (the decision grammar's word lists matched older "forbidden word" guards) → narrow file-level exemptions, nothing weakened. Final: **1916 tests / 297 suites PASSED, 183 PASS / 0 FAIL / 2 SKIP** — AUTOMATED TESTED.
+* Two real macOS-glue defects found by the tests: the integration rig held `ConversationService`'s weak readiness handler by a local variable (test-only), and a Phase A test used a `String` where Swift Testing wants a `Comment`.
+
+## 2. Deterministic routing (no Jev, no model) — AUTOMATED TESTED + REAL TESTED
+All 18 utterances of the brief resolve as required (probe over the real recognizer): system status ×2, voice status ×2, navigation ×3, Safari ×2, visibility, "Ekranıma bak", media, both corrections, speed, undo, "Hamam projesini aç" (project_open), "Hamam'da kaldığımız yerden devam et" (project_task/continue, name kept).
+Grammar gaps closed (DEC-278): "Hamam'ı aç" / "Hamamı aç" / "Hamam'da devam et" (only when the registry knows the name), "Chrome açık mı?" (application list, never visibility), "geçelim/gidelim" navigation verbs. Real stack (`--daily-jarvis-live-test --daily-section actions|apps`, 20 checks, 0 failed): system status in 68 ms from the structured state; "System panelini aç" / "Dashboard'a dön" change the real Full HUD page with the render acknowledgement active; Calculator and Safari open through NSWorkspace and are verified (53–334 ms); "Safari görebiliyor musun şu anda?" with no observation is NOT a yes; "Sofany'yi aç" opens Safari and says what it understood; "Sofany değil, Safari dedim." / "Hayır Safari dedim." / "Wisp değil, sesim geliyor mu dedim sana." are corrections answered without a model call and without a Project Memory write; provider/capability questions never reached the language model (0 prompts).
+
+## 3. Benchmarks
+| set | cases | grammar answered | accuracy on answered | wrong executing |
+|---|---|---|---|---|
+| main corpus (written next to the grammar) | 353 | 296 (83 %) | 100 % | 0 |
+| **held-out** (78, written before measuring, first measurement) | 78 | 46 (58 %) | 97 % | **1** ("Araştırma sayfasına geçelim" → research) |
+| held-out after the fix (page noun ⇒ never web research) | 78 | 46 | 100 % | 0 |
+The held-out set is spent for tuning purposes; the 32 cases the grammar abstains on are exactly the ones a router/model must handle (conversation, status phrasings, "Kes sesini" …).
+
+## 4. Jev (TypeSafe) — REAL TESTED
+* Contract read from docs.typesafe.ai (not guessed): `POST /v1/systemone`, bearer key, typed `choice` questions → `choice`/`probabilities`/`confidence`; `GET /v1/models` → `jev-latest`, `jev-preview` (aliases; answered by `jev-1.13.0`). Input $0.042 per million tokens, output free. The Phase A "prompt→JSON text" contract did not match the API and was replaced (DEC-276).
+* Credential: entered by the user through the hidden prompt of `Jarvis --store-jev-credential`; stored only in the Keychain; presence verified, value never read by anything but the transport. (A previous prompt was killed twice by `verify.sh`'s process cleanup; the key was entered on the third attempt.)
+* Connectivity: `--jev-check`: models listed, "Sistem durumunu söyle." → `system_status`, confidence 1.00, 347 ms, 1 177 input / 251 output tokens; nothing executed.
+* Shadow benchmark (431 requests, **0 failures**, 507 803 input / 108 287 output tokens ≈ **$0.021** at the published price; latency p50 317–321 ms, p95 385–412 ms):
+  * main corpus 79.6 % intent accuracy; held-out 88.5 %.
+  * Calibration is monotonic: confidence < 0.7 → 36.5 % correct (n 74), 0.7–0.9 → 64 %, 0.9–0.97 → 86 %, ≥ 0.97 → 100 % (n 182) on the main corpus; held-out ≥ 0.97 → 97.8 %.
+  * Where the grammar ABSTAINS (89 cases): 77 % main / 91 % held-out; at confidence ≥ 0.92 **48/48 correct**; of those, the gated-acceptable intents 25/25 — but only 6 are non-conversation routes the grammar could not already take ("JARVIS'in durumu nasıl?", "Give me a quick health check", …).
+  * Where the grammar ANSWERS, Jev is worse and sometimes confidently wrong: "Can you see my screen?" → computer_use 0.99, "Bu klasörü sil" → computer_use 0.93, "No, I meant open the dashboard" → navigation 0.94. These are exactly what `GatedPolicy` (read-only / own-UI intents only) and the deterministic-first order exist for.
+* **Decision: Jev stays `disabled` by default in the installed app; `shadow` is safe and cheap (≈ $0.00005 per utterance) and is how more evidence should be collected; `gated` is NOT enabled** — the benefit measured is six routes in 89 abstentions, every unrecognised utterance would wait ≈ 0.3 s for the classifier before the normal route, and the sample is small and partly written near the grammar. Turn shadow on with `defaults write dev.jarvis.Jarvis prefs.decision.jev.mode shadow` (after storing the key with the installed binary, see KNOWN_ISSUES JARVIS-V1PB-3).
+
+## 5. Unity project open — REAL TESTED on a disposable fixture; the real Hamam project is NOT on this Mac
+`--daily-jarvis-live-test --daily-section unity-open` copies `UnityBridge/Fixture` (Unity 6000.5.1f1, installed) to a temp folder and asks "UnityOpenFixture projesini aç.": the project's own editor version is started windowed with `-projectPath`, verified by the process + `Temp/UnityLockfile` + `Library/EditorInstance.json` naming that process in ≈ 5.7 s, the sentence is "UnityOpenFixture Unity'de açık."; asking again brings the same editor forward (no second editor); the test's own editor is quit afterwards. Two defects found by the real run and fixed: Unity's `AssetImportWorker` helper processes (same executable, same `-projectPath`) were counted as editors; the lock file alone was weaker evidence than the editor's own `EditorInstance.json`.
+**Hamam:** `memory_projects` is empty and no Unity project named Hamam/Hammam exists under the home folder (only "Turkish Hammam Simulator" — a git repository with no Unity files — `~/Downloads/HammamSim`, a stock "My project", and the Unity Learn projects). Opening a project that does not exist cannot succeed, and JARVIS correctly says it does not know it. See KNOWN_ISSUES JARVIS-V1PB-1.
+
+## 6. Local conversational models (MacBook Air M5, 16 GB; production worker; same 41 probes + 7 brief probes)
+| model (licence, 4-bit) | rubric pass | load | TTFT p50 | tok/s | peak MLX | mean words |
+|---|---|---|---|---|---|---|
+| Qwen3.5-4B (baseline, Apache-2.0, 2.9 GB) | 75 % | 2.2 s | 251 ms | 46.2 | 3.6 GB | 19 |
+| Qwen3.5-9B (Apache-2.0, 6.0 GB) | 80 % | 2.7 s | 484 ms | 26.2 | 6.4 GB | 23 |
+| Gemma 4 E4B-it (Gemma terms, 5.2 GB) | **87 %** | 2.9 s | **194 ms** | 44.7 | 5.5 GB | 12 |
+Per category (pass/probes) baseline → 9B → Gemma: capability_hallucination 2→2→4 of 5, correction 3→4→4, referent 3→3→4, mixed_language 3→5→4, grounded 4→4→4, turkish/stt/followup ≈ equal. All three models still say things like "Safari'yi açıyorum" / "öne getirdim" on the brief's action probes — the claim guard, not the model, keeps that out of the product. Gemma E4B is terse and answered two Turkish prompts in English; Qwen 9B is slower, wordy and refers to "JARVIS" in the third person. Turkish naturalness and tone are a HUMAN judgement nobody has made. **Production model unchanged (DEC-279).** Candidates were fetched by the pinned script `scripts/fetch_local_model_candidate.sh` (exact Hugging Face commits); ~11 GB on disk under `~/AI/models`.
+
+## 7. Not done / MANUAL TEST REQUIRED
+Real microphone and speakers (pathological loops from a real recogniser, self-echo, real barge-in, wake word), Accessibility / Screen Recording / Microphone for this ad-hoc build, the Computer Use media test on a real video, the real Hamam project, a human Turkish judgement of the local models, Jev `shadow` on the installed app. README 1295–1308.
