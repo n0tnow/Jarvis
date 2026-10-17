@@ -211,6 +211,23 @@ enum ComputerGoalParser {
             ])], apps: known.map { [$0] } ?? [])
         }
 
+        // 5a. media control of the video on screen: "Videoyu oynat / durdur / devam ettir", "play / pause / resume the video".
+        // A semantic press of the player's own Play / Pause control in the frontmost app (or the named app); verified by the UI state change, never assumed.
+        if let media = mediaCommand(t, words: words) {
+            let app = known ?? AppRef()
+            let label = media == .pause ? "Pause" : "Play"
+            let title: String
+            switch (media, language) {
+            case (.pause, .tr): title = "Video durduruluyor"
+            case (.pause, _): title = "Pausing the video"
+            case (.play, .tr): title = "Video oynatılıyor"
+            case (.play, _): title = "Playing the video"
+            }
+            return goal((known.map { launchSteps($0, verb: "activate") } ?? []) + [GoalStep(title: title, actions: [
+                ComputerAction(kind: .pressElement, target: ActionTarget(app: app, role: "button", title: label), checks: [.stateChanged], summary: "Press “\(label)”"),
+            ])], apps: known.map { [$0] } ?? [])
+        }
+
         // 5b. enter quoted text into a named field: `type "hello" into the Name field in Xcode` (the text is the user's own words; secrets and passwords are refused by the policy)
         if !words.isDisjoint(with: ["type", "write", "enter", "yaz", "gir"]), let text = quoted(raw), !words.isDisjoint(with: ["field", "box", "alan", "alana", "into", "in", "to"]) {
             let tail = raw.components(separatedBy: text).last ?? ""
@@ -273,6 +290,19 @@ enum ComputerGoalParser {
             }
             if let phrase = openedName(raw: raw, tokens: t), let app = AppCatalog.installed(named: phrase) { return goal(launchSteps(app, verb: "open"), apps: [app]) }
         }
+        return nil
+    }
+
+    private enum MediaCommand { case play, pause }
+
+    /// "videoyu oynat", "videoyu durdur", "devam ettir", "play the video", "pause the video", "resume". A media noun is required so "durdur" alone stays the stop command.
+    private static func mediaCommand(_ t: [String], words: Set<String>) -> MediaCommand? {
+        let nouns: Set<String> = ["video", "videoyu", "videosunu", "videoyu", "film", "filmi", "sarkiyi", "muzigi", "music", "song", "track", "player", "oynatici", "playback", "clip", "klip", "klibi"]
+        guard !words.isDisjoint(with: nouns) else { return nil }
+        let pauseWords: Set<String> = ["durdur", "duraklat", "pause", "stop", "dondur"]
+        let playWords: Set<String> = ["oynat", "baslat", "calistir", "play", "resume", "continue", "devam"]
+        if !words.isDisjoint(with: pauseWords) { return .pause }
+        if !words.isDisjoint(with: playWords) { return .play }
         return nil
     }
 

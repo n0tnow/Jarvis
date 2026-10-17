@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>JARVIS Fixture Player</title>
+<!-- Local fixture for the Fix 4 media-control test: no network, no real video. State is visible text and the button label. -->
+<h1 id="state">State: paused</h1>
+<button id="b" aria-label="Play" onclick="t()">Play</button>
+<script>
+let p=false;
+function t(){p=!p;const b=document.getElementById('b');b.textContent=p?'Pause':'Play';b.setAttribute('aria-label',b.textContent);document.getElementById('state').textContent='State: '+(p?'playing':'paused');}
+</script>
