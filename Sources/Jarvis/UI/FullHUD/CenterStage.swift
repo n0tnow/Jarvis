@@ -8,10 +8,19 @@ struct CenterStage: View {
         let store = app.store
         let task = store.activeTask
 
-        ViewThatFits(in: .vertical) {
-            stack(store, task, core: coreView(store, task).frame(maxWidth: 560, minHeight: 150, idealHeight: 220, maxHeight: .infinity))
-            ScrollView(.vertical, showsIndicators: false) {
-                stack(store, task, core: coreView(store, task).frame(maxWidth: 360).frame(height: store.pendingApproval == nil ? 180 : 130))
+        GeometryReader { geo in
+            // The core is the visual anchor: about a third of the column, never dwarfing the conversation, never crushed.
+            let coreHeight = min(max(geo.size.height * 0.34, 190), 400)
+            VStack(spacing: Theme.Grid.rowGap) {
+                Card(prominence: .hero) {
+                    coreView(store, task).frame(maxWidth: .infinity).frame(height: coreHeight - 2 * Theme.Grid.cardPadding)
+                }
+                // A pending approval sits directly under the core so it can never be pushed below the fold.
+                if let request = store.pendingApproval, store.state == .waitingForApproval {
+                    ApprovalCard(request: request).transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+                ConversationPanel().frame(maxHeight: .infinity)
+                TaskFocusStrip(task: task)
             }
         }
         .animation(.easeOut(duration: Theme.Duration.standard), value: store.pendingApproval)
@@ -29,18 +38,6 @@ extension CenterStage {
         .padding(.horizontal, Theme.Spacing.l)
     }
 
-    private func stack<Core: View>(_ store: JarvisStore, _ task: JarvisTask?, core: Core) -> some View {
-        VStack(spacing: Theme.Spacing.m) {
-            core
-            // A pending approval sits directly under the core so it can never be pushed below the fold.
-            if let request = store.pendingApproval, store.state == .waitingForApproval {
-                ApprovalCard(request: request)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
-            ConversationPanel().frame(minHeight: 96, idealHeight: 180, maxHeight: store.pendingApproval == nil ? 330 : 120)
-            TaskFocusStrip(task: task)
-        }
-    }
 }
 
 private struct TaskFocusStrip: View {
@@ -80,8 +77,9 @@ private struct TaskFocusStrip: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .padding(Theme.Spacing.m + 2)
-        .background(HUDCardBackground(raised: true))
+        .padding(Theme.Grid.cardPadding)
+        .frame(maxWidth: .infinity)
+        .background(CardBackground(prominence: .standard))
         .accessibilityElement(children: .contain)
     }
 }

@@ -51,6 +51,8 @@ enum StorageIsolation {
         isProtectedRun ? isolatedDefaults(tag: tag) : .standard
     }
 
+    static func isProductionDefaults(_ d: UserDefaults) -> Bool { d === UserDefaults.standard }
+
     /// Hard guard: a protected run handed the production defaults domain fails immediately.
     static func assertNotProduction(_ defaults: UserDefaults) {
         if isProtectedRun, defaults === UserDefaults.standard {

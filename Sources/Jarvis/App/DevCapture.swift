@@ -210,8 +210,7 @@ enum DevCapture {
 
         // Settings window
         w.hideFullHUD(); w.showSettings(); await settle(700)
-        snapshot(of: NSApp.windows.first { $0 is SettingsWindow }, name: "settings", in: directory)
-        NSApp.windows.first { $0 is SettingsWindow }?.orderOut(nil)
+        snapshot(of: NSApp.windows.first { $0 is FullHUDWindow }, name: "settings", in: directory)
         w.showFullHUD(section: .dashboard); await settle(500)
 
         // V0.7 voice states (simulated through the developer hook: no microphone, no recogniser, no speaker)

@@ -12,21 +12,15 @@ struct TasksSectionView: View {
         let recent = views.filter { $0.task.state.isTerminal }.prefix(15)
         let noTasks = views.isEmpty && app.opportunities.pending.isEmpty
 
-        ScrollView {
-            VStack(spacing: Theme.Spacing.m) {
-                ProjectBar()
-                ProjectOperatorCard()
-                ExperimentsCard(experiments: app.experimentsModel.experiments, observations: app.experimentsModel.observations)
-                ProposalsGroup()
-                if noTasks { emptyState }
-                if !attention.isEmpty { group("NEEDS YOUR ATTENTION", attention) }
-                if !running.isEmpty { group("ACTIVE", running) }
-                if !recent.isEmpty { group("RECENT", Array(recent)) }
-                if app.simulatorControlsVisible { demoTasks }
+        PageScaffold("Tasks", subtitle: tasksSubtitle(active: running.count + attention.count, recent: recent.count)) {
+            // Left: the project and what JARVIS knows about it. Right: the work itself. Both columns sit on the page grid and share the gutter.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: Theme.Grid.gutter) {
+                    VStack(spacing: Theme.Grid.gutter) { projectColumn }.frame(width: 440)
+                    VStack(spacing: Theme.Grid.gutter) { workColumn(noTasks: noTasks, attention: attention, running: running, recent: Array(recent)) }.frame(maxWidth: .infinity)
+                }
+                VStack(spacing: Theme.Grid.gutter) { projectColumn; workColumn(noTasks: noTasks, attention: attention, running: running, recent: Array(recent)) }
             }
-            .frame(maxWidth: 780)
-            .padding(Theme.Spacing.xl)
-            .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("tasks.section")
         .task(id: "\(app.taskEngine.revision)|\(app.preferences.projectRoot)") {          // read when the screen appears and when a task finishes — never on a timer
@@ -34,19 +28,38 @@ struct TasksSectionView: View {
         }
     }
 
+    private func tasksSubtitle(active: Int, recent: Int) -> String {
+        if active > 0 { return "\(active) task\(active == 1 ? "" : "s") need\(active == 1 ? "s" : "") you or are running" }
+        return recent > 0 ? "Nothing is running. \(recent) finished task\(recent == 1 ? "" : "s") below." : "Nothing is running."
+    }
+
+    @ViewBuilder private var projectColumn: some View {
+        ProjectBar()
+        ProjectOperatorCard()
+        ExperimentsCard(experiments: app.experimentsModel.experiments, observations: app.experimentsModel.observations)
+    }
+
+    @ViewBuilder private func workColumn(noTasks: Bool, attention: [TaskView], running: [TaskView], recent: [TaskView]) -> some View {
+        ProposalsGroup()
+        if noTasks { emptyState }
+        if !attention.isEmpty { group("Needs your attention", attention) }
+        if !running.isEmpty { group("Active", running) }
+        if !recent.isEmpty { group("Recent", recent) }
+        if app.simulatorControlsVisible { demoTasks }
+    }
+
     private var emptyState: some View {
-        HUDCard("Tasks") {
-            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                Text("No active tasks.").font(Theme.Typography.headline).foregroundStyle(Color.jarvisSecondary)
-                Text("Choose a project folder above, then type a goal in the command field — for example “Fix the failing calculation test”. JARVIS plans it, works through it, validates each step with real builds/tests and reports back.")
-                    .font(Theme.Typography.body).foregroundStyle(Color.jarvisTertiary)
-            }
+        Card("Tasks") {
+            EmptyState(symbol: "checklist", title: "No active tasks.",
+                       message: app.preferences.projectRoot.isEmpty
+                           ? "Choose a project folder, then type a goal in the command bar — for example “Fix the failing calculation test”. JARVIS plans it, works through it, validates each step with real builds and tests, and reports back."
+                           : "Type a goal in the command bar — for example “Fix the failing calculation test”. JARVIS plans it, works through it, validates each step with real builds and tests, and reports back.")
         }
     }
 
     private func group(_ title: String, _ items: [TaskView]) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-            Text(title).jarvisLabel(Theme.Opacity.textTertiary).accessibilityAddTraits(.isHeader)
+            Text(title.uppercased()).font(Theme.Typography.sectionTitle).tracking(0.9).foregroundStyle(Color.jarvisSecondary).accessibilityAddTraits(.isHeader)
             ForEach(items) { v in
                 EngineTaskCard(view: v, expanded: app.hud.selectedTaskID == v.id, onToggle: { app.hud.selectedTaskID = app.hud.selectedTaskID == v.id ? nil : v.id })
             }
@@ -89,17 +102,19 @@ struct ProjectBar: View {
         let profiles = guardOK.map(ProfileDiscovery.discover)
         HUDCard("Project", trailing: {
             HStack(spacing: Theme.Spacing.s) {
-                Button("CHOOSE FOLDER…") { choose() }.buttonStyle(.hudSecondary).fixedSize().accessibilityIdentifier("tasks.chooseProject")
-                if !root.isEmpty { Button("CLEAR") { app.preferences.projectRoot = ""; problem = nil }.buttonStyle(.hudSecondary).fixedSize() }
+                Button("Choose folder…") { choose() }.buttonStyle(.hudSecondary).fixedSize().accessibilityIdentifier("tasks.chooseProject")
+                if !root.isEmpty { Button("Clear") { app.preferences.projectRoot = ""; problem = nil }.buttonStyle(.hudSecondary).fixedSize() }
             }
         }) {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 if root.isEmpty {
-                    Text("No project chosen — development tasks need one.").font(Theme.Typography.body).foregroundStyle(Theme.Palette.amber)
+                    Text("No project selected.").font(Theme.Typography.title).foregroundStyle(Color.jarvisSecondary)
+                    Text("Development tasks need a project folder: JARVIS reads and edits files inside it only, and never anywhere else. Choose one with the button above.").font(Theme.Typography.meta).foregroundStyle(Color.jarvisTertiary).fixedSize(horizontal: false, vertical: true)
                 } else if guardOK == nil {
                     Text("\(root) can't be used as a project folder.").font(Theme.Typography.body).foregroundStyle(Theme.Palette.coral)
                 } else {
-                    Text((root as NSString).abbreviatingWithTildeInPath).font(Theme.Typography.mono).foregroundStyle(Color.jarvisPrimary).lineLimit(1).truncationMode(.middle)
+                    Text((root as NSString).lastPathComponent).font(Theme.Typography.title).foregroundStyle(Color.jarvisPrimary).lineLimit(1)
+                    Text((root as NSString).abbreviatingWithTildeInPath).font(Theme.Typography.mono).foregroundStyle(Color.jarvisTertiary).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                     if let p = profiles {
                         Text("Build: \(p.build?.display ?? "none found") · Test: \(p.test?.display ?? "none found") · \(p.source)")
                             .font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary).lineLimit(2)

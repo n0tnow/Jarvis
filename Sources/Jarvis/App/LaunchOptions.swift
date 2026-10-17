@@ -42,6 +42,8 @@ struct LaunchOptions {
     var smokeTest = false
     var captureDirectory: String?
     var closeAfter: TimeInterval?
+    /// `--ui-capture <dir>`: renders the Full HUD of a PRODUCTION-mode (no demo data), isolated-storage app to PNGs for visual inspection (no Screen Recording permission involved).
+    var uiCaptureDirectory: String?
     var providerLiveTest = false
     var noProviders = false
     /// A developer / capture / smoke launch: the only kind of run that may contain simulated V0.1 data. A launch with none of these flags (Finder, Spotlight, login) never does.
@@ -173,6 +175,7 @@ struct LaunchOptions {
             case "--benchmark-models": benchmarkModels = true
             case "--live-dir": liveDirectory = it.next()
             case "--capture": captureDirectory = it.next()
+            case "--ui-capture": uiCaptureDirectory = it.next()
             case "--close-after": closeAfter = it.next().flatMap { TimeInterval($0) }
             case "--section": section = it.next().flatMap { HUDSection(rawValue: $0) }
             case "--state": state = it.next().flatMap { JarvisState(rawValue: $0) }

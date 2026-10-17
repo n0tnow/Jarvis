@@ -9,7 +9,7 @@ struct WebResearchSettingsSection: View {
 
     var body: some View {
         @Bindable var prefs = app.preferences
-        Section("Web research") {
+        SettingsGroup("Web research") {
             Toggle("Allow web research and downloads on request", isOn: $prefs.webResearchEnabled).accessibilityIdentifier("settings.webResearch")
             Text("JARVIS searches and reads PUBLIC pages only when you ask it to (typed or spoken), writes a cited report and never crawls in the background. It does not sign in, accept terms, claim assets, read your browser's cookies or passwords, bypass CAPTCHAs or buy anything. No paid search API and no API key is used.")
                 .font(.caption).foregroundStyle(.secondary)

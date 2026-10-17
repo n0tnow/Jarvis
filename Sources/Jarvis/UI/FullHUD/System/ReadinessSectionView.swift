@@ -12,34 +12,42 @@ private func stateTint(_ s: ReadinessState) -> Color {
     }
 }
 
+/// The System page: a summary first (what is ready, what needs attention, what is optional), then every area as its own card on the page grid.
 struct ReadinessPanel: View {
     @Environment(AppContext.self) private var app
-    @State private var message: String?
+    @Binding var message: String?
+    @Binding var busy: Bool
     @State private var confirming: SetupAction?
-    @State private var busy = false
 
     var body: some View {
         let snap = app.readiness.snapshot
-        VStack(spacing: Theme.Spacing.m) {
+        let attention = snap.attention
+        let optional = snap.items.filter { $0.state == .optionalAbsent || $0.state == .notInstalled }
+        let ready = snap.items.filter { $0.state == .ready || $0.state == .available }
+        VStack(alignment: .leading, spacing: Theme.Grid.gutter) {
             if !app.preferences.firstRunCompleted, AppInfo.isApplicationBundle, !app.intelligenceIsStubbed { FirstRunCard() }
-            HUDCard("Readiness") {
-                HStack(spacing: Theme.Spacing.s) {
-                    Button("RECHECK") { Task { busy = true; await ReadinessActions.recheck(app); busy = false; message = "Checked again." } }
-                        .buttonStyle(.hudSecondary).fixedSize().disabled(busy || app.setupRunner.isRunning)
-                        .accessibilityHint("Reads the current state again. Starts nothing and installs nothing.").accessibilityIdentifier("readiness.recheck")
+
+            // Summary
+            HStack(alignment: .top, spacing: Theme.Grid.gutter) {
+                summaryTile("Ready", ready.count, .ready, "Verified by a safe check, or present and loaded on demand.")
+                summaryTile("Needs attention", attention.count, attention.isEmpty ? .ready : .attention, attention.isEmpty ? "Nothing needs you right now." : attention.prefix(3).map(\.name).joined(separator: " · "))
+                summaryTile("Optional", optional.count, .optional, "Not set up; nothing needs it right now.")
+            }
+            if let m = message { Text(m).font(Theme.Typography.meta).foregroundStyle(Theme.Palette.accent).accessibilityLabel("Result: \(m)") }
+            if app.setupRunner.state != .idle { SetupProgressView() }
+
+            if !attention.isEmpty {
+                Card("Needs attention", prominence: .standard, trailing: { StatusBadge(kind: .attention, text: "\(attention.count)") }) {
+                    VStack(spacing: Theme.Spacing.m) { ForEach(attention) { row($0) } }
                 }
-            } content: {
-                VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                    Text(snap.summary.headline).font(Theme.Typography.headline).foregroundStyle(Color.jarvisPrimary).accessibilityIdentifier("readiness.summary")
-                    Text("This only reads the installed state. “Installed”, “signed in” and “running” are different things, and a provider counts as READY only after a safe status check that makes no model request.")
-                        .font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
-                    if let m = message { Text(m).font(Theme.Typography.caption).foregroundStyle(Theme.Palette.accent).accessibilityLabel("Result: \(m)") }
-                    if app.setupRunner.state != .idle { SetupProgressView() }
-                    ForEach(ReadinessCategory.allCases) { cat in
-                        let items = snap.items(in: cat)
-                        if !items.isEmpty {
-                            Text(cat.rawValue.uppercased()).font(Theme.Typography.label).foregroundStyle(Color.jarvisTertiary).padding(.top, Theme.Spacing.xs)
-                            ForEach(items) { item in row(item) }
+            }
+
+            ResponsiveColumns(minColumn: 470) {
+                ForEach(ReadinessCategory.allCases) { cat in
+                    let items = snap.items(in: cat)
+                    if !items.isEmpty {
+                        Card(cat.rawValue, trailing: { StatusBadge(kind: Self.worst(items)) }) {
+                            VStack(spacing: Theme.Spacing.m) { ForEach(items) { row($0) } }
                         }
                     }
                 }
@@ -49,26 +57,47 @@ struct ReadinessPanel: View {
         .alert(item: Binding(get: { confirming.map { ConfirmItem(action: $0) } }, set: { confirming = $0?.action })) { c in
             let plan = SetupCatalog.plan(for: c.action)
             return Alert(title: Text(plan?.title ?? c.action.title),
-                         message: Text(plan.map { "Source: \($0.source).\nDownload ≈ \(SetupRefusal.gb($0.downloadBytes)), installed ≈ \(SetupRefusal.gb($0.installedBytes)).\nWhere: \($0.destination).\nNothing starts until you press Set Up; you can cancel while it runs. An existing valid installation is reused, not downloaded again." } ?? ""),
+                         message: Text(plan.map { "Source: \($0.source).\nDownload ≈ \(SetupRefusal.gb($0.downloadBytes)), installed ≈ \(SetupRefusal.gb($0.installedBytes)).\nWhere: \($0.destination).\nNothing else is installed or changed." } ?? ""),
                          primaryButton: .default(Text("Set Up")) { Task { message = await ReadinessActions.run(c.action, in: app); app.readiness.refresh() } },
                          secondaryButton: .cancel())
         }
     }
 
+    private static func worst(_ items: [ReadinessItem]) -> StatusKind {
+        if items.contains(where: { $0.state.needsAttention }) { return .attention }
+        if items.allSatisfy({ $0.state == .ready }) { return .ready }
+        if items.contains(where: { $0.state == .ready || $0.state == .available }) { return .available }
+        return .optional
+    }
+
+    private func summaryTile(_ title: String, _ n: Int, _ kind: StatusKind, _ note: String) -> some View {
+        Card(prominence: .standard) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack { Text(title.uppercased()).font(Theme.Typography.sectionTitle).tracking(0.9).foregroundStyle(Color.jarvisSecondary); Spacer(); Image(systemName: kind.symbol).foregroundStyle(kind.tint).accessibilityHidden(true) }
+                Text("\(n)").font(.system(size: 34, weight: .light)).foregroundStyle(Color.jarvisPrimary).monospacedDigit()
+                Text(note).font(Theme.Typography.meta).foregroundStyle(Color.jarvisTertiary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(n). \(note)")
+    }
+
     private struct ConfirmItem: Identifiable { let action: SetupAction; var id: String { action.rawValue } }
 
     private func row(_ item: ReadinessItem) -> some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.s) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.name).font(Theme.Typography.body).foregroundStyle(Color.jarvisPrimary)
-                if !item.detail.isEmpty { Text(item.detail).font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary).fixedSize(horizontal: false, vertical: true) }
-                if let note = item.state.detailNote { Text(note).font(Theme.Typography.caption).foregroundStyle(Theme.Palette.amber) }
+        HStack(alignment: .top, spacing: Theme.Spacing.m) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name).font(Theme.Typography.rowTitle).foregroundStyle(Color.jarvisPrimary)
+                if !item.detail.isEmpty { Text(item.detail).font(Theme.Typography.meta).foregroundStyle(Color.jarvisTertiary).fixedSize(horizontal: false, vertical: true).textSelection(.enabled) }
+                if let note = item.state.detailNote { Text(note).font(Theme.Typography.meta).foregroundStyle(Theme.Palette.amber).fixedSize(horizontal: false, vertical: true) }
             }
             Spacer(minLength: Theme.Spacing.s)
-            Tag(text: item.state.label, tint: stateTint(item.state))
-            if let a = item.action {
-                Button(a.title.uppercased()) { act(a) }.buttonStyle(.hudSecondary).fixedSize().disabled(a.isInstall && app.setupRunner.isRunning)
-                    .accessibilityIdentifier("readiness.\(item.id).\(a.rawValue)")
+            VStack(alignment: .trailing, spacing: Theme.Spacing.s) {
+                StatusBadge(kind: item.state.statusKind)
+                if let a = item.action {
+                    Button(a.title) { act(a) }.buttonStyle(.hudSecondary).fixedSize().disabled(a.isInstall && app.setupRunner.isRunning)
+                        .accessibilityIdentifier("readiness.\(item.id).\(a.rawValue)")
+                }
             }
         }
         .accessibilityElement(children: .combine)

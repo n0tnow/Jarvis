@@ -150,7 +150,7 @@ struct VoiceAuthorityTests {
 
     @Test func voiceReachesTheConversationOnlyThroughTheSharedSubmitEntryPoint() {
         // (DevCapture and the live tests write voice-marked messages for screenshots / to prove the UI path; they are developer tools, not product paths.)
-        let devTools = ["App/DevCapture.swift", "App/VoiceLiveTest.swift", "App/ResearchLiveTest.swift", "App/MemoryLiveTest.swift", "App/ComputerLiveTest.swift", "App/DailyLiveTest.swift"]
+        let devTools = ["App/DevCapture.swift", "App/VoiceLiveTest.swift", "App/ResearchLiveTest.swift", "App/MemoryLiveTest.swift", "App/ComputerLiveTest.swift", "App/DailyLiveTest.swift", "App/UICapture.swift"]
         let wired = code("Sources/Jarvis").filter { f in f.text.contains("source: .voice") && !devTools.contains { d in f.path.hasSuffix(d) } }.map(\.path)
         #expect(wired.count == 1 && wired[0].hasSuffix("AppContext.swift"), "\(wired)")
         for (path, text) in code("Sources/Jarvis/Voice") { #expect(!text.contains("conversationService") && !text.contains("ConversationService"), "\(path)") }

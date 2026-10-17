@@ -155,9 +155,10 @@ struct ProviderCardView: View {
                 if let c = card.cooldownUntil { Text("Cooldown until \(c.formatted(date: .omitted, time: .shortened))").font(Theme.Typography.caption).foregroundStyle(Theme.Palette.amber) }
                 if let e = card.lastError, card.activeRuns.isEmpty { Text("Last problem: \(e)").font(Theme.Typography.caption).foregroundStyle(Theme.Palette.coral.opacity(0.9)).lineLimit(1) }
             }
-            .padding(Theme.Spacing.m)
+            .padding(Theme.Grid.cardPadding - 2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(HUDCardBackground(cornerRadius: Theme.Radius.m, accent: isSelected ? Theme.Palette.accent : Color.jarvisTertiary, raised: isSelected))
+            .background(CardBackground(prominence: .standard))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Grid.cardRadius, style: .continuous).strokeBorder(Theme.Palette.accent.opacity(isSelected ? 0.7 : 0), lineWidth: 1.2))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

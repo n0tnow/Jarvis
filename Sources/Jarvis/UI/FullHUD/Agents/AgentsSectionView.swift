@@ -14,44 +14,58 @@ struct AgentsSectionView: View {
     private var observatory: AgentObservatory { app.observatory }
 
     var body: some View {
-        GeometryReader { geo in
-            let wide = geo.size.width >= 1080
-            VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-                toolbar
-                if wide {
-                    HStack(alignment: .top, spacing: Theme.Spacing.m) {
-                        ScrollView { listColumn.padding(.trailing, 2) }
-                            .frame(width: min(470, geo.size.width * 0.42))
-                        detailColumn.frame(maxWidth: .infinity, maxHeight: .infinity)
+        PageScaffold("Agents", subtitle: "Providers are the engines; a run is work being done. READY means installed and signed in — not that an agent is working.", scrolls: false, trailing: { toolbar }) {
+            GeometryReader { geo in
+                let wide = geo.size.width >= 1080
+                VStack(alignment: .leading, spacing: Theme.Grid.gutter) {
+                    if mode == .live { providersSection }
+                    if wide {
+                        HStack(alignment: .top, spacing: Theme.Grid.gutter) {
+                            ScrollView { listColumn }
+                                .frame(width: min(max(geo.size.width * 0.36, 420), 640))
+                            detailColumn.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        }
+                    } else if let id = observatory.selectedRunID {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                            Button { observatory.selectedRunID = nil } label: { Label("All agents", systemImage: "chevron.left") }
+                                .buttonStyle(.hudSecondary).fixedSize().accessibilityLabel("Back to all agents")
+                            RunDetailView(runID: id)
+                        }
+                    } else {
+                        ScrollView { listColumn }
                     }
-                } else if let id = observatory.selectedRunID {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                        Button { observatory.selectedRunID = nil } label: { Label("ALL AGENTS", systemImage: "chevron.left").font(Theme.Typography.label) }
-                            .buttonStyle(.hudSecondary).accessibilityLabel("Back to all agents")
-                        RunDetailView(runID: id)
-                    }
-                } else {
-                    ScrollView { listColumn }
                 }
             }
-            .padding(Theme.Spacing.xl)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Agents")
+    }
+
+    /// The engines JARVIS can use, side by side. Never a list of agents: a provider card says what the ENGINE is, runs are below.
+    private var providersSection: some View {
+        let cards = observatory.providerCards()
+        return VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            Text("PROVIDERS").font(Theme.Typography.sectionTitle).tracking(0.9).foregroundStyle(Color.jarvisSecondary)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: Theme.Grid.gutter, alignment: .top)], alignment: .leading, spacing: Theme.Grid.gutter) {
+                ForEach(cards) { card in
+                    ProviderCardView(card: card, isSelected: observatory.selectedRunID.map { id in card.activeRuns.contains { $0.id == id } || card.lastRun?.id == id } ?? false) {
+                        observatory.selectedRunID = card.activeRuns.first?.id ?? card.lastRun?.id
+                    }
+                }
+            }
+        }
     }
 
     // MARK: Toolbar
 
     private var toolbar: some View {
         HStack(spacing: Theme.Spacing.m) {
-            Picker("", selection: $mode) { ForEach(Mode.allCases) { Text($0.rawValue).tag($0) } }
+            Picker("", selection: $mode) { ForEach(Mode.allCases) { Text($0.rawValue.capitalized).tag($0) } }
                 .pickerStyle(.segmented).labelsHidden().frame(width: 270)
                 .accessibilityLabel("Agents view")
             if mode == .history { historyFilters }
-            Spacer()
             let active = app.hub.activeRuns.count
-            Text(active == 0 ? "NO ACTIVE AGENTS" : "\(active) ACTIVE").font(Theme.Typography.label).tracking(0.8)
-                .foregroundStyle(active == 0 ? Color.jarvisTertiary : Theme.Palette.accent)
+            StatusBadge(kind: active == 0 ? .idle : .running, text: active == 0 ? "NO ACTIVE AGENTS" : "\(active) ACTIVE")
             if app.simulatorControlsVisible { simulateMenu }
         }
     }
@@ -92,27 +106,18 @@ struct AgentsSectionView: View {
     }
 
     private var liveColumn: some View {
-        let cards = observatory.providerCards()
         let active = app.hub.activeRuns
         let recent = Array(app.hub.recentFinished.prefix(6))
-        return VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-            Text("PROVIDERS").jarvisLabel(Theme.Opacity.textTertiary)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: Theme.Spacing.s)], spacing: Theme.Spacing.s) {
-                ForEach(cards) { card in
-                    ProviderCardView(card: card, isSelected: observatory.selectedRunID.map { id in card.activeRuns.contains { $0.id == id } || card.lastRun?.id == id } ?? false) {
-                        observatory.selectedRunID = card.activeRuns.first?.id ?? card.lastRun?.id
-                    }
+        return Card("Active runs", trailing: { StatusBadge(kind: active.isEmpty ? .idle : .running, text: active.isEmpty ? "NONE" : "\(active.count)") }) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+                if active.isEmpty {
+                    EmptyState(symbol: "person.2.wave.2", title: "No agents are running.", message: "A provider that is READY is installed and signed in — that does not mean an agent is working.")
                 }
-            }
-            Text("ACTIVE RUNS").jarvisLabel(Theme.Opacity.textTertiary)
-            if active.isEmpty {
-                Text("No agents are running. Providers that are READY are installed and signed in — that does not mean an agent is working.")
-                    .font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
-            }
-            ForEach(active) { run in runRow(run) }
-            if !recent.isEmpty {
-                Text("RECENT (THIS SESSION)").jarvisLabel(Theme.Opacity.textTertiary)
-                ForEach(recent) { run in runRow(run) }
+                ForEach(active) { run in runRow(run) }
+                if !recent.isEmpty {
+                    Text("RECENT (THIS SESSION)").font(Theme.Typography.sectionTitle).tracking(0.9).foregroundStyle(Color.jarvisSecondary).padding(.top, Theme.Spacing.s)
+                    ForEach(recent) { run in runRow(run) }
+                }
             }
         }
     }
@@ -164,10 +169,10 @@ struct AgentsSectionView: View {
     @ViewBuilder private var detailColumn: some View {
         if let id = observatory.selectedRunID { RunDetailView(runID: id) }
         else {
-            HUDCard("Agent detail", trailing: { EmptyView() }) {
-                Text("Select a provider or a run to see its live console, steps, files and timeline.")
-                    .font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
+            Card("Selected run") {
+                EmptyState(symbol: "terminal", title: "Nothing selected.", message: "Select a provider or a run to see its live console, steps, files and timeline.")
             }
+            .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 }

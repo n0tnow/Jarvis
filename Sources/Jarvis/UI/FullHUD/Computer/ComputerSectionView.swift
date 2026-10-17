@@ -7,8 +7,8 @@ struct ComputerSectionView: View {
 
     var body: some View {
         let model = app.computerModel
-        ScrollView {
-            VStack(spacing: Theme.Spacing.m) {
+        PageScaffold("Computer", subtitle: "Computer Use: operating other apps through their controls, one verified step at a time.", maxContentWidth: 1320) {
+            VStack(spacing: Theme.Grid.rowGap) {
                 header
                 if let m = model.message { MessageBar(text: m) { model.message = nil } }
                 if !model.isEnabled { disabledCard } else {
@@ -18,9 +18,6 @@ struct ComputerSectionView: View {
                     HistoryCard(model: model)
                 }
             }
-            .frame(maxWidth: 860)
-            .padding(Theme.Spacing.xl)
-            .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("computer.section")
         .onAppear { model.refresh() }

@@ -7,17 +7,14 @@ struct ResearchSectionView: View {
 
     var body: some View {
         let model = app.researchModel
-        ScrollView {
-            VStack(spacing: Theme.Spacing.m) {
+        PageScaffold("Research", subtitle: "Read-only web research with sources. Pages are untrusted data, never instructions.", maxContentWidth: 1320) {
+            VStack(spacing: Theme.Grid.rowGap) {
                 header(model)
                 if let m = model.message { MessageBar(text: m) { model.message = nil } }
                 if model.sessions.isEmpty { emptyState } else { SessionsList(model: model) }
                 if let d = model.detail { ResearchDetailView(detail: d, model: model) }
                 AcquisitionsGroup(model: model)
             }
-            .frame(maxWidth: 860)
-            .padding(Theme.Spacing.xl)
-            .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("research.section")
         .onAppear { model.refresh() }

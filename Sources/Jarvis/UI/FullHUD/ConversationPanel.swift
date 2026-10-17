@@ -15,21 +15,19 @@ struct ConversationPanel: View {
         HUDCard("Conversation", trailing: { ProviderBadge() }) {
             VoiceStrip()
             if messages.isEmpty {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("Type below. Try “open the report”, “what are you doing?” or “pause the task”.")
-                        .font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary)
-                        .fixedSize(horizontal: false, vertical: true)   // wrap instead of forcing a wide centre column
-                    Text("Türkçe de olur: “raporu aç”, “görevleri göster”.")
-                        .font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
+                VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                    Text("Nothing has been said yet.").font(Theme.Typography.rowTitle).foregroundStyle(Color.jarvisSecondary)
+                    Text("Type below, or hold the right ⌥ key and speak. Try “Sistem durumunu özetle”, “open the report” or “what can you do?”.")
+                        .font(Theme.Typography.meta).foregroundStyle(Color.jarvisTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: true) {
                         // Plain VStack (bounded to `visibleLimit` rows): LazyVStack mis-estimates heights and
                         // scrolls short of the newest row after bursts of messages.
-                        VStack(alignment: .leading, spacing: 5) {
+                        VStack(alignment: .leading, spacing: 8) {
                             ForEach(messages) { message in
                                 ConversationRow(message: message)
                             }
@@ -83,26 +81,30 @@ struct ConversationRow: View {
     let message: ConversationMessage
 
     private var roleLabel: String {
-        switch message.role { case .user: "YOU"; case .jarvis: "JARVIS"; case .system: "SYSTEM" }
+        switch message.role { case .user: "You"; case .jarvis: "JARVIS"; case .system: "System" }
     }
     private var roleTint: Color {
         switch message.role { case .user: Theme.Palette.violet; case .jarvis: Theme.Palette.accent; case .system: Color.jarvisSecondary }
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.s) {
-            Text(message.timestamp, format: .dateTime.hour().minute().second())
-                .font(Theme.Typography.mono).foregroundStyle(Color.jarvisTertiary).monospacedDigit()
-            HStack(spacing: 3) {
-                Text(roleLabel)
-                    .font(.system(size: 10.5, weight: .bold, design: .monospaced)).tracking(0.6)
-                    .foregroundStyle(roleTint)
-                if message.role == .user && message.source == .voice {
-                    Image(systemName: "mic.fill").font(.system(size: 8.5)).foregroundStyle(Color.jarvisTertiary).accessibilityHidden(true)
+        HStack(alignment: .top, spacing: Theme.Spacing.m) {
+            // speaker + time in a fixed column so every message text starts on the same vertical line
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(roleLabel).font(.system(size: 11.5, weight: .semibold)).tracking(0.6).foregroundStyle(roleTint)
+                    if message.role == .user && message.source == .voice {
+                        Image(systemName: "mic.fill").font(.system(size: 9)).foregroundStyle(Color.jarvisTertiary).accessibilityHidden(true)
+                    }
                 }
+                Text(message.timestamp, format: .dateTime.hour().minute()).font(.system(size: 10.5)).foregroundStyle(Color.jarvisTertiary).monospacedDigit()
             }
-            .frame(width: 52, alignment: .leading)
+            .frame(width: 64, alignment: .leading)
             content
+        }
+        .padding(.vertical, 3)
+        .overlay(alignment: .leading) {
+            if message.role == .jarvis { Rectangle().fill(Theme.Palette.accent.opacity(0.35)).frame(width: 2).offset(x: -10) }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(message.role == .user ? (message.source == .voice ? "You, by voice" : "You") : message.role == .jarvis ? "Jarvis" : "System"): \(message.content)")
@@ -111,20 +113,22 @@ struct ConversationRow: View {
 
     @ViewBuilder
     private var content: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             if message.tone == .notice || message.status == .failed {
                 Image(systemName: message.status == .failed ? "xmark.octagon.fill" : "info.circle.fill")
-                    .font(.system(size: 9.5))
+                    .font(.system(size: 11))
                     .foregroundStyle(message.status == .failed ? Theme.Palette.coral : Theme.Palette.amber)
             }
             if message.content.isEmpty && (message.status == .pending || message.status == .streaming) {
-                Text("…").font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary)
+                Text("…").font(Theme.Typography.conversation).foregroundStyle(Color.jarvisSecondary)
             } else {
+                // The whole answer is shown and selectable (long answers are never truncated here); native text selection, ⌘C works.
                 Text(message.content)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(message.role == .user ? Color.jarvisPrimary : Color.jarvisPrimary.opacity(0.92))
-                    .lineLimit(message.role == .user ? 6 : 12)
+                    .font(Theme.Typography.conversation)
+                    .lineSpacing(3)
+                    .foregroundStyle(message.role == .user ? Color.jarvisPrimary : Color.jarvisPrimary.opacity(0.95))
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
         }

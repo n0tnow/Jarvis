@@ -13,20 +13,6 @@ final class HUDPanel: NSPanel {
     }
 }
 
-/// Standard Settings window; an accessory app has no menu bar, so ESC and ⌘W must be handled here.
-final class SettingsWindow: NSWindow {
-    override func cancelOperation(_ sender: Any?) { performClose(sender) }
-
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-           event.charactersIgnoringModifiers == "w" {
-            performClose(nil)
-            return true
-        }
-        return super.performKeyEquivalent(with: event)
-    }
-}
-
 /// Borderless, resizable, transparent window for the Full HUD.
 /// Rounded glass chrome is drawn by SwiftUI; the window itself is clear.
 ///

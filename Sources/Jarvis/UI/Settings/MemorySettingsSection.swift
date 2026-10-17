@@ -6,7 +6,7 @@ struct MemorySettingsSection: View {
 
     var body: some View {
         @Bindable var prefs = app.preferences
-        Section("Project memory") {
+        SettingsGroup("Project memory") {
             Toggle("Project Memory", isOn: $prefs.projectMemoryEnabled).accessibilityIdentifier("settings.memory")
             Text("Derived, source-backed knowledge about the current project (decisions, constraints, failures, research and asset decisions). Memory is context for agents and for your questions — never authority: current project files win, nothing here can approve an action, and forgetting a memory never rewrites Git, tasks or the audit trail. Off = nothing is read, written or injected.")
                 .font(.caption).foregroundStyle(.secondary)

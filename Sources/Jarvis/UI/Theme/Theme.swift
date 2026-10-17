@@ -12,6 +12,26 @@ enum Theme {
         static let xxl: CGFloat = 32
     }
 
+    /// The one layout grid (V1.0 stabilisation fix 3). Pages, cards and headers take their margins, gaps, paddings and heights from here — no magic numbers in screens.
+    enum Grid {
+        static let pageMargin: CGFloat = 28
+        static let gutter: CGFloat = 20
+        static let rowGap: CGFloat = 16
+        static let cardPadding: CGFloat = 18
+        static let cardRadius: CGFloat = 14
+        static let innerRadius: CGFloat = 9
+        static let border: CGFloat = 0.8
+        static let headerHeight: CGFloat = 58
+        static let pageHeaderHeight: CGFloat = 64
+        static let controlHeight: CGFloat = 30
+        static let badgeHeight: CGFloat = 22
+        static let contentMaxWidth: CGFloat = 3000
+        static let railWidth: CGFloat = 340
+        static let leftRailWidth: CGFloat = 320
+        static let narrowBreakpoint: CGFloat = 1180
+        static let wideBreakpoint: CGFloat = 1560
+    }
+
     enum Radius {
         static let s: CGFloat = 6
         static let m: CGFloat = 10
@@ -64,9 +84,17 @@ enum Theme {
         static let headline = Font.system(size: 13.5, weight: .medium, design: .default)
         static let body = Font.system(size: 13, design: .default)
         static let caption = Font.system(size: 11.5, design: .default)
-        static let label = Font.system(size: 10.5, weight: .semibold, design: .monospaced)
+        static let label = Font.system(size: 11, weight: .semibold, design: .default)
         static let mono = Font.system(size: 11, design: .monospaced)
         static let metric = Font.system(size: 22, weight: .light, design: .monospaced)
+        /// Readable hierarchy for the redesigned Full HUD: one page title per screen, section titles on cards, comfortable body text; monospace only where it carries technical meaning.
+        static let pageTitle = Font.system(size: 24, weight: .semibold, design: .default)
+        static let pageSubtitle = Font.system(size: 13.5, weight: .regular, design: .default)
+        static let sectionTitle = Font.system(size: 12, weight: .semibold, design: .default)
+        static let bodyLarge = Font.system(size: 14, weight: .regular, design: .default)
+        static let rowTitle = Font.system(size: 13.5, weight: .medium, design: .default)
+        static let meta = Font.system(size: 12, weight: .regular, design: .default)
+        static let conversation = Font.system(size: 14.5, weight: .regular, design: .default)
     }
 }
 
@@ -149,7 +177,7 @@ extension View {
     /// Small tracked uppercase technical label.
     func jarvisLabel(_ opacity: Double = Theme.Opacity.textSecondary) -> some View {
         self.font(Theme.Typography.label)
-            .tracking(1.1)
+            .tracking(1.0)
             .textCase(.uppercase)
             .foregroundStyle(Color.white.opacity(opacity))
     }

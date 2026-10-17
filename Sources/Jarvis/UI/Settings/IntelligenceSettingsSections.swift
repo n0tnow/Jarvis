@@ -10,7 +10,7 @@ struct RoutingSettingsSection: View {
 
     var body: some View {
         @Bindable var prefs = app.preferences
-        Section("Routing") {
+        SettingsGroup("Routing") {
             Toggle("Use the local model in Auto", isOn: $prefs.allowLocalInAuto)
             Toggle("Use verified-free OpenCode models in Auto", isOn: $prefs.allowFreeCloudInAuto)
             Text("Auto: lightweight → Local, then OpenCode free, then Claude Code / Codex · development & knowledge work → OpenCode free (only models that passed the benchmarks) → Claude Code / Codex · architecture, security, complex → Claude Code / Codex. A specific choice above never falls back.")
@@ -50,7 +50,7 @@ struct OpenCodeSettingsSection: View {
 
     var body: some View {
         @Bindable var prefs = app.preferences
-        Section("OpenCode (verified-free models)") {
+        SettingsGroup("OpenCode (verified-free models)") {
             let state = app.openCode.state
             LabeledContent("OpenCode") {
                 HStack(spacing: 6) {
@@ -128,7 +128,7 @@ struct LocalModelSettingsSection: View {
     var body: some View {
         @Bindable var prefs = app.preferences
         let rt = app.localRuntime
-        Section("Local model (lightweight tasks only)") {
+        SettingsGroup("Local model (lightweight tasks only)") {
             LabeledContent("Qwen3.5 4B (MLX 4-bit)") { mono(rt.state.label, rt.state.isUsableForRouting || rt.state == .running ? .green : .orange) }
             switch rt.state {
             case .runtimeMissing:

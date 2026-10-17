@@ -15,11 +15,36 @@ struct SystemPanel: View {
                 KeyValueRow(key: "OpenCode", value: openCodeSummary, valueTint: app.openCode.state == .ready ? Theme.Palette.mint : Color.jarvisSecondary)
                 KeyValueRow(key: "Memory", value: app.resources.pressure.memory.rawValue.uppercased(),
                             valueTint: app.resources.pressure.memory == .normal ? Color.jarvisSecondary : Theme.Palette.amber)
-                KeyValueRow(key: "Voice", value: voiceSummary, valueTint: app.voice.state == .listening ? Theme.Palette.coral : (app.preferences.voiceEnabled ? Theme.Palette.mint : Color.jarvisSecondary))
-                KeyValueRow(key: "Permissions", value: app.preferences.voiceEnabled ? (app.handsFree.isWakeEnabled ? "MICROPHONE (WAKE MODE)" : "MICROPHONE (WHILE HELD)") : "NONE REQUESTED")
                 KeyValueRow(key: "Motion", value: app.preferences.effectiveReduceMotion ? "REDUCED" : "FULL")
             }
         }
+    }
+}
+
+/// Voice, Push-to-Talk and Wake Word at a glance — and the way to change them (the Wake Word switch lives in Settings → Voice; this card only says what is true).
+struct VoicePanel: View {
+    @Environment(AppContext.self) private var app
+
+    var body: some View {
+        let hf = app.handsFree
+        let prefs = app.preferences
+        let mic = app.voice.permission
+        HUDCard("Voice", trailing: { Button("Settings") { app.hud.settingsCategory = .voice; app.hud.section = .settings }.buttonStyle(.hudSecondary).fixedSize() }) {
+            VStack(spacing: Theme.Spacing.s) {
+                row("Voice input", prefs.voiceEnabled ? .running : .off, prefs.voiceEnabled ? "ON" : "OFF")
+                row("Push-to-Talk", prefs.voicePushToTalk && prefs.voiceEnabled ? .ready : .off, prefs.voicePushToTalk && prefs.voiceEnabled ? "HOLD RIGHT ⌥" : "OFF")
+                row("Wake Word", !prefs.voiceWakeEnabled ? .off : (hf.wakeStatus == .listening ? .running : (hf.wakeStatus == .starting ? .notChecked : (hf.wakeStatus == .paused ? .notRunning : .error))),
+                    !prefs.voiceWakeEnabled ? "OFF" : (hf.wakeStatus == .listening ? "RUNNING" : (hf.wakeStatus == .starting ? "STARTING" : (hf.wakeStatus == .paused ? "PAUSED" : (hf.wakeStatus == .off ? "STOPPED" : "ERROR")))))
+                row("Microphone", mic == .granted ? .ready : (mic == .notDetermined ? .notChecked : .permissionNeeded), mic == .granted ? "ALLOWED" : (mic == .notDetermined ? "NOT ASKED" : "PERMISSION NEEDED"))
+                if case .unavailable(let why) = hf.wakeStatus, prefs.voiceWakeEnabled {
+                    Text(why).font(Theme.Typography.meta).foregroundStyle(Theme.Palette.amber).frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func row(_ title: String, _ kind: StatusKind, _ text: String) -> some View {
+        HStack { Text(title).font(Theme.Typography.meta).foregroundStyle(Color.jarvisTertiary); Spacer(); StatusBadge(kind: kind, text: text) }
     }
 }
 
@@ -267,18 +292,33 @@ struct ToolsPanel: View {
 
 struct SystemSectionView: View {
     @Environment(AppContext.self) private var app
+    @State private var message: String?
+    @State private var busy = false
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: Theme.Spacing.m) {
-                ReadinessPanel()
-                SystemPanel()
-                ProjectPanel()
-                if app.demoMode { ToolsPanel() }
-                AgentsPanel()
+        PageScaffold("System", subtitle: app.readiness.snapshot.summary.headline, trailing: { headerControls }) {
+            VStack(alignment: .leading, spacing: Theme.Grid.gutter) {
+                ReadinessPanel(message: $message, busy: $busy)
+                ResponsiveColumns(minColumn: 470) {
+                    SystemPanel()
+                    ProjectPanel()
+                    AgentsPanel()
+                    if app.demoMode { ToolsPanel() }
+                }
             }
-            .frame(maxWidth: 560)
-            .padding(Theme.Spacing.xl)
-            .frame(maxWidth: .infinity)
+        }
+        .accessibilityIdentifier("system.page")
+    }
+
+    /// Recheck re-reads every permission and the wake detector from macOS; Restart applies permissions that macOS only applies to a process started after they were allowed.
+    private var headerControls: some View {
+        HStack(spacing: Theme.Spacing.s) {
+            Button("Restart JARVIS") { Task { _ = await ReadinessActions.run(.restartJarvis, in: app) } }
+                .buttonStyle(.hudSecondary).fixedSize().accessibilityIdentifier("readiness.restart")
+                .accessibilityHint("Quits and starts JARVIS again. Some macOS permissions, Screen Recording first of all, apply only to a process started after they were allowed.")
+            Button("Recheck") { Task { busy = true; await ReadinessActions.recheck(app); busy = false; message = "Checked again — permissions and the wake detector were re-read from macOS." } }
+                .buttonStyle(.hudPrimary).fixedSize().disabled(busy || app.setupRunner.isRunning)
+                .accessibilityHint("Reads the current state again. Starts nothing and installs nothing.").accessibilityIdentifier("readiness.recheck")
         }
     }
 }

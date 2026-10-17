@@ -9,8 +9,8 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
         static let compactGap: CGFloat = 6
         static let screenMargin: CGFloat = 8
         static let fullPreferred = NSSize(width: 1480, height: 920)
-        static let fullMinimum = NSSize(width: 980, height: 620)
-        static let fullScreenFraction: CGFloat = 0.9
+        static let fullMinimum = FullHUDFramePolicy.minimum
+        static let savedFrameKey = "prefs.window.fullFrame"
     }
 
     private unowned let context: AppContext
@@ -21,7 +21,6 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
     private var compactPanel: HUDPanel?
     private var compactController: NSHostingController<AnyView>?
     private var fullWindow: FullHUDWindow?
-    private var settingsWindow: NSWindow?
 
     /// Enforced in `windowWillResize` (NSHostingView overwrites `contentMinSize`, so we don't rely on it).
     private(set) var fullMinimumSize = Layout.fullMinimum
@@ -110,7 +109,7 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
         hideCompactHUD()
         let window = fullWindow ?? makeFullWindow()
         fullWindow = window
-        if !window.isVisible { sizeAndCenter(window) }
+        if !window.isVisible { applyOpeningFrame(window) }
         context.hud.isFullHUDVisible = true
         // A non-activating panel of an INACTIVE app would otherwise sit behind the frontmost app's windows
         // (e.g. opened by the global shortcut). Float while presented; windowDidResignKey drops it to normal
@@ -158,7 +157,7 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
         window.level = .normal
         window.hidesOnDeactivate = false       // NSPanel default is true: the HUD must stay when another app is clicked
         window.isFloatingPanel = false
-        window.isMovableByWindowBackground = true
+        window.isMovableByWindowBackground = false          // V1.0 fix 3: only the header drag region moves the window (WindowDragRegion); content keeps text selection, scrolling and clicks
         window.contentView = host
         window.delegate = self
         window.onCancel = { [weak self] in self?.hideFullHUD() }
@@ -166,44 +165,38 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
         return window
     }
 
-    /// Large, centered, adapts to the screen under the pointer / menu bar item. Never exceeds the visible area.
-    private func sizeAndCenter(_ window: NSWindow) {
+    /// The window opens as a normal resizable window filling the usable area of the target screen the first time, and where the person left it afterwards (see `FullHUDFramePolicy`).
+    private func applyOpeningFrame(_ window: NSWindow) {
         let anchor = anchorProvider?()
         let screen = screenContaining(anchor.map { NSPoint(x: $0.midX, y: $0.midY) } ?? NSEvent.mouseLocation)
         let visible = screen.visibleFrame
-        let margin = Layout.screenMargin * 2
-
-        let maxSize = NSSize(width: visible.width - margin, height: visible.height - margin)
-        let width = min(max(visible.width * Layout.fullScreenFraction, Layout.fullMinimum.width), Layout.fullPreferred.width, maxSize.width)
-        let height = min(max(visible.height * Layout.fullScreenFraction, Layout.fullMinimum.height), Layout.fullPreferred.height, maxSize.height)
-
-        fullMinimumSize = NSSize(width: min(Layout.fullMinimum.width, maxSize.width),
-                                 height: min(Layout.fullMinimum.height, maxSize.height))
+        let frame = FullHUDFramePolicy.resolve(saved: FullHUDFramePolicy.decode(context.preferences.defaults.string(forKey: Layout.savedFrameKey)),
+                                               screens: NSScreen.screens.map(\.visibleFrame), preferred: visible)
+        fullMinimumSize = NSSize(width: min(Layout.fullMinimum.width, visible.width - 2 * FullHUDFramePolicy.inset), height: min(Layout.fullMinimum.height, visible.height - 2 * FullHUDFramePolicy.inset))
         window.contentMinSize = fullMinimumSize
-        window.setFrame(NSRect(x: visible.midX - width / 2, y: visible.midY - height / 2, width: width, height: height), display: false)
+        applyingFrame = true
+        window.setFrame(frame, display: false)
+        applyingFrame = false
+    }
+
+    /// Set while JARVIS itself places the window, so only the person's own move / resize is remembered.
+    private var applyingFrame = false
+
+    private func rememberFullFrame() {
+        guard !applyingFrame, let w = fullWindow, w.isVisible else { return }
+        context.preferences.defaults.set(FullHUDFramePolicy.encode(w.frame), forKey: Layout.savedFrameKey)
+    }
+
+    /// Forget the remembered frame: the next open fills the screen again (Settings → General).
+    func resetFullHUDFrame() {
+        context.preferences.defaults.removeObject(forKey: Layout.savedFrameKey)
+        if let w = fullWindow, w.isVisible { applyOpeningFrame(w) }
     }
 
     // MARK: Settings
 
-    func showSettings() {
-        hideCompactHUD()
-        if settingsWindow == nil {
-            let window = SettingsWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 480, height: 860),
-                styleMask: [.titled, .closable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = "JARVIS Settings"
-            window.isReleasedWhenClosed = false
-            window.appearance = NSAppearance(named: .darkAqua)
-            window.contentView = NSHostingView(rootView: SettingsView().environment(context))
-            window.center()
-            settingsWindow = window
-        }
-        NSApp.activate()
-        settingsWindow?.makeKeyAndOrderFront(nil)
-    }
+    /// Settings are a Full HUD destination (V1.0 fix 3) — one place, discoverable in the navigation, ⌘, from anywhere.
+    func showSettings() { showFullHUD(section: .settings) }
 
     // MARK: Helpers
 
@@ -232,6 +225,14 @@ final class WindowManager: NSObject, JarvisWindowControlling, NSWindowDelegate {
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
         guard sender === fullWindow else { return frameSize }
         return NSSize(width: max(frameSize.width, fullMinimumSize.width), height: max(frameSize.height, fullMinimumSize.height))
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        if let w = notification.object as? NSWindow, w === fullWindow { rememberFullFrame() }
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        if let w = notification.object as? NSWindow, w === fullWindow { rememberFullFrame() }
     }
 
     func windowDidChangeOcclusionState(_ notification: Notification) {

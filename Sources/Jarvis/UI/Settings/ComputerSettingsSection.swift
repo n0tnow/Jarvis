@@ -7,7 +7,7 @@ struct ComputerSettingsSection: View {
     var body: some View {
         @Bindable var prefs = app.preferences
         let p = app.computer.permissions
-        Section("Computer Use") {
+        SettingsGroup("Computer Use") {
             Toggle("Computer Use", isOn: $prefs.computerUseEnabled).accessibilityIdentifier("settings.computer")
             Text("Lets JARVIS operate native macOS applications — open, focus, press named controls, choose menu items — when no stronger tool (project tools, the Unity bridge, web research) exists. Every step is observed, policy-checked and verified; it only ever runs inside a task you started. Off = nothing is observed or operated.")
                 .font(.caption).foregroundStyle(.secondary)

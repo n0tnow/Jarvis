@@ -69,7 +69,7 @@ v09_none "no paid API can be enabled by readiness or setup: the Paid API item ha
 
 g15_bundle() {
   # mutable data never lives in the app; Bundle.main is read only for identity and the packaged setup scripts
-  grep -rnE 'Bundle\.main|bundleURL|bundlePath|resourceURL' Sources | grep -vE '^Sources/Jarvis/(Core/Log\.swift|Readiness/(SetupRunner|SystemIntegration)\.swift|App/([A-Za-z]*LiveTest|LiveUIDriver|SmokeTest|DevCapture)\.swift|Computer/|Voice/)' | nonc
+  grep -rnE 'Bundle\.main|bundleURL|bundlePath|resourceURL' Sources | grep -vE '^Sources/Jarvis/(Core/Log\.swift|Readiness/(SetupRunner|SystemIntegration|CodeIdentity)\.swift|Persistence/StorageIsolation\.swift|App/([A-Za-z]*LiveTest|LiveUIDriver|SmokeTest|DevCapture|PermissionReport|UICapture)\.swift|Computer/|Voice/)' | nonc
   grep -rnE 'JarvisPaths\(root:.*(Bundle|bundle)' Sources | nonc
   # the installed app has no dependency on a repository, the working directory or a development server
   grep -rnE '#filePath|#file[^A-Za-z]|currentDirectoryPath|swift run|swift build|xcodebuild|localhost:|127\.0\.0\.1' Sources | grep -vE '^Sources/Jarvis/App/([A-Za-z]*LiveTest|StabilitySoak|VisualBenchmark|SmokeTest|DevCapture)\.swift|^Sources/Jarvis/Services/Demo/|^Sources/Jarvis/Research/URLPolicy\.swift|^Sources/Jarvis/Research/MCPDiscovery\.swift|^Sources/Jarvis/Tasks/CommandProfiles\.swift' | nonc
@@ -98,7 +98,7 @@ g15_idle() {
 v09_none "nothing in Daily/ or Readiness/ runs on a timer or polls: readiness is read on appear, on Recheck and after a user action — never while idle" "$(g15_idle)"
 
 g15_instance() {
-  has $RD/SystemIntegration.swift '!arguments.dropFirst().contains { $0.hasPrefix("--") }'
+  has $RD/SystemIntegration.swift '!arguments.dropFirst().contains { $0.hasPrefix("--") && $0 != AppRelauncher.flag }'
   has Sources/Jarvis/App/AppDelegate.swift 'if SingleInstance.handOverToRunningInstance() { NSApp.terminate(nil); return }'
   has Sources/Jarvis/App/AppDelegate.swift 'func applicationShouldHandleReopen'
 }
@@ -185,3 +185,48 @@ g1f2_wake() {
   has Sources/Jarvis/UI/Components/VoiceViews.swift 'static let reservedHeight: CGFloat = 26'
 }
 v09_none "hands-free lifecycle: sleep mode, Mac sleep/wake and audio-device changes are handled by the hands-free coordinator with bounded recovery, wake stays opt-in, no global event monitor exists, the Voice overview rows exist and the voice strip has a fixed reserved height" "$(g1f2_wake)"
+
+# ───────────────────────── V1.0 stabilisation fix 3 (macOS productization · permissions · storage isolation · Full HUD design system) ─────────────────────────
+g1f3_storage() {
+  # test / developer launches never touch production storage: isolated defaults, data under JARVIS-LiveTests, hard guards
+  has Sources/Jarvis/Persistence/StorageIsolation.swift 'enum StorageIsolation'
+  has Sources/Jarvis/Persistence/StorageIsolation.swift 'STORAGE ISOLATION VIOLATION'
+  has Sources/Jarvis/Core/Preferences.swift 'StorageIsolation.assertNotProduction(defaults)'
+  has Sources/Jarvis/App/AppContext.swift 'StorageIsolation.assertNotProduction(dataRoot: p.root)'
+  has Sources/Jarvis/App/AppContext.swift 'StorageIsolation.defaultsForRun'
+  # no source touches the production defaults domain except the files that own it; no live test keeps its data under the production folder
+  grep -rn 'UserDefaults\.standard' Sources --include='*.swift' | grep -vE '^Sources/Jarvis/(Persistence/StorageIsolation|Core/Preferences|Core/Log)\.swift' | nonc
+  grep -rnE 'JarvisPaths\.standard\(\)\.root\.appendingPathComponent\("live-test' Sources | nonc
+  # a fixture project selection is never a production project
+  has Sources/Jarvis/Persistence/StorageIsolation.swift 'static func isTestFixturePath'
+}
+v09_none "storage isolation: tests and developer launches use an isolated defaults suite and a data directory under JARVIS-LiveTests, a violation is fatal, nothing else names UserDefaults.standard, and a fixture project selection is cleared from production" "$(g1f3_storage)"
+
+g1f3_window() {
+  # the whole window is never draggable; only the header drag region moves it
+  grep -rn 'isMovableByWindowBackground = true' Sources | nonc
+  has Sources/Jarvis/Services/Windows/FullHUDFramePolicy.swift 'struct WindowDragRegion'
+  has Sources/Jarvis/Services/Windows/FullHUDFramePolicy.swift 'window?.performDrag(with: event)'
+  # no exclusive full screen and no presentation-option tricks
+  grep -rnE 'toggleFullScreen|NSApplication\.PresentationOptions|presentationOptions|\.fullScreenPrimary' Sources | nonc
+  has Sources/Jarvis/Services/Windows/WindowManager.swift 'FullHUDFramePolicy.resolve('
+}
+v09_none "window policy: the Full HUD fills the usable screen as a normal resizable window (never exclusive full screen), only the header drag region moves it, and the saved frame is recovered onto an existing screen" "$(g1f3_window)"
+
+g1f3_identity() {
+  # developer bundle identity differs from the installed app's; staging copy is removed after install
+  has scripts/build_app.sh 'dev.jarvis.Jarvis.dev'
+  has scripts/install-app.sh 'Removed the staging copy'
+  has scripts/package-app.sh 'dev.jarvis.Jarvis'
+}
+v09_none "app identity: the developer bundle has its own bundle id, the installed app is the only JARVIS after an install (staging removed), " "$(g1f3_identity)"
+
+g1f3_ui() {
+  # Settings is a Full HUD destination and the design system exists
+  has Sources/Jarvis/Core/HUDState.swift 'case dashboard, tasks, agents, research, report, system, memory, computer, learning, capabilities, settings'
+  has Sources/Jarvis/UI/Components/DesignSystem.swift 'struct PageScaffold'
+  has Sources/Jarvis/UI/Theme/Theme.swift 'enum Grid'
+  # voice never approves: the voice/wake settings page has no approval path
+  grep -nE 'resolveApproval|decideApproval|\.approve\(' Sources/Jarvis/UI/Settings/VoiceControlCards.swift Sources/Jarvis/UI/FullHUD/Settings/SettingsPageView.swift | nonc
+}
+v09_none "Full HUD: Settings is a destination, pages are built on the shared design system (PageScaffold, Card, Theme.Grid), and the settings pages contain no approval path" "$(g1f3_ui)"

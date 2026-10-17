@@ -7,8 +7,8 @@ struct LearningSectionView: View {
 
     var body: some View {
         let model = app.learningModel
-        ScrollView {
-            VStack(spacing: Theme.Spacing.m) {
+        PageScaffold("Learning", subtitle: "What JARVIS has learned from your work. Learning proposes; only your HUD decision applies anything.", maxContentWidth: 1320) {
+            VStack(spacing: Theme.Grid.rowGap) {
                 header(model)
                 if let m = model.message { LearningMessageBar(text: m) { model.message = nil } }
                 if !model.isEnabled { disabled } else {
@@ -27,9 +27,6 @@ struct LearningSectionView: View {
                     }
                 }
             }
-            .frame(maxWidth: 860)
-            .padding(Theme.Spacing.xl)
-            .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("learning.section")
         .onAppear { model.refresh() }

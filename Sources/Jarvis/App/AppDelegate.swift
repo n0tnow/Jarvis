@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.installTerminationHandlers()
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
-        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.memoryLiveTest && !options.computerLiveTest && !options.orchestrationLiveTest && !options.operatorLiveTest && !options.adaptiveLiveTest && !options.mcpLiveTest && !options.continuityLiveTest && options.stabilitySoak == 0 && !options.visualBenchmark && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
+        let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.memoryLiveTest && !options.computerLiveTest && !options.orchestrationLiveTest && !options.operatorLiveTest && !options.adaptiveLiveTest && !options.mcpLiveTest && !options.continuityLiveTest && options.stabilitySoak == 0 && !options.visualBenchmark && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil || options.uiCaptureDirectory != nil))
         let legacyLiveData = options.intelligenceLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test", isDirectory: true)
             : (options.taskLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-tasks", isDirectory: true)
             : (options.proactiveLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-proactive", isDirectory: true)
@@ -203,6 +203,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let context = context!
             let statusItem = statusItem!
             Task { await SmokeTest.run(context: context, statusItem: statusItem) }
+        }
+        if let directory = options.uiCaptureDirectory {
+            let context = context!, only = options.section
+            Task { await UICapture.run(directory: directory, context: context, only: only) }
         }
         if let directory = options.captureDirectory {
             let context = context!

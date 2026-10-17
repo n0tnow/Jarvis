@@ -16,13 +16,14 @@ struct HUDButtonStyle: ButtonStyle {
     }
 
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: Theme.Radius.s, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Theme.Grid.innerRadius - 2, style: .continuous)
         configuration.label
-            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-            .tracking(1)
+            .font(.system(size: 12, weight: .semibold))
+            .tracking(0.2)
+            .lineLimit(1)
             .foregroundStyle(kind == .primary ? Theme.Palette.ink : tint.opacity(kind == .secondary ? 0.92 : 1))
-            .padding(.horizontal, Theme.Spacing.m)
-            .padding(.vertical, 7)
+            .padding(.horizontal, Theme.Spacing.m + 2)
+            .frame(height: Theme.Grid.controlHeight - 2)
             .frame(maxWidth: .infinity)
             .background(
                 shape.fill(kind == .primary

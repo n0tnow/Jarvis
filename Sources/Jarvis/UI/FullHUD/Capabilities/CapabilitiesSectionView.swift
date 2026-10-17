@@ -7,8 +7,8 @@ struct CapabilitiesSectionView: View {
 
     var body: some View {
         let model = app.capabilitiesModel
-        ScrollView {
-            VStack(spacing: Theme.Spacing.m) {
+        PageScaffold("Capabilities", subtitle: "MCP servers and skills: untrusted capabilities that are installed and enabled only after your approval.", maxContentWidth: 1320) {
+            VStack(spacing: Theme.Grid.rowGap) {
                 header(model)
                 if let m = model.message { CapMessageBar(text: m) { model.message = nil } }
                 if !model.pending.isEmpty { CapPendingCard(model: model) }
@@ -24,9 +24,6 @@ struct CapabilitiesSectionView: View {
                 if model.filter == .skills { SkillsHint() } else if model.visible.isEmpty { empty(model) } else { ServerList(model: model) }
                 if !model.advice.isEmpty { AdviceCard(model: model) }
             }
-            .frame(maxWidth: 860)
-            .padding(Theme.Spacing.xl)
-            .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("capabilities.section")
         .onAppear { model.refresh() }

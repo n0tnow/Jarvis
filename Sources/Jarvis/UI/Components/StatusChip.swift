@@ -13,8 +13,8 @@ struct StatusChip: View {
         }
         .fixedSize()
         .foregroundStyle(tint)
-        .padding(.horizontal, Theme.Spacing.s)
-        .padding(.vertical, 3)
+        .padding(.horizontal, Theme.Spacing.s + 1)
+        .frame(height: Theme.Grid.badgeHeight)
         .background(Capsule().fill(tint.opacity(0.14)))
         .overlay(Capsule().strokeBorder(tint.opacity(0.55), lineWidth: 0.8))
         .accessibilityElement(children: .ignore)

@@ -8,7 +8,7 @@ struct DailySettingsSection: View {
     @State private var loginError: String?
     var body: some View {
         @Bindable var prefs = app.preferences
-        Section("Startup") {
+        SettingsGroup("Startup") {
             Toggle("Launch JARVIS at Login", isOn: Binding(
                 get: { loginStatus == .enabled || loginStatus == .requiresApproval },
                 set: { on in loginError = LaunchAtLogin.set(on); loginStatus = LaunchAtLogin.status })).disabled(loginStatus == .unsupported)
@@ -19,7 +19,7 @@ struct DailySettingsSection: View {
             if loginStatus == .requiresApproval { Button("Open Login Items Settings") { LaunchAtLogin.openLoginItemsSettings() } }
             Toggle("Open the Compact HUD when JARVIS starts", isOn: $prefs.openCompactOnLaunch)
         }
-        Section("Daily JARVIS") {
+        SettingsGroup("Daily JARVIS") {
             Picker("Response style", selection: $prefs.responseStyle) { ForEach(ResponseStyle.allCases, id: \.self) { Text($0.label).tag($0) } }
                 .accessibilityIdentifier("settings.responseStyle")
             Text("How much JARVIS says by default. Ask “detaylı anlat” / “explain in detail” for more, or “kısa söyle” for less, any time. A failure, a refusal or a decision is never cut.")
@@ -60,7 +60,7 @@ struct AboutSettingsSection: View {
     @State private var report: String?
 
     var body: some View {
-        Section("About") {
+        SettingsGroup("About") {
             LabeledContent("Version", value: "\(AppInfo.version) (\(AppInfo.milestone))")
             LabeledContent("Build", value: AppInfo.build)
             LabeledContent("Running as", value: AppInfo.isApplicationBundle ? "installed application" : "development build")

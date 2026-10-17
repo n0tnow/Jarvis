@@ -10,7 +10,7 @@ private final class PermWorld {
     var ax: PermissionStatus = .notDetermined
     var screen: PermissionStatus = .notDetermined
     var mic: PermissionStatus = .notDetermined
-    var identity: CodeIdentity? = CodeIdentity(bundlePath: "/Applications/JARVIS.app", bundleID: "dev.jarvis.Jarvis", signingIdentifier: "dev.jarvis.Jarvis", cdhash: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", adHoc: true, teamID: nil)
+    var identity: CodeIdentity? = CodeIdentity(appPath: "/Applications/JARVIS.app", bundleID: "dev.jarvis.Jarvis", signingIdentifier: "dev.jarvis.Jarvis", cdhash: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", adHoc: true, teamID: nil)
     var changed = false
     var wakeOn = false
     var detector: WakeDetectorProbe = .stopped
@@ -63,7 +63,7 @@ struct PermissionTruthTests {
     @Test("a copy that is not /Applications/JARVIS.app is flagged: macOS judges it separately")
     func nonCanonicalCopy() {
         let w = PermWorld()
-        w.identity?.bundlePath = "/Users/x/Jarvis/build/package/JARVIS.app"
+        w.identity?.appPath = "/Users/x/Jarvis/build/package/JARVIS.app"
         let id = w.item("core.identity")
         #expect(id.state != .ready && id.detail.contains("NOT the installed copy"), Comment(rawValue: id.detail))
     }

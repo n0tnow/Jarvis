@@ -7,8 +7,8 @@ struct MemorySectionView: View {
 
     var body: some View {
         let model = app.memoryModel
-        ScrollView {
-            VStack(spacing: Theme.Spacing.m) {
+        PageScaffold("Memory", subtitle: "What JARVIS knows about the current project — derived, with provenance, never an authority.", maxContentWidth: 1320) {
+            VStack(spacing: Theme.Grid.rowGap) {
                 header(model)
                 if let m = model.message { MemoryMessageBar(text: m) { model.message = nil } }
                 if !model.isEnabled { disabledCard } else if model.project == nil { noProjectCard } else {
@@ -18,9 +18,6 @@ struct MemorySectionView: View {
                     DiagnosticsCard(model: model)
                 }
             }
-            .frame(maxWidth: 860)
-            .padding(Theme.Spacing.xl)
-            .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("memory.section")
         .onAppear { model.refresh() }

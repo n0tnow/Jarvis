@@ -305,13 +305,15 @@ enum SmokeTest {
         await hkDrive(0.5, false, false)
         // Full visible but BEHIND (Settings is key): Full toggle brings it forward; Compact must not appear
         w.showFullHUD(section: nil); _ = await only("full", "pre-behind")
-        w.showSettings(); await settle(300)
+        // (V1.0 fix 3: Settings is a Full HUD page now, so another ordinary window plays the part of “the window in front of the Full HUD”.)
+        let otherWindow = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 320, height: 200), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        otherWindow.isReleasedWhenClosed = false; otherWindow.makeKeyAndOrderFront(nil); await settle(300)
         let fullWasKey = fullWindow()?.isKeyWindow ?? true
         w.toggleFullHUD(); await settle(300)
         check("Exclusivity: Full visible but behind → Full toggle brings it forward (no hide, no Compact)",
               !fullWasKey && w.isFullHUDOpen && !w.isCompactHUDOpen && (!NSApp.isActive || fullWindow()?.isKeyWindow == true), "wasKey=\(fullWasKey) active=\(NSApp.isActive)")
         exclusive("behind-toggle")
-        NSApp.windows.first { $0 is SettingsWindow }?.orderOut(nil)
+        otherWindow.orderOut(nil)
         // Rapid repeated calls: no duplicate windows, never both
         for _ in 0..<10 { w.showCompactHUD(); exclusive("rapid-c"); w.showFullHUD(section: nil); exclusive("rapid-f"); w.toggleCompactHUD(); exclusive("rapid-tc"); w.toggleFullHUD(); exclusive("rapid-tf") }
         w.hideCompactHUD(); w.hideFullHUD()
@@ -393,7 +395,7 @@ enum SmokeTest {
             exclusive("s7 \(cmd)")
             if cmd == "open dashboard" || cmd == "ayarları aç" { await settle(60) }
         }
-        NSApp.windows.first { $0 is SettingsWindow }?.orderOut(nil)
+        otherWindow.orderOut(nil)
         await svc.waitUntilIdle()
         await settle(200)
         let roles = convo.messages.map(\.role)
@@ -714,6 +716,20 @@ enum SmokeTest {
             check("V1.0 fix 2: a model's claim about JARVIS' abilities is detected", !CapabilityClaimGuard.findings(in: "I can't see your screen and I cannot access your files.").isEmpty && CapabilityClaimGuard.findings(in: "The screen is blue.").isEmpty)
             check("V1.0 fix 2: the voice strip reserves a fixed height whenever voice is on", VoiceStrip.reservedHeight == 26 && VoiceStrip.reservesSpace(voiceEnabled: true, presenceQuiet: true, hasPartial: false))
             check("V1.0 fix 2: wake mode is opt-in (fresh profile) and the wake acknowledgement is the spoken “Efendim?”", { let n = "jarvis-smoke2-\(UUID().uuidString)"; let d = UserDefaults(suiteName: n)!; defer { d.removePersistentDomain(forName: n) }; let f = Preferences(defaults: d); return !f.voiceWakeEnabled && f.voiceWakeAcknowledgement == .voice }())
+            // --- V1.0 fix 3: window geometry, drag policy, Settings destination, storage isolation
+            w.hideCompactHUD(); c.windowManager.resetFullHUDFrame()
+            w.showFullHUD(section: nil); await settle(500)
+            if let full = fullWindow() {
+                let visible = (full.screen ?? NSScreen.main)?.visibleFrame ?? .zero
+                let expected = FullHUDFramePolicy.filling(visible)
+                check("V1.0 fix 3: the Full HUD opens filling the usable screen area (visibleFrame minus a small inset)", abs(full.frame.width - expected.width) < 2 && abs(full.frame.height - expected.height) < 2 && visible.contains(full.frame), "\(full.frame) vs \(expected)")
+                check("V1.0 fix 3: it is a normal resizable window, not full screen, and the background does not drag it", full.styleMask.contains(.resizable) && !full.styleMask.contains(.fullScreen) && !full.isMovableByWindowBackground)
+            } else { check("V1.0 fix 3: the Full HUD window exists", false) }
+            w.showSettings(); await settle(300)
+            check("V1.0 fix 3: Settings is a Full HUD destination and ⌘, / “open settings” lead there", c.hud.section == .settings && w.isFullHUDOpen)
+            c.hud.section = .dashboard; w.hideFullHUD()
+            check("V1.0 fix 3: this smoke run uses isolated storage (never the production defaults or data directory)", StorageIsolation.isProtectedRun && !StorageIsolation.isProductionDefaults(c.preferences.defaults) && !StorageIsolation.isProductionDataRoot(c.paths.root))
+            check("V1.0 fix 3: the Compact HUD is still exactly 392 × 448", CompactHUDLayout.size == CGSize(width: 392, height: 448))
             await resetWorld()
         }
 

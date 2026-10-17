@@ -19,22 +19,22 @@ struct CornerBrackets: Shape {
     }
 }
 
-/// Background + frame for any grouped content.
+/// Background for an inner item (a row, a proposal, a selectable record). V1.0 fix 3: quiet — the corner-bracket frame is reserved for the hero core panel (`CardBackground(.hero)`).
+/// `accent` only tints the border when it is NOT the default accent (an amber attention item, a selected record).
 struct HUDCardBackground: View {
-    var cornerRadius: CGFloat = Theme.Radius.m
+    var cornerRadius: CGFloat = Theme.Grid.innerRadius + 1
     var accent: Color = Theme.Palette.accent
     var raised = false
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         shape
-            .fill(Color.white.opacity(raised ? Theme.Opacity.surfaceRaised : Theme.Opacity.surface))
-            .overlay(shape.strokeBorder(Color.white.opacity(Theme.Opacity.hairline), lineWidth: 0.8))
-            .overlay(CornerBrackets().stroke(accent.opacity(0.55), lineWidth: 1).padding(-0.5))
+            .fill(Color.white.opacity(raised ? 0.07 : 0.04))
+            .overlay(shape.strokeBorder(accent == Theme.Palette.accent && !raised ? Color.white.opacity(0.10) : accent.opacity(0.5), lineWidth: Theme.Grid.border))
     }
 }
 
-/// Titled panel used throughout the Full HUD.
+/// Titled panel used throughout the Full HUD (V1.0 fix 3: now the shared `Card` look — quiet border, readable title, one grid).
 struct HUDCard<Content: View, Trailing: View>: View {
     let title: String
     var trailing: Trailing
@@ -47,20 +47,7 @@ struct HUDCard<Content: View, Trailing: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-            HStack(spacing: Theme.Spacing.s) {
-                Text(title).jarvisLabel(Theme.Opacity.textSecondary)
-                Spacer(minLength: Theme.Spacing.s)
-                trailing
-            }
-            .accessibilityAddTraits(.isHeader)
-
-            Rectangle().fill(Color.white.opacity(Theme.Opacity.hairline)).frame(height: 0.8)
-            content
-        }
-        .padding(Theme.Spacing.m)
-        .background(HUDCardBackground())
-        .accessibilityElement(children: .contain)
+        Card(title, trailing: { trailing }, content: { content })
     }
 }
 
@@ -77,14 +64,14 @@ struct Tag: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
-            .tracking(0.8)
+            .font(.system(size: 10.5, weight: .semibold))
+            .tracking(0.6)
             .lineLimit(1)
             .fixedSize()
             .foregroundStyle(tint)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1.5)
-            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(tint.opacity(0.7), lineWidth: 0.8))
+            .padding(.horizontal, 7)
+            .frame(height: Theme.Grid.badgeHeight - 2)
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(tint.opacity(0.55), lineWidth: 0.8))
     }
 }
 
@@ -94,13 +81,14 @@ struct KeyValueRow: View {
     var valueTint: Color = .jarvisPrimary
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(key).jarvisLabel(Theme.Opacity.textTertiary)
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.m) {
+            Text(key).font(Theme.Typography.meta).foregroundStyle(Color.jarvisTertiary)
             Spacer(minLength: Theme.Spacing.s)
             Text(value)
-                .font(Theme.Typography.mono)
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(valueTint)
                 .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
         }
         .accessibilityElement(children: .combine)
     }

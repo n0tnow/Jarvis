@@ -8,7 +8,7 @@ import Security
 /// stays visible in System Settings but no longer applies. With a stable signing identity the requirement is "identifier + certificate" and survives updates.
 /// This type only reads the running process' own signature; it asks for nothing.
 struct CodeIdentity: Equatable, Sendable {
-    var bundlePath: String
+    var appPath: String
     var bundleID: String
     var signingIdentifier: String
     var cdhash: String
@@ -16,7 +16,7 @@ struct CodeIdentity: Equatable, Sendable {
     var teamID: String?
 
     var shortHash: String { String(cdhash.prefix(8)) }
-    var isCanonicalInstall: Bool { bundlePath == "/Applications/JARVIS.app" }
+    var isCanonicalInstall: Bool { appPath == "/Applications/JARVIS.app" }
 
     static func current() -> CodeIdentity? {
         var code: SecCode?
@@ -29,6 +29,6 @@ struct CodeIdentity: Equatable, Sendable {
         let team = d["teamid"] as? String
         let flags = (d["flags"] as? UInt32) ?? 0
         let adhoc = flags & 0x2 != 0 || (team == nil && (d["certificates"] as? [Any])?.isEmpty != false)
-        return CodeIdentity(bundlePath: Bundle.main.bundlePath, bundleID: Bundle.main.bundleIdentifier ?? "-", signingIdentifier: (d["identifier"] as? String) ?? "-", cdhash: hash, adHoc: adhoc, teamID: team)
+        return CodeIdentity(appPath: Bundle.main.bundlePath, bundleID: Bundle.main.bundleIdentifier ?? "-", signingIdentifier: (d["identifier"] as? String) ?? "-", cdhash: hash, adHoc: adhoc, teamID: team)
     }
 }

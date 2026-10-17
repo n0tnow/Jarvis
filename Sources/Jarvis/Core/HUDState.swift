@@ -4,7 +4,7 @@ import Observation
 /// Views the Full HUD can show. `report` is the navigation target for the future
 /// "Jarvis, give me the report" flow: `windows.showFullHUD(section: .report)`.
 enum HUDSection: String, CaseIterable, Identifiable, Sendable {
-    case dashboard, tasks, agents, research, report, system, memory, computer, learning, capabilities
+    case dashboard, tasks, agents, research, report, system, memory, computer, learning, capabilities, settings
 
     var id: String { rawValue }
 
@@ -22,6 +22,7 @@ enum HUDSection: String, CaseIterable, Identifiable, Sendable {
         case .computer: "cursorarrow.rays"
         case .learning: "brain.head.profile"
         case .capabilities: "puzzlepiece.extension"
+        case .settings: "gearshape"
         }
     }
 }
@@ -32,6 +33,8 @@ enum HUDSection: String, CaseIterable, Identifiable, Sendable {
 @Observable
 final class HUDState {
     var section: HUDSection = .dashboard
+    /// Which Settings category is open (the Full HUD Settings page).
+    var settingsCategory: SettingsCategory = .general
     /// The task expanded in the Tasks screen (UI-only; closing the HUD never touches the task).
     var selectedTaskID: UUID?
 

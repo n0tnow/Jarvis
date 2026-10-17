@@ -222,11 +222,11 @@ final class ReadinessService {
         if let id {
             let where_ = id.isCanonicalInstall ? "" : " — NOT the installed copy (/Applications/JARVIS.app); macOS judges this copy separately"
             add("core.identity", .permissions, "This JARVIS (what macOS judges)", id.isCanonicalInstall ? .ready : .degraded("not the installed copy"),
-                "\(id.bundlePath)\(where_) · \(id.bundleID) · \(id.adHoc ? "ad-hoc signature \(id.shortHash)" : "signed \(id.teamID ?? id.signingIdentifier)")" + (id.adHoc ? ". An ad-hoc signature changes with every build, so macOS treats each build as a new app: permissions given to an earlier build do not carry over." : ""))
+                "\(id.appPath)\(where_) · \(id.bundleID) · \(id.adHoc ? "ad-hoc signature \(id.shortHash)" : "signed \(id.teamID ?? id.signingIdentifier)")" + (id.adHoc ? ". An ad-hoc signature changes with every build, so macOS treats each build as a new app: permissions given to an earlier build do not carry over." : ""))
         }
         let identityNote: String = {
             guard let id, id.adHoc else { return "" }
-            return (p.identityChanged() ? " This build is new since JARVIS last ran (signature \(id.shortHash))." : "") + " If JARVIS already appears switched ON in System Settings, that entry belongs to an earlier build: switch it off and on, or remove it with − and add \(id.isCanonicalInstall ? "/Applications/JARVIS.app" : id.bundlePath) again, then press Recheck."
+            return (p.identityChanged() ? " This build is new since JARVIS last ran (signature \(id.shortHash))." : "") + " If JARVIS already appears switched ON in System Settings, that entry belongs to an earlier build: remove it with − and add \(id.isCanonicalInstall ? "/Applications/JARVIS.app" : id.appPath) again, then press Recheck."
         }()
         let ax = p.accessibility()
         add("computer.ax", .computer, "Accessibility permission", ax == .granted ? .ready : (p.computerUseEnabled() ? .permissionNeeded : .optionalAbsent),

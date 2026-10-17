@@ -6,7 +6,7 @@ struct AdaptiveSettingsSection: View {
 
     var body: some View {
         @Bindable var prefs = app.preferences
-        Section("Adaptive learning") {
+        SettingsGroup("Adaptive learning") {
             Toggle("Adaptive learning", isOn: $prefs.adaptiveLearningEnabled).accessibilityIdentifier("settings.adaptive")
             Toggle("Learn from completed tasks", isOn: $prefs.learnFromTasks).disabled(!prefs.adaptiveLearningEnabled)
             Toggle("Learn from my corrections", isOn: $prefs.learnFromCorrections).disabled(!prefs.adaptiveLearningEnabled)
@@ -20,7 +20,7 @@ struct AdaptiveSettingsSection: View {
             Text(prefs.selfImprovementLevel.explanation).font(.caption).foregroundStyle(.secondary)
             Text("There is no level above 4. JARVIS never changes its own source because it found an idea.").font(.caption).foregroundStyle(.secondary)
         }
-        Section("MCP and skills") {
+        SettingsGroup("MCP and skills") {
             Toggle("MCP discovery (research on request)", isOn: $prefs.mcpDiscoveryEnabled).accessibilityIdentifier("settings.mcpdiscovery")
             Toggle("Recommend MCP updates", isOn: $prefs.mcpUpdateRecommendations)
             LabeledContent("Automatic production MCP installation") { Text("never").font(.system(.caption, design: .monospaced)) }
