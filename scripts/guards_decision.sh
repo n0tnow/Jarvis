@@ -18,14 +18,25 @@ v09_none "decision layer: no URL, API-key shape, credential header or hard-coded
 gdc_defaults() {
   hasre $DC/JevDecisionProvider.swift 'var mode: JevMode = \.disabled'
   hasre $DC/JevDecisionProvider.swift 'struct UnconfiguredJevTransport'
-  hasre $DC/JevDecisionProvider.swift 'func complete\(system: String, user: String, modelAlias: String'
+  hasre $DC/JevDecisionProvider.swift 'func complete\(_ request: JevClassifyRequest, modelAlias: String'
   hasre Sources/Jarvis/Core/Preferences.swift 'JevMode\.disabled\.rawValue'
-  # the only transport in this build is the unconfigured one: no type conforms to JevTransport anywhere else in Sources
-  grep -rnE ': *JevTransport|JevTransport *\{' Sources | grep -vE 'Decision/JevDecisionProvider\.swift' | nonc
+  # the only real transport is TypeSafeJevTransport (Providers/Jev); no other type conforms to JevTransport in Sources
+  grep -rnE ': *JevTransport|JevTransport *\{' Sources | grep -vE 'Decision/JevDecisionProvider\.swift|Providers/Jev/TypeSafeJevTransport\.swift' | nonc
   # the closed set a remote decision may be accepted for in GATED mode is read-only / own-UI only
   grep -nE 'static let acceptableIntents' $DC/DecisionTypes.swift | grep -vE '\[\.conversation, \.voiceStatus, \.systemStatus, \.jarvisNavigation, \.projectQuery, \.providerCapability\]' | nonc
 }
-v09_none "Jev: disabled by default, adapter boundary only (no transport, no credential), gated acceptance limited to the closed read-only set" "$(gdc_defaults)"
+v09_none "Jev: disabled by default, the decision layer holds no transport and no credential, gated acceptance limited to the closed read-only set" "$(gdc_defaults)"
+
+gdc_jev_secret() {
+  # DEC-275: the Keychain is touched in ONE file, the key is read in ONE file, the Authorization header exists in ONE file, and nothing there logs or prints
+  grep -rnE 'SecItem(Add|Update|CopyMatching|Delete)|kSecClassGenericPassword' Sources | grep -vE 'Sources/Jarvis/Providers/Jev/JevCredentialStore\.swift' | grep -vE '^Sources/Jarvis/(Capabilities/MCPInspectionRules|Readiness/)' | nonc
+  grep -rnE 'JevCredentialStore\.(read|store|delete)\(' Sources | grep -vE 'Sources/Jarvis/Providers/Jev/(TypeSafeJevTransport|JevCredentialStore)\.swift|Sources/Jarvis/App/DecisionTools\.swift' | nonc
+  grep -rnE 'forHTTPHeaderField: "Authorization"|"Bearer \\\(' Sources | grep -vE 'Sources/Jarvis/Providers/Jev/TypeSafeJevTransport\.swift' | nonc
+  grep -nHE 'print\(|NSLog|os_log|Logger|debugPrint|dump\(' Sources/Jarvis/Providers/Jev/TypeSafeJevTransport.swift Sources/Jarvis/Providers/Jev/JevCredentialStore.swift | nonc
+  # the secret never enters UserDefaults / SQLite / the preferences
+  grep -nHE 'UserDefaults|sqlite|Preferences|FileManager|write\(to' Sources/Jarvis/Providers/Jev/JevCredentialStore.swift | nonc
+}
+v09_none "Jev credential: one Keychain file, one reader, one Authorization header, no log or print, never in preferences or files" "$(gdc_jev_secret)"
 
 gdc_policy() {
   # risk and gate are re-derived from the policy table for every non-grammar decision; the answer's own risk/gate fields are never read
