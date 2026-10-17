@@ -64,6 +64,10 @@ enum SetupAction: String, CaseIterable, Identifiable, Sendable {
     case chooseLocalModelFolder
     /// Explicit click: switches Voice (and Push-to-Talk) ON in Settings. It opens no microphone — that happens only while the key is held.
     case turnOnVoice
+    /// Explicit click: switches Wake Word (and Voice) ON; the real detector state is then reported (RUNNING / ERROR / PERMISSION NEEDED), never assumed.
+    case turnOnWake
+    /// Quits and relaunches this very app (some macOS permissions, Screen Recording first of all, only apply to a process started after they were allowed).
+    case restartJarvis
     var id: String { rawValue }
 
     var title: String {
@@ -84,6 +88,8 @@ enum SetupAction: String, CaseIterable, Identifiable, Sendable {
         case .installMemoryHelper: "Set Up Memory Search"
         case .chooseLocalModelFolder: "Select Existing Model Folder"
         case .turnOnVoice: "Turn On Voice"
+        case .turnOnWake: "Turn On Wake Word"
+        case .restartJarvis: "Restart JARVIS"
         }
     }
     /// Actions that download or install files (explicit click, preflight, progress, cancel).

@@ -12,6 +12,13 @@ struct JarvisPaths: Sendable {
         return JarvisPaths(root: base.appendingPathComponent("JARVIS", isDirectory: true))
     }
 
+    /// Live tests, smoke and capture runs keep their data HERE — outside the production support folder (V1.0 stabilisation fix 3).
+    static var liveTestsRoot: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support", isDirectory: true)
+        return base.appendingPathComponent("JARVIS-LiveTests", isDirectory: true)
+    }
+
     static func temporary(_ tag: String = "jarvis-test") -> JarvisPaths {
         JarvisPaths(root: URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("\(tag)-\(UUID().uuidString)", isDirectory: true))

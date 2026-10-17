@@ -86,13 +86,18 @@ enum SingleInstance {
 
     /// A plain Finder / Spotlight / Dock / login launch has no `--flag` arguments. Developer and live-test runs (which start deliberate extra copies) are never single-instance restricted.
     static func isPlainLaunch(_ arguments: [String] = CommandLine.arguments) -> Bool {
-        !arguments.dropFirst().contains { $0.hasPrefix("--") }
+        !arguments.dropFirst().contains { $0.hasPrefix("--") && $0 != AppRelauncher.flag }
     }
 
     /// If another copy of this app is already running, asks it to show itself and returns true (the caller then exits). Uses the Launch Services running-application list, not a lock file.
     @MainActor
     static func handOverToRunningInstance(bundleID: String = AppInfo.bundleIdentifier, myPID: pid_t = ProcessInfo.processInfo.processIdentifier) -> Bool {
         guard isPlainLaunch() else { return false }
+        if CommandLine.arguments.contains(AppRelauncher.flag) {
+            // "Restart JARVIS": the old copy is quitting; wait (bounded, once) for it instead of handing over to a process that is about to disappear.
+            let end = Date().addingTimeInterval(6)
+            while Date() < end, !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).filter({ $0.processIdentifier != myPID && !$0.isTerminated }).isEmpty { Thread.sleep(forTimeInterval: 0.1) }
+        }
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).filter { $0.processIdentifier != myPID && !$0.isTerminated }
         guard let existing = others.first else { return false }
         DistributedNotificationCenter.default().postNotificationName(showNotification, object: nil, userInfo: nil, deliverImmediately: true)
@@ -115,4 +120,21 @@ enum PrivacySettingsPane {
         }
     }
     @MainActor func open() { NSWorkspace.shared.open(url) }
+}
+
+// MARK: Relaunch (V1.0 stabilisation fix 3)
+
+/// "Restart JARVIS": starts a fresh copy of THIS bundle and quits the running one. The new process is a plain launch (`--relaunched` is not a developer flag), so it keeps production storage.
+@MainActor
+enum AppRelauncher {
+    static let flag = "--relaunched"
+    static func relaunch() {
+        let url = Bundle.main.bundleURL
+        let config = NSWorkspace.OpenConfiguration()
+        config.createsNewApplicationInstance = true
+        config.arguments = [flag]
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, _ in
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+        }
+    }
 }

@@ -23,7 +23,7 @@ enum MemoryLiveTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1800) { ProcessRegistry.shared.killAll(); print("MEMORY LIVE TEST TIMEOUT"); fflush(stdout); exit(2) }
         func finish() -> Never {
             prefs.projectRoot = savedRoot; prefs.projectMemoryEnabled = savedEnabled; prefs.memorySemanticEnabled = savedSemantic
-            for k in ["prefs.tasks.projectRoot", "prefs.memory.enabled", "prefs.memory.semantic"] { UserDefaults.standard.removeObject(forKey: k) }
+            for k in ["prefs.tasks.projectRoot", "prefs.memory.enabled", "prefs.memory.semantic"] { prefs.defaults.removeObject(forKey: k) }
             if !savedRoot.isEmpty { prefs.projectRoot = savedRoot }
             context.memory.shutdown()
             print("MEMORY LIVE TEST \(failures == 0 ? "PASSED" : "FAILED") (\(passes) passed, \(failures) failed)"); fflush(stdout)
@@ -90,7 +90,7 @@ enum MemoryLiveTest {
         check("Bootstrap is idempotent: running it again adds nothing", again.created == 0 && totalAgain == total, "second run: \(again.created) created, \(again.merged) already known")
 
         // research memory from the REAL V0.9 live-test database (if it is there): sessions, candidates (read-only copy of verified records)
-        let v09 = JarvisPaths.standard().root.appendingPathComponent("live-test-research/jarvis.sqlite")
+        let v09 = JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-research/jarvis.sqlite")
         if FileManager.default.fileExists(atPath: v09.path), let other = try? JarvisDatabase(url: v09) {
             let src = JarvisRepository(database: other)
             var copied = 0

@@ -107,13 +107,24 @@ final class AppContext {
     /// True ONLY for developer / capture / smoke launches: the simulated V0.1 tasks, agents, project and activity exist, the simulator controls are shown and every simulated item is labelled. A normal launch of
     /// the installed app is NEVER a demo environment: its screens show real persisted / runtime state or an honest empty state (V1.0 stabilisation fix 2).
     let demoMode: Bool
+    /// True when this build's code signature differs from the one JARVIS last ran with (an install/update): macOS permissions given to the previous ad-hoc build no longer apply.
+    @ObservationIgnored var buildIsNewSinceLastLaunch = false
+    @ObservationIgnored var activationObserver: NSObjectProtocol?
     /// The V0.1 state simulator / simulated-task / simulated-agent controls: only in a demo environment AND only when the developer switch is on. Never in the installed app.
     var simulatorControlsVisible: Bool { demoMode && preferences.showDeveloperControls }
 
     init(seedDemoData: Bool = false, stubIntelligence: Bool = false, dataDirectory: URL? = nil, voiceRig: VoiceTestRig? = nil) {
         store = JarvisStore()
         hud = HUDState()
-        preferences = Preferences()
+        // Production defaults only for a plain launch; every test / developer / live-test run gets an isolated suite (named after its data directory so a
+        // restart child process sees the same state) and StorageIsolation fails hard if production storage would be touched.
+        preferences = Preferences(defaults: StorageIsolation.defaultsForRun(tag: dataDirectory.map { $0.lastPathComponent }))
+        if let dataDirectory { StorageIsolation.assertNotProduction(dataRoot: dataDirectory) }
+        // Self-heal for state written by an older build's live tests: a fixture project selection never belongs to the installed app (see docs/PRODUCTION_TRUTH.md, "fixture incident").
+        if !StorageIsolation.isProtectedRun, StorageIsolation.isTestFixturePath(preferences.projectRoot) {
+            Log.app.notice("cleared a test-fixture project selection left by an older build")
+            preferences.projectRoot = ""
+        }
         conversation = ConversationStore()
         providers = ProviderManager(preferences: preferences)
         intelligenceIsStubbed = stubIntelligence
@@ -124,6 +135,7 @@ final class AppContext {
         let runtimePaths = stubIntelligence ? JarvisPaths(root: URL(fileURLWithPath: "/nonexistent/jarvis-stub")) : JarvisPaths.standard()
         let p = stubIntelligence ? JarvisPaths.temporary("jarvis-stub") : (dataDirectory.map { JarvisPaths(root: $0) } ?? JarvisPaths.standard())
         paths = p
+        StorageIsolation.assertNotProduction(dataRoot: p.root)
         var db: JarvisDatabase?
         var dbError: String?
         do { try p.ensureDirectories(); db = try JarvisDatabase(url: p.database) } catch { dbError = String(describing: error); Log.app.error("database unavailable: \(dbError ?? "", privacy: .public)") }

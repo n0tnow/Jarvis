@@ -1,7 +1,7 @@
 import AppKit
 
 /// `Jarvis --computer-live-test [--live-dir <dir>] [--computer-repo <path>]` — OPT-IN, REAL (V0.11). Real macOS interactions: the real Accessibility API, the real
-/// window-scoped capture + on-device text recognition, the real task engine/approval path, a JARVIS-OWNED fixture application (build/JarvisFixture.app) for every action that
+/// window-scoped capture + on-device text recognition, the real task engine/approval path, a JARVIS-OWNED fixture application (build/dev/JarvisFixture.app) for every action that
 /// presses, types, scrolls or clicks, plus harmless navigation of the real Finder, System Settings, Blender and Unity (activate only). Nothing is bought, sent, installed,
 /// deleted, signed in or granted; no credential is typed; no user project is modified; no model request is made; no network request is made.
 /// If Accessibility is not allowed for the process running this test it reports BLOCKED — ACCESSIBILITY PERMISSION REQUIRED and does not weaken anything.
@@ -84,7 +84,7 @@ enum ComputerLiveTest {
 
         func finish(blocked: Bool = false) -> Never {
             prefs.computerVisionEnabled = savedVision; prefs.computerUseEnabled = savedEnabled
-            UserDefaults.standard.removeObject(forKey: "prefs.computer.vision"); UserDefaults.standard.removeObject(forKey: "prefs.computer.enabled")
+            prefs.defaults.removeObject(forKey: "prefs.computer.vision"); prefs.defaults.removeObject(forKey: "prefs.computer.enabled")
             if savedVision { prefs.computerVisionEnabled = true }
             if !savedEnabled { prefs.computerUseEnabled = false }
             // (our own dummy app: a modal alert could keep a polite quit pending, so it is ended for good)
@@ -133,7 +133,7 @@ enum ComputerLiveTest {
         for old in NSRunningApplication.runningApplications(withBundleIdentifier: fixtureBundle) { old.forceTerminate() }          // a left-over fixture from an aborted run
         try? await Task.sleep(for: .milliseconds(400))
         let statePath = NSTemporaryDirectory() + "jarvis-fixture-\(UUID().uuidString).json"
-        guard let fixturePID = await launchFixture(statePath: statePath, prefill: sentinelPassword) else { check("The JARVIS fixture app (build/JarvisFixture.app) launched — run scripts/build_app.sh", false); finish() }
+        guard let fixturePID = await launchFixture(statePath: statePath, prefill: sentinelPassword) else { check("The JARVIS fixture app (build/dev/JarvisFixture.app) launched — run scripts/build_app.sh", false); finish() }
         launchedByUs.append(fixturePID)
         func st() -> FixtureState { readState(statePath) }
         check("The fixture app launched with its own bundle id and window", st().strings["launched"] == "yes" && st().pid == fixturePID)

@@ -32,7 +32,7 @@ enum VoiceLiveTest {
         var temps: [String] = []
         func finish() -> Never {
             prefs.projectRoot = savedRoot
-            UserDefaults.standard.removeObject(forKey: "prefs.tasks.projectRoot")
+            prefs.defaults.removeObject(forKey: "prefs.tasks.projectRoot")
             if !savedRoot.isEmpty { prefs.projectRoot = savedRoot }
             voice.shutdown()
             for t in temps { try? FileManager.default.removeItem(atPath: t) }

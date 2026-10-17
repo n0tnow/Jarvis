@@ -11,6 +11,14 @@ extension AppContext {
         continuity.presenter = { [weak self] text, lang in self?.conversationService.presenter.present(full: text, language: lang) ?? text }
         voice.onAddressed = { [weak self] in self?.conversationService.presenter.noteWakeAddressed() }
 
+        // Which signature is this build? (macOS permissions belong to it — see CodeIdentity.) Compared with the one JARVIS last ran with; stored by this isolated/production defaults only.
+        if !stub, let id = CodeIdentity.current() {
+            let key = "prefs.identity.lastCdhash"
+            let last = prefs.defaults.string(forKey: key)
+            buildIsNewSinceLastLaunch = last != nil && last != id.cdhash
+            prefs.defaults.set(id.cdhash, forKey: key)
+        }
+
         // Readiness (read-only), setup (typed, allowlisted), notifications (opt-in)
         let notifier = JarvisNotifier()
         notifier.enabled = { prefs.notifyOnTaskEvents && !stub }
@@ -44,6 +52,18 @@ extension AppContext {
         settingsAssistant.isSleeping = { hf.isSleepingByUser }
         settingsAssistant.resumeFromSleep = { Task { @MainActor in await hf.resumeFromSleepMode() } }
         configureDailyConversation(on: conversationService)
+
+        // Coming back from System Settings (JARVIS becomes the active app again) re-reads every permission and the wake detector — event-driven, no polling, no restart needed.
+        if !stub {
+            activationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.voice.refreshPermission()
+                    _ = self.computer.refreshPermissions()
+                    self.readiness.refresh()
+                }
+            }
+        }
 
         // What can be known cheaply is evaluated once after launch (provider availability lists; starts nothing, asks for nothing).
         if !stub { Task { @MainActor [weak self] in await self?.voice.refreshProviders(); await self?.notifier.refreshStatus(); self?.readiness.refresh() } }
@@ -156,6 +176,18 @@ extension AppContext {
             default: return .ready
             }
         }
+        p.wakeDetector = { [weak self] in
+            guard let self else { return .stopped }
+            switch self.handsFree.wakeStatus {
+            case .listening: return .running
+            case .starting: return .starting
+            case .paused: return .paused
+            case .unavailable(let why): return .error(why)
+            case .off: return .stopped
+            }
+        }
+        p.identity = { CodeIdentity.current() }
+        p.identityChanged = { [weak self] in self?.buildIsNewSinceLastLaunch ?? false }
         p.appleSTT = { [weak self] in self?.voice.sttAvailability.first(where: { $0.key.contains("apple") })?.value }
         p.naturalVoice = { [weak self] in
             guard let self else { return (false, "") }

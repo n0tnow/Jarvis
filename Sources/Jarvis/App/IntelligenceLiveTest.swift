@@ -26,7 +26,7 @@ enum IntelligenceLiveTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + limit) { prefs.providerPreference = savedPreference; prefs.localIdleUnloadSeconds = savedIdle; ProcessRegistry.shared.killAll(); print("LIVE TEST TIMEOUT"); fflush(stdout); exit(2) }
         func finish() -> Never {
             prefs.providerPreference = savedPreference; prefs.localIdleUnloadSeconds = savedIdle
-            UserDefaults.standard.removeObject(forKey: "prefs.providerPreference")          // never leave a test preference behind
+            prefs.defaults.removeObject(forKey: "prefs.providerPreference")          // never leave a test preference behind
             if savedPreference != .auto { prefs.providerPreference = savedPreference }
             print("INTELLIGENCE LIVE TEST \(failures == 0 ? "PASSED" : "FAILED") (\(passes) passed, \(failures) failed)"); fflush(stdout)
             exit(failures == 0 ? 0 : 1)

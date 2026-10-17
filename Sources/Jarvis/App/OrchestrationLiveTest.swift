@@ -29,7 +29,7 @@ enum OrchestrationLiveTest {
         func finish() -> Never {
             engine.agents = realRunner; engine.resourcePressure = { ResourcePressure() }
             prefs.providerPreference = savedPreference; prefs.projectRoot = savedRoot
-            UserDefaults.standard.removeObject(forKey: "prefs.providerPreference"); UserDefaults.standard.removeObject(forKey: "prefs.tasks.projectRoot")
+            prefs.defaults.removeObject(forKey: "prefs.providerPreference"); prefs.defaults.removeObject(forKey: "prefs.tasks.projectRoot")
             if savedPreference != .auto { prefs.providerPreference = savedPreference }
             if !savedRoot.isEmpty { prefs.projectRoot = savedRoot }
             for (k, v) in perf { print("PERF  \(k): \(v)") }

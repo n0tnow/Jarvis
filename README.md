@@ -15,8 +15,8 @@ A native macOS menu-bar AI operating layer (long-term). **V0.15 daily JARVIS** (
 ## Build, run, test
 
 ```bash
-scripts/build_app.sh          # builds build/Jarvis.app (release, ad-hoc signed)
-open build/Jarvis.app         # menu bar icon appears (no Dock icon)
+scripts/build_app.sh          # builds build/dev/JarvisDev.app (release, ad-hoc signed)
+open build/dev/JarvisDev.app         # menu bar icon appears (no Dock icon)
 scripts/verify.sh             # full automated verification
 scripts/test.sh               # unit tests only
 scripts/setup_local_ai.sh     # optional, once: isolated MLX runtime (605 MB, 57 pinned packages) for the on-device model — downloads NO model
@@ -27,7 +27,7 @@ scripts/setup_voice_ai.sh     # optional, once: isolated speech runtime (≈480 
 **Opt-in REAL tests, V0.13:** `Jarvis --operator-live-test [--operator-section scene|material|lighting|prefab|camera-physics-ui|animation|audio|playmode|capture|console|protections|correction|experiment|soak|model-planned|asset-experiment|crash-start|crash-recover]` (a REAL Unity editor started by JARVIS on a disposable fixture; `soak`, `model-planned`, `asset-experiment` and the `crash-*` sections run only when named), `--continuity-live-test [--continuity-section interrupt-start|restart]` (real providers on a disposable Git project; the two sections are separate launches around a self-SIGKILL), `--visual-benchmark` (16 cases; needs `scripts/setup_vision_ai.sh` once), and `--computer-live-test` (now with icon-only / ambiguous / purchase vision controls and a Safari measurement). None of them touches your real projects.
 
 **Opt-in REAL tests** (V0.10: `Jarvis --memory-live-test [--memory-repo <path>]` — real SQLite + the real embedding helper (needs `scripts/setup_memory_ai.sh` once) on the ACTUAL JARVIS repository's decisions/known issues/rules/log as the corpus: real TR/EN/mixed questions, benchmark with real vectors, contradiction / correction / forget / secret / web-poison fixtures in disposable projects, index rebuild/cancel/corruption, restart, memory pressure, idle, quit cleanup; no model request, no network, nothing in a user project is touched, ~2 minutes) (V0.9: `Jarvis --research-live-test` — the REAL public web: official-docs / library / community / spoken Turkish asset research (Claude Code + local Qwen, no paid API), a real md5-verified CC0 download into the quarantine and its approved import into a disposable folder, real URL-policy refusals, cancellation, a real quit + relaunch (interrupted, nothing resumes), browser-tier cleanup, offline security fixtures, idle check; own data directory; nothing is imported anywhere, no login, no purchase, ~3 minutes) (V0.8: `Jarvis --natural-voice-live-test [--natural-audible] [--natural-acoustic] [--natural-combined] [--natural-idle <min>]` — SYNTHETIC speech through the real wake sentinel, turn manager, Whisper, the same ConversationService and the neural/Apple voice in a closed acoustic loop (scripted microphone + simulated speaker with this Mac's measured echo coupling); `--natural-acoustic` additionally measures the REAL speaker→microphone loop (audible, levels only); silent by default) (V0.7: `Jarvis --voice-live-test [--voice-audible] [--voice-no-whisper] [--voice-real-mic] [--voice-combined]` — SYNTHETIC speech from the macOS voices through the real recognisers, the real conversation path and real TTS, real OS-level Right-Option key events, resource figures; silent by default) (spend only free/local engines plus two tiny Claude Code requests; never part of `verify.sh`):
-`build/Jarvis.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1/V0.3.2 stack, own data directory), `--unity-live-test [--unity-no-provider]` (V0.6: a REAL headless Unity editor started by JARVIS on a disposable fixture copied to a temp folder — typed scene/component/property edits, compile/domain reload, EditMode+PlayMode tests, Play Mode, Console delta, dirty-scene and Play-Mode protection, cancellation, relaunch, and real OpenCode-FREE-routed fixes of a compile error and a failing test; own data directory, never your game), `--proactive-live-test` (V0.5: real proposal → approval → V0.4 task, low-risk auto action, denial, relaunch — OpenCode FREE, isolated fixtures, own data directory), `--demo-proposals` (labelled simulated suggestions for the UI), `--task-live-test` (V0.4: the real task engine on isolated temporary fixture projects — OpenCode FREE preferred, own data directory, never the JARVIS repository) and `--provider-live-test` (V0.3 Claude Code / Codex).
+`build/dev/JarvisDev.app/Contents/MacOS/Jarvis --intelligence-live-test [--benchmark-models]` (V0.3.1/V0.3.2 stack, own data directory), `--unity-live-test [--unity-no-provider]` (V0.6: a REAL headless Unity editor started by JARVIS on a disposable fixture copied to a temp folder — typed scene/component/property edits, compile/domain reload, EditMode+PlayMode tests, Play Mode, Console delta, dirty-scene and Play-Mode protection, cancellation, relaunch, and real OpenCode-FREE-routed fixes of a compile error and a failing test; own data directory, never your game), `--proactive-live-test` (V0.5: real proposal → approval → V0.4 task, low-risk auto action, denial, relaunch — OpenCode FREE, isolated fixtures, own data directory), `--demo-proposals` (labelled simulated suggestions for the UI), `--task-live-test` (V0.4: the real task engine on isolated temporary fixture projects — OpenCode FREE preferred, own data directory, never the JARVIS repository) and `--provider-live-test` (V0.3 Claude Code / Codex).
 
 **Global shortcuts** (work while any app is focused; no permission): hold **Option** and press **Command** → toggle Compact HUD (fires ~0.3 s later unless it turns out to be a double press). Hold **Option** and press **Command twice quickly** (within 0.3 s) → toggle Full HUD. Either Command key. Ignored if you add another key, a click, Shift or Control (so ⌥⌘D, ⌥⌘-click etc. are untouched). Turn off in Settings → Enable global shortcuts.
 
@@ -113,7 +113,7 @@ Sources/Jarvis/
   Voice/      V0.8 Natural/: turn machine, endpoint policy, barge-in detector, hands-free coordinator, microphone hub, helper host, wake/VAD sentinel runtime, neural voice, voice identity, transcript guards; SpeechPlayer + PlayerBackedTTS. V0.7: voice coordinator, push-to-talk machine, speech chunker/renderer, response speaker, microphone input/permission, STT/TTS providers (Apple, Whisper helper)
   Proactive/  V0.5: opportunity model, deterministic policy, normaliser/dedup, assessor, finding extractor, revalidator, OpportunityEngine, ProposalService
   Tasks/      V0.4: task model/state machines, plans, workspace guard, project tools, command profiles, leases, engine, reports, intake
-Sources/JarvisFixture/        V0.11: a tiny test-dummy macOS app (buttons, tabs, secure field, sheet, custom-drawn control…) built by scripts/build_app.sh into build/JarvisFixture.app
+Sources/JarvisFixture/        V0.11: a tiny test-dummy macOS app (buttons, tabs, secure field, sheet, custom-drawn control…) built by scripts/build_app.sh into build/dev/JarvisFixture.app
 Tests/JarvisTests/            unit tests (Swift Testing)
 scripts/                      build_app.sh, test.sh, verify.sh, setup_local_ai.sh, local-ai/ (worker + pinned requirements), setup_voice_ai.sh [--natural], train_wake_head.sh, voice-ai/ (speech, wake/VAD and neural-voice workers + pinned requirements, bench/)
 docs/                         architecture, decisions, roadmap, issues, log, current task
@@ -130,7 +130,7 @@ V1.0 — Real-world validation & stabilization — **not started; V0.15 is the l
 
 ## Manual test checklist (V0.1)
 
-1. `scripts/build_app.sh && open build/Jarvis.app` — an icon appears in the menu bar; no Dock icon; **no permission dialog**.
+1. `scripts/build_app.sh && open build/dev/JarvisDev.app` — an icon appears in the menu bar; no Dock icon; **no permission dialog**.
 2. Click the icon → Compact HUD opens under it. Click the icon again → closes. Open it, press **ESC** → closes. Open it, click elsewhere → closes.
 3. In Compact HUD click **OPEN JARVIS** → Full HUD opens, centered, in front. Compact HUD is gone.
 4. Press **ESC** (and try the **CLOSE** button, and ⌘W) → Full HUD closes; menu bar icon is still there.
@@ -313,8 +313,8 @@ V0.14 is AUTOMATED TESTED and REAL TESTED on this Mac (see `PROJECT_STATE.md`), 
 
 **Set-up and automated evidence**
 1000. Run `scripts/verify.sh` → VERIFY PASSED (the summary line lists the unit-test count, smoke PASS/FAIL/SKIP and idle CPU); `git status` is clean afterwards and no `*.sqlite`, model, screenshot or live-test directory is tracked.
-1001. Run `build/Jarvis.app/Contents/MacOS/Jarvis --adaptive-live-test` → every section ends `0 FAIL`; read the REAL / ENGINE / POLICY labels and confirm you are comfortable with which parts used scripted agents.
-1002. Run `build/Jarvis.app/Contents/MacOS/Jarvis --mcp-live-test` → `0 FAIL`; the output ends with the sandbox boundary text including “NOT enforced”.
+1001. Run `build/dev/JarvisDev.app/Contents/MacOS/Jarvis --adaptive-live-test` → every section ends `0 FAIL`; read the REAL / ENGINE / POLICY labels and confirm you are comfortable with which parts used scripted agents.
+1002. Run `build/dev/JarvisDev.app/Contents/MacOS/Jarvis --mcp-live-test` → `0 FAIL`; the output ends with the sandbox boundary text including “NOT enforced”.
 1003. Run `--mcp-live-test --mcp-section candidate` → the real open-source candidate is built inside the sandbox and benchmarked; no folder is left under `~/Library/Application Support/JARVIS/…/sandboxes` afterwards.
 1004. Run `--adaptive-live-test --adaptive-section soak --adaptive-cycles 20` → 20/20 cycles, flat memory, no orphan process.
 1005. Run `--adaptive-live-test --adaptive-section ui` and `--mcp-live-test --mcp-section ui` while you watch: the Learning and Capabilities screens are clicked by real Accessibility presses and the states change.
@@ -514,7 +514,7 @@ V0.13.1 changes no capability family: it closes the V0.13 gaps (Input System ope
 996. Compact HUD is still 392×448 and shows one operator line.
 
 **Stability (JARVIS-V13-7)**
-997. Run `build/Jarvis.app/Contents/MacOS/Jarvis --computer-live-test` three times: no failure of “CONTEXT … in the Inspector”; if one ever fails, keep the log and report the “look” and “world” lines of the failure detail.
+997. Run `build/dev/JarvisDev.app/Contents/MacOS/Jarvis --computer-live-test` three times: no failure of “CONTEXT … in the Inspector”; if one ever fails, keep the log and report the “look” and “world” lines of the failure detail.
 998. Icon-only press with the vision model cold (first press after 1 minute idle): it works on the first try (the model loads before the picture is taken).
 999. `--stability-soak 10`: SOAK PASSED, RSS growth small, no orphan editors or folders.
 
@@ -522,9 +522,9 @@ V0.13.1 changes no capability family: it closes the V0.13 gaps (Input System ope
 V0.13 is AUTOMATED TESTED (≈ 120 new unit tests: continuity, selection, intents, reconciliation, the typed Unity operator and its schema parity with the Editor package, validated construction, policy, results, the experiment contract / workspace / verdicts / asset evaluation, the correction planner, visual grounding) and REAL TESTED (`Jarvis --operator-live-test` — a real Unity 6000.5.1f1 started by JARVIS on a disposable fixture: 80+ operator checks plus visual correction, a real disposable-project experiment, cancellation, hard-kill crash recovery, a real asset researched → quarantined → tested → evaluated, and a real model-planned Unity graph; `--continuity-live-test` — real providers on a disposable Git project: status, bounded continue, restart, external drift, failed retry once, hard-kill interrupt and resume; `--computer-live-test` — the V0.11 test now also exercises icon-only / ambiguous / purchase vision controls and a Safari measurement; `--visual-benchmark` — 16 cases on Apple OCR and Qwen3-VL 2B/4B). The real Hamam project and your other projects were never an automated target. It is **not** MANUALLY VERIFIED: that is yours to say. See `docs/PROJECT_OPERATOR.md`, `docs/UNITY_DEVELOPMENT_OPERATOR.md`, `docs/VISUAL_GROUNDING.md`, `docs/EXPERIMENTATION.md`.
 **Set-up and automated evidence**
 824. Run `scripts/verify.sh` → `VERIFY PASSED`; `git status` clean; no `captures/`, SQLite, screenshots, models or live-test directories tracked.
-825. Run `scripts/build_app.sh` and open `build/Jarvis.app`; the Compact HUD is still 392 × 448 and the menu-bar icon behaves as before.
+825. Run `scripts/build_app.sh` and open `build/dev/JarvisDev.app`; the Compact HUD is still 392 × 448 and the menu-bar icon behaves as before.
 826. Run `scripts/setup_vision_ai.sh` once (installs the pinned local vision runtime and models under `~/AI/models/vision`; nothing is downloaded by the app itself). Confirm Settings → Project operator → *Local model* says “installed”.
-827. Run `build/Jarvis.app/Contents/MacOS/Jarvis --visual-benchmark` and read the printed table: Apple OCR vs Qwen3-VL 2B/4B, cold/warm latency, resident MB, and which cases fail (`lighting-dark` is expected to fail; lighting is judged from editor numbers).
+827. Run `build/dev/JarvisDev.app/Contents/MacOS/Jarvis --visual-benchmark` and read the printed table: Apple OCR vs Qwen3-VL 2B/4B, cold/warm latency, resident MB, and which cases fail (`lighting-dark` is expected to fail; lighting is judged from editor numbers).
 828. Run `--operator-live-test` (real Unity 6000.5.1f1 on a disposable fixture, ≈ 8 min): `OPERATOR LIVE TEST PASSED`, no `-jarvisOwned` process left (`pgrep -fl jarvisOwned`).
 829. Run `--continuity-live-test` (real providers on a disposable Git project): `CONTINUITY LIVE TEST PASSED`; then the two-launch hard-kill scenario: `--continuity-section interrupt-start` (the process kills itself) followed by `--continuity-section restart`.
 
@@ -715,14 +715,14 @@ V0.12 is AUTOMATED TESTED (68 orchestration tests: roles/contracts, graph valida
 ### V0.11 additions (general computer use) — MANUAL TEST REQUIRED
 V0.11 is AUTOMATED TESTED (120 Computer tests on a virtual macOS — policy, resolution, executor, planner, engine, persistence, routing) and REAL TESTED (`Jarvis --computer-live-test`: the real Accessibility API against a JARVIS-owned fixture app, a real vision click on three displays incl. Retina, real Finder / System Settings / Blender navigation, cancel / emergency-stop / restart, secure-field and purchase-bypass fixtures — see `docs/GENERAL_COMPUTER_USE.md`). Xcode was not installed on the development Mac, no model vision exists (on-device OCR only) and the physical ⌃⌥⌘ chord has only been measured with scripted modifiers. Use the fixture first; never point a first run at your real game.
 
-584. Build and launch: `scripts/build_app.sh` (it also builds the test dummy `build/JarvisFixture.app`), then open `build/Jarvis.app`. Do NOT point Computer Use at anything you care about for the first run — use the fixture and Finder.
+584. Build and launch: `scripts/build_app.sh` (it also builds the test dummy `build/dev/JarvisFixture.app`), then open `build/dev/JarvisDev.app`. Do NOT point Computer Use at anything you care about for the first run — use the fixture and Finder.
 585. Open **Settings → Computer Use**. Confirm: Computer Use is ON by default, the vision fallback is OFF, and the emergency stop is described as ⌃⌥⌘.
 586. Inspect the **Accessibility status** (Settings and Full HUD → COMPUTER → macOS permissions). Confirm it says the truth (granted / not granted) and that nothing was requested at launch.
 587. With Accessibility **not allowed** for JARVIS (System Settings → Privacy & Security → Accessibility → JARVIS off), type “open Finder”.
 588. Confirm a **truthful permission error** (“Permission required … Accessibility”), a failed task, no application was touched, and nothing keeps nagging.
 589. Press **OPEN ACCESSIBILITY SETTINGS** (an explicit button). Confirm it only takes you to the pane; allow JARVIS yourself.
 590. Press **REFRESH** (or reopen the screen), then retry “open Finder”. Confirm it now works.
-591. Open `build/JarvisFixture.app` yourself (double-click). It is a harmless dummy window set (“Fixture Main”, “Document A/B”).
+591. Open `build/dev/JarvisFixture.app` yourself (double-click). It is a harmless dummy window set (“Fixture Main”, “Document A/B”).
 592. In COMPUTER → watch the timeline while you ask “switch to JARVIS Fixture”. Confirm **application detection** (name, running).
 593. Ask JARVIS to press a control in the fixture (e.g. “click the Run button in JARVIS Fixture”). Confirm **window detection** lines (Observed … windows) in the timeline.
 594. Confirm the timeline shows **semantic controls** (labels such as “Run”), never coordinates.
@@ -833,13 +833,13 @@ V0.11 is AUTOMATED TESTED (120 Computer tests on a virtual macOS — policy, res
 699. Confirm there are **no screenshots** being taken and **no Accessibility traversal** (Activity Monitor: JARVIS stays near 0 % CPU; no Screen Recording indicator in the menu bar).
 700. Check CPU/RAM of JARVIS while idle (expect ≈ 70–170 MB, ≈ 0 % CPU).
 701. Settings → Computer Use → Developer diagnostics: confirm the COMPUTER screen then shows counts and timings of the last observation (never the tree) and that turning it off hides them.
-702. Optional full re-run of the real test: `build/Jarvis.app/Contents/MacOS/Jarvis --computer-live-test` (≈ 2–3 minutes; it opens and moves the fixture window, reveals the project folder in Finder, opens System Settings, launches Blender if installed and may move the pointer once per vision click — keep your hands off the keyboard and mouse). Compare with `docs/GENERAL_COMPUTER_USE.md`.
+702. Optional full re-run of the real test: `build/dev/JarvisDev.app/Contents/MacOS/Jarvis --computer-live-test` (≈ 2–3 minutes; it opens and moves the fixture window, reveals the project folder in Finder, opens System Settings, launches Blender if installed and may move the pointer once per vision click — keep your hands off the keyboard and mouse). Compare with `docs/GENERAL_COMPUTER_USE.md`.
 703. Inspect Git and runtime artifacts: `git status` is clean; no screenshots, AX dumps, SQLite files or `captures/` content are tracked.
 
 ### V0.10 additions (project memory) — MANUAL TEST REQUIRED
 V0.10 is AUTOMATED TESTED (unit tests incl. the actual JARVIS repository's docs as a bootstrap corpus) and REAL TESTED (`Jarvis --memory-live-test`: real SQLite, the real local embedding helper, real Turkish/English/mixed questions through the real ConversationService, contradiction/correction/forget/secret/web-poison fixtures, index rebuild/cancel/corruption, restart, memory pressure, idle, quit cleanup). Nothing below has been done by a person yet: **every item is MANUAL TEST REQUIRED**. Use a COPY of your game for anything that touches a project. Details: `docs/PROJECT_MEMORY.md`.
 
-464. Launch JARVIS (`build/Jarvis.app`). Optional, once: `scripts/setup_memory_ai.sh` (≈ 250 MB, pinned + SHA-256 verified) for meaning-based search; without it Project Memory still works with keyword + structured search and says so.
+464. Launch JARVIS (`build/dev/JarvisDev.app`). Optional, once: `scripts/setup_memory_ai.sh` (≈ 250 MB, pinned + SHA-256 verified) for meaning-based search; without it Project Memory still works with keyword + structured search and says so.
 465. Choose a project folder (Tasks → Choose folder…) — ideally the JARVIS checkout itself or a COPY of your game. Open Full HUD → **MEMORY**. Before building anything, confirm the empty state explains what memory is.
 466. Press **BUILD MEMORY FROM PROJECT DOCS**. Confirm the bootstrap summary lists the documents it read and inspect the memories: decisions, constraints, known issues, failures, episodes.
 467. Press it again and confirm nothing is added twice (the summary says everything was already known).
@@ -963,7 +963,7 @@ V0.10 is AUTOMATED TESTED (unit tests incl. the actual JARVIS repository's docs 
 ### V0.9 additions (web research & asset acquisition) — MANUAL TEST REQUIRED
 V0.9 is AUTOMATED TESTED (1044 unit tests, fixtures under the production URL policy) and REAL TESTED on the live public web (`Jarvis --research-live-test`, 49 checks: official-docs, library, community and Turkish spoken asset research; a real md5-verified CC0 download into the quarantine and its approved import into a disposable folder fixture; SSRF/URL-policy refusals; cancellation; a real quit + relaunch; browser-tier cleanup; security fixtures; idle check). Nothing below has been done by a person yet: **every item is MANUAL TEST REQUIRED**. Importing: try it only on a COPY of a project. Details: `docs/WEB_RESEARCH.md`, `docs/ASSET_ACQUISITION.md`.
 
-344. Launch JARVIS (`build/Jarvis.app`). Open Settings → **Web research**: confirm “Allow web research and downloads on request” is on, the “Use the built-in browser for pages that need JavaScript” switch is present, the quarantine size shows 0 B and “Show in Finder” opens `~/Library/Application Support/JARVIS/acquisitions`.
+344. Launch JARVIS (`build/dev/JarvisDev.app`). Open Settings → **Web research**: confirm “Allow web research and downloads on request” is on, the “Use the built-in browser for pages that need JavaScript” switch is present, the quarantine size shows 0 B and “Show in Finder” opens `~/Library/Application Support/JARVIS/acquisitions`.
 345. Confirm JARVIS makes **no network request at launch or while idle**: leave it 2 minutes, then `lsof -a -i -n -P -p $(pgrep -x Jarvis)` shows no connection and Activity Monitor shows ≈ 0 % CPU.
 346. Open the Full HUD → **Research** tab: the empty state says nothing has been researched and that research never starts by itself.
 347. Turn “Allow web research and downloads on request” **off**. Ask “research Unity BoxCollider”. Expect an honest refusal that points at Settings (no request made); turn it back on.
@@ -1087,10 +1087,10 @@ V0.9 is AUTOMATED TESTED (1044 unit tests, fixtures under the production URL pol
 ### V0.8 additions (natural voice & presence) — MANUAL TEST REQUIRED
 V0.8 is AUTOMATED TESTED and REAL TESTED with SYNTHETIC speech in a closed acoustic loop (`Jarvis --natural-voice-live-test`; wake word, VAD, endpointing, turn taking, barge-in, self-speech, neural voice, Push-to-Talk, approvals, resources, quit cleanup). Nothing below has been done by a person yet: **every item is MANUAL TEST REQUIRED**, subjective ones (voice naturalness, personality, latency feel, fatigue, battery) especially. Wake mode is OFF by default. Details: `docs/NATURAL_VOICE.md`.
 
-224. Launch JARVIS (`build/Jarvis.app`, or `open build/Jarvis.app`). Install the optional natural-voice components first if you want them: `scripts/setup_voice_ai.sh --natural` then `scripts/train_wake_head.sh` (the wake head is trained locally on synthetic speech; neural voice + wake helper stay "not installed" without them and Push-to-Talk/Apple voice keep working).
+224. Launch JARVIS (`build/dev/JarvisDev.app`, or `open build/dev/JarvisDev.app`). Install the optional natural-voice components first if you want them: `scripts/setup_voice_ai.sh --natural` then `scripts/train_wake_head.sh` (the wake head is trained locally on synthetic speech; neural voice + wake helper stay "not installed" without them and Push-to-Talk/Apple voice keep working).
 225. Settings → Voice: Enable voice on, then turn **Wake word “Jarvis”** on. Confirm the status row says **LISTENING FOR "JARVIS"** (or an honest reason if not: microphone not allowed yet, helper not installed). The first time macOS may ask for the microphone — allow it.
 226. Confirm full speech recognition is NOT running before the wake word: Activity Monitor shows no `Jarvis`-owned Whisper helper (`python … jarvis_stt_worker.py`) and the System panel says WAKE · LOCAL DETECTOR; only `jarvis_sentinel_worker.py` (≈ 125 MB) runs. Settings → developer controls → Voice diagnostics shows the same.
-227. Confirm no raw recording is created: nothing new appears in `~/Library/Application Support/JARVIS` apart from `jarvis.sqlite*`, artefacts and logs (no `.wav/.caf/.m4a/.pcm`); `find ~/Library/Application\ Support/JARVIS -newer build/Jarvis.app -type f`.
+227. Confirm no raw recording is created: nothing new appears in `~/Library/Application Support/JARVIS` apart from `jarvis.sqlite*`, artefacts and logs (no `.wav/.caf/.m4a/.pcm`); `find ~/Library/Application\ Support/JARVIS -newer build/dev/JarvisDev.app -type f`.
 228. Say “Jarvis” naturally (one short word, then a pause). Expect a short soft sound and the ATTENTIVE chip.
 229. Confirm JARVIS woke (Compact/Full show ATTENTIVE; the status line “Go ahead — I’m listening.”).
 230. Say it quietly (just above a whisper, a metre away). Note whether it wakes (JARVIS-V08-2: a very quiet voice may need repeating).
@@ -1209,7 +1209,7 @@ V0.8 is AUTOMATED TESTED and REAL TESTED with SYNTHETIC speech in a closed acous
 343. Test normal room noise (fan, music at low volume, a second person talking).
 
 ### V0.7 additions (voice I/O) — MANUAL TEST REQUIRED
-Developer-only: `build/Jarvis.app/Contents/MacOS/Jarvis --voice-live-test` (silent REAL test with synthetic speech; add `--voice-audible` to hear it, `--voice-real-mic` to open the real microphone for 1.5 s). Optional better recogniser: `scripts/setup_voice_ai.sh`. Automated runs never open the microphone.
+Developer-only: `build/dev/JarvisDev.app/Contents/MacOS/Jarvis --voice-live-test` (silent REAL test with synthetic speech; add `--voice-audible` to hear it, `--voice-real-mic` to open the real microphone for 1.5 s). Optional better recogniser: `scripts/setup_voice_ai.sh`. Automated runs never open the microphone.
 154. Settings → **Voice** → turn **Enable voice (Push-to-Talk)** on (it is off by default). Relaunch JARVIS with Voice enabled.
 155. Confirm the microphone is NOT active: the macOS menu bar shows no orange microphone dot, `Activity Monitor` shows no `Jarvis` audio use, the System panel says Voice READY · PUSH-TO-TALK, JARVIS state is Idle.
 156. Open Settings → Voice. Confirm the **Shortcut** row (hold right ⌥), the microphone row (NOT ASKED YET / ALLOWED / DENIED) and the explanation text.
@@ -1313,7 +1313,7 @@ Developer-only: `build/Jarvis.app/Contents/MacOS/Jarvis --voice-live-test` (sile
 153. Report anything odd (I add it to `docs/KNOWN_ISSUES.md`). **Only after the fixture behaves** connect your real game **read-only** first (choose its folder, run `Inspect …`); do **not** let JARVIS mutate it until you submit a scoped task intentionally.
 
 ### V0.5 additions (proactive reasoning & approval policy) — MANUAL TEST REQUIRED
-**Prepare:** `docs/PROACTIVE_REASONING.md`. Use a **throw-away Git project** (small, with a `calc.py`). Default mode is **Ask Before Acting**. Developer helper: `build/Jarvis.app/Contents/MacOS/Jarvis --no-providers --open-full --section tasks --demo-proposals` (scripted demo task that leaves one normal and one critical suggestion; uses a temporary data directory).
+**Prepare:** `docs/PROACTIVE_REASONING.md`. Use a **throw-away Git project** (small, with a `calc.py`). Default mode is **Ask Before Acting**. Developer helper: `build/dev/JarvisDev.app/Contents/MacOS/Jarvis --no-providers --open-full --section tasks --demo-proposals` (scripted demo task that leaves one normal and one critical suggestion; uses a temporary data directory).
 92. Settings → **Autonomy**: three modes (Observe Only / Ask Before Acting / Low-Risk Autonomous) with explanations; **Ask Before Acting** is selected on a fresh install; toggles for proactive reasoning and showing proposals.
 93. Tasks → run a normal user task that changes application code but no test (e.g. `Fix the add function in calc.py`). When it finishes, a **SUGGESTIONS** card appears at the top of Tasks within a few seconds ("No regression test…"), no popup, no sound, nothing is changed in the project.
 94. The card shows: why JARVIS noticed, evidence, proposed action, scope, risk, design change, reversible, expected benefit, how it will be validated. Nothing is pre-selected; APPROVE / DENY / DISMISS look equally weighted.
@@ -1378,7 +1378,7 @@ Developer-only: `build/Jarvis.app/Contents/MacOS/Jarvis --voice-live-test` (sile
 91. Tell me whether the Tasks screen/plan view is too dense, whether 3 repair attempts per code step feels right, and report anything odd (I add it to `docs/KNOWN_ISSUES.md`).
 
 ### V0.3.2 additions (agent observatory) — MANUAL TEST REQUIRED
-Developer-only helpers: `build/Jarvis.app/Contents/MacOS/Jarvis --open-full --section agents --demo-agents` (labelled SIMULATED, never saved). The console is **read-only sanitized output** — it is not a terminal.
+Developer-only helpers: `build/dev/JarvisDev.app/Contents/MacOS/Jarvis --open-full --section agents --demo-agents` (labelled SIMULATED, never saved). The console is **read-only sanitized output** — it is not a terminal.
 40. Full HUD → top bar **AGENTS** (or type `show agents` / `ajanları aç`): four provider cards (Claude Code, Codex, OpenCode, Local Qwen), each with a truthful state (READY, NOT INSTALLED, SIGN-IN REQUIRED, UNLOADED …) and, if it ran before, its last run.
 41. Ask a question (Full HUD, Local or Auto): while it answers, the provider card shows **RUNNING** (Local Qwen: first STARTING while it loads, then RUNNING, afterwards LOADED · IDLE — never RUNNING when idle). An active-run card appears with its elapsed time and STOP.
 42. Select the run → **Overview / Console / Timeline**. The console shows the same answer being produced (Claude token by token; Codex/OpenCode when the message arrives), plus start/finish events. Nothing is typed there; there is no input field by design.
@@ -1419,7 +1419,7 @@ Developer-only helpers: `build/Jarvis.app/Contents/MacOS/Jarvis --open-full --se
 16. **Neural background:** Full HUD → Listening (gentle inward pulses), Thinking (busiest), Working (steady flow), Approval (slow, few), Complete (one settling ripple then calm), Error (brief disruption then calm), Idle (nearly static). It should be **subtle** and text must stay perfectly readable. Settings → Reduce Motion: the network becomes a static drawing. Close the Full HUD: Activity Monitor CPU returns to ≈0–2%. (Expected while animating: ≈10–13% of one core, ≈3% when Idle/Approval.)
 
 Report anything odd and I'll add it to `docs/KNOWN_ISSUES.md`.
-704. Run `scripts/build_app.sh && open build/Jarvis.app`; confirm no new permission dialog appears (V0.12 asks for nothing).
+704. Run `scripts/build_app.sh && open build/dev/JarvisDev.app`; confirm no new permission dialog appears (V0.12 asks for nothing).
 705. Settings → Show Developer Controls ON (needed for the diagnostics checks below). Choose a THROW-AWAY project copy (a small Python/Swift project with a failing test is ideal) — never your real game.
 706. Type `Run project tests` → ONE QA node, no model call; the Tasks card shows a 1-node graph and the real result.
 707. Type `Open Finder` → ONE Computer task (V0.11 path), not a coding graph.
@@ -1534,7 +1534,7 @@ Report anything odd and I'll add it to `docs/KNOWN_ISSUES.md`.
 816. Type `stop` while a model is answering a plain question → the answer stops (V0.3); that is different from stopping a task.
 817. A PARTIAL task's summary says “PARTIAL … not a complete result”; a BLOCKED task says why (policy / approval / availability).
 818. The task report (Tasks card, Report text) contains the Graph line, per-node roles/states, the routing sentences and the artifact summary.
-819. Run the full real test: `build/Jarvis.app/Contents/MacOS/Jarvis --orchestration-live-test` (≈ 10–20 min, uses small prompts on your subscriptions and OpenCode free; leaves your projects untouched) and compare the PASS/FAIL list with `docs/DEVELOPMENT_LOG.md`.
+819. Run the full real test: `build/dev/JarvisDev.app/Contents/MacOS/Jarvis --orchestration-live-test` (≈ 10–20 min, uses small prompts on your subscriptions and OpenCode free; leaves your projects untouched) and compare the PASS/FAIL list with `docs/DEVELOPMENT_LOG.md`.
 820. Optional soak: add `--orchestration-soak 5` → N orchestrated tasks with flat memory and no orphan processes.
 821. Run `scripts/verify.sh` → VERIFY PASSED; `git status` clean; no `captures/`, SQLite, screenshots or live-test directories tracked.
 822. Real user workflow: use JARVIS for a real (copied) project task for a day — note any case where a template should exist or a node was unnecessary (feeds V1.0).

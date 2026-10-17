@@ -13,7 +13,7 @@ echo "$out" | grep -q "passed after" && ! echo "$out" | grep -q "✘" && pass "u
 
 print "== Bundle"
 scripts/build_app.sh release >/dev/null 2>&1 && pass "build_app.sh release" || { fail "build_app.sh release"; exit 1; }
-APP=build/Jarvis.app
+APP=build/dev/JarvisDev.app
 check "Info.plist lints" plutil -lint $APP/Contents/Info.plist
 check "LSUIElement = true (menu bar agent)" test "$(plutil -extract LSUIElement raw $APP/Contents/Info.plist)" = "true"
 check "CFBundleExecutable exists" test -x "$APP/Contents/MacOS/$(plutil -extract CFBundleExecutable raw $APP/Contents/Info.plist)"
@@ -21,7 +21,7 @@ check "signature valid (strict, deep)" codesign --verify --strict --deep $APP
 check "arm64 binary" sh -c "lipo -archs $APP/Contents/MacOS/Jarvis | grep -q arm64"
 
 print "== Packaging (V0.15)"
-if scripts/package-app.sh >/tmp/jarvis-package.log 2>&1; then pass "package-app.sh builds a verified JARVIS.app (signature, hardened runtime, microphone-only entitlement, no model or database inside, packaged setup scripts)"; else fail "package-app.sh"; grep -E "^FAIL" /tmp/jarvis-package.log | head -3; fi
+if scripts/package-app.sh >/tmp/jarvis-package.log 2>&1; then [ "${JARVIS_KEEP_STAGING:-0}" = "1" ] || rm -rf build/package; pass "package-app.sh builds a verified JARVIS.app (signature, hardened runtime, microphone-only entitlement, no model or database inside, packaged setup scripts)"; else fail "package-app.sh"; grep -E "^FAIL" /tmp/jarvis-package.log | head -3; fi
 
 print "== Permission audit"
 # V0.7 (DEC-057): the ONLY allowed privacy key is the microphone usage description (Push-to-Talk). Any other NS*UsageDescription still fails.
@@ -317,7 +317,7 @@ v09_none "vision is local and off by default: no model/cloud vision provider, no
 v09_none "GUI sessions never resume by themselves: a restart interrupts them, a waiting computer task is NOT re-created, and resume re-checks permission and re-observes" "$( (grep -q 'if t.kind == .computer' Sources/Jarvis/Tasks/TaskEngine+Lifecycle.swift || echo 'restoreWaiting'; grep -q 'reconcileComputerAfterRestart' Sources/Jarvis/App/AppContext.swift || echo 'launch reconcile'; grep -q 'refreshPermissions().accessibility.isGranted' $CU_ENG || echo 'resume permission') )"
 v09_none "the proactive layer cannot start GUI control: policy turns the computer capabilities into an approval decision, and the engine refuses auto-actions" "$( (grep -q 'computerUse' Sources/Jarvis/Proactive/OpportunityPolicy.swift || echo 'policy'; grep -q 'origin != .proactiveAutoAction' $CU_ENG || echo 'engine') )"
 v09_none "UI observations are never durable project memory: computer tasks write no memory, and the memory layer knows nothing about snapshots or actions" "$( (grep -q 'case .computer: break' Sources/Jarvis/Memory/ProjectMemory.swift || echo 'taskFinished'; grep -rnE 'AXSnapshot|UIElementSnapshot|ScreenObservation|ComputerAction|ComputerSessionRecord' Sources/Jarvis/Memory | nonc) )"
-v09_none "the fixture app is a separate bundle (never inside Jarvis.app) and the app bundle carries no extra privacy key or entitlement" "$( [ "$(ls $APP/Contents/MacOS | wc -l | tr -d ' ')" = 1 ] && [ -d build/JarvisFixture.app ] && ! grep -q 'UsageDescription' Resources/FixtureInfo.plist || echo 'bundle layout' )"
+v09_none "the fixture app is a separate bundle (never inside Jarvis.app) and the app bundle carries no extra privacy key or entitlement" "$( [ "$(ls $APP/Contents/MacOS | wc -l | tr -d ' ')" = 1 ] && [ -d build/dev/JarvisFixture.app ] && ! grep -q 'UsageDescription' Resources/FixtureInfo.plist || echo 'bundle layout' )"
 v09_none "no screenshot, Accessibility dump, session database or fixture state is tracked by git" "$(git ls-files 2>/dev/null | grep -Ei '\.(png|jpg|jpeg|tiff|heic)$|ax-?dump|axtree|jarvis-fixture|computer-live|live-test-computer' )"
 
 # --- V0.12 Multi-agent orchestration: JARVIS is the orchestrator; agents are ROLES; nothing an agent writes is authority (DEC-157…) ---

@@ -12,7 +12,7 @@ Consequences: All UI is native; web tech is out unless this decision is supersed
 ## DEC-002 — Swift Package + script-assembled app bundle (no Xcode project)
 Status: Accepted
 Context: The dev machine has Command Line Tools only (no Xcode, so no `xcodebuild`).
-Decision: `Package.swift` executable target; `scripts/build_app.sh` assembles and ad-hoc signs `build/Jarvis.app` using `Resources/Info.plist`. Tests via `scripts/test.sh` (extra linker flags for CLT's Swift Testing).
+Decision: `Package.swift` executable target; `scripts/build_app.sh` assembles and ad-hoc signs `build/dev/JarvisDev.app` using `Resources/Info.plist`. Tests via `scripts/test.sh` (extra linker flags for CLT's Swift Testing).
 Reason: Only way to build natively here; zero dependencies.
 Consequences: An Xcode project can be added later without moving sources. Don't rely on Xcode-only features (asset catalogs, XCTest UI tests) yet.
 
@@ -763,7 +763,7 @@ Why: correctness must not depend on the heavy path.
 
 ## DEC-156 — A JARVIS-owned fixture for real tests; live-test discipline
 Status: Accepted (V0.11)
-Decision: `build/JarvisFixture.app` (a separate bundle, `com.jarvis.fixture`, no permissions or entitlements) is the only target of real presses, typing, scrolling and clicks; it only counts and writes a JSON state file (never the password's content). Real Finder / System Settings / Blender / Unity runs are navigation or activation only; nothing in a user project, no toggle in System Settings, no real credential or purchase is ever involved. `--computer-live-test` reports Accessibility as BLOCKED rather than weakening anything.
+Decision: `build/dev/JarvisFixture.app` (a separate bundle, `com.jarvis.fixture`, no permissions or entitlements) is the only target of real presses, typing, scrolling and clicks; it only counts and writes a JSON state file (never the password's content). Real Finder / System Settings / Blender / Unity runs are navigation or activation only; nothing in a user project, no toggle in System Settings, no real credential or purchase is ever involved. `--computer-live-test` reports Accessibility as BLOCKED rather than weakening anything.
 Why: tests that press things need something safe to press.
 
 # V0.12 — Advanced multi-agent orchestration and intelligent routing (DEC-157…DEC-190)

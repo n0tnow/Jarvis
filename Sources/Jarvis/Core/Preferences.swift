@@ -59,7 +59,7 @@ final class Preferences {
         static let whisperIdle = "prefs.voice.whisperIdleUnloadSeconds"
     }
 
-    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored let defaults: UserDefaults
     @ObservationIgnored private var motionObserver: NSObjectProtocol?
 
     var reduceMotion: Bool {
@@ -181,7 +181,11 @@ final class Preferences {
 
     var effectiveReduceMotion: Bool { reduceMotion || systemReduceMotion }
 
-    init(defaults: UserDefaults = .standard) {
+    /// The production domain is the default only for an unprotected (plain) launch; a test process or developer launch gets a throw-away isolated suite, and passing
+    /// `UserDefaults.standard` explicitly from one is a hard failure (`StorageIsolation`).
+    init(defaults given: UserDefaults? = nil) {
+        let defaults = given ?? (StorageIsolation.isProtectedRun ? StorageIsolation.isolatedDefaults() : .standard)
+        StorageIsolation.assertNotProduction(defaults)
         self.defaults = defaults
         reduceMotion = defaults.bool(forKey: Key.reduceMotion)
         showDeveloperControls = defaults.object(forKey: Key.showDeveloperControls) as? Bool ?? true

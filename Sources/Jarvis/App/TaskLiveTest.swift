@@ -23,7 +23,7 @@ enum TaskLiveTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1800) { ProcessRegistry.shared.killAll(); print("TASK LIVE TEST TIMEOUT"); fflush(stdout); exit(2) }
         func finish() -> Never {
             prefs.providerPreference = savedPreference; prefs.projectRoot = savedRoot
-            UserDefaults.standard.removeObject(forKey: "prefs.providerPreference"); UserDefaults.standard.removeObject(forKey: "prefs.tasks.projectRoot")
+            prefs.defaults.removeObject(forKey: "prefs.providerPreference"); prefs.defaults.removeObject(forKey: "prefs.tasks.projectRoot")
             if savedPreference != .auto { prefs.providerPreference = savedPreference }
             if !savedRoot.isEmpty { prefs.projectRoot = savedRoot }
             print("TASK LIVE TEST \(failures == 0 ? "PASSED" : "FAILED") (\(passes) passed, \(failures) failed)"); fflush(stdout)

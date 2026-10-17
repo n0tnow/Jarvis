@@ -27,7 +27,7 @@ enum UnityLiveTest {
         var fixtures: [String] = []
         func finish() -> Never {
             prefs.providerPreference = savedPreference; prefs.projectRoot = savedRoot
-            for k in ["prefs.providerPreference", "prefs.tasks.projectRoot"] { UserDefaults.standard.removeObject(forKey: k) }
+            for k in ["prefs.providerPreference", "prefs.tasks.projectRoot"] { prefs.defaults.removeObject(forKey: k) }
             if savedPreference != .auto { prefs.providerPreference = savedPreference }
             if !savedRoot.isEmpty { prefs.projectRoot = savedRoot }
             for f in fixtures { try? FileManager.default.removeItem(atPath: f) }

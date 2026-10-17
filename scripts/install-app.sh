@@ -5,7 +5,7 @@
 # Never touches ~/Library/Application Support/JARVIS (your history, tasks, settings and models stay), never kills a running JARVIS, never overwrites a NEWER installed version.
 set -euo pipefail
 cd "${0:A:h:h}"
-SRC="build/package/JARVIS.app"
+SRC="build/package/JARVIS.app"           # the STAGING copy: removed after a successful install so that only /Applications/JARVIS.app remains
 DEST_DIR="/Applications"
 if [[ "${1:-}" == "--dest" ]]; then DEST_DIR="${2:?--dest needs a folder}"; fi
 DEST="$DEST_DIR/JARVIS.app"
@@ -30,4 +30,7 @@ mv "$STAGE" "$DEST"
 rm -rf "$DEST_DIR/.JARVIS.app.previous"
 xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
 echo "Installed $DEST"
+# The staging copy has the same name and bundle id as the installed app: leaving it would put a second, confusing "JARVIS" in Finder, Spotlight and Launch Services.
+rm -rf "$SRC" && rmdir build/package 2>/dev/null || true
+echo "Removed the staging copy $SRC — /Applications/JARVIS.app is the only JARVIS application."
 echo "Open it from Finder, Spotlight or the Applications folder. Your data stays in ~/Library/Application Support/JARVIS."

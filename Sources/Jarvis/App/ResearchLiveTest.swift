@@ -298,7 +298,7 @@ enum ResearchLiveTest {
 
         // ------------------------------------------------------------ 8b. REAL quit + relaunch: an in-flight research becomes INTERRUPTED and nothing resumes by itself
         do {
-            let childDir = JarvisPaths.standard().root.appendingPathComponent("live-test-research-child", isDirectory: true)
+            let childDir = JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-research-child", isDirectory: true)
             try? FileManager.default.removeItem(at: childDir)
             let exe = Bundle.main.executablePath ?? CommandLine.arguments[0]
             func launch(_ mode: String) -> (ManagedProcess, AsyncStream<Data>)? {

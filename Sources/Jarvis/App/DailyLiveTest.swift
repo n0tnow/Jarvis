@@ -246,13 +246,13 @@ enum DailyLiveTest {
             check("REAL", "“Sistem durumunu kısaca özetle” is built from the readiness records", sys.contains("kullanılabilir") || sys.contains("hazır") || sys.contains("Hazır değil"), sys)
             // settings reality
             let (up, _) = await say("Konuşma hızını biraz arttır")
-            let persisted = Preferences(defaults: .standard)            // what a relaunch would read
+            let persisted = Preferences(defaults: prefs.defaults)            // what a relaunch would read
             check("REAL", "“Konuşma hızını biraz arttır” changed the typed setting (1.00× → 1.05×), it persisted, and the reply shows the value that was read back", abs(prefs.voiceSpeechRate - 1.05) < 0.001 && abs(persisted.voiceSpeechRate - 1.05) < 0.001 && up.contains("1.05×"), up)
             let (back, _) = await say("Eski haline getir")
             check("REAL", "“Eski haline getir” restored the previous value", abs(prefs.voiceSpeechRate - 1.0) < 0.001 && (back.contains("Geri aldım") || back.contains("Restored")), back)
             let (addr, _) = await say("Bana bundan sonra efendim diye hitap edebilir misin?")
             let (where_, _) = await say("Bunu nereye kaydettin?")
-            check("REAL", "“efendim” is a persisted SETTING (not Project Memory): it changed, persisted, and the storage answer says KALICI AYAR", prefs.addressStyle == .natural && Preferences(defaults: .standard).addressStyle == .natural && addr.contains("Ayar olarak kaydedildi") && where_.contains("[KALICI AYAR]"), addr + " | " + where_)
+            check("REAL", "“efendim” is a persisted SETTING (not Project Memory): it changed, persisted, and the storage answer says KALICI AYAR", prefs.addressStyle == .natural && Preferences(defaults: prefs.defaults).addressStyle == .natural && addr.contains("Ayar olarak kaydedildi") && where_.contains("[KALICI AYAR]"), addr + " | " + where_)
             let (list, _) = await say("Hangi ayarları özelleştirebilirsin?")
             check("REAL", "The list of customisable settings comes from the real registry and excludes permissions, approvals and security", list.contains("konuşma hızı") && list.contains("wake word") && list.contains("İzinler, onaylar ve güvenlik ayarları bunların arasında değil"), list)
             let (last, _) = await say("Az önce hangi ayarı değiştirdin?")

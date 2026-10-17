@@ -22,7 +22,7 @@ enum ProactiveLiveTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2400) { ProcessRegistry.shared.killAll(); print("PROACTIVE LIVE TEST TIMEOUT"); fflush(stdout); exit(2) }
         func finish() -> Never {
             prefs.providerPreference = savedPreference; prefs.projectRoot = savedRoot; prefs.autonomyMode = savedMode; prefs.proactiveReasoningEnabled = savedProactive
-            for k in ["prefs.providerPreference", "prefs.tasks.projectRoot", "prefs.autonomy.mode", "prefs.autonomy.proactiveEnabled"] { UserDefaults.standard.removeObject(forKey: k) }
+            for k in ["prefs.providerPreference", "prefs.tasks.projectRoot", "prefs.autonomy.mode", "prefs.autonomy.proactiveEnabled"] { prefs.defaults.removeObject(forKey: k) }
             if savedPreference != .auto { prefs.providerPreference = savedPreference }
             if !savedRoot.isEmpty { prefs.projectRoot = savedRoot }
             if savedMode != .askBeforeActing { prefs.autonomyMode = savedMode }
@@ -75,7 +75,7 @@ enum ProactiveLiveTest {
 
         info("data directory: \(context.paths.root.path) (isolated from your real JARVIS history)")
         check("Schema v4 (opportunities/proposals/task origin) was created by the real persistence layer", (context.database?.schemaVersion ?? 0) >= 4 && (try? repo.count("opportunities")) == 0, "schema v\(context.database?.schemaVersion ?? -1)")
-        check("The default autonomy mode is conservative (Ask Before Acting) and proactive reasoning is on", savedMode == .askBeforeActing || UserDefaults.standard.string(forKey: "prefs.autonomy.mode") == nil, "mode \(savedMode.label)")
+        check("The default autonomy mode is conservative (Ask Before Acting) and proactive reasoning is on", savedMode == .askBeforeActing || prefs.defaults.string(forKey: "prefs.autonomy.mode") == nil, "mode \(savedMode.label)")
 
         // ------------------------------------------------------------ discovery + benchmark (so Auto may route development work to a free model)
         await context.refreshIntelligence(remoteCatalog: true)

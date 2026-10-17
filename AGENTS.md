@@ -49,7 +49,7 @@ Then run `git status` and `git log --oneline -10` (always, before editing), and 
 
 ## Environment notes
 
-- No Xcode on the original dev machine (Command Line Tools only): the project is a Swift Package; `scripts/build_app.sh` assembles `build/Jarvis.app`. Tests need extra linker flags — always use `scripts/test.sh`, not bare `swift test`.
+- No Xcode on the original dev machine (Command Line Tools only): the project is a Swift Package; `scripts/build_app.sh` assembles `build/dev/JarvisDev.app`. Tests need extra linker flags — always use `scripts/test.sh`, not bare `swift test`.
 - Dev launch args (see `Sources/Jarvis/App/LaunchOptions.swift`): `--smoke-test`, `--capture <dir>` (renders JARVIS's own windows to PNG without Screen Recording permission), `--open-full`, `--open-compact`, `--section`, `--state`, `--close-after`.
 
 ## Git Workflow

@@ -48,6 +48,12 @@ enum LoginItemStatus: String, Equatable, Sendable {
     }
 }
 
+/// What the wake-word DETECTOR is actually doing (not what the switch says).
+enum WakeDetectorProbe: Equatable, Sendable {
+    case running, starting, stopped, paused
+    case error(String)
+}
+
 struct ReadinessProbes {
     var now: () -> Date = { Date() }
     var versionLine: () -> String = { AppInfo.versionLine }
@@ -65,6 +71,11 @@ struct ReadinessProbes {
     var appleSTT: () -> STTAvailability? = { nil }
     var naturalVoice: () -> (installed: Bool, detail: String) = { (false, "") }
     var wakeWord: () -> (installed: Bool, enabled: Bool, detail: String) = { (false, false, "") }
+    /// The real detector state, if known. nil keeps the older "switch + helper installed" reading (tests, stubbed runs).
+    var wakeDetector: (() -> WakeDetectorProbe)? = nil
+    /// The running process' signature identity (nil when it cannot be read) and whether this build is new since JARVIS last ran.
+    var identity: () -> CodeIdentity? = { nil }
+    var identityChanged: () -> Bool = { false }
     var tts: () -> [(name: String, available: TTSAvailability)] = { [] }
     var voiceEnabled: () -> Bool = { false }
     /// Voice and Push-to-Talk as the user switched them, and whether the key monitor is running with a handler attached.
@@ -191,17 +202,42 @@ final class ReadinessService {
         let nv = p.naturalVoice()
         add("voice.neural", .voice, "Natural JARVIS voice", nv.installed ? .available : .optionalAbsent, nv.installed ? nv.detail : "Not installed — JARVIS speaks with the Apple system voice. The final custom voice is not selected yet.", action: nv.installed ? nil : .installNaturalVoice)
         let wk = p.wakeWord()
-        add("voice.wake", .voice, "Wake word “Jarvis”", wk.enabled ? (wk.installed ? .ready : .unavailable("detector not installed")) : .notRunning, wk.enabled ? wk.detail : "Off by default. Push-to-Talk (hold right ⌥) always works.")
+        if let detector = p.wakeDetector?() {
+            // The switch and the detector are different facts: ON + RUNNING is READY; ON but not running is said as it is (never "not running" for a detector that is fine, never "ready" for one that is not).
+            switch (wk.enabled, detector) {
+            case (false, _):
+                add("voice.wake", .voice, "Wake word “Jarvis”", .off, "Off. Switch it on in Settings → Voice (or say “wake word'ü aç”). Push-to-Talk (hold right ⌥) works either way.", action: .turnOnWake)
+            case (true, .running): add("voice.wake", .voice, "Wake word “Jarvis”", .ready, "On and RUNNING: a small local detector listens for the word. Nothing is transcribed, stored or sent before it hears it.")
+            case (true, .starting): add("voice.wake", .voice, "Wake word “Jarvis”", .unknown, "On — the detector is starting.")
+            case (true, .paused): add("voice.wake", .voice, "Wake word “Jarvis”", .notRunning, "On, but paused by “Uyku moduna geç”. The microphone is closed until you resume it (menu bar → Resume Wake Listening).")
+            case (true, .stopped): add("voice.wake", .voice, "Wake word “Jarvis”", .degraded("the detector is not running"), "The switch is on but the detector is not running. Press Recheck; if it stays stopped, turn Wake Word off and on again in Settings → Voice.", action: .recheck)
+            case (true, .error(let why)): add("voice.wake", .voice, "Wake word “Jarvis”", .degraded(why), "ERROR — \(why).", action: .recheck)
+            }
+        } else {
+            add("voice.wake", .voice, "Wake word “Jarvis”", wk.enabled ? (wk.installed ? .ready : .unavailable("detector not installed")) : .notRunning, wk.enabled ? wk.detail : "Off by default. Push-to-Talk (hold right ⌥) always works.")
+        }
 
-        // Computer Use
+        // Computer Use — PERMISSION, FEATURE and ACTIVITY are three different facts and are reported as three different rows.
+        let id = p.identity()
+        if let id {
+            let where_ = id.isCanonicalInstall ? "" : " — NOT the installed copy (/Applications/JARVIS.app); macOS judges this copy separately"
+            add("core.identity", .permissions, "This JARVIS (what macOS judges)", id.isCanonicalInstall ? .ready : .degraded("not the installed copy"),
+                "\(id.bundlePath)\(where_) · \(id.bundleID) · \(id.adHoc ? "ad-hoc signature \(id.shortHash)" : "signed \(id.teamID ?? id.signingIdentifier)")" + (id.adHoc ? ". An ad-hoc signature changes with every build, so macOS treats each build as a new app: permissions given to an earlier build do not carry over." : ""))
+        }
+        let identityNote: String = {
+            guard let id, id.adHoc else { return "" }
+            return (p.identityChanged() ? " This build is new since JARVIS last ran (signature \(id.shortHash))." : "") + " If JARVIS already appears switched ON in System Settings, that entry belongs to an earlier build: switch it off and on, or remove it with − and add \(id.isCanonicalInstall ? "/Applications/JARVIS.app" : id.bundlePath) again, then press Recheck."
+        }()
         let ax = p.accessibility()
-        add("computer.ax", .computer, "Accessibility", ax == .granted ? .ready : (p.computerUseEnabled() ? .permissionNeeded : .optionalAbsent),
-            ax == .granted ? "Allowed — lets JARVIS operate other apps through their controls." : "Needed only for Computer Use (operating other apps). JARVIS never grants it to itself.",
+        add("computer.ax", .computer, "Accessibility permission", ax == .granted ? .ready : (p.computerUseEnabled() ? .permissionNeeded : .optionalAbsent),
+            ax == .granted ? "macOS allows this build of JARVIS to operate other apps through their controls (Computer Use). Allowed ≠ running: nothing is controlled until you ask." : "macOS does not allow this build of JARVIS to control other apps. Needed only for Computer Use. JARVIS never grants it to itself." + identityNote,
             action: ax == .granted ? nil : .allowAccessibility)
         let sr = p.screenRecording()
-        add("computer.screen", .computer, "Screen Recording", sr == .granted ? .ready : .optionalAbsent,
-            sr == .granted ? "Allowed — used only for window-scoped, on-device visual grounding." : "Optional. Accessibility gives semantic control; Screen Recording only adds visual understanding when the controls have no labels.",
+        add("computer.screen", .computer, "Screen Recording permission", sr == .granted ? .ready : .optionalAbsent,
+            sr == .granted ? "macOS allows window pictures. JARVIS takes one only when you ask for it, scoped to one window, in memory, read on this Mac." : "Optional. Accessibility gives semantic control; Screen Recording only adds visual understanding when controls have no labels. If you just allowed it in System Settings, macOS applies Screen Recording only after JARVIS restarts (Restart JARVIS)." + identityNote,
             action: sr == .granted ? nil : .allowScreenRecording)
+        add("computer.capture", .computer, "Window capture", sr == .granted ? .notRunning : .optionalAbsent,
+            sr == .granted ? "Idle — available when a task needs a window picture. No continuous capture exists." : "Not available until the Screen Recording permission is on.")
 
         // Unity
         let u = p.unity()

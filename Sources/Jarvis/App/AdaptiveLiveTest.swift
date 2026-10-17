@@ -165,7 +165,7 @@ enum AdaptiveLiveTest {
                         let q = await say("Hangi yeteneklerin eksik?")
                         check("ENGINE", "“Hangi yeteneklerin eksik?” answers from the gap candidate", q.contains("JARVIS Fixture") || q.contains("com.jarvis.fixture") || q.contains("eksik"))
                     }
-                } else { skip("Capability gap from repeated vision fallback", "the fixture app (build/JarvisFixture.app) could not be launched — run scripts/build_app.sh") }
+                } else { skip("Capability gap from repeated vision fallback", "the fixture app (build/dev/JarvisFixture.app) could not be launched — run scripts/build_app.sh") }
             }
         }
 

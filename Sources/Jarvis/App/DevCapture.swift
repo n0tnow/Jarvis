@@ -249,7 +249,7 @@ enum DevCapture {
             snapshot(of: win, name: "settings_voice", in: directory)
             win.orderOut(nil)
             context.preferences.voiceEnabled = saved
-            UserDefaults.standard.removeObject(forKey: "prefs.voice.enabled"); if saved { context.preferences.voiceEnabled = true }
+            context.preferences.defaults.removeObject(forKey: "prefs.voice.enabled"); if saved { context.preferences.voiceEnabled = true }
         }
 
         // Minimum window size (layout stress test)

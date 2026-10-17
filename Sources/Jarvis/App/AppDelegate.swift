@@ -15,21 +15,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppMenu.install()   // Edit menu → native ⌘C/⌘V/⌘X/⌘A/⌘Z in every text input (accessory apps start with none)
         // Automated runs must NEVER touch real providers or the real database.
         let stubbed = options.noProviders || (!options.providerLiveTest && !options.intelligenceLiveTest && !options.taskLiveTest && !options.proactiveLiveTest && !options.unityLiveTest && !options.researchLiveTest && !options.memoryLiveTest && !options.computerLiveTest && !options.orchestrationLiveTest && !options.operatorLiveTest && !options.adaptiveLiveTest && !options.mcpLiveTest && !options.continuityLiveTest && options.stabilitySoak == 0 && !options.visualBenchmark && !options.voiceLiveTest && !options.naturalVoiceLiveTest && (options.smokeTest || options.captureDirectory != nil))
-        let legacyLiveData = options.intelligenceLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test", isDirectory: true)
-            : (options.taskLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-tasks", isDirectory: true)
-            : (options.proactiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-proactive", isDirectory: true)
-            : (options.unityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-unity", isDirectory: true)
-            : (options.stabilitySoak > 0 ? JarvisPaths.standard().root.appendingPathComponent("live-test-soak", isDirectory: true) : options.continuityLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-continuity", isDirectory: true) : (options.operatorLiveTest || options.visualBenchmark) ? JarvisPaths.standard().root.appendingPathComponent("live-test-operator", isDirectory: true) : options.adaptiveLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-adaptive", isDirectory: true) : options.mcpLiveTest ? JarvisPaths.standard().root.appendingPathComponent("live-test-mcp", isDirectory: true)
-            : (options.orchestrationLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.orchestrationChild != nil ? "live-test-orchestration-child" : "live-test-orchestration", isDirectory: true)
-            : (options.computerLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.computerChild != nil ? "live-test-computer-child" : "live-test-computer", isDirectory: true)
-            : (options.memoryLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.memoryChild != nil ? "live-test-memory-child" : "live-test-memory", isDirectory: true)
-            : (options.researchLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.researchChild != nil ? "live-test-research-child" : "live-test-research", isDirectory: true)
-            : (options.voiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.voiceQuitChild ? "live-test-voice-child" : "live-test-voice", isDirectory: true)
-            : (options.naturalVoiceLiveTest ? JarvisPaths.standard().root.appendingPathComponent(options.naturalChild ? "live-test-natural-child" : "live-test-natural", isDirectory: true) : nil))))))))))
-        let liveData = options.dailyLiveFolder.map { JarvisPaths.standard().root.appendingPathComponent($0, isDirectory: true) } ?? legacyLiveData
+        let legacyLiveData = options.intelligenceLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test", isDirectory: true)
+            : (options.taskLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-tasks", isDirectory: true)
+            : (options.proactiveLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-proactive", isDirectory: true)
+            : (options.unityLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-unity", isDirectory: true)
+            : (options.stabilitySoak > 0 ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-soak", isDirectory: true) : options.continuityLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-continuity", isDirectory: true) : (options.operatorLiveTest || options.visualBenchmark) ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-operator", isDirectory: true) : options.adaptiveLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-adaptive", isDirectory: true) : options.mcpLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent("live-test-mcp", isDirectory: true)
+            : (options.orchestrationLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent(options.orchestrationChild != nil ? "live-test-orchestration-child" : "live-test-orchestration", isDirectory: true)
+            : (options.computerLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent(options.computerChild != nil ? "live-test-computer-child" : "live-test-computer", isDirectory: true)
+            : (options.memoryLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent(options.memoryChild != nil ? "live-test-memory-child" : "live-test-memory", isDirectory: true)
+            : (options.researchLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent(options.researchChild != nil ? "live-test-research-child" : "live-test-research", isDirectory: true)
+            : (options.voiceLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent(options.voiceQuitChild ? "live-test-voice-child" : "live-test-voice", isDirectory: true)
+            : (options.naturalVoiceLiveTest ? JarvisPaths.liveTestsRoot.appendingPathComponent(options.naturalChild ? "live-test-natural-child" : "live-test-natural", isDirectory: true) : nil))))))))))
+        var liveData = options.dailyLiveFolder.map { JarvisPaths.liveTestsRoot.appendingPathComponent($0, isDirectory: true) } ?? legacyLiveData
+        // V1.0 fix 3: every developer / live-test / smoke / capture launch keeps its data OUTSIDE the production support folder and uses an isolated defaults suite
+        // (StorageIsolation). `--use-production-data` is the explicit developer override; tests never pass it.
+        if liveData == nil, StorageIsolation.isProtectedRun { liveData = JarvisPaths.liveTestsRoot.appendingPathComponent("dev-run", isDirectory: true) }
         // V0.14: the adaptive and MCP live tests judge what is learned from THEIR OWN generated history, so they start from an empty isolated directory every time
         // (a second run on top of the first would find a 24-run workflow and fail for the wrong reason). Only these two JARVIS-created test directories are ever removed.
-        if let liveData, ["live-test-adaptive", "live-test-mcp", "live-test-daily", "live-test-packaging", "live-test-setup"].contains(liveData.lastPathComponent), liveData.deletingLastPathComponent().standardizedFileURL == JarvisPaths.standard().root.standardizedFileURL {
+        if let liveData, ["live-test-adaptive", "live-test-mcp", "live-test-daily", "live-test-packaging", "live-test-setup"].contains(liveData.lastPathComponent), liveData.deletingLastPathComponent().standardizedFileURL == JarvisPaths.liveTestsRoot.standardizedFileURL {
+            StorageIsolation.wipe(tag: liveData.lastPathComponent)
             try? FileManager.default.removeItem(at: liveData)
         }
         // The natural-voice live test runs the real stack in a closed acoustic loop (scripted microphone + simulated speaker); nothing else ever gets a rig.
