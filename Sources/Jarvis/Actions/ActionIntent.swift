@@ -114,9 +114,14 @@ enum ActionIntentParser {
         let spoken = t.filter { w in !openVerbs.contains(w) && !noise.contains(w) && !w.hasPrefix("acab") && !w.hasPrefix("acar") }
         if !spoken.isEmpty, spoken.count <= 3 {
             let pHead = spoken.dropLast().joined(separator: " "), pLast = spoken[spoken.count - 1]
+            // every way of cutting a glued Turkish case suffix off the last word; they must agree on ONE application, and the shortest spelling is what is reported as "heard" (“sofany”, not “sofanyyi”)
+            var found: [AppTarget] = []
             for cut in 0...3 where pLast.count - cut >= 2 {
                 let name = (pHead.isEmpty ? "" : pHead + " ") + String(pLast.dropLast(cut))
-                if let app = phonetic(name) { return .launchApp(app) }
+                if let app = phonetic(name) { found.append(app) }
+            }
+            if let first = found.first, found.allSatisfy({ $0.bundleID == first.bundleID }) {
+                return .launchApp(found.min { ($0.heardAs?.count ?? 99) < ($1.heardAs?.count ?? 99) } ?? first)
             }
         }
         return nil

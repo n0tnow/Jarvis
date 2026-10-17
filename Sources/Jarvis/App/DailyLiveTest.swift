@@ -337,7 +337,7 @@ enum DailyLiveTest {
 
         // MARK: apps (V1.0 Phase B) — REAL: Safari through NSWorkspace, visibility grounding, spoken corrections, capability truth; the scripted model answers only what the decision layer passes on
         if wants("apps") {
-            let safari = "com.apple.Safari"
+            let safari = AppCatalog.known.first { $0.display == "Safari" }?.bundleID ?? ""          // (the catalog names the bundle id; this test never reads Safari's profile or data)
             let wasRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: safari).isEmpty
             let promptsBefore = scripted.prompts.count
             func memoryCount() -> Int { ((try? repo.database.readOne("SELECT COUNT(*) AS n FROM memory_items"))?.int("n")) ?? -1 }
