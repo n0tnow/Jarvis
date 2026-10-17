@@ -30,14 +30,16 @@ enum ActionIntent: Equatable, Sendable {
     case showFullHUD
     case showCompactHUD
     case closeHUD
+    /// A known project's folder (path already resolved from the project registry and checked on disk): revealed in Finder. Opening a project never writes to it.
+    case openProject(name: String, path: String)
 
     var kind: ActionKind {
-        switch self { case .launchApp: .launchApp; case .openFolder: .openFolder; case .navigate: .navigate; case .showFullHUD: .showFullHUD; case .showCompactHUD: .showCompactHUD; case .closeHUD: .closeHUD }
+        switch self { case .launchApp: .launchApp; case .openFolder: .openFolder; case .navigate: .navigate; case .showFullHUD: .showFullHUD; case .showCompactHUD: .showCompactHUD; case .closeHUD: .closeHUD; case .openProject: .openProject }
     }
     var targetName: String {
         switch self {
         case .launchApp(let a): a.display; case .openFolder(let f): f.display; case .navigate(let s): s.rawValue.capitalized
-        case .showFullHUD: "JARVIS"; case .showCompactHUD: "Compact JARVIS"; case .closeHUD: "JARVIS"
+        case .showFullHUD: "JARVIS"; case .showCompactHUD: "Compact JARVIS"; case .closeHUD: "JARVIS"; case .openProject(let name, _): name
         }
     }
 }
@@ -131,7 +133,7 @@ enum ActionIntentParser {
             if n > 0, t[0] != "i" { wrong = t[0..<n].joined(separator: " "); rightTokens = Array(t[(n + 1)...]) }
             else { wrong = t[(n + 1)...].joined(separator: " "); rightTokens = Array(t[..<n]) }
         }
-        rightTokens = rightTokens.filter { $0 != "dedim" && $0 != "demistim" && $0 != "dedimki" && $0 != "i" && $0 != "said" && $0 != "degil" && $0 != "not" }
+        rightTokens = rightTokens.filter { $0 != "dedim" && $0 != "demistim" && $0 != "dedimki" && $0 != "i" && $0 != "said" && $0 != "degil" && $0 != "not" && $0 != "hayir" && $0 != "no" }
         guard !rightTokens.isEmpty, rightTokens.count <= 3 else { return nil }
         var target: AppTarget?
         if let m = AppCatalog.match(tokens: rightTokens), residual(rightTokens, removing: [], dropping: m.range).isEmpty { target = AppTarget(display: m.app.display, bundleID: m.app.bundleID) }

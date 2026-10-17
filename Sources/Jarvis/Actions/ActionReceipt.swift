@@ -14,7 +14,7 @@ import Foundation
 // A conversation-only engine (a language model) has no execution path, so a first-person action claim in its text is by construction not backed by a receipt (`ActionClaimGuard`).
 
 enum ActionKind: String, Sendable, Equatable {
-    case launchApp, openFolder, navigate, showFullHUD, showCompactHUD, closeHUD, computerGoal
+    case launchApp, openFolder, navigate, showFullHUD, showCompactHUD, closeHUD, computerGoal, openProject
 }
 
 enum ReceiptStatus: String, Sendable, Equatable {

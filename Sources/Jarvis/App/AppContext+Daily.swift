@@ -45,7 +45,7 @@ extension AppContext {
         // Typed actions: the real launcher only in the installed / developer app; an automated (stubbed) run can never open a real application.
         let hud = self.hud
         actionService = ActionService(launcher: stub ? StubbedApplicationLauncher() : SystemApplicationLauncher(), windows: windows,
-                                      selfState: { [weak self] in SelfUIState(section: hud.section, fullOpen: self?.windows.isFullHUDOpen ?? false, compactOpen: self?.windows.isCompactHUDOpen ?? false) })
+                                      selfState: { [weak self] in SelfUIState(section: hud.section, fullOpen: self?.windows.isFullHUDOpen ?? false, compactOpen: self?.windows.isCompactHUDOpen ?? false, renderedSection: hud.renderedSection, requiresRenderAck: !stub) })
         actionService.log = { [weak self] message, kind in self?.store.log(message, kind: kind) }
         if stub { actionService.candidateApps = { AppCatalog.known.map { AppTarget(display: $0.display, bundleID: $0.bundleID) } } }
         // Recogniser biasing (Fix 4): names that exist on this Mac now, from structured sources only, read once when an utterance starts (nothing runs while idle).
@@ -117,6 +117,55 @@ extension AppContext {
         service.settingsHandler = settingsAssistant
         service.actionService = actionService
         service.storageLedger = storageLedger
+        configureDecisionIntelligence(on: service)
+    }
+
+    /// V1.0 decision milestone: the typed Decision layer in front of the existing pipeline. The deterministic grammar needs nothing; the optional remote classifier (Jev) stays DISABLED unless the user sets a
+    /// mode, and in this build it has no transport and no credential (Phase B), so even "shadow" or "gated" simply finds it unavailable and JARVIS carries on exactly as before.
+    func configureDecisionIntelligence(on service: ConversationService) {
+        let prefs = preferences
+        let engine = DecisionEngine()
+        var parsers = DecisionParsers()
+        parsers.action = { [weak self] text in MainActor.assumeIsolated { self?.actionService.recognizes(text) } }
+        engine.recognizer = DeterministicCommandRecognizer(parsers: parsers)
+        engine.jev = JevDecisionProvider()
+        engine.config = { JevConfig(mode: JevMode(rawValue: prefs.decisionJevMode) ?? .disabled, gatedMinimumConfidence: prefs.decisionJevMinConfidence, modelAlias: prefs.decisionJevModel) }
+        engine.projectNames = { [weak self] in (try? self?.repository?.memoryProjects())?.map(\.name) ?? [] }
+        engine.onActivity = { [weak self] message in self?.store.log(message, kind: .info, persist: false) }
+        service.decisionEngine = engine
+        service.voiceFacts = { [weak self] heard in
+            guard let self else { return VoiceStatusFacts(voiceOn: false, pushToTalkOn: false, wakeEnabled: false, wakeRunning: false, microphone: .unknown, recogniserReady: nil, heardViaVoice: heard) }
+            return self.voiceStatusFacts(heardViaVoice: heard)
+        }
+        service.observedApps = { [weak self] in self?.computer.observedApps ?? [] }
+        service.isAppRunning = { [weak self] name in
+            guard let self, !self.intelligenceIsStubbed, let app = AppCatalog.match(tokens: ComputerText.tokens(name))?.app else { return nil }
+            return self.actionService.launcher.isRunning(bundleID: app.bundleID)
+        }
+        service.currentProjectRoot = { prefs.projectRoot.isEmpty ? nil : prefs.projectRoot }
+        service.knownProjects = { [weak self] in
+            guard let self else { return [] }
+            var rows = ((try? self.repository?.memoryProjects()) ?? []).map { KnownProject(key: $0.key, name: $0.name, rootPath: $0.rootPath, kind: $0.identityKind, lastSeen: $0.lastSeen, aliases: $0.aliases) }
+            let root = self.preferences.projectRoot
+            if !root.isEmpty, !rows.contains(where: { $0.rootPath == root }) { rows.append(KnownProject(key: "path:" + root, name: (root as NSString).lastPathComponent, rootPath: root, kind: "path", lastSeen: .distantPast)) }
+            return rows
+        }
+        service.openProject = { [weak self] project in
+            guard let self else { var r = ActionReceipt(kind: .openProject, target: project.name, executor: "none"); r.fail("JARVIS is shutting down"); return r }
+            _ = await self.continuity.focus(projectNamed: project.name)         // the conversation's project (no permission change, nothing selected for writing)
+            return await self.actionService.perform(.openProject(name: project.name, path: project.rootPath ?? ""))
+        }
+    }
+
+    /// Facts about the voice pipeline for "Sesim geliyor mu?" — read from the same preferences, permission and readiness records the Settings and System pages show.
+    func voiceStatusFacts(heardViaVoice heard: Bool) -> VoiceStatusFacts {
+        let mic: MicrophoneFact
+        switch voice.permission { case .granted: mic = .granted; case .denied, .restricted: mic = .denied; case .notDetermined: mic = .notAsked }
+        let stt: Bool? = {
+            switch readiness.snapshot.item("voice.stt")?.state { case .ready?: return true; case nil, .unknown?: return nil; default: return false }
+        }()
+        return VoiceStatusFacts(voiceOn: preferences.voiceEnabled, pushToTalkOn: preferences.voicePushToTalk, wakeEnabled: preferences.voiceWakeEnabled, wakeRunning: handsFree.wakeStatus == .listening,
+                                microphone: mic, recogniserReady: stt, heardViaVoice: heard)
     }
 
     /// ONE structured system state — the same sources the Dashboard, System and Settings read (readiness records, preferences, the hands-free detector, the task engine, the agent hub).

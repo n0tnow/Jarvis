@@ -27,6 +27,8 @@ final class Preferences {
         static let experiments = "prefs.operator.experiments"
         static let adaptiveEnabled = "prefs.adaptive.enabled", learnTasks = "prefs.adaptive.tasks", learnCorrections = "prefs.adaptive.corrections", gapDetection = "prefs.adaptive.gaps"
         static let safeExperiments = "prefs.adaptive.experiments", autoPromoteWorkflows = "prefs.adaptive.autopromote", selfLevel = "prefs.adaptive.level"
+        // V1.0 decision milestone: the OPTIONAL remote decision classifier (Jev). Off unless the user sets it; the app never sets it.
+        static let decisionJevMode = "prefs.decision.jev.mode", decisionJevMinConfidence = "prefs.decision.jev.minConfidence", decisionJevModel = "prefs.decision.jev.model"
         // V0.15 daily JARVIS
         static let responseStyle = "prefs.daily.responseStyle", addressStyle = "prefs.daily.addressStyle", followUps = "prefs.daily.followUps", notifyTasks = "prefs.daily.notifyTasks"
         static let speakAcks = "prefs.daily.speakAcks", speakCompletions = "prefs.daily.speakCompletions", openCompactOnLaunch = "prefs.daily.openCompact", firstRunDone = "prefs.daily.firstRunDone"
@@ -103,6 +105,12 @@ final class Preferences {
     var webResearchEnabled: Bool { didSet { defaults.set(webResearchEnabled, forKey: Key.webResearch) } }
     /// V0.13: project status questions and “continue” (bounded sessions). Off = those phrases are ordinary chat again.
     var projectContinuationEnabled: Bool { didSet { defaults.set(projectContinuationEnabled, forKey: Key.projectContinuation) } }
+    /// V1.0 decision milestone — "disabled" | "shadow" | "gated". DEFAULT "disabled": a remote classifier is never asked unless the user turned it on (and none is connected in this build).
+    var decisionJevMode: String { didSet { defaults.set(decisionJevMode, forKey: Key.decisionJevMode) } }
+    /// Gated mode only; conservative until the Phase B benchmark calibrates it.
+    var decisionJevMinConfidence: Double { didSet { defaults.set(decisionJevMinConfidence, forKey: Key.decisionJevMinConfidence) } }
+    /// A configured model alias for the classifier ("" = the transport's own discovery). Never a hard-coded version.
+    var decisionJevModel: String { didSet { defaults.set(decisionJevModel, forKey: Key.decisionJevModel) } }
     /// V0.13: whether the `experiment` step may run at all (disposable-environment tests). On by default; off ⇒ the step fails with a clear reason and nothing is created.
     var experimentsEnabled: Bool { didSet { defaults.set(experimentsEnabled, forKey: Key.experiments) } }
     /// V0.14 adaptive learning (all conservative): learning from finished work and from corrections, gap detection, safe disposable experiments. Learning is never authority.
@@ -205,6 +213,9 @@ final class Preferences {
         voiceEnabled = defaults.object(forKey: Key.voiceEnabled) as? Bool ?? false
         webResearchEnabled = defaults.object(forKey: Key.webResearch) as? Bool ?? true
         projectContinuationEnabled = defaults.object(forKey: Key.projectContinuation) as? Bool ?? true
+        decisionJevMode = defaults.string(forKey: Key.decisionJevMode).flatMap { JevMode(rawValue: $0) }?.rawValue ?? JevMode.disabled.rawValue
+        decisionJevMinConfidence = min(max(defaults.object(forKey: Key.decisionJevMinConfidence) as? Double ?? 0.92, 0.5), 0.999)
+        decisionJevModel = String((defaults.string(forKey: Key.decisionJevModel) ?? "").prefix(80))
         experimentsEnabled = defaults.object(forKey: Key.experiments) as? Bool ?? true
         adaptiveLearningEnabled = defaults.object(forKey: Key.adaptiveEnabled) as? Bool ?? true
         learnFromTasks = defaults.object(forKey: Key.learnTasks) as? Bool ?? true

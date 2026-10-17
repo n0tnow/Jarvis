@@ -68,7 +68,7 @@ enum SettingsIntentParser {
         // Introspection of settings: only REAL configurable settings are listed.
         if phrase("hangi ayarlari", "hangi ayarlar", "ayarlari ozellestir", "ayarlarini ozellestir", "which settings", "what settings", "settings can you", "settings you can") && (hasPrefix("ozellestir", "degistir", "ayarlayabil") || has("can", "change", "customize", "customise")) { return .listSettings }
         if phrase("hangi ayari degistir", "ayari degistirdin", "ayarlari degistirdin", "what setting did you", "which setting did you", "what did you just change", "what did you change") { return .lastChange }
-        let restoreWords: Set<String> = ["eski", "haline", "getir", "dondur", "geri", "al", "bunu", "onu", "undo", "that", "it", "revert", "put", "back", "please", "lutfen", "eskisi", "gibi", "yap", "ayari", "ayarlari"]
+        let restoreWords: Set<String> = ["eski", "haline", "getir", "dondur", "geri", "al", "bunu", "onu", "undo", "that", "it", "revert", "put", "back", "please", "lutfen", "eskisi", "gibi", "yap", "ayari", "ayarlari", "az", "onceki", "son", "yaptigin", "degisikligi", "degisikligini", "ayarini", "the", "last", "setting", "change"]
         if t.allSatisfy({ restoreWords.contains($0) }), phrase("eski haline", "geri al", "undo", "revert", "put it back", "put that back", "eskisi gibi") { return .restore }
 
         // Speech rate.

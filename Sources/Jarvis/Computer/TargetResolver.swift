@@ -38,6 +38,18 @@ enum TargetResolver {
     }
 
     static func resolve(_ t: ActionTarget, in snap: AXSnapshot) -> TargetResolution {
+        let first = resolveOnce(t, in: snap)
+        // A control with several plausible labels (a video player's Play / Resume / Oynat): look for the others only when the first label found NOTHING; an ambiguous result stays ambiguous.
+        guard first.state == .notFound, let alternatives = t.titleAlternatives, !alternatives.isEmpty else { return first }
+        for label in alternatives {
+            var other = t; other.title = label; other.titleAlternatives = nil
+            let r = resolveOnce(other, in: snap)
+            if r.state != .notFound { return r }
+        }
+        return TargetResolution(state: first.state, element: first.element, candidates: first.candidates, reason: first.reason + " (also looked for: \(alternatives.joined(separator: ", ")))")
+    }
+
+    private static func resolveOnce(_ t: ActionTarget, in snap: AXSnapshot) -> TargetResolution {
         let wantedRoles = roles(for: t.role)
         var scored: [(UIElementSnapshot, Match)] = []
         for e in snap.elements {

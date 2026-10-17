@@ -51,7 +51,12 @@ final class StubbedApplicationLauncher: ApplicationLaunching {
 }
 
 /// What the action service needs to know about JARVIS' own window state to verify a navigation.
-struct SelfUIState: Equatable, Sendable { var section: HUDSection; var fullOpen: Bool; var compactOpen: Bool }
+struct SelfUIState: Equatable, Sendable {
+    var section: HUDSection; var fullOpen: Bool; var compactOpen: Bool
+    /// What the Full HUD view reports it is drawing (nil = nothing reported). Compared only when `requiresRenderAck` — i.e. when a real view exists to report (the installed app); a state-only harness leaves it off.
+    var renderedSection: HUDSection? = nil
+    var requiresRenderAck = false
+}
 
 @MainActor
 final class ActionService {
@@ -64,6 +69,8 @@ final class ActionService {
     /// Bounded waits (single-shot, only while an action is being verified — never while idle).
     var verificationTimeout: TimeInterval = 2.0
     var pollInterval: TimeInterval = 0.1
+    /// After a navigation reads back correctly, wait this long and read again: a selection that something resets a moment later (the page that was drawn is not the page that was asked for) is not "open".
+    var navigationSettle: TimeInterval = 0.15
     var now: () -> Date = { Date() }
     var installedLookup: ActionIntentParser.InstalledAppLookup = { name in AppCatalog.installed(named: name).map { AppTarget(display: $0.name ?? name, bundleID: $0.bundleID ?? "") } }
 
@@ -126,10 +133,11 @@ final class ActionService {
         switch intent {
         case .launchApp(let app): await launch(app, into: &r)
         case .openFolder(let folder): await openFolder(folder, into: &r)
-        case .navigate(let section): navigate(section, into: &r)
+        case .navigate(let section): await navigate(section, into: &r)
         case .showFullHUD: showFull(into: &r)
         case .showCompactHUD: showCompact(into: &r)
         case .closeHUD: closeHUD(into: &r)
+        case .openProject(let name, let path): await openProjectFolder(name: name, path: path, into: &r)
         }
         ledger.record(r)
         switch r.status {
@@ -142,12 +150,12 @@ final class ActionService {
     }
 
     private func executorName(_ i: ActionIntent) -> String {
-        switch i { case .launchApp, .openFolder: "NSWorkspace"; default: "JARVIS HUD" }
+        switch i { case .launchApp, .openFolder, .openProject: "NSWorkspace"; default: "JARVIS HUD" }
     }
     private func verbPhrase(_ i: ActionIntent) -> String {
         switch i {
         case .launchApp(let a): "\(a.display) launch"; case .openFolder(let f): "\(f.display) folder open"; case .navigate(let s): "Open \(s.rawValue.capitalized) page"
-        case .showFullHUD: "Show Full HUD"; case .showCompactHUD: "Show Compact HUD"; case .closeHUD: "Close HUD"
+        case .showFullHUD: "Show Full HUD"; case .showCompactHUD: "Show Compact HUD"; case .closeHUD: "Close HUD"; case .openProject(let n, _): "\(n) project open"
         }
     }
 
@@ -176,13 +184,42 @@ final class ActionService {
         else { r.markUnverified(ActionVerification(method: "frontmost application", passed: nil, detail: "the folder was opened but Finder did not become frontmost"), now: now()) }
     }
 
+    /// A known project: the path comes from the project registry and is re-checked here (current truth: the folder must exist). Revealing it in Finder is read-only; nothing in the project is touched.
+    private func openProjectFolder(name: String, path: String, into r: inout ActionReceipt) async {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { r.fail("the folder of \(name) is not on disk"); return }
+        guard case .allowed(let real) = ComputerPathPolicy.validate(path, quarantineRoot: nil, forReveal: true) else { r.fail("that folder is in a protected location"); return }
+        guard launcher.open(folder: URL(fileURLWithPath: real, isDirectory: true)) else { r.fail("macOS could not open the folder of \(name)"); return }
+        let ok = await waitUntil { self.launcher.frontmostBundleID() == "com.apple.finder" }
+        if ok { r.succeed(ActionVerification(method: "frontmost application", passed: true, detail: "Finder is frontmost, showing the folder of \(name)"), now: now()) }
+        else { r.markUnverified(ActionVerification(method: "frontmost application", passed: nil, detail: "the folder was opened but Finder did not become frontmost"), now: now()) }
+    }
+
     // MARK: JARVIS' own HUD — direct state changes, read back
 
-    private func navigate(_ section: HUDSection, into r: inout ActionReceipt) {
+    private func navigate(_ section: HUDSection, into r: inout ActionReceipt) async {
         windows.showFullHUD(section: section)
-        let s = selfState()
-        if s.fullOpen && s.section == section { r.succeed(ActionVerification(method: "HUD state read-back", passed: true, detail: "selected page is \(s.section.rawValue)"), now: now()) }
-        else { r.fail("the \(section.rawValue) page is not selected (it shows \(s.section.rawValue))") }
+        var s = selfState()
+        // 1. the canonical selection (HUDState.section) and the window: what the model of the UI says
+        guard s.fullOpen, s.section == section else { r.fail("the \(section.rawValue) page is not selected (it shows \(s.section.rawValue))"); return }
+        // 2. the view's own acknowledgement that it draws that page (installed app). "System is open" is never claimed from a prediction or from a state nobody drew.
+        if s.requiresRenderAck {
+            let drawn = await waitUntil { let x = self.selfState(); return x.fullOpen && x.section == section && x.renderedSection == section }
+            s = selfState()
+            guard drawn else {
+                if s.section != section { r.fail("the \(section.rawValue) page is not selected (it shows \(s.section.rawValue))") }
+                else { r.markUnverified(ActionVerification(method: "HUD render acknowledgement", passed: nil, detail: "the selection says \(section.rawValue) but the window reports it draws \(s.renderedSection?.rawValue ?? "nothing yet")"), now: now()) }
+                return
+            }
+        }
+        // 3. read back once more after a short settle: a later reset to another page is a failure, not a success
+        if navigationSettle > 0 { try? await Task.sleep(for: .seconds(navigationSettle)) }
+        s = selfState()
+        guard s.fullOpen, s.section == section, !s.requiresRenderAck || s.renderedSection == section else {
+            r.markUnverified(ActionVerification(method: "HUD state read-back (settled)", passed: nil, detail: "the page changed to \(s.section.rawValue) right after it was selected"), now: now())
+            return
+        }
+        r.succeed(ActionVerification(method: s.requiresRenderAck ? "HUD state read-back + render acknowledgement" : "HUD state read-back", passed: true, detail: "selected page is \(s.section.rawValue)\(s.requiresRenderAck ? ", and the window draws it" : "")"), now: now())
     }
 
     private func showFull(into r: inout ActionReceipt) {
@@ -232,6 +269,7 @@ enum ActionPhrasebook {
             case .launchApp: return t(l, "\(name) is open.", "\(name) açık.")
             case .openFolder: return t(l, "The \(name) folder is open.", "\(name) klasörü açık.")
             case .navigate: return t(l, "The \(name) page is open.", "\(trPageTitle(name)) sayfası açık.")
+            case .openProject: return t(l, "The \(name) project folder is open in Finder.", "\(name) proje klasörü Finder'da açık.")
             case .showFullHUD: return t(l, "The full JARVIS screen is open.", "Tam JARVIS ekranı açık.")
             case .showCompactHUD: return t(l, "The compact view is open.", "Kompakt görünüm açık.")
             case .closeHUD: return t(l, "Closed. I'm still here in the menu bar.", "Kapattım. Menü çubuğunda çalışmaya devam ediyorum.")

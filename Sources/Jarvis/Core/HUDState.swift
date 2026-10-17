@@ -33,6 +33,9 @@ enum HUDSection: String, CaseIterable, Identifiable, Sendable {
 @Observable
 final class HUDState {
     var section: HUDSection = .dashboard
+    /// What the Full HUD view REPORTS it is drawing (set by `FullHUDView`, nothing else). `section` is the canonical selection; this is the acknowledgement that the selection reached the screen —
+    /// a navigation is only claimed after both agree (V1.0 decision milestone). nil = the view has not drawn anything yet.
+    var renderedSection: HUDSection?
     /// Which Settings category is open (the Full HUD Settings page).
     var settingsCategory: SettingsCategory = .general
     /// The task expanded in the Tasks screen (UI-only; closing the HUD never touches the task).

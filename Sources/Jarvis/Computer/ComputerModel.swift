@@ -97,6 +97,9 @@ struct ActionTarget: Codable, Equatable, Sendable {
     var within: String?                 // an ancestor's title — the context that separates two identical labels ("Sidebar")
     /// Set ONLY from the user's own words ("the second one"); never from a model.
     var occurrence: Int?
+    /// Other visible labels of the SAME control, tried only when `title` finds nothing (semantic targeting for a player's Play / Pause: “Play”, “Resume”, “Oynat”…). A closed list written by JARVIS' own goal
+    /// grammar, never by a model or by page text; two matches are still AMBIGUOUS (asked, never guessed). Optional so tasks stored before it existed still decode.
+    var titleAlternatives: [String]?
     var description: String {
         if !menuPath.isEmpty { return menuPath.joined(separator: " → ") }
         return [role, title.map { "“\($0)”" }, within.map { "in \($0)" }].compactMap { $0 }.joined(separator: " ")

@@ -41,7 +41,7 @@ enum AppCatalog {
                         let tok = tokens[start + k]
                         let last = k == a.count - 1
                         if tok == w { continue }
-                        if last, w.count >= 4, tok.hasPrefix(w), tok.count - w.count <= 4 { continue }
+                        if last, w.count >= 4 || (a.count > 1 && w.count >= 3), tok.hasPrefix(w), tok.count - w.count <= 4 { continue }          // a 3-letter last word of a multi-word name takes a case suffix too (“Unity Hub'ı”)
                         ok = false; break
                     }
                     if ok, best == nil || a.count > (best!.1.count) { best = (app, start..<(start + a.count)) }
@@ -216,6 +216,8 @@ enum ComputerGoalParser {
         if let media = mediaCommand(t, words: words) {
             let app = known ?? AppRef()
             let label = media == .pause ? "Pause" : "Play"
+            // Other labels the same control carries in real players. NOT "Stop" (a browser's Stop loading button) and NOT a combined “Play/Pause” toggle (pressing it could do the opposite of what was asked).
+            let alternatives = media == .pause ? ["Pause video", "Duraklat", "Videoyu duraklat"] : ["Play video", "Resume", "Resume video", "Oynat", "Videoyu oynat", "Devam et"]
             let title: String
             switch (media, language) {
             case (.pause, .tr): title = "Video durduruluyor"
@@ -224,7 +226,7 @@ enum ComputerGoalParser {
             case (.play, _): title = "Playing the video"
             }
             return goal((known.map { launchSteps($0, verb: "activate") } ?? []) + [GoalStep(title: title, actions: [
-                ComputerAction(kind: .pressElement, target: ActionTarget(app: app, role: "button", title: label), checks: [.stateChanged], summary: "Press “\(label)”"),
+                ComputerAction(kind: .pressElement, target: ActionTarget(app: app, role: "button", title: label, titleAlternatives: alternatives), checks: [.stateChanged], summary: "Press “\(label)”"),
             ])], apps: known.map { [$0] } ?? [])
         }
 

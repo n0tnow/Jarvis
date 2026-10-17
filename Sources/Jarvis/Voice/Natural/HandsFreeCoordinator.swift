@@ -398,7 +398,7 @@ final class HandsFreeCoordinator {
         switch signal {
         case .pttBegan: dispatch(.pushToTalkBegan)
         case .pttEnded: dispatch(.pushToTalkEnded)
-        case .transcriptEmpty, .selfSpeech: dispatch(.transcriptEmpty)
+        case .transcriptEmpty, .selfSpeech, .transcriptRejected: dispatch(.transcriptEmpty)
         case .wakeOnly: dispatch(.transcriptReady(wakeOnly: true))
         case .submitted:
             if let e = times.endpoint { metrics.endpointToFinal = now() - e }

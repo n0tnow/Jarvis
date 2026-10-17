@@ -20,6 +20,7 @@ enum VoiceSignal: Equatable, Sendable {
     case transcriptEmpty            // nothing usable was heard (or too short / recognition failed softly)
     case wakeOnly                   // the transcript contained only the wake word
     case selfSpeech                 // the transcript was a quote of JARVIS' own speech and was dropped
+    case transcriptRejected         // a pathological (decoder-loop) transcript was dropped before anything saw it (V1.0 decision milestone)
     case submitted                  // the final transcript entered the conversation
     case playbackStarted            // JARVIS' answer became audible
     case playbackEnded              // every phrase finished (or speech was stopped)
@@ -416,12 +417,21 @@ final class VoiceCoordinator {
             }
             metrics.transcriptLength = text.count
             metrics.language = event?.language ?? metrics.language
+            // A recogniser decoder loop ("Kutu, Kutu, Kutu, …") is not something a person said: dropped HERE — before the conversation, the decision layer, any model, the task engine or Project Memory can see it.
+            // Only a reason code and counts are kept (never the text, never audio); the capture recovers for the next utterance. Push-to-Talk and hands-free alike.
+            if case .reject(let reason, let measured) = PathologicalTranscriptGuard.evaluate(text, audioSeconds: audioSeconds) {
+                partialTranscript = ""; handsFreeUtterance = false; metrics.outcome = "pathologicalTranscript"; lastMetrics = metrics
+                diagnostics?.noteOrigin(.decoderHallucination, "\(reason.rawValue) \(measured.summary)", at: diagnosticsClock())
+                onEvent?("Voice: dropped an implausible transcript (\(reason.rawValue), \(measured.tokens) words) — not interpreted, not stored", .info)
+                finishSession(); onSignal?(.transcriptRejected); return
+            }
             if handsFreeUtterance {
                 if WakePhrase.isWakeOnly(text) {                              // "Jarvis." alone is an activation, not a message
                     partialTranscript = ""; handsFreeUtterance = false; metrics.outcome = "wakeOnly"; finishSession(); onSignal?(.wakeOnly); return
                 }
                 if SelfSpeechFilter.isEcho(heard: text, spoken: speaker.recentSpoken) {         // JARVIS' own voice must never become a user turn
                     partialTranscript = ""; handsFreeUtterance = false; metrics.outcome = "selfSpeech"; lastMetrics = metrics
+                    diagnostics?.noteOrigin(.selfEcho, "quote of JARVIS' own speech", at: diagnosticsClock())
                     onEvent?("Voice: dropped a transcript that quoted JARVIS' own speech", .info)
                     finishSession(); onSignal?(.selfSpeech); return
                 }
@@ -429,10 +439,12 @@ final class VoiceCoordinator {
                 if case .rejectSelfEcho(let reason) = PhantomGuard.verdict(text: text, detectedLanguage: detected, conversationLanguage: languageContinuity.current, provenance: utteranceProvenance) {
                     partialTranscript = ""; handsFreeUtterance = false; metrics.outcome = "selfEcho"; lastMetrics = metrics
                     diagnostics?.note("phantom.rejected", reason, at: diagnosticsClock())
+                    diagnostics?.noteOrigin(.selfEcho, "provenance: \(reason)", at: diagnosticsClock())
                     onEvent?("Voice: dropped a short transcript captured over JARVIS' own speech (\(text.count) characters)", .info)
                     finishSession(); onSignal?(.selfSpeech); return
                 }
             }
+            if handsFreeUtterance { diagnostics?.noteOrigin(utteranceProvenance.confirmedBargeIn ? .userInterruption : .userTurn, "", at: diagnosticsClock()) }
             deliver(text, language: event?.language)
         } catch {
             guard token == mine else { return }

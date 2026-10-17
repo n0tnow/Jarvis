@@ -47,6 +47,8 @@ enum SystemStatusComposer {
         if !needs.isEmpty {
             parts.append(t(l, "Needs attention: \(needs.prefix(4).map { "\($0.name) — \(ReadinessAssistant.phrase($0.state, l))" }.joined(separator: "; ")).", "Dikkat gerektiren: \(needs.prefix(4).map { "\($0.name) — \(ReadinessAssistant.phrase($0.state, l))" }.joined(separator: "; ")).")) }
         if detailed {
+            let tiles = s.readiness.tiles                          // the System page's three summary numbers, from the same snapshot
+            parts.append(t(l, "Ready: \(tiles.ready) · needs attention: \(tiles.attention) · optional: \(tiles.optional).", "Hazır: \(tiles.ready) · dikkat gerektiren: \(tiles.attention) · isteğe bağlı: \(tiles.optional)."))
             parts.append(t(l, "Version \(s.versionLine).", "Sürüm \(s.versionLine)."))
             for id in ["unity.editor", "unity.bridge", "mcp.summary", "local.embedding", "local.whisper", "local.vision", "voice.stt", "startup.login", "perm.notifications"] {
                 if let i = s.readiness.item(id) { parts.append("\(i.name): \(ReadinessAssistant.phrase(i.state, l)).") }

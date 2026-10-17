@@ -126,12 +126,20 @@ enum ReadinessSummary: Equatable, Sendable {
     }
 }
 
+struct ReadinessTiles: Equatable, Sendable { var ready: Int; var attention: Int; var optional: Int }
+
 struct ReadinessSnapshot: Equatable, Sendable {
     var items: [ReadinessItem]
     var at: Date
     func items(in c: ReadinessCategory) -> [ReadinessItem] { items.filter { $0.category == c } }
     func item(_ id: String) -> ReadinessItem? { items.first { $0.id == id } }
     var attention: [ReadinessItem] { items.filter { $0.state.needsAttention } }
+
+    /// The three numbers on the System page's summary tiles. The page and the spoken/typed system status BOTH read this one definition of the same snapshot (V1.0 decision milestone: one source of truth).
+    var tiles: ReadinessTiles {
+        ReadinessTiles(ready: items.filter { $0.state == .ready || $0.state == .available }.count, attention: attention.count,
+                       optional: items.filter { $0.state == .optionalAbsent || $0.state == .notInstalled }.count)
+    }
 
     var summary: ReadinessSummary {
         if let broken = items.first(where: { $0.required && $0.state.needsAttention }) { return .notReady(broken.name.lowercased()) }

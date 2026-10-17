@@ -24,14 +24,15 @@ struct ReadinessPanel: View {
         let attention = snap.attention
         let optional = snap.items.filter { $0.state == .optionalAbsent || $0.state == .notInstalled }
         let ready = snap.items.filter { $0.state == .ready || $0.state == .available }
+        let tiles = snap.tiles                          // the same numbers the spoken / typed system status reports
         VStack(alignment: .leading, spacing: Theme.Grid.gutter) {
             if !app.preferences.firstRunCompleted, AppInfo.isApplicationBundle, !app.intelligenceIsStubbed { FirstRunCard() }
 
             // Summary
             HStack(alignment: .top, spacing: Theme.Grid.gutter) {
-                summaryTile("Ready", ready.count, .ready, "Verified by a safe check, or present and loaded on demand.")
-                summaryTile("Needs attention", attention.count, attention.isEmpty ? .ready : .attention, attention.isEmpty ? "Nothing needs you right now." : attention.prefix(3).map(\.name).joined(separator: " · "))
-                summaryTile("Optional", optional.count, .optional, "Not set up; nothing needs it right now.")
+                summaryTile("Ready", tiles.ready, .ready, "Verified by a safe check, or present and loaded on demand.")
+                summaryTile("Needs attention", tiles.attention, attention.isEmpty ? .ready : .attention, attention.isEmpty ? "Nothing needs you right now." : attention.prefix(3).map(\.name).joined(separator: " · "))
+                summaryTile("Optional", tiles.optional, .optional, "Not set up; nothing needs it right now.")
             }
             if let m = message { Text(m).font(Theme.Typography.meta).foregroundStyle(Theme.Palette.accent).accessibilityLabel("Result: \(m)") }
             if app.setupRunner.state != .idle { SetupProgressView() }

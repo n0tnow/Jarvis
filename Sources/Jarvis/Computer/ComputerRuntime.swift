@@ -114,6 +114,8 @@ final class ComputerRuntime {
     private(set) var currentApp: String?
     private(set) var currentActivity: String?
     private(set) var lastObservation: String?
+    /// Applications Computer Use really observed, with the time (bounded). The only evidence a visibility claim may use (`ObservationGrounding`): it is never reset, so staleness is explicit in the timestamps.
+    private(set) var observedApps: [ObservedApp] = []
     private(set) var lastActionLine: String?
     private(set) var lastVerification: String?
     private(set) var lastCapability: String?
@@ -215,7 +217,11 @@ final class ComputerRuntime {
         timeline.append(ComputerTimelineEntry(text: line, warning: e.isWarning))
         if timeline.count > 120 { timeline.removeFirst(timeline.count - 120) }
         switch e {
-        case .observed(let app, _, _, _): currentApp = app; lastObservation = line
+        case .observed(let app, _, _, _):
+            currentApp = app; lastObservation = line
+            observedApps.removeAll { $0.name == app }
+            observedApps.append(ObservedApp(name: app, at: Date()))
+            if observedApps.count > 8 { observedApps.removeFirst(observedApps.count - 8) }
         case .appResolved(let app, _): currentApp = app
         case .actionExecuted(let a, let m): lastActionLine = a; lastCapability = "Used \(m.label)"
         case .verificationPassed(let a): lastVerification = "Verified · \(a)"

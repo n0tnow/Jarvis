@@ -89,6 +89,20 @@ final class ConversationService {
     @ObservationIgnored var storageLedger: StorageLedger?
     /// Typed actions (open an application, a folder, a JARVIS page): executed deterministically, verified, and reported from an `ActionReceipt` (V1.0 fix 4). Never a model call.
     @ObservationIgnored weak var actionService: ActionService?
+    /// V1.0 decision milestone: the typed Decision layer (deterministic grammar first, optional remote classifier in shadow/gated mode). ADVISORY: it picks which existing handler takes an utterance and
+    /// records why; it cannot execute, approve or claim anything. nil (tests that predate it) = the pipeline below runs exactly as before.
+    @ObservationIgnored var decisionEngine: DecisionEngine?
+    /// Facts the decision planner reads (voice pipeline state, fresh Computer Use observations, the application list, the project registry). All read-only; nothing is probed by asking.
+    @ObservationIgnored var voiceFacts: ((_ heardViaVoice: Bool) -> VoiceStatusFacts)?
+    @ObservationIgnored var observedApps: (() -> [ObservedApp])?
+    @ObservationIgnored var isAppRunning: ((String) -> Bool?)?
+    @ObservationIgnored var knownProjects: (() async -> [KnownProject])?
+    @ObservationIgnored var currentProjectRoot: (() -> String?)?
+    /// Opens a resolved project: makes it the conversation's project and reveals its folder, as a verified receipt (never a guess, never a write).
+    @ObservationIgnored var openProject: ((KnownProject) async -> ActionReceipt)?
+    /// Current truth about a project folder / its engine kind (files on disk). Injected so a test can use a fixture registry without real folders.
+    @ObservationIgnored var projectPathExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    @ObservationIgnored var projectIsKind: (String, String) -> Bool = { ProjectOpenResolver.markerExists(root: $0, kind: $1) }
     /// V0.15: true while any decision (approval, adaptive request, proposal) waits for a HUD button — a bare “yes” is then caught by `ApprovalGuard`, whatever kind of decision it is.
     @ObservationIgnored var hasPendingDecision: () -> Bool = { false }
     /// Settings → Speak task acknowledgements. Off: the acknowledgement is still shown, just not spoken.
@@ -132,6 +146,7 @@ final class ConversationService {
         onSubmit?(source)
         let previousTurn = capturePreviousTurn()                   // read BEFORE this message joins the transcript
         let interpretedBefore = currentInterpretation
+        currentInterpretationBeforeTurn = interpretedBefore
         currentInterpretation = "conversation"
         conversation.appendUser(shown, source: source)
         let initialDepth = presenter.beginTurn(text0)
@@ -147,7 +162,7 @@ final class ConversationService {
         }
         // A correction (“Hayır, demek istediğim …”, “No, I meant …”): the corrected sentence is routed again from scratch, with the previous turn kept in the bounded working context. A bare
         // “yanlış anladın” asks what was meant. It carries no authority and passes every check the corrected request would have passed on its own.
-        let text: String
+        var text: String
         switch resolveCorrection(text0, previous: previousTurn, interpretedBefore: interpretedBefore, language: inputLanguage) {
         case .none: text = text0
         case .ask(let question):
@@ -156,6 +171,27 @@ final class ConversationService {
         case .reroute(let corrected): text = corrected; currentInterpretation = "correction"
         }
         let depth = text == text0 ? initialDepth : ResponseDepthDetector.detect(text)
+        // V1.0 decision milestone: a typed Decision first. Known, unambiguous commands (system / voice status, JARVIS pages, stop speech, cancel task, project open / continue, media, “look at my screen”, visibility
+        // questions, settings, spoken restatements, blocked requests) are routed here WITHOUT a language model; everything else returns nil and the pipeline below runs unchanged.
+        var decisionOutcome: DecisionEngine.Outcome?
+        if let engine = decisionEngine {
+            var rewrites = 0
+            while true {
+                let outcome = engine.decide(text, context: DecisionContext(source: source == .voice ? .voice : .typed, previousInterpretation: interpretedBefore, previousUserText: previousTurn?.user ?? "", hasPendingDecision: store.pendingApproval != nil || hasPendingDecision()), language: inputLanguage)
+                decisionOutcome = outcome
+                switch routeByDecision(outcome, text: text, language: inputLanguage, source: source, origin: origin) {
+                case .handled(let r): return r
+                case .rewrite(let corrected) where rewrites < 1:
+                    // “Sofany değil, Safari dedim.”: the previous sentence with the word corrected (or the restated sentence) takes the normal route, once. The transcript keeps what was really said.
+                    rewrites += 1
+                    conversation.appendJarvis(inputLanguage == .tr ? "Anladım — “\(corrected)” olarak okudum." : "Understood — I read that as “\(corrected)”.", tone: .notice, route: .local)
+                    text = corrected; currentInterpretation = "correction"
+                    continue
+                default: break
+                }
+                break
+            }
+        }
         // An action request — “Safari'yi aç”, “Safari'yi açabilir misin?”, “System panelini aç”, “Dashboard'a dön”: executed, verified, and answered from the RECEIPT. A polite question about doing
         // something JARVIS can do is a request, not a conversation; the language model is never involved and never gets to say it was done.
         if let actions = actionService, let intent = actions.recognizes(text) {
@@ -236,15 +272,168 @@ final class ConversationService {
                 return .localResponse(.memory, lang)
             }
         }
+        // GATED remote classification (off unless the user turned it on): only for what the grammar did not understand, and only the closed read-only set in `GatedPolicy` can be accepted.
+        if let engine = decisionEngine, engine.config().mode == .gated, let outcome = decisionOutcome, outcome.decision.intent == .unknown {
+            handleGated(outcome, text: text, language: inputLanguage, source: source, origin: origin)
+            return .localResponse(.contextual, inputLanguage)
+        }
         return dispatch(text, origin: origin, source: source)
     }
 
-    private func handleAction(_ intent: ActionIntent, with actions: ActionService, language: ReplyLanguage) {
+    // MARK: Decision routing (V1.0 decision milestone)
+
+    private func decisionFacts(language: ReplyLanguage, source: InputSource, previous: (user: String, answer: String)?, interpretedBefore: String, projects: [KnownProject]) -> DecisionFacts {
+        let voice = voiceFacts?(source == .voice) ?? VoiceStatusFacts(voiceOn: source == .voice, pushToTalkOn: false, wakeEnabled: false, wakeRunning: false, microphone: .unknown, recogniserReady: nil, heardViaVoice: source == .voice)
+        var f = DecisionFacts(language: language, source: source == .voice ? .voice : .typed, voice: voice)
+        f.observations = observedApps?() ?? []
+        f.isAppRunning = { [weak self] name in self?.isAppRunning?(name) }
+        f.projects = projects
+        f.currentProjectRoot = currentProjectRoot?()
+        f.previousUserText = previous?.user ?? ""
+        f.previousInterpretation = interpretedBefore
+        f.computerAvailable = computerSubmitter != nil
+        f.actionLookup = { [weak self] text in self?.actionService?.recognizes(text) }
+        f.pathExists = projectPathExists
+        f.isKind = projectIsKind
+        return f
+    }
+
+    private enum DecisionRouting { case handled(RouteDecision), rewrite(String), next }
+
+    /// `.next` = the existing pipeline continues. `.handled` = the Decision layer routed the utterance to an existing capability. `.rewrite` = a spoken correction produced a sentence to route again.
+    private func routeByDecision(_ outcome: DecisionEngine.Outcome, text: String, language: ReplyLanguage, source: InputSource, origin: InputOrigin) -> DecisionRouting {
+        let d = outcome.decision
+        guard d.isDeterministic || (d.provider == .deterministic && d.gate == .blocked) else { return .next }          // a blocked request is refused even when it has no other intent
+        let previous = capturePreviousTurnForDecision()
+        if d.intent == .projectOpen, knownProjects != nil {
+            currentInterpretation = "project"
+            pendingTaskAcks += 1
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer { self.pendingTaskAcks -= 1 }
+                let projects = await self.knownProjects?() ?? []
+                let facts = self.decisionFacts(language: language, source: source, previous: previous, interpretedBefore: self.currentInterpretationBeforeTurn, projects: projects)
+                _ = self.execute(DecisionPlanner.plan(d, text: text, facts: facts), outcome: outcome, text: text, language: language, source: source)
+                self.announceLatestReply()
+            }
+            return .handled(.localResponse(.contextual, language))
+        }
+        let facts = decisionFacts(language: language, source: source, previous: previous, interpretedBefore: currentInterpretationBeforeTurn, projects: [])
+        return execute(DecisionPlanner.plan(d, text: text, facts: facts), outcome: outcome, text: text, language: language, source: source)
+    }
+
+    /// The interpretation of the PREVIOUS turn as seen when this one started (the field is reset to "conversation" at the top of `submit`).
+    @ObservationIgnored private var currentInterpretationBeforeTurn = "conversation"
+
+    private func capturePreviousTurnForDecision() -> (user: String, answer: String)? {
+        let msgs = conversation.messages
+        // the current user message was just appended: the previous turn is the user message before it
+        guard let last = msgs.lastIndex(where: { $0.role == .user }), let uIdx = msgs[..<last].lastIndex(where: { $0.role == .user }) else { return nil }
+        let answer = msgs[(uIdx + 1)..<last].last(where: { $0.role == .jarvis })?.content ?? ""
+        return (msgs[uIdx].content, answer)
+    }
+
+    private func execute(_ plan: DecisionPlan, outcome: DecisionEngine.Outcome, text: String, language: ReplyLanguage, source: InputSource) -> DecisionRouting {
+        let engine = decisionEngine
+        switch plan {
+        case .passThrough:
+            return .next
+        case .answer(let reply, let tone):
+            currentInterpretation = "decision: \(outcome.decision.intent.rawValue)"
+            engine?.record(outcome.id, route: "answer", executor: "grounded facts", outcome: tone == .normal ? "answered" : "answered (nothing claimed beyond the evidence)")
+            conversation.appendJarvis(presenter.present(full: reply, language: language, evidence: true), tone: tone == .normal ? .normal : .notice, route: .local)
+            return .handled(.localResponse(.contextual, language))
+        case .systemStatus(let scope):
+            guard let readiness = readinessHandler else { return .next }
+            currentInterpretation = "readiness: system status"
+            engine?.record(outcome.id, route: "system status", executor: "SystemStatusSnapshot", outcome: "answered from the structured state")
+            let forms = readiness.replyForms(to: .systemStatus(scope), language: language)
+            conversation.appendJarvis(presenter.present(full: forms.full, short: forms.short, language: language, evidence: forms.short == nil), route: .local)
+            return .handled(.localResponse(.contextual, language))
+        case .action(let typed):
+            guard let actions = actionService, let intent = typed ?? actions.recognizes(text) else { return .next }
+            currentInterpretation = "action"
+            engine?.record(outcome.id, route: "action", executor: "ActionService", outcome: "executing; the reply comes from the verified receipt")
+            handleAction(intent, with: actions, language: language, decisionID: outcome.id)
+            return .handled(.localResponse(.contextual, language))
+        case .settings:
+            guard let settings = settingsHandler, let intent = settings.recognizes(text) else { return .next }
+            currentInterpretation = "settings: \(intent)"
+            engine?.record(outcome.id, route: "settings", executor: "SettingsAssistant", outcome: "applied and read back")
+            conversation.appendJarvis(presenter.present(full: settings.perform(intent, language: language), language: language, evidence: true), route: .local)
+            return .handled(.localResponse(.contextual, language))
+        case .stopSpeech:
+            currentInterpretation = "command"
+            engine?.record(outcome.id, route: "stop speech", executor: "CommandExecutor", outcome: "speech and generation stopped")
+            let result = executor.execute(.cancelGeneration, language: language)
+            conversation.appendJarvis(result.message, tone: result.tone, route: .command)
+            return .handled(.command(.cancelGeneration, language))
+        case .cancelTask:
+            currentInterpretation = "command"
+            engine?.record(outcome.id, route: "cancel task", executor: "CommandExecutor", outcome: "the task engine's stop")
+            let result = executor.execute(.stopTask, language: language)
+            conversation.appendJarvis(result.message, tone: result.tone, route: .command)
+            return .handled(.command(.stopTask, language))
+        case .openProject(let project):
+            guard let open = openProject else { return .next }
+            currentInterpretation = "project"
+            engine?.record(outcome.id, route: "project open", executor: "project registry + NSWorkspace", outcome: "opening \(project.name)")
+            pendingTaskAcks += 1
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer { self.pendingTaskAcks -= 1 }
+                let receipt = await open(project)
+                self.decisionEngine?.record(outcome.id, route: "project open", executor: receipt.executor, verification: receipt.verification.map { "\($0.method): \($0.detail)" }, outcome: receipt.successIsClaimable ? "verified" : receipt.status.rawValue)
+                var line = ActionPhrasebook.render(receipt, language: language)
+                if receipt.successIsClaimable {
+                    self.workingContext.projectChanged(to: project.key)
+                    self.workingContext.note(kind: .project, refID: project.key, label: project.name, source: .userStated, evidence: "user-request")
+                    line += language == .tr ? " Unity Editor'ünü açmadım; Unity işleri gerektiğinde ayrı ve izinli çalışır." : " I did not launch the Unity Editor; Unity work runs separately when a task needs it."
+                }
+                self.conversation.appendJarvis(self.presenter.present(full: line, language: language, evidence: true), tone: receipt.successIsClaimable ? .normal : .notice, route: .command)
+                self.announceLatestReply()
+            }
+            return .handled(.localResponse(.contextual, language))
+        case .continueProject(let sentence):
+            guard let continuity = continuityHandler, let intent = continuity.recognizes(sentence) else { return .next }
+            currentInterpretation = "continuity"
+            engine?.record(outcome.id, route: "continue project", executor: "ProjectContinuity → TaskEngine", outcome: "one bounded task, or a question")
+            handleContinuity(intent, language: language, source: source)
+            return .handled(.localResponse(.continuity, language))
+        case .computer(let prompt):
+            guard computerSubmitter != nil else { return .next }
+            currentInterpretation = "computer"
+            engine?.record(outcome.id, route: "computer use", executor: "Computer Use", outcome: "handed to the computer classifier (observe → act → verify)")
+            return handleComputerIfAny(prompt, language: language, channel: source) ? .handled(.workerRequired(prompt: prompt, language)) : .next
+        case .reroute(let sentence):
+            engine?.record(outcome.id, route: "correction", executor: nil, outcome: "the corrected sentence is routed again")
+            return .rewrite(sentence)
+        }
+    }
+
+    private func handleGated(_ outcome: DecisionEngine.Outcome, text: String, language: ReplyLanguage, source: InputSource, origin: InputOrigin) {
+        pendingTaskAcks += 1
+        Task { @MainActor [weak self] in
+            guard let self, let engine = self.decisionEngine else { return }
+            defer { self.pendingTaskAcks -= 1 }
+            let context = DecisionContext(source: source == .voice ? .voice : .typed, previousInterpretation: self.currentInterpretationBeforeTurn, previousUserText: "", hasPendingDecision: self.store.pendingApproval != nil || self.hasPendingDecision())
+            if let accepted = await engine.consultGated(text, context: context, outcome: outcome, language: language) {
+                let facts = self.decisionFacts(language: language, source: source, previous: nil, interpretedBefore: self.currentInterpretationBeforeTurn, projects: [])
+                let plan = DecisionPlanner.plan(accepted, text: text, facts: facts)
+                if plan != .passThrough, case .handled = self.execute(plan, outcome: outcome, text: text, language: language, source: source) { self.announceLatestReply(); return }
+            }
+            _ = self.dispatch(text, origin: origin, source: source)
+            self.announceLatestReply()
+        }
+    }
+
+    private func handleAction(_ intent: ActionIntent, with actions: ActionService, language: ReplyLanguage, decisionID: UUID? = nil) {
         pendingTaskAcks += 1
         Task { @MainActor [weak self, weak actions] in
             guard let self, let actions else { return }
             defer { self.pendingTaskAcks -= 1 }
             let receipt = await actions.perform(intent)
+            if let decisionID { self.decisionEngine?.record(decisionID, route: "action", executor: receipt.executor, verification: receipt.verification.map { "\($0.method): \($0.detail)" }, outcome: receipt.successIsClaimable ? "verified success" : "\(receipt.status.rawValue)\(receipt.error.map { ": " + $0 } ?? "")") }
             var text = ActionPhrasebook.render(receipt, language: language)
             let ok = receipt.successIsClaimable
             // A sound-shape match is a guess: say what was understood (only when it worked; a wrong guess is then visible and one sentence from being corrected).

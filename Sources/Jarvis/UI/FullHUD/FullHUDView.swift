@@ -34,6 +34,9 @@ private struct FullHUDBody: View {
                 Rectangle().fill(Color.white.opacity(Theme.Opacity.hairline)).frame(height: 0.8)
                 sectionContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // The window's own acknowledgement of the page it is drawing: a JARVIS-page action is only claimed once the canonical selection AND this report agree (ActionService.navigate).
+                    .onAppear { app.hud.renderedSection = app.hud.section }
+                    .onChange(of: app.hud.section) { _, new in app.hud.renderedSection = new }
                 bottomBar
             }
         }
