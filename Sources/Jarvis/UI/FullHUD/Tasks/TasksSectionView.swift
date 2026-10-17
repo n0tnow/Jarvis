@@ -22,7 +22,7 @@ struct TasksSectionView: View {
                 if !attention.isEmpty { group("NEEDS YOUR ATTENTION", attention) }
                 if !running.isEmpty { group("ACTIVE", running) }
                 if !recent.isEmpty { group("RECENT", Array(recent)) }
-                if app.preferences.showDeveloperControls { demoTasks }
+                if app.simulatorControlsVisible { demoTasks }
             }
             .frame(maxWidth: 780)
             .padding(Theme.Spacing.xl)
@@ -37,7 +37,7 @@ struct TasksSectionView: View {
     private var emptyState: some View {
         HUDCard("Tasks") {
             VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                Text("No tasks yet.").font(Theme.Typography.headline).foregroundStyle(Color.jarvisSecondary)
+                Text("No active tasks.").font(Theme.Typography.headline).foregroundStyle(Color.jarvisSecondary)
                 Text("Choose a project folder above, then type a goal in the command field — for example “Fix the failing calculation test”. JARVIS plans it, works through it, validates each step with real builds/tests and reports back.")
                     .font(Theme.Typography.body).foregroundStyle(Color.jarvisTertiary)
             }

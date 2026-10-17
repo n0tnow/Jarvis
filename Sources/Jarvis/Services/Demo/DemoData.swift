@@ -89,6 +89,7 @@ enum DemoData {
 
     static let approval = ApprovalRequest(
         title: "Run multiplayer tests",
-        detail: "Starts two local Unity instances (host + client) for about 3 minutes."
+        detail: "Starts two local Unity instances (host + client) for about 3 minutes.",
+        simulated: true
     )
 }

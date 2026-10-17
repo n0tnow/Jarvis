@@ -44,6 +44,9 @@ struct LaunchOptions {
     var closeAfter: TimeInterval?
     var providerLiveTest = false
     var noProviders = false
+    /// A developer / capture / smoke launch: the only kind of run that may contain simulated V0.1 data. A launch with none of these flags (Finder, Spotlight, login) never does.
+    var isDemoEnvironment: Bool { smokeTest || captureDirectory != nil || state != nil || demoAgents || demoStress || demoTasks > 0 || demoProposals || devDemo }
+    var devDemo = false
     var demoAgents = false
     var demoStress = false
     var demoTasks = 0
@@ -112,6 +115,7 @@ struct LaunchOptions {
             case "--smoke-test": smokeTest = true
             case "--provider-live-test": providerLiveTest = true
             case "--no-providers": noProviders = true
+            case "--dev-demo": devDemo = true
             case "--demo-agents": demoAgents = true
             case "--demo-stress": demoStress = true
             case "--demo-proposals": demoProposals = true

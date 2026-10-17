@@ -49,21 +49,31 @@ struct ProjectPanel: View {
     @Environment(AppContext.self) private var app
 
     var body: some View {
-        HUDCard("Project", trailing: { Tag(text: "DEMO") }) {
-            if let project = app.store.project {
+        let root = app.preferences.projectRoot
+        HUDCard("Project", trailing: { if app.demoMode, app.store.project != nil { Tag(text: "SIMULATED", tint: Theme.Palette.amber) } }) {
+            if app.demoMode, let project = app.store.project {                       // developer / capture runs only
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text(project.name).font(Theme.Typography.headline).foregroundStyle(Color.jarvisPrimary)
                     HStack(spacing: Theme.Spacing.s) {
                         Text(project.kind).font(Theme.Typography.mono).foregroundStyle(Color.jarvisSecondary)
                         Text("·").foregroundStyle(Color.jarvisTertiary)
-                        Label(project.branch, systemImage: "arrow.triangle.branch")
-                            .font(Theme.Typography.mono).foregroundStyle(Color.jarvisSecondary)
-                            .labelStyle(.titleAndIcon)
+                        Label(project.branch, systemImage: "arrow.triangle.branch").font(Theme.Typography.mono).foregroundStyle(Color.jarvisSecondary).labelStyle(.titleAndIcon)
                     }
                 }
                 .accessibilityElement(children: .combine)
+            } else if !root.isEmpty {
+                // The folder the user chose in Tasks — a fact, not a guess. (Branch, Unity state and history are on the Tasks screen's Project card.)
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text((root as NSString).lastPathComponent).font(Theme.Typography.headline).foregroundStyle(Color.jarvisPrimary).lineLimit(1)
+                    Text(root.replacingOccurrences(of: NSHomeDirectory(), with: "~")).font(Theme.Typography.mono).foregroundStyle(Color.jarvisTertiary).lineLimit(1).truncationMode(.middle)
+                    if let unity = app.unity.existingConnection(for: root) { Text("Unity: \(unity.state.label)").font(Theme.Typography.caption).foregroundStyle(Color.jarvisSecondary) }
+                }
+                .accessibilityElement(children: .combine)
             } else {
-                Text("No project loaded").font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary)
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("No project selected").font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary)
+                    Text("Choose a folder on the Tasks screen.").font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
+                }
             }
         }
     }
@@ -90,7 +100,7 @@ struct TasksPanel: View {
                     TaskRow(task: task)
                 }
                 if app.store.allTasks.isEmpty {
-                    Text("No tasks").font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary)
+                    Text("No active tasks.").font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary)
                 }
             }
         }
@@ -126,7 +136,7 @@ struct ActivityPanel: View {
     @Environment(AppContext.self) private var app
 
     var body: some View {
-        HUDCard("Activity", trailing: { Tag(text: "IN-MEMORY") }) {
+        HUDCard("Activity", trailing: { Tag(text: "THIS SESSION") }) {
             let events = Array(app.store.activity.suffix(60).reversed())
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: Theme.Spacing.s + 1) {
@@ -134,7 +144,7 @@ struct ActivityPanel: View {
                         ActivityRow(event: event)
                     }
                     if events.isEmpty {
-                        Text("No activity yet").font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary)
+                        Text("No recent activity.").font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -176,7 +186,7 @@ struct AgentsPanel: View {
         let live = app.agents.active
         HUDCard("Agents", trailing: {
             HStack(spacing: Theme.Spacing.s) {
-                if live.isEmpty { Tag(text: "DEMO · NOT CONNECTED", tint: Theme.Palette.amber) }
+                if live.isEmpty { Tag(text: app.demoMode && !app.store.agents.isEmpty ? "SIMULATED" : "NONE", tint: app.demoMode && !app.store.agents.isEmpty ? Theme.Palette.amber : Color.jarvisTertiary) }
                 else { Tag(text: "ACTIVE · \(live.count)", tint: Theme.Palette.mint) }
                 Button("OPEN") { app.hud.section = .agents }.buttonStyle(.plain).font(Theme.Typography.label).foregroundStyle(Theme.Palette.accent)
                     .accessibilityLabel("Open the Agents view")
@@ -202,6 +212,8 @@ struct AgentsPanel: View {
                         }
                         .accessibilityElement(children: .combine)
                     }
+                } else if !(app.demoMode && !app.store.agents.isEmpty) {
+                    Text("No agents are running.").font(Theme.Typography.body).foregroundStyle(Color.jarvisSecondary)
                 } else {
                     ForEach(app.store.agents) { agent in
                         HStack(spacing: Theme.Spacing.s) {
@@ -254,13 +266,14 @@ struct ToolsPanel: View {
 // MARK: - Sections
 
 struct SystemSectionView: View {
+    @Environment(AppContext.self) private var app
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.m) {
                 ReadinessPanel()
                 SystemPanel()
                 ProjectPanel()
-                ToolsPanel()
+                if app.demoMode { ToolsPanel() }
                 AgentsPanel()
             }
             .frame(maxWidth: 560)

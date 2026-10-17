@@ -47,4 +47,6 @@ struct ApprovalRequest: Identifiable, Hashable, Sendable {
     var id = UUID()
     var title: String
     var detail: String
+    /// True only for the developer simulator's request: the card then says so. A real request never carries it.
+    var simulated = false
 }

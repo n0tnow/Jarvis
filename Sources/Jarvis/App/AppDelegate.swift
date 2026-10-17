@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // The natural-voice live test runs the real stack in a closed acoustic loop (scripted microphone + simulated speaker); nothing else ever gets a rig.
         let rig: VoiceTestRig? = options.naturalVoiceLiveTest ? VoiceTestRig() : nil
-        context = AppContext(stubIntelligence: stubbed, dataDirectory: liveData, voiceRig: rig)
+        context = AppContext(seedDemoData: options.isDemoEnvironment, stubIntelligence: stubbed, dataDirectory: liveData, voiceRig: rig)
         let ctx = context!
         Self.terminationHook = { MainActor.assumeIsolated { ctx.prepareForTermination() } }
         statusItem = StatusItemController(context: context)

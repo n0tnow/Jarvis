@@ -129,8 +129,8 @@ private struct FullHUDBody: View {
         case .agents: AgentsSectionView()
         case .research: ResearchSectionView()
         case .report: PlaceholderSectionView(
-            section: .report, plannedFor: "V0.8",
-            blurb: "Reports and visual explanations will appear here. Nothing is generated yet — this view only reserves the place."
+            section: .report, tag: "NO REPORT HERE",
+            blurb: "A finished task's report is on the Tasks screen (open the task). This view shows nothing of its own and invents nothing."
         )
         case .system: SystemSectionView()
         case .memory: MemorySectionView()
@@ -144,7 +144,7 @@ private struct FullHUDBody: View {
 
     private var bottomBar: some View {
         VStack(spacing: Theme.Spacing.s + 2) {
-            if app.preferences.showDeveloperControls {
+            if app.simulatorControlsVisible {
                 DevStateStrip()
             }
             CommandField(text: $command, placeholder: "Command JARVIS — e.g. “open the report”, “what are you doing?”", origin: .fullHUD,
@@ -159,6 +159,7 @@ private struct FullHUDBody: View {
 // MARK: - Dashboard
 
 private struct DashboardView: View {
+    @Environment(AppContext.self) private var app
     @Environment(\.hudIsNarrow) private var isNarrow
 
     var body: some View {
@@ -169,7 +170,7 @@ private struct DashboardView: View {
             CenterStage()
                 .frame(maxWidth: .infinity)
 
-            column { ActivityPanel(); AgentsPanel(); ToolsPanel() }
+            column { ActivityPanel(); AgentsPanel(); if app.demoMode { ToolsPanel() } }
                 .frame(width: isNarrow ? 252 : 320)
         }
         .padding(.horizontal, Theme.Spacing.xl)
@@ -190,7 +191,7 @@ private struct DashboardView: View {
 
 private struct PlaceholderSectionView: View {
     let section: HUDSection
-    let plannedFor: String
+    let tag: String
     let blurb: String
 
     var body: some View {
@@ -200,7 +201,7 @@ private struct PlaceholderSectionView: View {
                 .foregroundStyle(Theme.Palette.accent.opacity(0.8))
                 .accessibilityHidden(true)
             Text(section.title).font(.system(size: 18, weight: .medium, design: .monospaced)).tracking(6).foregroundStyle(Color.jarvisPrimary)
-            Tag(text: "PLANNED · \(plannedFor)", tint: Theme.Palette.amber)
+            Tag(text: tag, tint: Color.jarvisTertiary)
             Text(blurb)
                 .font(Theme.Typography.body)
                 .foregroundStyle(Color.jarvisSecondary)

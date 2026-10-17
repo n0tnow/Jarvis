@@ -48,7 +48,7 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Toggle("Show Developer Controls", isOn: $prefs.showDeveloperControls)
-                Text("Shows the state simulator in the Compact and Full HUD.")
+                Text("Shows developer diagnostics (paths, counters). The state simulator exists only in developer builds started with a demo flag — never in the installed app.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Intelligence provider") {

@@ -52,7 +52,7 @@ struct AgentsSectionView: View {
             let active = app.hub.activeRuns.count
             Text(active == 0 ? "NO ACTIVE AGENTS" : "\(active) ACTIVE").font(Theme.Typography.label).tracking(0.8)
                 .foregroundStyle(active == 0 ? Color.jarvisTertiary : Theme.Palette.accent)
-            if app.preferences.showDeveloperControls { simulateMenu }
+            if app.simulatorControlsVisible { simulateMenu }
         }
     }
 
@@ -106,7 +106,7 @@ struct AgentsSectionView: View {
             }
             Text("ACTIVE RUNS").jarvisLabel(Theme.Opacity.textTertiary)
             if active.isEmpty {
-                Text("Nothing is running. Providers that are READY are installed and signed in — that does not mean an agent is working.")
+                Text("No agents are running. Providers that are READY are installed and signed in — that does not mean an agent is working.")
                     .font(Theme.Typography.caption).foregroundStyle(Color.jarvisTertiary)
             }
             ForEach(active) { run in runRow(run) }

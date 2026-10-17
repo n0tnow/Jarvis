@@ -121,7 +121,7 @@ private struct ApprovalCard: View {
 
     private var text: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("APPROVAL REQUIRED · DEMO")
+            Text(request.simulated ? "APPROVAL REQUIRED · SIMULATED" : "APPROVAL REQUIRED")
                 .font(Theme.Typography.label).tracking(1.1)
                 .foregroundStyle(Theme.Palette.amber)
             Text(request.title).font(Theme.Typography.headline).foregroundStyle(Color.jarvisPrimary)
