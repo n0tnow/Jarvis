@@ -87,6 +87,7 @@ private final class DecisionRig {
     let actions: ActionService
     let engine = DecisionEngine()
     let continuity = FakeContinuity()
+    private(set) var assistant: ReadinessAssistant!              // (ConversationService holds its handlers weakly: the rig must own them)
     var opened: [KnownProject] = []
     var observations: [ObservedApp] = []
     var projects: [KnownProject] = []
@@ -101,6 +102,7 @@ private final class DecisionRig {
         svc.actionService = service
         let readiness = ReadinessService(probes: probes2())
         let assistant = ReadinessAssistant(service: readiness)
+        self.assistant = assistant
         assistant.statusProvider = { SystemStatusSnapshot(state: .idle, versionLine: "0.15.0 · build 1", readiness: readiness.refresh(), project: nil, activeTasks: 0, activeAgents: 0, voiceOn: true, pushToTalkOn: true, wakeEnabled: false, wakeDetector: .stopped, providerPreference: "Auto") }
         svc.readinessHandler = assistant
         svc.continuityHandler = continuity

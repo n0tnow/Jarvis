@@ -661,7 +661,7 @@ struct LocalModelHarnessTests {
         let p = try probes()
         #expect(p.validate() == [])
         #expect(p.probes.count >= 32)
-        for c in ConversationalProbeSet.categories { #expect(p.probes.filter { $0.category == c }.count >= 3, c) }
+        for c in ConversationalProbeSet.categories { #expect(p.probes.filter { $0.category == c }.count >= 3, Comment(rawValue: c)) }
     }
 
     @Test("a dry run exercises the whole path and reports every measurement as NOT MEASURED — nothing is invented")
