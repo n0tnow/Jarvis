@@ -308,6 +308,17 @@ V0.15 is AUTOMATED TESTED and REAL TESTED on this Mac (see `PROJECT_STATE.md`): 
 1257. A model answer that says “efendim” every time (ask for a story in Turkish several times in a row): at most one “efendim” in four replies, none in English.
 1258. Idle resources with Wake OFF: ≈ 0 CPU, no helper process. Wake ON, quiet room: the helper receives almost no audio (energy gate) and idle CPU stays low (measured numbers in docs/DEVELOPMENT_LOG.md).
 
+**V1.0 stabilisation fix 3 — manual checks (you judge the design and the wake word; nothing below is marked verified until you did it):**
+1259. Finder → Applications: exactly ONE JARVIS. In the repository, `build/` holds only `dev/` (JarvisDev.app, JarvisFixture.app) — no `package/` folder and no second "JARVIS".
+1260. Launch /Applications/JARVIS.app from Finder (no Terminal): the HUD fills the usable screen (below the menu bar, beside the Dock) as a normal window — you can resize it; it is not macOS full screen.
+1261. Dashboard / System / Tasks all say "No project selected" (no `jarvis-continuity-fixture`). Choose a real folder on Tasks: the folder NAME is big, the path small; the other pages show the same project.
+1262. Select text with the mouse in the conversation, on System details and in a report: it selects (⌘C copies); the window does NOT move. Drag the HEADER strip (top bar, not its buttons): the window moves; double-click it: zoom. Scrolling, buttons, sliders and the command bar behave normally.
+1263. Move/resize the window, close and reopen it: it comes back where you left it. Settings → Appearance & Developer → Reset window size puts it back to full.
+1264. System page: summary tiles, then one card per area; "This JARVIS (what macOS judges)" shows /Applications/JARVIS.app and the ad-hoc signature. In System Settings → Privacy: remove the old JARVIS entries with −, add /Applications/JARVIS.app, switch Accessibility on, come back to JARVIS (or press Recheck): the row becomes READY without restarting. Screen Recording: after allowing it press Restart JARVIS, then Recheck.
+1265. Settings (gear, or ⌘,): Voice & Wake Word → switch Wake Word ON: the badge shows DETECTOR RUNNING (or ERROR with the reason, or PERMISSION NEEDED → Allow microphone). System → "Wake word" agrees. Quit and relaunch: still ON.
+1266. Say "Jarvis" → "Efendim?" → ask something → spoken answer → wake again (the human wake test: false wakes, your room, your microphone).
+1267. Judge the look: Dashboard, System, Tasks, Agents, Settings, Conversation — alignment, spacing, readability, empty states, whether it feels like one coherent macOS product. Report what still feels wrong.
+
 ### V0.14 additions (adaptive learning, controlled self-improvement, MCP/Skill registry) — MANUAL TEST REQUIRED
 V0.14 is AUTOMATED TESTED and REAL TESTED on this Mac (see `PROJECT_STATE.md`), but none of it is MANUALLY VERIFIED. Learning is data and never authority; installs, updates, removals, rule/skill activation and self-changes are decided only by the HUD buttons. Docs: `docs/ADAPTIVE_LEARNING.md`, `docs/SELF_IMPROVEMENT.md`, `docs/MCP_REGISTRY.md`, `docs/SKILLS.md`.
 

@@ -31,3 +31,6 @@ Large models are never bundled in the app; an already installed model is referen
 
 ## V1.0 stabilisation fix 2
 Wake Word remains OFF by default and is switched by you (Settings → Voice, the menu bar, or “wake word'ü aç”); the Hands-free overview shows Voice, Push-to-Talk, Wake Word, the detector state, the microphone, recognition, output and the session state in one place.
+
+## V1.0 stabilisation fix 3
+Settings is a destination in the Full HUD (gear, ⌘,). Wake Word is under Settings → Voice & Wake Word, with the real detector state beside the switch; System → Recheck re-reads every permission without a restart (Screen Recording applies after Restart JARVIS).

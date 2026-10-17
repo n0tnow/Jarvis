@@ -209,3 +209,6 @@ Wake is activation, not authentication (unchanged): "Jarvis, open Finder" after 
 ## V1.0 stabilisation fix 2 — hands-free lifecycle (wake word)
 * Wake stays opt-in. Flow: “Jarvis” → spoken “Efendim?” (default acknowledgement, fixed phrase, no model) → listens without any key → STT → the typed pipeline → spoken answer → back to wake; 8 s follow-up window; single-breath wake already supported.
 * New: sleep mode (“Uyku moduna geç”), end-of-exchange (“Dinlemeyi bırak”), Mac sleep/wake recovery, bounded recovery after an audio-device change (2 s, 6 s, then UNAVAILABLE), Settings → Voice “Hands-free overview”, menu-bar wake state. Privacy unchanged: before the wake word only the local sentinel hears bounded in-memory audio (energy gate: a quiet room sends it nothing).
+
+## V1.0 stabilisation fix 3
+The Wake Word switch lives in Settings → Voice & Wake Word (and the menu bar / "wake word'ü aç"); its badge and the System row read the detector (RUNNING / STOPPED / ERROR / PAUSED) — "ON" is never reported as "running" unless it is.

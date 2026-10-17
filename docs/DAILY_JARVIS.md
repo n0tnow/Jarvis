@@ -42,3 +42,6 @@ Settings → Startup (Launch at Login, Open Compact on launch), Daily JARVIS (re
 * Ability questions (screen, files, web, memory, “what else can you do”, “system status”) are answered from state with no model; “Ekranıma bak” is a Computer Use observation. A language model that states JARVIS' abilities is replaced by JARVIS' own statement (DEC-248).
 * Natural settings requests (speech speed, “efendim”, answer length, wake word, voice input, notifications, Launch at Login) change typed settings with read-back evidence; undo / “what did you change” / “which settings can you change” work; “where did you save that?” is answered from the storage ledger (DEC-249). The address preference is a persisted setting changed only by explicit request.
 * Corrections (“Hayır, … demek istedim”) are re-resolved from scratch (DEC-250); a model's “efendim” follows the same cadence as JARVIS' own (DEC-251). Production shows only real data (`docs/PRODUCTION_TRUTH.md`).
+
+## V1.0 stabilisation fix 3
+The Full HUD is a large workspace (fills the usable screen, normal resizable window), text is selectable, only the header drags; Settings is a destination. See DEC-254…259 and docs/PRODUCTION_TRUTH.md.

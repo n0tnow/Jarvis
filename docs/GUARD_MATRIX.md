@@ -80,3 +80,5 @@ V0.14 added 18 guards in `scripts/guards_v14.sh` (sourced by `verify.sh`); each 
 V0.15 added 14 guards in `scripts/guards_v15.sh` and amended three older ones narrowly (notification API, System Settings URLs, SMAppService — each allowed in `Readiness/SystemIntegration.swift` only); each new guard was shown to FAIL on an injected violation (rows 54–67).
 
 V1.0 stabilisation fix 2 added 5 guards in `scripts/guards_v15.sh` (production UI truth, provider identity firewall, settings registry/order/read-back, correction & transcript-repair authority, hands-free lifecycle & layout reservation) and the `ProductionTruthTests` / `VoiceLayoutStabilityTests` source and frame guards.
+
+V1.0 stabilisation fix 3 added 4 guards in `scripts/guards_v15.sh` (storage isolation, window policy, app identity / staging, Full HUD design system & settings) plus `StorageIsolationTests`, `PermissionTruthTests`, `WindowGeometryTests`.

@@ -209,3 +209,6 @@ No new voice path. A spoken compound goal is `ConversationService.submit(source:
 
 ## V1.0 stabilisation fix 2
 Voice commands stay distinct: Sus (speech/generation), Dinlemeyi bırak (end the exchange), Uyku moduna geç (pause wake listening), Wake word'ü kapat (persisted setting), Görevi durdur (stop the task). A spoken “evet” never approves anything. The voice status strip has a fixed reserved height (DEC-253).
+
+## V1.0 stabilisation fix 3
+Voice, Push-to-Talk and Wake Word are three switches in Settings with their real state; none of them has an approval path.

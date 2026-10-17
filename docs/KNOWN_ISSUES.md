@@ -768,3 +768,14 @@ Description: after the Mac wakes or the audio device changes, wake listening is 
 Status: Resolved by design (DEC-247)
 Description: the simulator, demo tasks and agent simulation exist only in developer launches (`--dev-demo`, `--capture`, `--smoke-test`).
 
+### JARVIS-V1F3-1 — Ad-hoc signing: macOS permissions do not carry over between builds
+Status: Open (limitation; explained in the UI)
+Description: Accessibility, Screen Recording and Microphone are bound to the exact code identity. Every install of an ad-hoc build is a new identity, so after installing build N you must switch the permission on again for THAT build (remove the old JARVIS entry with − and add /Applications/JARVIS.app, or toggle it). System → "This JARVIS" shows the signature and says when the build is new. Screen Recording additionally applies only after a restart (Restart JARVIS). A stable signing identity would remove this; none exists on this Mac.
+
+### JARVIS-V1F3-2 — The Unity live tests leave `unity.DefaultCompany.jarvis-*-live-*.plist` files in ~/Library/Preferences
+Status: Open (cosmetic)
+Description: Unity's own player preferences for the disposable fixture projects of `--unity-live-test`, `--operator-live-test` and the soak. They belong to Unity, not to JARVIS, and are not removed automatically.
+
+### JARVIS-V1F3-3 — The visual design is judged by a person
+Status: HUMAN UI APPROVAL REQUIRED
+Description: layout, alignment and rendering were checked with rendered captures of the installed binary and geometry tests; whether it feels like a finished macOS product is Bilal's call (README 1259–1267).
