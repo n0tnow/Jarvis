@@ -9,7 +9,11 @@ import Foundation
 //                                          scores a recorded run of `scripts/local-ai/bench_model.py` with the rubric (RubricCheck) and prints the report; loads no model
 //   Jarvis --decision-benchmark [--corpus F] [--heldout F] [--jev] [--jev-model M] [--rows F]
 //                                          deterministic baseline (no network); with --jev the classifier is asked about every case IN SHADOW (compared, never executed)
-//                                          also: --adversarial F --blind F (the V1.0 reliability corpora) and --project-names "A,B" (a stand-in registry for bare project names; tests only)
+//                                          also: --adversarial F --blind F (the V1.0 reliability corpora), --suite "name=path" (any further corpus, repeatable — e.g. the Jev gating sets
+//                                          Benchmarks/jev_heldout.json, jev_hard_negative.json, jev_ambiguity.json) and --project-names "A,B" (a stand-in registry for bare project names; tests only)
+//   Jarvis --jev-gate-evaluate --rows F [same corpus flags]
+//                                          OFFLINE (no network, no key, no Keychain): runs the rows a real `--decision-benchmark --jev --rows F` produced through the production gate
+//                                          (read-only and own-UI levels, plus the execution-level SIMULATION) and prints accepted / correct / wrong / executing-false-accept counts, call counts and calibration bins
 //   Jarvis --discover-projects <folder>...  lists project CANDIDATES (Unity / Xcode / SwiftPM / Git markers) under the folders you name; read-only, bounded, registers nothing
 // None of this starts the app, a provider, a task or an action. The key is read only by `TypeSafeJevTransport` at request time; these tools never see it.
 
@@ -19,6 +23,7 @@ enum DecisionTools {
         if args.contains("--store-jev-credential") { storeCredential() }
         if args.contains("--jev-check") { launch { await jevCheck(args) } }
         if args.contains("--decision-benchmark") { launch { await benchmark(args) } }
+        if args.contains("--jev-gate-evaluate") { launch { await gateEvaluate(args) } }
         if args.contains("--local-model-score") { launch { await scoreLocalModel(args) } }
         if args.contains("--discover-projects") { discoverProjects(args) }
     }
@@ -90,18 +95,25 @@ enum DecisionTools {
         var expectedExecuting: Bool
     }
 
+    /// The corpora named on the command line: the main corpus (default path), then `--heldout`, `--adversarial`, `--blind` and any number of `--suite "name=path"`.
+    private static func loadSuites(_ args: [String]) throws -> [(String, DecisionCorpus)] {
+        func load(_ path: String) throws -> DecisionCorpus { try DecisionCorpus.load(from: URL(fileURLWithPath: path)) }
+        var suites: [(String, DecisionCorpus)] = [("main corpus", try load(value(after: "--corpus", in: args) ?? "Benchmarks/decision_corpus.json"))]
+        if let h = value(after: "--heldout", in: args) { suites.append(("held-out", try load(h))) }
+        if let a = value(after: "--adversarial", in: args) { suites.append(("adversarial A", try load(a))) }
+        if let b = value(after: "--blind", in: args) { suites.append(("blind B", try load(b))) }
+        for (i, a) in args.enumerated() where a == "--suite" && i + 1 < args.count {
+            let parts = args[i + 1].split(separator: "=", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { continue }
+            suites.append((parts[0], try load(parts[1])))
+        }
+        return suites
+    }
+
     private static func benchmark(_ args: [String]) async -> Int32 {
-        let corpusPath = value(after: "--corpus", in: args) ?? "Benchmarks/decision_corpus.json"
-        let heldPath = value(after: "--heldout", in: args)
-        let adversarialPath = value(after: "--adversarial", in: args), blindPath = value(after: "--blind", in: args)
         let withJev = args.contains("--jev")
-        var suites: [(String, DecisionCorpus)] = []
-        do {
-            suites.append(("main corpus", try DecisionCorpus.load(from: URL(fileURLWithPath: corpusPath))))
-            if let h = heldPath { suites.append(("held-out", try DecisionCorpus.load(from: URL(fileURLWithPath: h)))) }
-            if let a = adversarialPath { suites.append(("adversarial A", try DecisionCorpus.load(from: URL(fileURLWithPath: a)))) }
-            if let b = blindPath { suites.append(("blind B", try DecisionCorpus.load(from: URL(fileURLWithPath: b)))) }
-        } catch { out("cannot read the corpus: \(error)"); return 2 }
+        let suites: [(String, DecisionCorpus)]
+        do { suites = try loadSuites(args) } catch { out("cannot read the corpus: \(error)"); return 2 }
         let provider = JevDecisionProvider(transport: TypeSafeJevTransport(), credentialAvailable: { JevCredentialStore.isPresent() })
         var cfg = JevConfig(mode: .shadow)
         cfg.timeoutSeconds = 10; cfg.maxRequestsPerHour = 100_000; cfg.breakerFailures = 1_000
@@ -136,6 +148,28 @@ enum DecisionTools {
             out(String(format: "approximate cost from the published input price ($0.042 per million input tokens, output free): $%.6f", Double(u.inputTokens) / 1_000_000 * 0.042))
         }
         if let rowsPath = value(after: "--rows", in: args), let data = try? JSONEncoder().encode(allRows) { try? data.write(to: URL(fileURLWithPath: rowsPath)); out("rows written to \(rowsPath)") }
+        return 0
+    }
+
+    // MARK: offline gate evaluation (recorded rows only)
+
+    private static func gateEvaluate(_ args: [String]) async -> Int32 {
+        guard let rowsPath = value(after: "--rows", in: args), let data = FileManager.default.contents(atPath: rowsPath),
+              let rows = try? JSONDecoder().decode([String: [JevAnswerSource.RecordedRow]].self, from: data) else { out("cannot read the rows file (--rows F, written by --decision-benchmark --jev --rows F)"); return 2 }
+        let suites: [(String, DecisionCorpus)]
+        do { suites = try loadSuites(args) } catch { out("cannot read the corpus: \(error)"); return 2 }
+        var parsers = DecisionParsers()
+        if let names = value(after: "--project-names", in: args)?.split(separator: ",").map({ String($0).trimmingCharacters(in: .whitespaces) }), !names.isEmpty {
+            parsers.isKnownProjectName = { spoken in names.contains { ProjectOpenResolver.nameMatches(spoken: spoken, name: $0) } }
+        }
+        let recognizer = DeterministicCommandRecognizer(parsers: parsers)
+        out("Gate evaluation of RECORDED rows (offline). Nothing was sent anywhere; the execution level is a simulation and is never active in production.")
+        for (name, corpus) in suites {
+            guard let r = rows[name] else { out("\n(no recorded rows for “\(name)” — skipped)"); continue }
+            for level in [JevGateLevel.readOnly, .ownUI] {
+                out("\n" + JevGateEvaluator.evaluate(corpus: corpus, corpusName: name, source: .recorded(r, name: "recorded rows from \(rowsPath)"), level: level, recognizer: recognizer).markdown())
+            }
+        }
         return 0
     }
 
