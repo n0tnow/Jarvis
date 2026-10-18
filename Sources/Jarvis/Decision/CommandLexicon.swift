@@ -54,10 +54,12 @@ enum TurkishMorphology {
 
     /// The same, with an arbitrary predicate (e.g. “does the project registry know this name?”). The stem itself must satisfy it; the rest must be a closed chain. SHORTEST stem first (the predicate may itself tolerate suffixes).
     static func stem(of token: String, where isKnown: (String) -> Bool, minimum: Int = 3) -> String? {
+        // the SHORTEST prefix the registry knows is the name; what follows it must be ONE closed suffix chain. (A predicate that tolerates a suffix itself must not be allowed to
+        // "know" a longer prefix and then take a second suffix on top of it: “Hamam'daa” is not “Hamam” + da + a.)
         var i = minimum
         while i <= token.count {
             let stem = String(token.prefix(i))
-            if isClosedChain(String(token.dropFirst(i))), isKnown(stem) { return stem }
+            if isKnown(stem) { return isClosedChain(String(token.dropFirst(i))) ? stem : nil }
             i += 1
         }
         return nil
@@ -73,7 +75,7 @@ enum VerbMorphology {
         "kapat": .close, "close": .close, "quit": .close, "exit": .close,
         "goster": .show, "show": .show,
         "bak": .look, "look": .look,
-        "gec": .navigate, "git": .navigate, "don": .navigate, "switch": .navigate, "go": .navigate,
+        "gec": .navigate, "git": .navigate, "gid": .navigate, "don": .navigate, "switch": .navigate, "go": .navigate,
         "kes": .stop, "durdur": .stop, "birak": .stop, "sus": .stop,
         "iptal": .cancel,
         "arastir": .research, "ara": .research,

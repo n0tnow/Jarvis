@@ -80,7 +80,7 @@ struct ProjectDiscoveryTests {
     @Test("roots that are not 'a place the user keeps projects' are refused: /, the home folder itself, system folders, relative paths")
     func refusedRoots() {
         let h = "/Users/someone"
-        for r in ["/", "/Users/someone", "/System", "/Library/Foo", "/usr/local", "/private", "/var", "/tmp", "relative/path", "/Applications"] { #expect(ProjectDiscovery.isRefusedRoot(r, home: h), r) }
+        for r in ["/", "/Users/someone", "/System", "/Library/Foo", "/usr/local", "/private", "/var", "/tmp", "relative/path", "/Applications"] { #expect(ProjectDiscovery.isRefusedRoot(r, home: h), Comment(rawValue: r)) }
         #expect(!ProjectDiscovery.isRefusedRoot("/Users/someone/Projects", home: h))
         #expect(!ProjectDiscovery.isRefusedRoot("/var/folders/ab/cd/T/work", home: h), "a per-user temp folder is a legitimate root")
         let report = ProjectDiscovery.scan(roots: ["/", "/nonexistent-dir-\(UUID().uuidString)"], home: h)

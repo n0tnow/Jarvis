@@ -87,8 +87,8 @@ struct LexiconDecisionTests {
         for (text, app) in [("Safariyi bi açsana", "Safari"), ("Safari'yi açar mısın", "Safari"), ("Unityyi öne getir", "Unity"), ("Safari'ye geç", "Safari"), ("Chrome'a geç", "Google Chrome"),
                             ("Unity'yi öne getirir misin", "Unity"), ("Switch to Safari", "Safari"), ("Finder'ı öne getirir misin", "Finder"), ("Xcodea geç", "Xcode"), ("Chromeu öne alsana", "Google Chrome")] {
             let d = decide(text)
-            #expect(d?.intent == .macosApplicationAction && d?.action == "launch" && d?.target == app, text)
-            #expect(d?.requiresExecution == true && d?.gate == DecisionGate.none, text)
+            #expect(d?.intent == .macosApplicationAction && d?.action == "launch" && d?.target == app, Comment(rawValue: text))
+            #expect(d?.requiresExecution == true && d?.gate == DecisionGate.none, Comment(rawValue: text))
         }
     }
 
@@ -96,7 +96,7 @@ struct LexiconDecisionTests {
     func quit() {
         for text in ["Safari'yi kapat", "Safariyi kapatır mısın", "Close Safari", "Quit Chrome", "Unity'yi kapatsana"] {
             let d = decide(text)
-            #expect(d?.action == "quit" && d?.gate == .askFirst && (d?.riskClass ?? .low) >= .high, text)
+            #expect(d?.action == "quit" && d?.gate == .askFirst && (d?.riskClass ?? .low) >= .high, Comment(rawValue: text))
         }
     }
 
@@ -115,7 +115,7 @@ struct LexiconDecisionTests {
         for (text, page) in [("Systeme geç", "system"), ("System'e geçebilir misin", "system"), ("Dashboard'a geçer misin", "dashboard"), ("Ayarlara bakar mısın", "settings"), ("Hafızaya bak", "memory"),
                              ("Hafıza sayfasına geçsene", "memory"), ("Sistem paneline bakar mısın", "system"), ("Ajanlara geç", "agents")] {
             let d = decide(text)
-            #expect(d?.intent == .jarvisNavigation && d?.target == page, text)
+            #expect(d?.intent == .jarvisNavigation && d?.target == page, Comment(rawValue: text))
         }
         #expect(decide("Sistem ayarlarını aç")?.target == "System Settings")      // the macOS application, not JARVIS' page
     }
@@ -124,11 +124,11 @@ struct LexiconDecisionTests {
     func projects() {
         for text in ["Hamamı aç", "Hamam'ı aç", "Hamam projesine geç", "Hamam'ı açar mısın"] {
             let d = decide(text)
-            #expect(d?.intent == .projectOpen && d?.target == "hamam", text)
+            #expect(d?.intent == .projectOpen && d?.target == "hamam", Comment(rawValue: text))
         }
         for text in ["Hamamda devam edelim", "Hamam'da devam edelim", "Hamam'a devam edelim", "Hamam projesine devam edelim", "Hamamda devam edebilir miyiz"] {
             let d = decide(text)
-            #expect(d?.intent == .projectTask && d?.action == "continue" && d?.target == "hamam", text)
+            #expect(d?.intent == .projectTask && d?.action == "continue" && d?.target == "hamam", Comment(rawValue: text))
         }
         #expect(decide("Hamammı aç") == nil)                                       // a typo is not an alias: fuzzy never executes
         #expect(decide("Ham'ı aç")?.intent != .projectOpen)                        // no prefix guessing
@@ -147,8 +147,8 @@ struct LexiconDecisionTests {
 
     @Test("stop speech: stop words in any order; negations and “what does stop mean” are not commands")
     func stop() {
-        for text in ["Sus", "dur dur dur", "Biraz sus", "Artık yeter", "Konuşmayı keser misin", "Sesini kes", "Kes sesini"] { #expect(decide(text)?.intent == .stopSpeech, text) }
-        for text in ["Konuşmayı kesme", "Sus demek ne demek", "Dur bir dakika düşüneyim"] { #expect(decide(text)?.intent != .stopSpeech, text) }
+        for text in ["Sus", "dur dur dur", "Biraz sus", "Artık yeter", "Konuşmayı keser misin", "Sesini kes", "Kes sesini"] { #expect(decide(text)?.intent == .stopSpeech, Comment(rawValue: text)) }
+        for text in ["Konuşmayı kesme", "Sus demek ne demek", "Dur bir dakika düşüneyim"] { #expect(decide(text)?.intent != .stopSpeech, Comment(rawValue: text)) }
     }
 }
 
@@ -171,7 +171,7 @@ struct LexiconPrecisionTests {
     func approvals() {
         for t in ["evet", "evet onaylıyorum", "tamam onayla", "yes approve it", "onaylıyorum", "approve", "Evet yap", "Yes, go ahead", "izin veriyorum", "kabul ediyorum"] {
             let d = decide(t)
-            #expect(d == nil || (d?.requiresExecution == false && d?.intent != .settingsChange), t)
+            #expect(d == nil || (d?.requiresExecution == false && d?.intent != .settingsChange), Comment(rawValue: t))
         }
     }
 
@@ -249,7 +249,7 @@ struct ReferentTests {
     func negate() {
         for t in ["hayır onu yapma", "yok onu yapma", "Hayır onu değil", "No, don't do that", "hayır yapma"] {
             let d = decide(t)
-            #expect(d?.intent == .correction && d?.action == "negate_last" && d?.requiresExecution == false, t)
+            #expect(d?.intent == .correction && d?.action == "negate_last" && d?.requiresExecution == false, Comment(rawValue: t))
         }
     }
 }
@@ -312,7 +312,7 @@ struct AdversarialCorpusTests {
     func valid() throws {
         for name in ["decision_adversarial.json", "decision_blind.json"] {
             let c = try DecisionCorpus.load(from: corpusURL(name))
-            #expect(DecisionCorpusValidator.validate(c, minimumCases: 150, minimumPerIntent: 0, requireMandatory: false, requireAllLanguages: false).isEmpty, name)
+            #expect(DecisionCorpusValidator.validate(c, minimumCases: 150, minimumPerIntent: 0, requireMandatory: false, requireAllLanguages: false).isEmpty, Comment(rawValue: name))
             #expect(c.cases.contains(where: \.mustNotExecute))
             #expect(c.cases.contains(where: { $0.ambiguous == true }))
         }

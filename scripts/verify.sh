@@ -407,6 +407,7 @@ v09_none "the experiment's generated fixture sound is a synthetic tone written o
 source scripts/guards_v14.sh
 source scripts/guards_v15.sh
 source scripts/guards_decision.sh
+source scripts/guards_reliability.sh
 
 print "== Smoke test (real window manager, store, status item)"
 log=$(mktemp)

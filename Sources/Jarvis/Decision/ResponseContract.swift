@@ -88,6 +88,8 @@ enum ResponseClaimFirewall {
 
     // task: SUBJECT … completed
     private static let taskSubjects: Set<String> = ["gorev", "gorevi", "task", "is", "build", "proje", "project", "adim", "adimlar", "step", "steps", "test", "testler", "tests", "sahne", "scene"]
+    private static let progressPercent = try! NSRegularExpression(pattern: #"(?:%\s?\d{1,3}|\b\d{1,3}\s?%|\b\d{1,3}\s?percent\b|\byuzde\s?\d{1,3}\b)"#)
+    private static let progressWords: Set<String> = ["tamamlandi", "tamamlanmis", "bitti", "ilerleme", "ilerledi", "complete", "completed", "done", "finished", "progress", "ilerliyor"]
     private static let taskPredicates: Set<String> = ["tamamlandi", "bitti", "basarili", "basariyla", "completed", "finished", "done", "succeeded", "passed", "gecti", "hazir", "complete"]
 
     /// Sentences of a MODEL reply that claim an action, a perception, a state or a task result.
@@ -104,6 +106,8 @@ enum ResponseClaimFirewall {
             if w.contains(where: { word in visionTR.contains { word.hasPrefix($0) } }) && !isQuestion { out.append(ClaimFinding(kind: .visibility, sentence: sentence)); continue }
             if w.contains(where: { word in readWatchTR.contains { word.hasPrefix($0) } }), w.contains(where: { screenWords.contains($0) }) { out.append(ClaimFinding(kind: .visibility, sentence: sentence)); continue }
             guard !isQuestion else { continue }
+            // a percentage about progress is never evidence (progress is validated steps, derived by JARVIS — never a model's number)
+            if progressPercent.firstMatch(in: f, range: NSRange(f.startIndex..., in: f)) != nil, w.contains(where: { progressWords.contains($0) }) || w.contains(where: { taskSubjects.contains($0) }) { out.append(ClaimFinding(kind: .task, sentence: sentence)); continue }
             // task result
             if let si = w.firstIndex(where: { taskSubjects.contains($0) }), w[si...].dropFirst().prefix(4).contains(where: { taskPredicates.contains($0) }) { out.append(ClaimFinding(kind: .task, sentence: sentence)); continue }
             // state
@@ -171,7 +175,7 @@ enum ResponseClaimFirewall {
 enum LanguageProbe {
     enum Detected: String, Sendable { case turkish, english, mixed, unknown }
 
-    static let protectedNames: Set<String> = ["jarvis", "safari", "chrome", "finder", "xcode", "unity", "blender", "terminal", "claude", "codex", "opencode", "qwen", "gemma", "github", "swift", "python", "javascript", "macos", "ios", "mlx", "api", "gpu", "cpu", "ram", "json", "html", "css", "git", "url", "http", "https", "wifi", "bluetooth", "hud", "stt", "tts", "mcp", "sqlite", "prefab", "shader"]
+    static let protectedNames: Set<String> = ["jarvis", "safari", "chrome", "finder", "xcode", "unity", "blender", "terminal", "claude", "codex", "opencode", "qwen", "gemma", "github", "swift", "python", "javascript", "macos", "ios", "mlx", "api", "gpu", "cpu", "ram", "json", "html", "css", "git", "url", "http", "https", "wifi", "bluetooth", "hud", "stt", "tts", "mcp", "prefab", "shader"]
     private static let turkishWords: Set<String> = ["ve", "bir", "bu", "su", "icin", "ile", "ama", "gibi", "daha", "cok", "var", "yok", "mi", "mu", "de", "da", "ne", "nasil", "neden", "evet", "hayir", "tamam", "lutfen", "efendim", "yapabilirim", "yapamam", "acik", "kapali", "hazir", "durum", "sistem", "proje", "gorev", "ekran", "dosya", "ayar", "sesim", "olarak", "kadar", "sonra", "once", "simdi", "burada", "orada", "bunu", "onu", "sunu", "icinde", "uzerinde", "hakkinda", "degil", "gerek", "olur", "olmaz", "istersen", "istiyorsunuz", "sizin", "benim", "bizim", "her", "hangi", "kendi"]
     private static let englishWords: Set<String> = ["the", "and", "is", "are", "was", "were", "to", "of", "in", "on", "for", "with", "that", "this", "it", "you", "your", "can", "will", "would", "should", "not", "have", "has", "be", "been", "but", "or", "if", "then", "what", "how", "why", "which", "there", "here", "just", "also", "from", "about", "when", "do", "does", "did", "i", "me", "my", "we", "they", "yes", "no", "please", "sorry"]
 

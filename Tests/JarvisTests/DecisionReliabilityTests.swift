@@ -55,7 +55,7 @@ struct ConfidencePolicyTests {
         #expect(!p.accepts(jev(.jarvisNavigation, 0.90, page: "system"), source: .remote))
         #expect(p.accepts(jev(.jarvisNavigation, 0.95, page: "system"), source: .remote))
         for intent in [DecisionIntent.macosApplicationAction, .computerUse, .projectOpen, .projectTask, .settingsChange, .stopSpeech, .cancelTask, .research] {
-            #expect(!p.accepts(jev(intent, 1.0), source: .remote), intent.rawValue)           // confidence 1.0 still buys nothing
+            #expect(!p.accepts(jev(intent, 1.0), source: .remote), Comment(rawValue: intent.rawValue))           // confidence 1.0 still buys nothing
         }
     }
 
@@ -107,7 +107,7 @@ struct JevRoutingTests {
     func retryPolicy() {
         #expect(JevRetryPolicy.shouldRetry(.offline, attempt: 0, maxRetries: 1))
         #expect(!JevRetryPolicy.shouldRetry(.offline, attempt: 1, maxRetries: 1))
-        for f in [JevFailure.timeout, .rateLimited, .outOfBalance, .apiChanged, .credentialMissing, .malformedResponse] { #expect(!JevRetryPolicy.shouldRetry(f, attempt: 0, maxRetries: 3), f.rawValue) }
+        for f in [JevFailure.timeout, .rateLimited, .outOfBalance, .apiChanged, .credentialMissing, .malformedResponse] { #expect(!JevRetryPolicy.shouldRetry(f, attempt: 0, maxRetries: 3), Comment(rawValue: f.rawValue)) }
         #expect(JevRetryPolicy.backoff(attempt: 0, base: 0.25) == 0.25 && JevRetryPolicy.backoff(attempt: 2, base: 0.25) == 1.0 && JevRetryPolicy.backoff(attempt: 10, base: 0.25) == 2.0)
     }
 
@@ -256,7 +256,7 @@ struct ResponseContractTests {
             #expect(found.contains { $0.kind == kind }, "\(text) → \(found.map(\.kind))")
         }
         for harmless in ["Python'da liste nasıl sıralanır?", "Safari macOS'in varsayılan tarayıcısıdır.", "Claude hazır olduğunda haber veririm.", "Swift'te actor, durumu koruyan bir türdür.", "Safari'yi açabilir misin?", "I cannot see your screen."] {
-            #expect(ResponseClaimFirewall.findings(in: harmless).isEmpty, harmless)
+            #expect(ResponseClaimFirewall.findings(in: harmless).isEmpty, Comment(rawValue: harmless))
         }
     }
 
@@ -320,7 +320,7 @@ struct FreshnessPolicyTests {
     @Test("every kind has one TTL; fresh / stale / never is decided from the age alone")
     func ttl() {
         let p = ObservationFreshnessPolicy.standard
-        for k in ObservationKind.allCases { #expect(p.ttl(for: k) > 0, k.rawValue) }
+        for k in ObservationKind.allCases { #expect(p.ttl(for: k) > 0, Comment(rawValue: k.rawValue)) }
         let t0 = Date(timeIntervalSince1970: 5_000)
         #expect(p.verdict(.screenVisibility, observedAt: t0, now: t0.addingTimeInterval(10)) == .fresh(ageSeconds: 10))
         #expect(p.verdict(.screenVisibility, observedAt: t0, now: t0.addingTimeInterval(45)) == .stale(ageSeconds: 45))
