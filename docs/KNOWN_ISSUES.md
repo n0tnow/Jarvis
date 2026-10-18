@@ -941,3 +941,29 @@ Status: OPEN · BY DESIGN. A result is stale when the repository changed in the 
 ### JARVIS-V1EP-7 — Generated Unity / C# work is only a MANUAL requirement
 Status: OPEN. The generic contract can represent C# / scene / prefab work and emits "Unity editor validation on a real editor" as a manual requirement for `.cs` changes; no Unity operation was touched or validated.
 
+## V1.0 Jev gating pass (Cloud, headless)
+
+### JARVIS-V1JV-1 — The macOS-only edits and the new Swift Testing files were not compiled
+Status: OPEN · BLOCKS MERGE until `scripts/verify.sh` passes on a Mac. The pure logic (gate, evaluation, corroboration, privacy filter, malformed-answer handling, grammar guards, engine wiring up to the provider boundary) compiled and ran in a Linux harness (`JevGateTests`: 39 tests / 1 186 checks; Decision suites 107 tests / 978 checks; 0 failures; source guards 289 / 0). Not compiled: `DecisionTools` (`--suite`, `--jev-gate-evaluate`), `TypeSafeJevTransport.parse` (a slice of it ran), the `@MainActor` annotations of the new tests as Swift Testing.
+
+### JARVIS-V1JV-2 — No live Jev measurement exists for the new corpora
+Status: OPEN · MANUAL TEST REQUIRED. Cloud had no credential (by instruction). Real accuracy, calibration bins and latency on the main, old held-out and new held-out sets, `jev-latest` vs `jev-preview`, and the 100 ms – 1 s timeout behaviour must come from the local run in `docs/JEV_DECISION_POLICY.md` §13. Phase B figures are aggregates with different bin edges.
+
+### JARVIS-V1JV-3 — A confidently wrong read-only answer is rare, not impossible
+Status: OPEN · BY DESIGN. With corroboration on, a classifier that is wrong on every case still gets 2 read-only answers through in 1 160 requests; an always-`system_status` one 7 wrong of 14. The cost is one wrong status sentence; the default level changes no screen. Keep read-only gating behind the local gates of §12.
+
+### JARVIS-V1JV-4 — Corroboration lists and negation are conservative and hand-written
+Status: OPEN · NON-BLOCKING. A legitimate indirect phrasing without any anchor word is rejected (coverage lost, never safety); true negation / infinitive forms of the lexicon's verb stems reject even in read-only questions ("durumu söylemek istemiyorum"); tense-only forms ("gidiyor") no longer do.
+
+### JARVIS-V1JV-5 — Five grammar label disagreements on the ambiguity set stand
+Status: OPEN · DOCUMENTED. `devam et`, `Projeyi aç`, `Open the project`, `Sesi ayarla` and `Şunu kapatsana` (with a referent) are decided by the grammar as executing intents that the planner / resolver / ask-first gate turn into questions. Labels were not edited; H1, N1 and A1 are spent for the grammar.
+
+### JARVIS-V1JV-6 — The project registry is not wired into the gate
+Status: OPEN · NEEDS A macOS BUILD AND APPROVAL. `DecisionEngine.projectResolver` defaults to "unresolved" and `capabilityAvailable` to "available", so a project-bound remote answer is never accepted until the real registry is connected (the safe default). Wiring it in `AppContext+Daily` was not done in Cloud.
+
+### JARVIS-V1JV-7 — The own-UI level can switch to a wrong page
+Status: OPEN · BY DESIGN. At level `ownUI` the simulated always-wrong classifier gets 2 wrong page switches through with corroboration (21 without). Harmless and visible, not zero; therefore not the default.
+
+### JARVIS-V1JV-8 — An existing test expectation changed
+Status: RESOLVED · RECORDED. "confidence is clamped" (`JevResponseParser`, confidence 7) now expects nil (DEC-304).
+

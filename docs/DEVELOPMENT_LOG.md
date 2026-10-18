@@ -701,3 +701,28 @@ Linux harness only (real task model + persistence + router closure; real `git` a
 ### Decisions
 DEC-294…300.
 
+## 2026-10-18 — V1.0 Jev decision intelligence: production gating & routing optimization (Cloud / headless pass)
+
+### Goal
+Turn the experimental Jev integration into an optional, rigorously gated advisory layer: deterministic policy always wins, Jev can never execute, approve or claim, and every number says what produced it. No API key in Cloud (by instruction); Hamam untouched; V1.1 not started.
+
+### Done
+- `Decision/JevGatePolicy.swift`: safety classes, preflight, quoted / negated / critical guards, local risk derivation, per-intent floors, corroboration, target-resolution rules, model calibration; `executionIsEnabledInProduction = false`. `Decision/JevEvaluation.swift`: pure measurement (simulated classifiers, recorded rows, calibration bins, A / B / C call accounting, latency model from measured data only). `Providers/Jev/JevPrivacyFilter.swift`.
+- Engine / provider: gated flow rewritten around the gate (preflight audit codes, cache re-validation, gated timeout, fallback fields), session cap, reported model, typed referents, path / file-name masking, non-finite and out-of-range probabilities rejected (DEC-304).
+- Three new hand-written corpora (H1 108, N1 64, A1 36) written before measuring; first measurement exposed grammar defects (executing false positives 2 / 8 / 8) fixed class-wide (DEC-308) → 0 / 0 / 5 hand-offs; older corpora re-run, no regression.
+- `Jarvis --decision-benchmark --suite …` and `Jarvis --jev-gate-evaluate --rows F` (offline). `scripts/guards_jev.sh` (7 guards). Tests: `JevGateTests` (zero-Jev call counting, abstain matrix, gate table, malformed shapes, timeouts / breaker / budgets / model change, privacy, approval isolation, corpora × hostile classifiers).
+- docs: DEC-301…308, JARVIS-V1JV-1…8, README 1327–1330, AGENTS rule, `docs/JEV_DECISION_POLICY.md`, `Benchmarks/README.md`.
+
+### Tests
+Linux harness only: `JevGateTests` 39 tests / 1 186 checks; Decision suites 107 tests / 978 checks; settings / action grammar slices 7 tests / 96 checks; 0 failures; source guards 289 / 0. `scripts/test.sh`, `scripts/verify.sh`, any live Jev call: NOT run.
+
+### Problems Found
+- A trailing `//` comment on a one-line `Decision.init` swallowed the rest of the line (moved above the init).
+- NaN confidence survived `min(max(NaN, 0), 1)` and would trap `Int(NaN)` in telemetry; out-of-range 5 was clamped to 1.0 — both are now malformed answers.
+- `isNegated` treated every continuous form ("gidiyor") as reported speech and rejected "Sistem nasıl gidiyor?": now only real negative / infinitive forms count.
+- 13 held-out sentences duplicated older corpora and were replaced before any Jev measurement.
+- Two existing guards rejected word lists about dangerous actions: the lists are written as space-separated strings and the credential-word filter moved beside the transport; no guard was weakened.
+
+### Decisions
+DEC-301…308.
+

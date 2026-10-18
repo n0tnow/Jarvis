@@ -28,6 +28,8 @@ V1.0 intelligence & reliability pass (Cloud, DEC-280…286): semantic lexicon + 
 
 V1.0 background reliability pass (Cloud, DEC-287…293): policy layer for long unattended tasks (derived status, readiness, retry/budget, replay, approval expiry, drift, event log, usage, context selection, worker admission, digest, quality gate) — AUTOMATED TESTED (Linux harness) / macOS UNCOMPILED (JARVIS-V1BG-2) / mostly NOT WIRED (JARVIS-V1BG-1) / MANUAL TEST REQUIRED (README 1315–1321). Details: `docs/V1_BACKGROUND_RELIABILITY.md`.
 
+V1.0 Jev gating (Cloud, DEC-301…308): Jev as an optional advisory classifier behind one local gate (safety classes, per-intent floors, corroboration, local risk / target resolution, model calibration, malformed-answer rejection, minimal context, fallbacks) — AUTOMATED TESTED (Linux harness, simulated classifiers) / macOS UNCOMPILED (JARVIS-V1JV-1) / NO LIVE JEV NUMBERS (JARVIS-V1JV-2) / MANUAL TEST REQUIRED (README 1327–1330). Details: `docs/JEV_DECISION_POLICY.md`.
+
 V1.0 autonomous engineering pipeline (Cloud, DEC-294…300): typed scoped assignments, observed-state verification (claims never evidence), change attribution that spares the user's dirty tree, tampering / quality / dependency / doc-truth checks, bounded semantic repair loop, ownership / staleness / cancellation, capability-based worker selection, review independence, rollback plan, grounded reports — AUTOMATED TESTED (Linux harness, real Git + Python fixtures) / macOS UNCOMPILED (JARVIS-V1EP-2) / NOT WIRED into the TaskEngine (JARVIS-V1EP-1) / MANUAL TEST REQUIRED (README 1322–1326). Details: `docs/AUTONOMOUS_ENGINEERING_PIPELINE.md`.
 
 Next Step:

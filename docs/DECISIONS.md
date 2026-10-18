@@ -1448,3 +1448,43 @@ Decision: `OwnershipRegistry` reserves the allowed paths of a WRITE assignment (
 Status: Accepted (V1.0 autonomous engineering pipeline)
 Decision: chaos, drift and soak scenarios compose the REAL policies over REAL disposable Git + Python fixtures and scripted workers and state in their own header that they are not the TaskEngine; benchmark workers (9 good, 14 bad behaviours) are deterministic and no provider is called; the engine seams that are not wired are listed in `docs/AUTONOMOUS_ENGINEERING_PIPELINE.md` §8 and nothing is claimed to run in the engine.
 
+## DEC-301 — Jev is an optional ADVISORY classifier behind ONE local gate; deterministic policy always wins
+Status: Accepted (V1.0 Jev gating pass)
+Decision: a remote answer reaches the routing only through `JevGatePolicy.evaluate` (called by `DecisionEngine.consultGated`). The grammar's decisions, ambiguities and policy blocks are never sent to Jev; corrections run before it; only a true abstention that is short, command-shaped, not quoted / meta, not negated, free of critical words and secret shapes is asked. Jev is disabled by default; nothing enables shadow or gated mode by itself; there is no second router, executor or approval for the classifier (guarded). It never executes, approves, grants or claims completion.
+Rationale: Phase B showed Jev is useful only on abstentions (6 useful routes in 431 requests) and wrong in exactly the places the grammar is right ("Can you see my screen?" → computer_use 0.99).
+
+## DEC-302 — Safety classes A–D; execution-capable intents are never accepted from a remote classifier in production
+Status: Accepted (V1.0 Jev gating pass)
+Decision: A read-only (accepted at level `readOnly`, the default), B own-UI (level `ownUI`, not the default), C execution-capable (application, computer, project, setting, research, stop, cancel — NEVER accepted: `executionIsEnabledInProduction` is a constant, computer / stop / cancel are not accepted even in the measurement-only simulation), D critical (derived locally from words and the policy table, never an intent). The intent taxonomy is closed and a test pins its size.
+Rationale: the measured simulation shows a generous resolver turns a wrong confident answer into a wrong execution most of the time; the oracle upper bound is 13 routes in 1 160 requests.
+
+## DEC-303 — Per-intent floors, local corroboration, local risk and JARVIS-resolved targets
+Status: Accepted (V1.0 Jev gating pass)
+Decision: floors are rules with a rationale (read-only 0.95, project query / page 0.97, never lower than the category floor or the user's own); the sentence must contain a word of the answer's topic (closed hand-written lists; a page must be named); risk and gate are re-derived from (intent, action, the utterance's own critical words) — a classifier's risk claim is not an input and a local critical word wins; targets come from the page vocabulary or the project registry hook (default unresolved), never from Jev's text; provider SELECTION is never a capability question; a model-version change stops acceptance until calibration is repeated.
+Rationale: corroboration cut accepted wrong read-only answers from 70 to 2 (wrong-on-every-case classifier, all seven corpora) at the price of 2 of 14 oracle routes.
+
+## DEC-304 — A malformed probability is rejected, never clamped (changes a test expectation)
+Status: Accepted (V1.0 Jev gating pass); supersedes the clamping behaviour of `JevResponseParser` / `TypeSafeJevTransport.parse`
+Decision: NaN, ±∞, −1, 5 and anything outside [0, 1] are malformed answers (the transport throws `malformedResponse`, the mapper and parser return nil, `Decision.init` forces a non-finite confidence to 0). The old test "confidence is clamped" now expects nil.
+Rationale: clamping 5 → 1.0 turned garbage into maximal confidence; NaN would trap `Int(NaN)` in telemetry.
+
+## DEC-305 — Minimal context, typed referents, file names masked; the privacy filter lives beside the transport
+Status: Accepted (V1.0 Jev gating pass)
+Decision: only the redacted utterance, language, channel, one previous-turn tag, the fixed vocabularies, project names when the sentence is about a project and — for pronoun / ellipsis sentences only — typed referent NAMES younger than ten minutes are sent. Paths, file names, e-mails, IPv4 and long digit runs are masked; credential-shaped sentences are never sent. `JevPrivacyFilter` is in `Providers/Jev/` because it names credential words and the decision layer's own guard forbids them.
+Rationale: smallest data that can still classify; the decision layer must stay free of key-shaped text.
+
+## DEC-306 — Jev is never a single point of failure
+Status: Accepted (V1.0 Jev gating pass)
+Decision: gated mode waits at most `min(timeout, 1.5 s)`; hourly and per-session request caps; breaker (3 failures / 600 s, immediate for out-of-balance / API-changed / missing credential); bounded retry for transient failures only; every failure leaves the production decision untouched and the existing router in charge, with a coded audit entry; telemetry carries codes, buckets and the model id, never text; no monetary or latency figure is shown without a measurement.
+Rationale: the classifier is an optimisation, not a dependency.
+
+## DEC-307 — The evaluation is pure and labels what produced each number
+Status: Accepted (V1.0 Jev gating pass)
+Decision: `JevEvaluation` runs corpora through the real preflight and gate with SIMULATED classifiers (oracle, wrong-on-every-case, always-X, noisy, outage) or RECORDED rows from a local run, and says which. The execution level exists only as a measurement. Real calibration comes from `Jarvis --jev-gate-evaluate` on rows recorded on the user's Mac; Cloud numbers about Jev are not claimed.
+Rationale: Cloud had no credential by instruction; simulated numbers prove the gate, not the model.
+
+## DEC-308 — Class-wide grammar guards found by the new corpora; the new sets are spent
+Status: Accepted (V1.0 Jev gating pass)
+Decision: quoted / translated / meta sentences, reported negation ("demedim", "istemiyorum"), an ability question ("açabiliyor musun"), a pronoun-only research topic (→ ask), a bare English "go" and settings "up / down" outside speed phrases no longer produce executing decisions. H1, N1 and A1 are spent for the grammar; a new blind set is needed before a new coverage claim.
+Rationale: first measurement on the new sets: executing false positives 2 / 8 / 8; after the class-wide fixes 0 / 0 / 5 (the five are resolver or gate hand-offs; labels not edited).
+
