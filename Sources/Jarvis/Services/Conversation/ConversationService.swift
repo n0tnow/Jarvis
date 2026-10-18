@@ -829,6 +829,14 @@ final class ConversationService {
             store.log("Engine reply claimed an action that no receipt backs — replaced by a true notice", kind: .warning)
             return
         }
+        // (1b) Claims of perception, state or task results that no verified fact of this turn backs (structural, Turkish and English). A model has no facts here: it can only render ones JARVIS supplied.
+        if case .replace(_, let notice) = ResponseClaimFirewall.review(reply: text, provenance: .modelGenerated, facts: [], language: language) {
+            conversation.replaceContent(messageID, with: notice)
+            store.log("Engine reply claimed a perception, state or result that no verified fact backs — replaced by a true notice", kind: .warning)
+            return
+        }
+        // Language consistency: a reply in the other language is recorded (content-free), never re-translated by a second model call.
+        if case .mismatch(let detected) = ResponseLanguageCheck.verdict(reply: text, expected: language) { store.log("Engine reply language mismatch (expected \(language.rawValue), detected \(detected.rawValue))", kind: .warning, persist: false) }
         // (2) Claims about what JARVIS can or cannot do.
         let found = CapabilityClaimGuard.findings(in: text)
         guard !found.isEmpty else { return }

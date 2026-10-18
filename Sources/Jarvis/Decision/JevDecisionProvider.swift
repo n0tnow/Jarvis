@@ -15,8 +15,13 @@ import Foundation
 
 enum JevMode: String, Codable, CaseIterable, Sendable { case disabled, shadow, gated }
 
+/// What shadow mode asks about. DEFAULT `abstentionsOnly`: a request the grammar understands is never sent (cost, privacy, latency) — only the sentences it abstained on, where an opinion could matter.
+/// `everything` exists for a deliberate agreement measurement (the offline benchmark does the same without a network).
+enum JevShadowScope: String, Codable, CaseIterable, Sendable { case abstentionsOnly, everything }
+
 struct JevConfig: Equatable, Sendable {
     var mode: JevMode = .disabled
+    var shadowScope: JevShadowScope = .abstentionsOnly
     /// Gated mode only: below this the answer is ignored. A CONSERVATIVE default, uncalibrated until the Phase B benchmark measures it; configurable.
     var gatedMinimumConfidence = 0.92
     var timeoutSeconds = 4.0
@@ -28,6 +33,9 @@ struct JevConfig: Equatable, Sendable {
     var breakerFailures = 3
     var breakerSeconds: TimeInterval = 600
     var maxUtteranceCharacters = 300
+    /// Extra attempts for a TRANSIENT transport failure only (`JevRetryPolicy`); each attempt counts against the hourly budget. 0 = never retry.
+    var maxRetries = 1
+    var retryBackoffSeconds: TimeInterval = 0.25
 }
 
 /// What may be sent. Built by `JevContextBuilder`; everything else is, by construction, never sent.
@@ -53,7 +61,13 @@ enum JevContextBuilder {
         return JevDecisionContext(utterance: redact(trimmed, limit: config.maxUtteranceCharacters), language: language, source: source.rawValue,
                                   previousInterpretation: String(previousInterpretation.split(separator: ":").first.map(String.init) ?? "conversation").prefix(24).description,
                                   intents: DecisionIntent.allCases.map(\.rawValue), pages: DecisionVocabulary.pages,
-                                  projectNames: Array(projectNames.map { String($0.prefix(40)) }.prefix(8)))
+                                  projectNames: mentionsProject(trimmed) ? Array(projectNames.map { String($0.prefix(40)) }.prefix(8)) : [])
+    }
+
+    /// Request minimisation: the project names (bounded, names only) are sent ONLY when the sentence is about a project. A status question or a page switch has no use for them.
+    static func mentionsProject(_ text: String) -> Bool {
+        let t = DecisionText.tokens(text)
+        return t.contains { w in ["proje", "project", "oyun", "game", "devam", "continue", "open", "ac"].contains { w.hasPrefix($0) } }
     }
 
     /// File paths and long digit/hex runs never leave the machine, even inside a sentence.
@@ -216,6 +230,8 @@ struct JevUsage: Equatable, Sendable {
     var skippedByBudget = 0
     var skippedByBreaker = 0
     var skippedNotConfigured = 0
+    /// Transient failures that were retried (each retry also counts in `requests`).
+    var retries = 0
     /// The model the service reported answering with (e.g. a versioned id behind an alias).
     var lastModel: String?
     /// Approximate cost in the account currency when a unit price was configured; nil = not estimated.
@@ -241,25 +257,32 @@ final class JevDecisionProvider: DecisionProviding, @unchecked Sendable {
     func decide(_ context: JevDecisionContext, config: JevConfig) async -> DecisionProviderResult {
         guard config.mode != .disabled else { return .unavailable(.notConfigured) }
         guard credentialAvailable() else { bump(\.skippedNotConfigured); return .unavailable(.credentialMissing) }
-        let now = clock()
-        switch admit(now: now, config: config) {
-        case .some(let why): return .unavailable(why)
-        case .none: break
-        }
-        let started = clock()
-        do {
-            let answer = try await withTimeout(config.timeoutSeconds) { [transport] in
-                try await transport.complete(JevRequestBuilder.request(for: context), modelAlias: config.modelAlias, timeout: config.timeoutSeconds)
+        var attempt = 0
+        while true {
+            if let why = admit(now: clock(), config: config) { return .unavailable(why) }
+            let started = clock()
+            do {
+                let answer = try await withTimeout(config.timeoutSeconds) { [transport] in
+                    try await transport.complete(JevRequestBuilder.request(for: context), modelAlias: config.modelAlias, timeout: config.timeoutSeconds)
+                }
+                let latency = clock().timeIntervalSince(started)
+                record(answer)
+                guard let decision = JevClassificationMapper.decision(from: answer) else { fail(.malformedResponse, config); return .unavailable(.malformedResponse) }
+                lock.lock(); consecutiveFailures = 0; lock.unlock()
+                return .decision(decision, latency: latency)
+            } catch let failure as JevFailure {
+                fail(failure, config)
+                guard JevRetryPolicy.shouldRetry(failure, attempt: attempt, maxRetries: config.maxRetries) else { return .unavailable(failure) }
+                bump(\.retries)
+                try? await Task.sleep(for: .seconds(JevRetryPolicy.backoff(attempt: attempt, base: config.retryBackoffSeconds)))
+                attempt += 1
+            } catch {
+                fail(.unavailable, config)
+                guard JevRetryPolicy.shouldRetry(.unavailable, attempt: attempt, maxRetries: config.maxRetries) else { return .unavailable(.unavailable) }
+                bump(\.retries)
+                try? await Task.sleep(for: .seconds(JevRetryPolicy.backoff(attempt: attempt, base: config.retryBackoffSeconds)))
+                attempt += 1
             }
-            let latency = clock().timeIntervalSince(started)
-            record(answer)
-            guard let decision = JevClassificationMapper.decision(from: answer) else { fail(.malformedResponse, config); return .unavailable(.malformedResponse) }
-            lock.lock(); consecutiveFailures = 0; lock.unlock()
-            return .decision(decision, latency: latency)
-        } catch let failure as JevFailure {
-            fail(failure, config); return .unavailable(failure)
-        } catch {
-            fail(.unavailable, config); return .unavailable(.unavailable)
         }
     }
 

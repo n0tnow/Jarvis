@@ -117,9 +117,11 @@ enum UtteranceChannel: String, Codable, Sendable { case typed, voice }
 enum GatedPolicy {
     static let acceptableIntents: Set<DecisionIntent> = [.conversation, .voiceStatus, .systemStatus, .jarvisNavigation, .projectQuery, .providerCapability]
 
+    /// `minimumConfidence` is the user's own floor; the per-category floors of `ConfidencePolicy` can only raise the bar further.
     static func accepts(_ d: Decision, minimumConfidence: Double) -> Bool {
-        guard d.confidence >= minimumConfidence, d.ambiguity == .none, d.gate == .none, d.riskClass == .low, !d.requiresComputerUse, !d.requiresProjectResolution || d.intent == .projectQuery else { return false }
+        guard d.ambiguity == .none, d.gate == .none, d.riskClass == .low, !d.requiresComputerUse, !d.requiresProjectResolution || d.intent == .projectQuery else { return false }
         guard acceptableIntents.contains(d.intent) else { return false }
+        guard ConfidencePolicy.standard.accepts(d, source: .remote, configuredFloor: minimumConfidence) else { return false }
         if d.intent == .jarvisNavigation { return d.target.map { DecisionVocabulary.hudSection($0) != nil } ?? false }
         return true
     }

@@ -77,7 +77,7 @@ enum VisibilityAnswer: Equatable, Sendable {
 
 enum ObservationGrounding {
     /// A visibility claim about "right now" needs an observation at most this old.
-    static let freshSeconds: TimeInterval = 20
+    static let freshSeconds: TimeInterval = ObservationFreshnessPolicy.standard.ttl(for: .appVisibility)
 
     static func fold(_ s: String) -> String { DecisionText.fold(s).filter { $0.isLetter || $0.isNumber } }
 

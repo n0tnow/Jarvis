@@ -378,10 +378,10 @@ struct DecisionGroundingTests {
 @MainActor
 @Suite("V1.0 decision · the optional remote classifier: disabled, shadow, gated")
 struct DecisionJevTests {
-    private func engine(_ mode: JevMode, minConfidence: Double = 0.92, provider: MockProvider?) -> DecisionEngine {
+    private func engine(_ mode: JevMode, minConfidence: Double = 0.92, scope: JevShadowScope = .everything, provider: MockProvider?) -> DecisionEngine {
         let e = DecisionEngine()
         e.jev = provider
-        e.config = { JevConfig(mode: mode, gatedMinimumConfidence: minConfidence) }
+        e.config = { JevConfig(mode: mode, shadowScope: scope, gatedMinimumConfidence: minConfidence) }
         return e
     }
 

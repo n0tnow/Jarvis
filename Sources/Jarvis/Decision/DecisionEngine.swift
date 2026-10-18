@@ -29,6 +29,9 @@ struct DecisionAuditEntry: Identifiable, Equatable, Sendable {
     var outcome: String?
     /// True when a gated remote decision was accepted for routing.
     var jevAccepted = false
+    /// The answer came from the in-memory pattern cache (no request was made) / the routing policy declined to ask.
+    var jevCacheHit = false
+    var jevSkippedByRouting = false
 }
 
 @MainActor
@@ -86,6 +89,15 @@ struct ShadowReport: Equatable, Sendable {
             p95Latency = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
         }
     }
+    /// Observed agreement per confidence bucket (the same edges the benchmark uses): the calibration curve Phase B reads before deciding anything about gated mode.
+    func calibrationBuckets(edges: [Double] = DecisionBenchmarkRunner.calibrationEdges) -> [(label: String, n: Int, agreed: Int)] {
+        (0..<(edges.count - 1)).map { i in
+            let inBucket = calibration.filter { $0.confidence >= edges[i] && $0.confidence < edges[i + 1] }
+            return ("[\(edges[i]), \(min(edges[i + 1], 1.0)))", inBucket.count, inBucket.filter(\.agreed).count)
+        }
+    }
+    var agreementRate: Double { (agree + disagree) == 0 ? 0 : Double(agree) / Double(agree + disagree) }
+
     static func == (a: ShadowReport, b: ShadowReport) -> Bool {
         a.consulted == b.consulted && a.agree == b.agree && a.disagree == b.disagree && a.productionUnknown == b.productionUnknown && a.unavailable == b.unavailable
             && a.meanLatency == b.meanLatency && a.p95Latency == b.p95Latency && a.calibration.count == b.calibration.count
@@ -101,6 +113,8 @@ final class DecisionEngine {
     /// Names of known projects for the minimised context (names only, bounded). Injected; never paths.
     var projectNames: () -> [String] = { [] }
     let audit = DecisionAuditLog()
+    /// In-memory, bounded, salted-hash pattern cache of remote answers (see `DecisionPatternCache`). Never persisted, forgets on `clear()`.
+    let patternCache = DecisionPatternCache()
     /// Forwarded as a content-free one-liner to the activity feed.
     var onActivity: ((String) -> Void)?
     private var pendingShadow: [Task<Void, Never>] = []
@@ -122,7 +136,8 @@ final class DecisionEngine {
         audit.update(id) { $0.production = production }
         onActivity?("Decision: \(production.intent.rawValue)\(production.action.map { "/" + $0 } ?? "") via \(production.provider.rawValue)")
         let cfg = config()
-        if cfg.mode == .shadow, let jev, let jevContext = makeContext(raw, context: context, language: language, config: cfg) {
+        // Shadow mode measures the classifier where it could matter — on an ABSTENTION of the grammar. A request the grammar owns is never sent (cost, privacy, latency); the offline benchmark covers those.
+        if cfg.mode == .shadow, let jev, cfg.shadowScope == .everything || JevRoutingPolicy.shouldConsult(raw, production: production), let jevContext = makeContext(raw, context: context, language: language, config: cfg) {
             let task = Task { @MainActor [weak self] in
                 let result = await jev.decide(jevContext, config: cfg)
                 self?.recordShadow(id, production: production, result: result)
@@ -137,12 +152,21 @@ final class DecisionEngine {
     /// (the existing router then handles the utterance exactly as it would without Jev). A deterministic decision is never replaced.
     func consultGated(_ raw: String, context: DecisionContext, outcome: Outcome, language: ReplyLanguage = .en) async -> Decision? {
         let cfg = config()
-        guard cfg.mode == .gated, outcome.decision.intent == .unknown, outcome.decision.gate == .none, let jev,
-              let jevContext = makeContext(raw, context: context, language: language, config: cfg) else { return nil }
+        guard cfg.mode == .gated, outcome.decision.intent == .unknown, outcome.decision.gate == .none, let jev else { return nil }
+        // the routing policy: only a short, command-shaped abstention is worth a (possibly paid) remote opinion
+        guard JevRoutingPolicy.shouldConsult(raw, production: outcome.decision) else { audit.update(outcome.id) { $0.jevSkippedByRouting = true }; return nil }
+        // a pattern this classifier already answered with very high confidence (re-checked against the CURRENT threshold)
+        if var cached = patternCache.lookup(raw), GatedPolicy.accepts(cached, minimumConfidence: cfg.gatedMinimumConfidence) {
+            cached.provenance = .jevGated
+            audit.update(outcome.id) { $0.jevAccepted = true; $0.jevCacheHit = true; $0.jev = cached; $0.agreement = .productionUnknown }
+            return cached
+        }
+        guard let jevContext = makeContext(raw, context: context, language: language, config: cfg) else { return nil }
         let result = await jev.decide(jevContext, config: cfg)
         recordShadow(outcome.id, production: outcome.decision, result: result)
         guard case .decision(var d, _) = result, GatedPolicy.accepts(d, minimumConfidence: cfg.gatedMinimumConfidence) else { return nil }
         d.provenance = .jevGated
+        patternCache.store(raw, d)
         audit.update(outcome.id) { $0.jevAccepted = true }
         return d
     }

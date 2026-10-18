@@ -33,7 +33,9 @@ struct IntelligenceRequest: Sendable {
 
     /// The prompt as the provider should see it: unchanged for typed requests, with the spoken-conversation preamble for voice turns, and the memory packet in front when there is one.
     var providerPrompt: String {
-        let base = presentation == .voiceConversation ? VoicePresentation.preamble + "\n\n" + prompt : prompt
+        var base = presentation == .voiceConversation ? VoicePresentation.preamble + "\n\n" + prompt : prompt
+        // V1.0 reliability pass: a Turkish request gets one language instruction for ANY engine (no extra model call, nothing model-specific)
+        if let directive = LanguageDirective.preamble(for: language) { base = directive + "\n\n" + base }
         guard let memoryContext, !memoryContext.isEmpty else { return base }
         return memoryContext + "\n\n---\n\n" + base
     }
