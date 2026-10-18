@@ -917,3 +917,27 @@ Status: OPEN. `MorningBrief.recognize/answer` and `TaskDigest.report` exist; `Co
 
 ### JARVIS-V1BG-7 — A routing-confusion floor can only be as good as its spent sets
 Status: OPEN · DOCUMENTED. The quality gate's coverage floors use the checked-in corpora; held-out and blind B are spent (report-only). Write a new blind set before believing a new coverage number (DEC-286).
+
+## V1.0 autonomous engineering pipeline
+
+### JARVIS-V1EP-1 — The engineering pipeline is tested but NOT WIRED into the TaskEngine
+Status: OPEN · DOCUMENTED. No engine call site builds an assignment, snapshots the workspace, runs `EngineeringVerifier`, consults `RepairLoop` / `OwnershipRegistry` / `StalenessCheck` / `WorkerSelector` (docs/AUTONOMOUS_ENGINEERING_PIPELINE.md §8). Until it is, the engine's own protections (capabilities, workspace guard, leases, hash checks, dirty-file approval, `ReviewAuthority`) are the real ones, and a worker's claims are judged by the existing step validations only.
+
+### JARVIS-V1EP-2 — The new tests were never compiled or run by `scripts/test.sh` on macOS
+Status: OPEN · MANUAL TEST REQUIRED. They ran in a Linux harness over real Git / Python fixtures. Expect small macOS compile adjustments (access levels, Swift Testing traits, `Foundation.Process` use in the fixture helper); do not weaken an assertion to make one compile.
+
+### JARVIS-V1EP-3 — No production runner produces `VerificationEvidence`; no pre-task backup store exists
+Status: OPEN. Evidence is constructed from real fixture processes in tests; the engine's `ManagedProcess` results must be mapped (profile label, exit status, workspace digest). Without a stored pre-task copy of a file, a rollback of a MODIFIED file is planned as "a person decides".
+
+### JARVIS-V1EP-4 — `GitTool` has no staged / conflicted facts
+Status: OPEN. The pure `GitStatusParser` reports them; `GitTool.baseline` only distinguishes dirty and untracked. The parser would replace the duplicated porcelain parsing there.
+
+### JARVIS-V1EP-5 — Content checks are structural, not a compiler
+Status: OPEN · NON-BLOCKING. Tampering / placeholder / suppression detection is language-aware only for comments and a few handler shapes; a worker can still write a hollow function that no pattern recognises (the build and tests at the final revision, and the review for risky changes, are the backstop). Test-assertion counting is line-based: a rewritten test file that keeps the same number of assertions with different expectations is reported as a MAJOR "assertionChanged", not a blocker.
+
+### JARVIS-V1EP-6 — A concurrent user edit in a worker's scope stops the task
+Status: OPEN · BY DESIGN. A result is stale when the repository changed in the worker's scope or read set after the assignment started (`approvalRequired`: re-inspect / re-plan with the person); only unrelated edits are folded into the baseline. The read set is the worker's own claim (`filesInspected`), used only to WIDEN suspicion.
+
+### JARVIS-V1EP-7 — Generated Unity / C# work is only a MANUAL requirement
+Status: OPEN. The generic contract can represent C# / scene / prefab work and emits "Unity editor validation on a real editor" as a manual requirement for `.cs` changes; no Unity operation was touched or validated.
+

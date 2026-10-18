@@ -1618,3 +1618,10 @@ Report anything odd and I'll add it to `docs/KNOWN_ISSUES.md`.
 1320. With a task waiting for approval, idle CPU stays ≈ 0 (no polling) and the Mac may sleep normally.
 1321. Ask "Gece ne yaptın?" / "Nerede kaldın?" after a task: today it reaches the generic path (JARVIS-V1BG-6) — confirm `scripts/verify.sh` is green, then wire `MorningBrief` only with explicit approval.
 
+**V1.0 autonomous engineering pipeline (Cloud, branch `claude/laughing-albattani-uzdlr6`) — manual checks (you; nothing is marked verified until you did it; first run `scripts/test.sh` and `scripts/verify.sh`, which have NOT been run on this branch — JARVIS-V1EP-2):**
+1322. `scripts/test.sh`: the eight `Engineering*Tests.swift` files compile and pass on macOS (fixtures call `git` and `python3` through `Foundation.Process`); `scripts/verify.sh`: `guards_engineering.sh` passes.
+1323. On a THROW-AWAY clone of any small project (never Hamam): modify a tracked file, stage another, leave an untracked file; run a task; afterwards all three are byte-identical (the pipeline is not wired yet — until it is, check that the existing dirty-file approval still asks).
+1324. Once the pipeline is wired (JARVIS-V1EP-1) against a DISPOSABLE fixture with a scripted fake worker: a worker that edits an out-of-scope file, deletes a test, or reports success without a diff is rejected and the report names the reason; a worker that does the work passes with real build / test evidence.
+1325. A task with a deliberate unfixable failure: the loop stops at the attempt budget or the repeated-failure rule with a readable reason — it does not run to a timeout or burn the provider budget.
+1326. A task that changes a build script, a guard or a dependency manifest asks for review and says why; a documentation change that claims MANUALLY VERIFIED is refused.
+

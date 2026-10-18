@@ -677,3 +677,27 @@ Linux harness only (real task model + persistence closure; plain-function `#expe
 ### Decisions
 DEC-287…293.
 
+## 2026-10-18 — V1.0 autonomous engineering quality & verified work pipeline (Cloud / headless pass)
+
+### Goal
+Make JARVIS better at SOFTWARE ENGINEERING WORK through its existing workers without a new orchestrator: a worker saying DONE must never equal WORK VERIFIED.
+
+### Changes
+- Repository truth first (docs/AUTONOMOUS_ENGINEERING_PIPELINE.md §1): providers are text-in / text-out, `ProjectTools` applies edits, `FileLeaseManager` leases files, `GitTool.baseline` records dirty / untracked, `ReviewAuthority` ranks facts above a reviewer, `ModelRouter` routes; gaps listed (no typed assignment, no tampering detection, no claim reconciliation, no staleness / rollback / attribution, no grounded engineering report).
+- New pure layer `Sources/Jarvis/Engineering/` (13 files): assignment, claims, snapshot + attribution, findings + path classes, scope enforcer, tampering detector, dependency / API / doc / architecture checks, evidence + planner + verifier, repair loop, ownership + lifecycle, worker selection + review rubric, rollback + hygiene + commit verification, report + checkpoint + digest. No engine hook.
+- Tests (8 files): contract, observation (real Git fixtures: dirty tree, rollback proven on disk), verification detectors, loop / ownership / lifecycle / report, selection (real `ModelRouter`), benchmark (nine task kinds, real build + test evidence, 9 good + 14 bad worker behaviours), chaos / drift / soak / properties. `scripts/guards_engineering.sh`.
+- docs: DEC-294…300, JARVIS-V1EP-1…7, README 1322–1326, AGENTS rule, `docs/AUTONOMOUS_ENGINEERING_PIPELINE.md`.
+
+### Tests
+Linux harness only (real task model + persistence + router closure; real `git` and `python3` fixtures; plain-function `#expect` shim): 104 tests / 3 544 checks / 0 failures; guards 282 / 0. `scripts/test.sh`, `scripts/verify.sh`, the engine tests and every live test were NOT run.
+
+### Problems Found
+- The simulation exposed that judging each attempt against the previous one makes a two-attempt fix look like a false claim and a repeated identical edit look like somebody else's change: the driver (and the documented contract) now judge cumulatively against the TASK's start, and a provider timeout costs request budget, not a worker attempt.
+- A concurrent user edit to an UNRELATED file was reported as a worker scope escape: `WorkspaceSnapshot.rebased(onto:)` folds it into the baseline; a concurrent edit in scope is stale and never verified.
+- The failure-signature classifier treated `AssertionError:` as a compile error (`error:` inside a word): fixed with a word boundary and an order that tries test failures first.
+- A resume that compared only file digests ignored a moved HEAD / changed branch: the check order is now HEAD, branch, digest.
+- Existing guards rejected command words in the detector's own patterns: the patterns use character classes, no guard was weakened. Open: JARVIS-V1EP-1…7.
+
+### Decisions
+DEC-294…300.
+
