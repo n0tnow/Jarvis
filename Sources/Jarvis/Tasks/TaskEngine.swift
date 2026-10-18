@@ -359,8 +359,7 @@ final class TaskEngine {
 
     /// Pending steps whose dependencies all finished (a skipped dependency counts as satisfied: it had nothing to do; so does a failed OPTIONAL one: it simply has no result).
     private func readySteps(_ ctx: TaskContext) -> [TaskStepRecord] {
-        let done = Set(ctx.steps.filter { $0.state == .passed || $0.state == .skipped || ($0.optional && $0.state == .failed) }.map(\.key))
-        return ctx.steps.filter { ($0.state == .pending || $0.state == .ready) && $0.dependsOn.allSatisfy(done.contains) }
+        StepReadiness.ready(ctx.steps)         // V1.0 background pass: the same rule, now a pure tested policy (`Reliability/StepReadiness.swift`)
     }
 
     // MARK: Persisted mutation helpers

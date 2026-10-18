@@ -574,7 +574,8 @@ extension TaskEngine {
     func requestApproval(_ ctx: TaskContext, _ step: TaskStepRecord, action: String, reason: String, risk: RiskClass) async -> Bool {
         // A decision already persisted for this exact action (restart recovery) is reused instead of asking twice.
         if let existing = (try? repository?.approvals(taskID: ctx.record.id))?.last(where: { $0.stepID == step.id && $0.action == OutputSanitizer.sanitize(String(action.prefix(300))) }) {
-            if existing.state == .approved { return true }
+            // V1.0 background pass: an approved decision is reused only while it is FRESH for its risk (ApprovalFreshness); an old approval is never a new permission, so an expired one falls through to a new request
+            if existing.state == .approved, ApprovalFreshness.mayReuse(existing, forAction: existing.action, now: Date()) { return true }
             if existing.state == .denied { return false }
             if existing.state == .pending { return await awaitDecision(ctx, step, existing) }
         }
