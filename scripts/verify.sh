@@ -410,6 +410,7 @@ source scripts/guards_decision.sh
 source scripts/guards_reliability.sh
 source scripts/guards_background.sh
 source scripts/guards_engineering.sh
+source scripts/guards_jev.sh
 
 print "== Smoke test (real window manager, store, status item)"
 log=$(mktemp)
