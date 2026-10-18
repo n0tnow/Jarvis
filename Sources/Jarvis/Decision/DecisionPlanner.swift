@@ -172,7 +172,10 @@ enum DecisionPlanner {
         case .unknown(let n, let known):
             if d.action == "open_bare" { return .passThrough }            // “Sofany'yi aç”: not a project — the application grammar (and its sound-shape fallback) gets the sentence unchanged
             let list = known.isEmpty ? "" : t(l, " Known projects: \(known.joined(separator: ", ")).", " Bildiğim projeler: \(known.joined(separator: ", ")).")
-            return .answer(t(l, "I do not know a project called “\(n)”.", "“\(n)” adında bir proje tanımıyorum.") + list, tone: .notice)
+            // a near miss is a QUESTION (“Did you mean Hamam?”), never an action: fuzzy matches do not execute
+            let near = ProjectAliasResolver.suggestions(for: n, among: f.projects.map { AliasEntry(key: $0.key, name: $0.name, aliases: $0.aliases) })
+            let hint = near.isEmpty ? "" : t(l, " Did you mean \(near.joined(separator: " or "))?", " Şunu mu demek istediniz: \(near.joined(separator: " ya da "))?")
+            return .answer(t(l, "I do not know a project called “\(n)”.", "“\(n)” adında bir proje tanımıyorum.") + list + hint, tone: .notice)
         case .noKnownProjects:
             if d.action == "open_bare" { return .passThrough }
             return .answer(t(l, "I do not know any project yet. Choose a project folder in Settings first.", "Henüz hiçbir proje tanımıyorum. Önce Ayarlar'dan bir proje klasörü seçin."), tone: .notice)
@@ -194,6 +197,10 @@ enum DecisionPlanner {
             let previous = f.previousUserText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !previous.isEmpty else { return .answer(referentQuestion(d, f), tone: .notice) }
             // the previous request is routed again through the NORMAL pipeline; one that needs approval or is blocked is not repeated on a pronoun
+            // a previous sentence that is itself a correction or a repeat is never repeated (no loops: “aynısını yap” twice asks)
+            if let before = f.classify(previous), before.intent == .correction || before.action == "ask_referent" {
+                return .answer(t(l, "There is nothing concrete for me to repeat. What would you like me to do?", "Tekrar edebileceğim somut bir şey yok. Ne yapmamı istersiniz?"), tone: .notice)
+            }
             if let before = f.classify(previous), before.gate != .none || before.riskClass >= .high {
                 return .answer(t(l, "That request needs your approval, so I will not repeat it on “the same again”. Please say it in full.", "O istek onay gerektiriyor; bu yüzden “aynısı” demenizle tekrarlamam. Lütfen tam olarak söyleyin."), tone: .notice)
             }

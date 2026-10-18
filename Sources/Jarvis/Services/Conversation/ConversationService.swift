@@ -177,7 +177,7 @@ final class ConversationService {
         if let engine = decisionEngine {
             var rewrites = 0
             while true {
-                let outcome = engine.decide(text, context: DecisionContext(source: source == .voice ? .voice : .typed, previousInterpretation: interpretedBefore, previousUserText: previousTurn?.user ?? "", hasPendingDecision: store.pendingApproval != nil || hasPendingDecision(), referents: currentReferents()), language: inputLanguage)
+                let outcome = engine.decide(text, context: DecisionContext(source: source == .voice ? .voice : .typed, previousInterpretation: interpretedBefore, previousUserText: freshPreviousUserText(previousTurn), hasPendingDecision: store.pendingApproval != nil || hasPendingDecision(), referents: currentReferents()), language: inputLanguage)
                 decisionOutcome = outcome
                 switch routeByDecision(outcome, text: text, language: inputLanguage, source: source, origin: origin) {
                 case .handled(let r): return r
@@ -307,6 +307,12 @@ final class ConversationService {
         var r = recentReferents.snapshot()
         if let t = workingContext.items.last(where: { $0.kind == .task }) { r.task = ReferentSlot(label: t.label, ageSeconds: Date().timeIntervalSince(t.createdAt)) }
         return r
+    }
+
+    /// The previous user sentence for “aynısını yap” / restatements — only while it is fresh (the same ten minutes as every spoken reference), never older.
+    private func freshPreviousUserText(_ turn: (user: String, answer: String)?) -> String {
+        guard let turn, let m = conversation.messages.last(where: { $0.role == .user && $0.content == turn.user }), Date().timeIntervalSince(m.timestamp) <= DecisionReferents.ttl else { return "" }
+        return turn.user
     }
 
     private func noteReferent(for intent: ActionIntent) {

@@ -9,6 +9,8 @@ import Foundation
 //                                          scores a recorded run of `scripts/local-ai/bench_model.py` with the rubric (RubricCheck) and prints the report; loads no model
 //   Jarvis --decision-benchmark [--corpus F] [--heldout F] [--jev] [--jev-model M] [--rows F]
 //                                          deterministic baseline (no network); with --jev the classifier is asked about every case IN SHADOW (compared, never executed)
+//                                          also: --adversarial F --blind F (the V1.0 reliability corpora) and --project-names "A,B" (a stand-in registry for bare project names; tests only)
+//   Jarvis --discover-projects <folder>...  lists project CANDIDATES (Unity / Xcode / SwiftPM / Git markers) under the folders you name; read-only, bounded, registers nothing
 // None of this starts the app, a provider, a task or an action. The key is read only by `TypeSafeJevTransport` at request time; these tools never see it.
 
 enum DecisionTools {
@@ -18,6 +20,7 @@ enum DecisionTools {
         if args.contains("--jev-check") { launch { await jevCheck(args) } }
         if args.contains("--decision-benchmark") { launch { await benchmark(args) } }
         if args.contains("--local-model-score") { launch { await scoreLocalModel(args) } }
+        if args.contains("--discover-projects") { discoverProjects(args) }
     }
 
     private static func launch(_ work: @escaping @Sendable () async -> Int32) -> Never {
@@ -90,18 +93,25 @@ enum DecisionTools {
     private static func benchmark(_ args: [String]) async -> Int32 {
         let corpusPath = value(after: "--corpus", in: args) ?? "Benchmarks/decision_corpus.json"
         let heldPath = value(after: "--heldout", in: args)
+        let adversarialPath = value(after: "--adversarial", in: args), blindPath = value(after: "--blind", in: args)
         let withJev = args.contains("--jev")
         var suites: [(String, DecisionCorpus)] = []
         do {
             suites.append(("main corpus", try DecisionCorpus.load(from: URL(fileURLWithPath: corpusPath))))
             if let h = heldPath { suites.append(("held-out", try DecisionCorpus.load(from: URL(fileURLWithPath: h)))) }
+            if let a = adversarialPath { suites.append(("adversarial A", try DecisionCorpus.load(from: URL(fileURLWithPath: a)))) }
+            if let b = blindPath { suites.append(("blind B", try DecisionCorpus.load(from: URL(fileURLWithPath: b)))) }
         } catch { out("cannot read the corpus: \(error)"); return 2 }
         let provider = JevDecisionProvider(transport: TypeSafeJevTransport(), credentialAvailable: { JevCredentialStore.isPresent() })
         var cfg = JevConfig(mode: .shadow)
         cfg.timeoutSeconds = 10; cfg.maxRequestsPerHour = 100_000; cfg.breakerFailures = 1_000
         cfg.modelAlias = value(after: "--jev-model", in: args) ?? "jev-latest"
         var allRows: [String: [Row]] = [:]
-        let recognizer = DeterministicCommandRecognizer()
+        var parsers = DecisionParsers()
+        if let names = value(after: "--project-names", in: args)?.split(separator: ",").map({ String($0).trimmingCharacters(in: .whitespaces) }), !names.isEmpty {
+            parsers.isKnownProjectName = { spoken in names.contains { ProjectOpenResolver.nameMatches(spoken: spoken, name: $0) } }
+        }
+        let recognizer = DeterministicCommandRecognizer(parsers: parsers)
         for (name, corpus) in suites {
             out("\n=== \(name): \(corpus.cases.count) cases ===")
             out(DecisionBenchmarkRunner.runDeterministic(corpus, recognizer: recognizer).markdown())
@@ -127,6 +137,21 @@ enum DecisionTools {
         }
         if let rowsPath = value(after: "--rows", in: args), let data = try? JSONEncoder().encode(allRows) { try? data.write(to: URL(fileURLWithPath: rowsPath)); out("rows written to \(rowsPath)") }
         return 0
+    }
+
+    // MARK: project discovery (read-only, explicit roots)
+
+    private static func discoverProjects(_ args: [String]) -> Never {
+        let roots = args.drop(while: { $0 != "--discover-projects" }).dropFirst().prefix(while: { !$0.hasPrefix("--") }).map { String($0) }
+        guard !roots.isEmpty else { err("Name at least one folder: Jarvis --discover-projects ~/Projects"); exit(2) }
+        let report = ProjectDiscovery.scan(roots: roots.map { ($0 as NSString).expandingTildeInPath })
+        for r in report.refusedRoots { out("refused (not a project root): \(r)") }
+        for r in report.missingRoots { out("not found: \(r)") }
+        for c in report.candidates {
+            out("\(c.kind.rawValue)\t\(c.verified ? "verified" : "unverified")\t\(c.registered ? "registered" : "NOT registered")\t\(c.path)\t\(c.suggestedAliases.isEmpty ? "" : "suggested alias: " + c.suggestedAliases.joined(separator: ", "))")
+        }
+        out("\(report.candidates.count) candidate(s), \(report.directoriesVisited) folder(s) looked at\(report.truncated ? " — stopped early at a budget, the list is a sample" : ""). Nothing was registered or written.")
+        exit(0)
     }
 
     // MARK: local model scoring

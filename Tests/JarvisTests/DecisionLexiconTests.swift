@@ -289,6 +289,11 @@ struct LexiconPlannerTests {
         #expect(!a.contains("geri aldım"))              // never claims to have undone anything
         let rep = decide("aynısını yap", previous: "Safari'yi aç", interpretation: "action")!
         #expect(DecisionPlanner.plan(rep, text: "aynısını yap", facts: facts(previous: "Safari'yi aç")) == .reroute(sentence: "Safari'yi aç"))
+        // no loops: repeating a repeat (or a correction) asks instead of re-routing it
+        let loop = decide("aynısını yap", previous: "aynısını yap", interpretation: "decision: correction")!
+        guard case .answer = DecisionPlanner.plan(loop, text: "aynısını yap", facts: facts(previous: "aynısını yap")) else { Issue.record("a repeat of a repeat must ask"); return }
+        let negLoop = decide("aynısını yap", previous: "hayır onu yapma", interpretation: "decision: correction")!
+        guard case .answer = DecisionPlanner.plan(negLoop, text: "aynısını yap", facts: facts(previous: "hayır onu yapma")) else { Issue.record("a correction is never repeated"); return }
         let risky = decide("aynısını yap", previous: "Dosyayı sil", interpretation: "decision: project_task")!
         guard case .answer = DecisionPlanner.plan(risky, text: "aynısını yap", facts: facts(previous: "Dosyayı sil")) else { Issue.record("a risky previous request must not be repeated on a pronoun"); return }
     }
