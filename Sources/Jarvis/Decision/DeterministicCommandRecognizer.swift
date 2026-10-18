@@ -83,21 +83,36 @@ struct DeterministicCommandRecognizer {
         // Narrow, exact correction forms (“hayır onu yapma”, “No, don't do that”, “aynısını yap”) come before the general correction parser, which would read “No, <rest>” as a sentence to route again.
         if let d = SemanticLexicon(parsers: parsers).metaCorrection(w.t, context: context) { return d }
         // Level 0: the closed grammar. A decision it produces for an EXECUTING intent is first checked for a stutter / a how-to question (“Görevi nasıl iptal ederim”, “aç aç aç aç”).
-        if let d = recognizeClosed(text, context: context) { return Self.guarded(d, w) }
+        if let d = recognizeClosed(text, context: context) { return Self.guarded(d, w, raw: text) }
         // Level 0b: the typed semantic lexicon (closed morphology, concept × target slots, referents) …
         if let d = SemanticLexicon(parsers: parsers).decide(text, tokens: w.t, context: context) { return d }
         // … and the polite / colloquial verb forms rewritten to the imperative the existing typed parsers were written for (the same parsers, the same gates).
         if let canon = PoliteCanonicalizer.canonical(text), canon != text, !canon.isEmpty, var d = recognizeClosed(canon, context: context) {
             d.provenance = .semanticLexicon
             d.confidence = min(d.confidence, 0.9)
-            return Self.guarded(d, W(canon))
+            return Self.guarded(d, W(canon), raw: text)
         }
         return nil
     }
 
+    /// Every word besides the research verb is a pronoun or filler: nothing says WHAT to research.
+    private static func isPronounOnlyResearch(_ w: W) -> Bool {
+        let pronouns: Set<String> = ["bunun", "bunu", "sunu", "sunun", "bu", "su", "onu", "onun", "this", "that", "it", "these", "those", "them"]
+        let filler: Set<String> = ["hakkinda", "hakkindaki", "about", "on", "for", "me", "biraz", "bir", "little", "bit", "some", "research", "look", "up", "into", "search", "yap", "yapar", "yapsana", "et", "ederim", "misin", "musun", "mi", "mu", "please", "lutfen", "can", "could", "you", "jarvis", "hey", "a", "the", "to", "konu", "konusunda", "arastirma", "arastir", "arastirir", "arastirsana", "arastirabilir", "arastirabilirmisin", "arastirirmisin", "internette", "webde", "ara", "arar", "hemen", "simdi", "now"]
+        guard w.t.contains(where: { pronouns.contains($0) }) else { return false }
+        return w.t.allSatisfy { pronouns.contains($0) || filler.contains($0) || $0.hasPrefix("arastir") }
+    }
+
+    private static let reportedNegations: Set<String> = ["demedim", "dememistim", "istemiyorum", "istemem", "istemiyoruz", "keske", "asla"]
+
     /// Executing decisions are dropped (the sentence keeps its normal route) when the transcript is a stutter or a how-to / why question. Blocked requests, stop commands and read-only answers are untouched.
-    private static func guarded(_ d: Decision, _ w: W) -> Decision? {
+    private static func guarded(_ d: Decision, _ w: W, raw: String) -> Decision? {
         guard d.requiresExecution, d.gate != .blocked, d.intent != .correction else { return d }
+        // a command that is quoted, translated or explained (“'Delete all' ne demek?”), a report of what was NOT said (“Bu projeyi sil demedim”) and a question about the ability (“Safari'yi açabiliyor musun?”) are no request to act
+        if d.intent != .stopSpeech, d.intent != .cancelTask {
+            if JevUtteranceGuards.isQuotedOrMeta(raw) || w.t.contains(where: { reportedNegations.contains($0) }) { return nil }
+            if DecisionText.isQuestion(raw, w.t), w.t.contains(where: { $0.hasSuffix("abiliyor") || $0.hasSuffix("ebiliyor") }) { return nil }
+        }
         // a request NOT to do it (“Görevi iptal etme”, “Don't open Notes”) or a stutter / how-to question is never an action
         if w.t.contains(where: { VerbMorphology.isNegativeImperative($0) || LexiconVocabulary.negationWords.contains($0) }) { return nil }
         guard d.intent != .stopSpeech else { return d }
@@ -133,6 +148,8 @@ struct DeterministicCommandRecognizer {
         if let d = providerChoice(w, question: question) { return d }
         if let d = capabilityQuestion(text, w) { return d }
         // “Araştırma sayfasına geçelim” names JARVIS' own Research PAGE: a page noun means navigation territory, never a web research request
+        // … and a research request whose ONLY topic is a pronoun (“Şunu araştır”, “Research this for me”) has no topic yet: it asks which one, it never searches for the word “this”
+        if parsers.research(text), Self.isPronounOnlyResearch(w) { return Decision(intent: .unknown, confidence: 0.6, normalized: "Ambiguous topic for research", target: "research", action: "ask_referent", ambiguity: .ambiguous(question: "referent:research"), provenance: .deterministicGrammar) }
         if parsers.research(text), !w.pre("sayfa", "ekran", "panel", "sekme", "page", "screen", "tab ") { return Decision(intent: .research, confidence: 0.95, normalized: "Research this topic on the web", action: "web_research", execution: true, provenance: .existingParser) }
         if let d = projectQuery(text, w) { return d }
         if let d = smallTalk(w) { return d }

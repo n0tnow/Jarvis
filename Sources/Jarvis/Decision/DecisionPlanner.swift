@@ -127,6 +127,7 @@ enum DecisionPlanner {
         switch verb {
         case "repeat": return t(l, "There is nothing recent for me to repeat. What would you like me to do?", "Tekrar edebileceğim yakın zamanlı bir şey yok. Ne yapmamı istersiniz?")
         case "continue": return t(l, "Which task should I continue? There is no recent one I could be sure of.", "Hangi göreve devam edeyim? Emin olabileceğim yakın zamanlı bir görev yok.")
+        case "research": return t(l, "What should I research? Tell me the topic.", "Neyi araştırayım? Konuyu söyleyin.")
         case "close":
             return labels.count > 1 ? t(l, "Which one should I close: \(labels.joined(separator: " or "))?", "Hangisini kapatayım: \(labels.joined(separator: " mı yoksa ")) mı?")
                                     : t(l, "Which one should I close? Tell me the application's name.", "Hangisini kapatayım? Uygulamanın adını söyleyin.")

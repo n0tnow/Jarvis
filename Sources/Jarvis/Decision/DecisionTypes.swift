@@ -81,11 +81,12 @@ struct Decision: Equatable, Codable, Sendable {
     var ambiguity: DecisionAmbiguity
     var alternatives: [DecisionCandidate]
 
+    // a NaN / infinite number is never a confidence: it becomes 0 (and a classifier answer carrying one is rejected as malformed before it gets here)
     init(intent: DecisionIntent, confidence: Double = 1.0, normalized: String = "", target: String? = nil, action: String? = nil,
          execution: Bool = false, computerUse: Bool = false, projectResolution: Bool = false, deepReasoning: Bool = false,
          risk: RiskClass = .low, gate: DecisionGate = .none, ambiguity: DecisionAmbiguity = .none, provenance: DecisionProvenance = .deterministicGrammar, provider: DecisionProviderID = .deterministic,
          alternatives: [DecisionCandidate] = []) {
-        self.intent = intent; self.confidence = min(max(confidence, 0), 1); self.normalizedUserIntent = String(normalized.prefix(240)); self.target = target.map { String($0.prefix(80)) }; self.action = action
+        self.intent = intent; self.confidence = confidence.isFinite ? min(max(confidence, 0), 1) : 0; self.normalizedUserIntent = String(normalized.prefix(240)); self.target = target.map { String($0.prefix(80)) }; self.action = action
         requiresExecution = execution; requiresComputerUse = computerUse; requiresProjectResolution = projectResolution; requiresDeepReasoning = deepReasoning
         riskClass = risk; self.gate = gate; self.provenance = provenance; self.provider = provider; self.ambiguity = ambiguity; self.alternatives = alternatives
     }

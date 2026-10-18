@@ -18,6 +18,11 @@ struct DecisionTelemetryEvent: Equatable, Sendable {
     var outcome: String?               // “answered”, “verified”, “failed” … (bounded vocabulary)
     var jevAgreement: String?
     var reason: String?                // a CODE: “gated-accepted”, “routing-skip”, “cache-hit”, “guard-rejected” …
+    /// V1.0 Jev gating pass: why a remote answer was rejected (a `JevRejection` code), the model that answered (a version id, never text) and whether the existing path handled the sentence.
+    var jevRejection: String?
+    var jevModel: String?
+    var fallbackUsed: Bool = false
+    var jevConfidenceBucket: Int?
 }
 
 struct DecisionTelemetry: Equatable, Sendable {
@@ -43,7 +48,8 @@ struct DecisionTelemetry: Equatable, Sendable {
         guard let d = e.production else { return nil }
         return DecisionTelemetryEvent(at: e.at, intent: d.intent, provider: d.provider, provenance: d.provenance, confidenceBucket: Int((d.confidence * 10).rounded(.down)), gate: d.gate,
                                       latencyBucketMs: e.jevLatency.map { latencyBucket($0) }, route: e.route, outcome: e.outcome.map { String($0.prefix(24)) }, jevAgreement: e.agreement == .notConsulted ? nil : e.agreement.rawValue,
-                                      reason: reason ?? (e.jevCacheHit ? "cache-hit" : e.jevSkippedByRouting ? "routing-skip" : e.jevAccepted ? "gated-accepted" : nil))
+                                      reason: reason ?? (e.jevCacheHit ? "cache-hit" : e.jevSkippedByRouting ? "routing-skip" : e.jevAccepted ? "gated-accepted" : nil),
+                                      jevRejection: e.jevRejection, jevModel: e.jevModel.map { String($0.prefix(40)) }, fallbackUsed: e.jevFallbackUsed, jevConfidenceBucket: e.jev.map { Int(($0.confidence * 10).rounded(.down)) })
     }
 
     mutating func prune(now: Date = Date()) {

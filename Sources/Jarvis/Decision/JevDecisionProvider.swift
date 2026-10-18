@@ -36,6 +36,15 @@ struct JevConfig: Equatable, Sendable {
     /// Extra attempts for a TRANSIENT transport failure only (`JevRetryPolicy`); each attempt counts against the hourly budget. 0 = never retry.
     var maxRetries = 1
     var retryBackoffSeconds: TimeInterval = 0.25
+    /// Gated mode only (V1.0 Jev gating pass): how far an accepted answer may reach. DEFAULT `readOnly` — status / voice / provider-capability / project-query answers only. `ownUI` adds page changes;
+    /// `execution` is a SIMULATION level that production never honours (`JevGatePolicy.executionIsEnabledInProduction`).
+    var gateLevel: JevGateLevel = .readOnly
+    /// Gated mode waits at most this long for the classifier, whatever `timeoutSeconds` says: a slow classifier must not slow a conversation (measured p95 ≈ 0.4 s; 1.5 s ≈ 3.5× that).
+    var gatedTimeoutSeconds: TimeInterval = 1.5
+    /// Cost guard per process lifetime on top of the hourly one (0 = no per-session cap). The service has no auto-refill; this only bounds what JARVIS itself may ask for.
+    var maxRequestsPerSession = 1000
+    /// The model version the confidence floors were calibrated on ("" = none recorded). When the service reports a DIFFERENT model, a gated answer is not accepted until calibration is repeated.
+    var calibratedModel = ""
 }
 
 /// What may be sent. Built by `JevContextBuilder`; everything else is, by construction, never sent.
@@ -50,18 +59,32 @@ struct JevDecisionContext: Codable, Equatable, Sendable {
     var pages: [String]
     /// Names (not paths) of known projects and of a few well-known applications, bounded.
     var projectNames: [String]
+    /// Minimal TYPED conversational context (names only, ≤ 10 minutes old): {"lastApplication": "Safari", "lastProject": "Hamam"} — never a transcript. Sent only when the sentence is a pronoun / ellipsis ("onu", "bunu", "devam et").
+    var referents: [String: String] = [:]
 }
 
 enum JevContextBuilder {
     /// nil = nothing is sent (credential-shaped text is refused outright: an utterance that carries a secret is not a classification job).
-    static func build(utterance raw: String, language: String, source: UtteranceChannel, previousInterpretation: String, projectNames: [String], config: JevConfig = JevConfig()) -> JevDecisionContext? {
+    static func build(utterance raw: String, language: String, source: UtteranceChannel, previousInterpretation: String, projectNames: [String], referents: DecisionReferents = DecisionReferents(), config: JevConfig = JevConfig()) -> JevDecisionContext? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        guard !SecretGate.containsSecret(trimmed) else { return nil }
+        guard !SecretGate.containsSecret(trimmed), !JevPrivacyFilter.looksSecret(trimmed) else { return nil }
         return JevDecisionContext(utterance: redact(trimmed, limit: config.maxUtteranceCharacters), language: language, source: source.rawValue,
                                   previousInterpretation: String(previousInterpretation.split(separator: ":").first.map(String.init) ?? "conversation").prefix(24).description,
                                   intents: DecisionIntent.allCases.map(\.rawValue), pages: DecisionVocabulary.pages,
-                                  projectNames: mentionsProject(trimmed) ? Array(projectNames.map { String($0.prefix(40)) }.prefix(8)) : [])
+                                  projectNames: mentionsProject(trimmed) ? Array(projectNames.map { String($0.prefix(40)) }.prefix(8)) : [], referents: typedReferents(trimmed, referents))
+    }
+
+    /// The typed slots a pronoun / ellipsis could mean — and only then: "Sistem durumunu söyle" needs none of them.
+    static func typedReferents(_ text: String, _ r: DecisionReferents) -> [String: String] {
+        let t = DecisionText.tokens(text)
+        let elliptical = t.contains { w in ["onu", "bunu", "sunu", "o", "bu", "su", "devam", "ayni", "aynisini", "it", "that", "this", "same", "continue", "again"].contains(w) || w.hasPrefix("onu") || w.hasPrefix("bunu") }
+        guard elliptical else { return [:] }
+        var out: [String: String] = [:]
+        if let a = r.fresh(.application) { out["lastApplication"] = a.label }
+        if let p = r.fresh(.project) { out["lastProject"] = p.label }
+        if let g = r.fresh(.jarvisPage) { out["lastPage"] = g.label }
+        return out.mapValues { String($0.prefix(40)) }
     }
 
     /// Request minimisation: the project names (bounded, names only) are sent ONLY when the sentence is about a project. A status question or a page switch has no use for them.
@@ -70,11 +93,14 @@ enum JevContextBuilder {
         return t.contains { w in ["proje", "project", "oyun", "game", "devam", "continue", "open", "ac"].contains { w.hasPrefix($0) } }
     }
 
-    /// File paths and long digit/hex runs never leave the machine, even inside a sentence.
+    /// File paths, e-mail addresses, network addresses and long digit/hex runs never leave the machine, even inside a sentence.
     static func redact(_ s: String, limit: Int) -> String {
         let words = s.split(whereSeparator: { $0.isWhitespace }).map { w -> String in
             let t = String(w)
-            if t.hasPrefix("/") || t.hasPrefix("~/") || t.contains("://") || t.hasPrefix("file:") { return "<path>" }
+            if t.hasPrefix("/") || t.hasPrefix("~/") || t.contains("://") || t.hasPrefix("file:") || t.contains("\\") || (t.count > 2 && t.dropFirst().hasPrefix(":\\")) { return "<path>" }
+            if t.filter({ $0 == "/" }).count >= 2 || JevPrivacyFilter.looksLikeFileName(t) { return "<path>" }      // Assets/Scripts/Player.cs, notes.txt: a file name is not a classification input either
+            if JevPrivacyFilter.isEmail(t) { return "<email>" }
+            if JevPrivacyFilter.isNetworkAddress(t) { return "<address>" }
             let digits = t.filter { $0.isNumber || ($0.isHexDigit && t.count >= 16) }
             if digits.count >= 9 { return "<number>" }
             return t
@@ -124,7 +150,8 @@ enum JevRequestBuilder {
 
     static func request(for c: JevDecisionContext) -> JevClassifyRequest {
         let known = Set(c.intents)
-        let state = "Utterance: \(c.utterance)\nLanguage: \(c.language)\nHeard by: \(c.source)\nPrevious turn: \(c.previousInterpretation)"
+        var state = "Utterance: \(c.utterance)\nLanguage: \(c.language)\nHeard by: \(c.source)\nPrevious turn: \(c.previousInterpretation)"
+        for (k, v) in c.referents.sorted(by: { $0.key < $1.key }) { state += "\n\(k): \(v)" }
         return JevClassifyRequest(state: state, intents: intentDescriptions.filter { known.contains($0.name) }, pages: c.pages)
     }
 }
@@ -134,7 +161,7 @@ enum JevRequestBuilder {
 enum JevClassificationMapper {
     /// A typed Decision from the classifier's answer, or nil when the intent is not one of ours. Risk and gate are NOT taken from the answer: `DecisionPolicy` decides.
     static func decision(from c: JevClassification) -> Decision? {
-        guard let intent = DecisionIntent(rawValue: c.intent) else { return nil }
+        guard let intent = DecisionIntent(rawValue: c.intent), c.confidence.isFinite, c.confidence >= 0, c.confidence <= 1.000_001 else { return nil }
         var target: String?
         var action: String?
         if intent == .jarvisNavigation, let page = c.page, let known = DecisionVocabulary.hudSection(page) { target = known; action = "navigate" }
@@ -149,8 +176,8 @@ enum JevResponseParser {
     static func parse(_ text: String) -> Decision? {
         guard let object = jsonObject(text) else { return nil }
         guard let intentRaw = object["intent"] as? String, let intent = DecisionIntent(rawValue: intentRaw.trimmingCharacters(in: .whitespaces).lowercased()) else { return nil }
-        guard let confNumber = object["confidence"] as? NSNumber else { return nil }
-        let confidence = min(max(confNumber.doubleValue, 0), 1)
+        guard let confNumber = object["confidence"] as? NSNumber, confNumber.doubleValue.isFinite, confNumber.doubleValue >= 0, confNumber.doubleValue <= 1.000_001 else { return nil }     // out of range = malformed, never clamped
+        let confidence = min(confNumber.doubleValue, 1)
         func clean(_ v: Any?, _ limit: Int) -> String? {
             guard let s = v as? String else { return nil }
             let t = String(s.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.map(Character.init)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -219,7 +246,11 @@ enum DecisionProviderResult: Equatable, Sendable {
 
 protocol DecisionProviding: AnyObject, Sendable {
     func decide(_ context: JevDecisionContext, config: JevConfig) async -> DecisionProviderResult
+    /// The model version the service reported on its latest answer (nil = unknown / not applicable). Used to invalidate a calibration when the service changes the model behind an alias.
+    var reportedModel: String? { get }
 }
+
+extension DecisionProviding { var reportedModel: String? { nil } }
 
 /// Counters for the remote classifier (memory only). Cost is reported as UNKNOWN unless a price is configured; nothing is ever refilled or enabled by this.
 struct JevUsage: Equatable, Sendable {
@@ -249,6 +280,7 @@ final class JevDecisionProvider: DecisionProviding, @unchecked Sendable {
     private var openUntil: Date?
 
     var usage: JevUsage { lock.lock(); defer { lock.unlock() }; return _usage }
+    var reportedModel: String? { usage.lastModel }
 
     init(transport: any JevTransport = UnconfiguredJevTransport(), credentialAvailable: @escaping @Sendable () -> Bool = { false }, clock: @escaping @Sendable () -> Date = { Date() }) {
         self.transport = transport; self.credentialAvailable = credentialAvailable; self.clock = clock
@@ -296,6 +328,7 @@ final class JevDecisionProvider: DecisionProviding, @unchecked Sendable {
         }
         recentRequests.removeAll { now.timeIntervalSince($0) > 3600 }
         if recentRequests.count >= config.maxRequestsPerHour { _usage.skippedByBudget += 1; return .rateLimited }
+        if config.maxRequestsPerSession > 0, _usage.requests >= config.maxRequestsPerSession { _usage.skippedByBudget += 1; return .rateLimited }
         recentRequests.append(now)
         _usage.requests += 1
         return nil

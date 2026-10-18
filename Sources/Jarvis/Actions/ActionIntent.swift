@@ -65,7 +65,9 @@ enum ActionIntentParser {
         func has(_ w: String...) -> Bool { w.contains { words.contains($0) } }
         func hasPrefix(_ p: String...) -> Bool { t.contains { w in p.contains { w.hasPrefix($0) } } }
         let openVerb = !words.isDisjoint(with: openVerbs) || hasPrefix("acab", "acar")
-        let selfVerb = !words.isDisjoint(with: selfVerbs) || hasPrefix("acab", "acar", "goster", "donebil")
+        // a bare “go” is a verb of motion only with a direction or a screen noun (“go to settings”, “go back”); “Rust mı Go mu öğrenmeli” names a programming language
+        let bareGo = words.contains("go") && !has("to", "back", "home") && !hasPrefix("panel", "ekran", "sayfa", "page", "screen", "tab", "view")
+        let selfVerb = !words.subtracting(bareGo ? ["go"] : []).isDisjoint(with: selfVerbs) || hasPrefix("acab", "acar", "goster", "donebil")
         let closeVerb = !words.isDisjoint(with: closeVerbs) || hasPrefix("kapatab", "kapatir")
 
         // 1. JARVIS' own HUD ------------------------------------------------------------------------------------------------------------------

@@ -62,7 +62,9 @@ struct TypeSafeJevTransport: JevTransport {
     static func parse(_ json: Any) -> JevClassification? {
         guard let root = json as? [String: Any], let answers = root["answers"] as? [String: Any], let intentAnswer = answers["intent"] as? [String: Any],
               let choice = intentAnswer["choice"] as? String, let conf = (intentAnswer["confidence"] as? NSNumber)?.doubleValue else { return nil }
-        var c = JevClassification(intent: choice, confidence: min(max(conf, 0), 1))
+        // a probability outside [0, 1] (-1, 5, NaN) is a malformed answer, not "maximal confidence": it is rejected, never clamped into something the gate would accept
+        guard conf.isFinite, conf >= 0, conf <= 1.000_001 else { return nil }
+        var c = JevClassification(intent: choice, confidence: min(conf, 1))
         c.probabilities = (intentAnswer["probabilities"] as? [String: Any])?.compactMapValues { ($0 as? NSNumber)?.doubleValue } ?? [:]
         if let page = answers["page"] as? [String: Any], let p = page["choice"] as? String, p != "none" { c.page = p; c.pageConfidence = (page["confidence"] as? NSNumber)?.doubleValue }
         c.model = root["model"] as? String

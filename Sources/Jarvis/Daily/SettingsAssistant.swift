@@ -73,8 +73,8 @@ enum SettingsIntentParser {
 
         // Speech rate.
         let speechCtx = hasPrefix("konus") || has("speak", "speaking", "talk", "talking", "speech", "voice") || (hasPrefix("hiz") && has("ses", "sesin", "sesli", "tts"))
-        let faster = hasPrefix("arttir", "artir", "hizlan", "hizli", "hizlandir", "yukselt") || has("faster", "quicker", "increase", "up") || phrase("speed up")
-        let slower = hasPrefix("azalt", "yavas", "yavaslat", "dusur") || has("slower", "decrease", "down") || phrase("slow down")
+        let faster = hasPrefix("arttir", "artir", "hizlan", "hizli", "hizlandir", "yukselt") || has("faster", "quicker", "increase") || phrase("speed up", "speak up", "talk up")
+        let slower = hasPrefix("azalt", "yavas", "yavaslat", "dusur") || has("slower", "decrease") || phrase("slow down", "speak down", "talk down")
         if speechCtx, !question, faster != slower {
             let big = has("cok", "much", "lot", "significantly", "epey"), small = has("biraz", "hafif", "hafifce", "slightly", "bit", "little", "kadar")
             let step = big ? bigStep : (small ? smallStep : normalStep)

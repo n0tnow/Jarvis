@@ -32,6 +32,10 @@ struct DecisionAuditEntry: Identifiable, Equatable, Sendable {
     /// The answer came from the in-memory pattern cache (no request was made) / the routing policy declined to ask.
     var jevCacheHit = false
     var jevSkippedByRouting = false
+    /// V1.0 Jev gating pass: WHY a remote answer was (not) used — a code from `JevRejection`, never text — the model that answered, and whether the existing path handled the sentence (a fallback).
+    var jevRejection: String?
+    var jevModel: String?
+    var jevFallbackUsed = false
 }
 
 @MainActor
@@ -117,6 +121,10 @@ final class DecisionEngine {
     let patternCache = DecisionPatternCache()
     /// Forwarded as a content-free one-liner to the activity feed.
     var onActivity: ((String) -> Void)?
+    /// JARVIS' OWN resolvers (V1.0 Jev gating pass): a classifier never names an executable identifier. The project registry says whether the sentence names exactly one known project; the default says
+    /// "unresolved", so a project-bound answer is rejected until a real registry is wired in. Capability availability defaults to available (the handler itself still verifies and refuses).
+    var projectResolver: (String) -> JevTargetResolution = { _ in .unresolved }
+    var capabilityAvailable: (DecisionIntent) -> Bool = { _ in true }
     private var pendingShadow: [Task<Void, Never>] = []
 
     init(recognizer: DeterministicCommandRecognizer = DeterministicCommandRecognizer(), jev: (any DecisionProviding)? = nil) {
@@ -148,34 +156,65 @@ final class DecisionEngine {
         return Outcome(id: id, decision: production)
     }
 
-    /// GATED mode, only when the production grammar found nothing: ask the remote classifier and accept its answer ONLY if `GatedPolicy` allows it. Returns the accepted decision, or nil
-    /// (the existing router then handles the utterance exactly as it would without Jev). A deterministic decision is never replaced.
+    /// GATED mode, only when the production grammar found nothing: ask the remote classifier and accept its answer ONLY if `JevGatePolicy` allows it (safety class, local risk re-derivation, per-intent floor,
+    /// target resolved by JARVIS, capability, calibration). Returns the accepted decision, or nil — the existing router then handles the utterance exactly as it would without Jev, and the audit says why.
+    /// A deterministic decision, an ambiguity of the grammar and a policy block are never sent to the classifier at all.
     func consultGated(_ raw: String, context: DecisionContext, outcome: Outcome, language: ReplyLanguage = .en) async -> Decision? {
         let cfg = config()
-        guard cfg.mode == .gated, outcome.decision.intent == .unknown, outcome.decision.gate == .none, let jev else { return nil }
-        // the routing policy: only a short, command-shaped abstention is worth a (possibly paid) remote opinion
-        guard JevRoutingPolicy.shouldConsult(raw, production: outcome.decision) else { audit.update(outcome.id) { $0.jevSkippedByRouting = true }; return nil }
-        // a pattern this classifier already answered with very high confidence (re-checked against the CURRENT threshold)
-        if var cached = patternCache.lookup(raw), GatedPolicy.accepts(cached, minimumConfidence: cfg.gatedMinimumConfidence) {
-            cached.provenance = .jevGated
-            audit.update(outcome.id) { $0.jevAccepted = true; $0.jevCacheHit = true; $0.jev = cached; $0.agreement = .productionUnknown }
-            return cached
+        guard cfg.mode == .gated, let jev else { return nil }
+        if let skip = JevPreflight.skipReason(raw: raw, production: outcome.decision, gated: true) {
+            audit.update(outcome.id) { $0.jevRejection = skip.rawValue; $0.jevFallbackUsed = skip != .deterministicDecided && skip != .deterministicAmbiguity && skip != .policyBlock; $0.jevSkippedByRouting = skip != .deterministicDecided && skip != .deterministicAmbiguity && skip != .policyBlock }
+            return nil
         }
-        guard let jevContext = makeContext(raw, context: context, language: language, config: cfg) else { return nil }
-        let result = await jev.decide(jevContext, config: cfg)
+        func input(_ d: Decision) -> JevGateInput {
+            JevGateInput(raw: raw, production: outcome.decision, candidate: d, level: cfg.gateLevel, configuredFloor: cfg.gatedMinimumConfidence,
+                         targetResolution: targetResolution(for: d, raw: raw), capabilityAvailable: capabilityAvailable(d.intent), reportedModel: jev.reportedModel, calibratedModel: cfg.calibratedModel)
+        }
+        // a pattern this classifier already answered with very high confidence — re-checked by the SAME gate against the CURRENT thresholds, resolvers and model
+        if let cached = patternCache.lookup(raw) {
+            if case .accept(let d) = JevGatePolicy.evaluate(input(cached)) {
+                audit.update(outcome.id) { $0.jevAccepted = true; $0.jevCacheHit = true; $0.jev = d; $0.agreement = .productionUnknown; $0.jevModel = jev.reportedModel }
+                return d
+            }
+        }
+        guard let jevContext = makeContext(raw, context: context, language: language, config: cfg) else {
+            audit.update(outcome.id) { $0.jevRejection = "notSent"; $0.jevFallbackUsed = true }
+            return nil
+        }
+        var asked = cfg
+        asked.timeoutSeconds = min(cfg.timeoutSeconds, cfg.gatedTimeoutSeconds)
+        let result = await jev.decide(jevContext, config: asked)
         recordShadow(outcome.id, production: outcome.decision, result: result)
-        guard case .decision(var d, _) = result, GatedPolicy.accepts(d, minimumConfidence: cfg.gatedMinimumConfidence) else { return nil }
-        d.provenance = .jevGated
-        patternCache.store(raw, d)
-        audit.update(outcome.id) { $0.jevAccepted = true }
-        return d
+        guard case .decision(let candidate, _) = result else {
+            audit.update(outcome.id) { $0.jevRejection = JevRejection.unavailable.rawValue; $0.jevFallbackUsed = true; $0.jevModel = jev.reportedModel }
+            return nil
+        }
+        switch JevGatePolicy.evaluate(input(candidate)) {
+        case .reject(let why):
+            audit.update(outcome.id) { $0.jevRejection = why.rawValue; $0.jevFallbackUsed = true; $0.jevModel = jev.reportedModel }
+            return nil
+        case .accept(let d):
+            patternCache.store(raw, d)
+            audit.update(outcome.id) { $0.jevAccepted = true; $0.jevModel = jev.reportedModel }
+            return d
+        }
+    }
+
+    /// JARVIS resolves the target; the classifier's text never becomes an identifier. Navigation carries a page name from the closed vocabulary; project-bound intents ask the registry.
+    private func targetResolution(for d: Decision, raw: String) -> JevTargetResolution {
+        switch d.intent {
+        case .jarvisNavigation: return d.target.flatMap(DecisionVocabulary.hudSection).map(JevTargetResolution.resolved) ?? .unresolved
+        case .projectQuery, .projectOpen, .projectTask: return projectResolver(raw)
+        case .macosApplicationAction, .settingsChange, .research: return .unresolved
+        default: return .notNeeded
+        }
     }
 
     /// Lets tests (and shutdown) wait for background shadow comparisons.
     func awaitShadow() async { for t in pendingShadow { await t.value }; pendingShadow.removeAll() }
 
     private func makeContext(_ raw: String, context: DecisionContext, language: ReplyLanguage, config: JevConfig) -> JevDecisionContext? {
-        JevContextBuilder.build(utterance: raw, language: language.rawValue, source: context.source, previousInterpretation: context.previousInterpretation, projectNames: projectNames(), config: config)
+        JevContextBuilder.build(utterance: raw, language: language.rawValue, source: context.source, previousInterpretation: context.previousInterpretation, projectNames: projectNames(), referents: context.referents, config: config)
     }
 
     private func recordShadow(_ id: UUID, production: Decision, result: DecisionProviderResult) {
@@ -185,7 +224,7 @@ final class DecisionEngine {
                 e.agreement = .jevUnavailable; e.jevFailure = why
             case .decision(var d, let latency):
                 d.provenance = .jevShadow
-                e.jev = d; e.jevLatency = latency
+                e.jev = d; e.jevLatency = latency; e.jevModel = jev?.reportedModel
                 e.agreement = production.intent == .unknown ? .productionUnknown : (production.intent == d.intent ? .agree : .disagree)
             }
         }
