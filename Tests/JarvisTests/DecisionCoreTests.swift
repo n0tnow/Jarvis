@@ -491,7 +491,7 @@ struct DecisionJevTests {
         #expect(JevResponseParser.parse(#"{"intent":"teleport","confidence":0.9}"#) == nil)
         #expect(JevResponseParser.parse(#"{"intent":"system_status"}"#) == nil)
         #expect(JevResponseParser.parse("I think this is a system status question") == nil)
-        #expect(JevResponseParser.parse(#"{"intent":"conversation","confidence":7}"#)?.confidence == 1, "confidence is clamped")
+        #expect(JevResponseParser.parse(#"{"intent":"conversation","confidence":7}"#) == nil, "an out-of-range probability is malformed (V1.0 Jev gating pass: it used to be clamped to 1, which turned garbage into maximal confidence)")
     }
 
     @Test("the real provider: unconfigured, no credential, budget, circuit breaker, timeout, usage — none of it can reach a network or hang")

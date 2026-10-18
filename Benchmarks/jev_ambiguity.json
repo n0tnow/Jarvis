@@ -1,0 +1,832 @@
+{
+ "schema": "jarvis.decision-corpus/1",
+ "version": "jev-ambiguity-1.0.0",
+ "description": "Jev gating ambiguity set A1: requests whose target is ambiguous or unresolved; the right behaviour is to ask. Intent confidence is not target confidence.",
+ "cases": [
+  {
+   "id": "jeva-setting-001",
+   "text": "Biraz daha hızlı ol",
+   "lang": "tr",
+   "source": "typed",
+   "category": "setting",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-setting-002",
+   "text": "Daha hızlı ol",
+   "lang": "tr",
+   "source": "typed",
+   "category": "setting",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-setting-003",
+   "text": "Be faster",
+   "lang": "en",
+   "source": "typed",
+   "category": "setting",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-setting-004",
+   "text": "Biraz daha sessiz ol",
+   "lang": "en",
+   "source": "typed",
+   "category": "setting",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-setting-005",
+   "text": "Daha iyi ol",
+   "lang": "en",
+   "source": "typed",
+   "category": "setting",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-001",
+   "text": "Bunun hakkında biraz araştırma yap",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-002",
+   "text": "Şunu araştır",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-003",
+   "text": "Research this for me",
+   "lang": "en",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-004",
+   "text": "Bununla ilgili bir şeyler bul",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-005",
+   "text": "Onu aç",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-006",
+   "text": "Şunu kapat",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-007",
+   "text": "Bunu başlat",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-008",
+   "text": "Onu öne getir",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-009",
+   "text": "Onu aç",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": {
+    "referents": {
+     "application": {
+      "label": "Safari",
+      "ageSeconds": 20
+     },
+     "project": {
+      "label": "Hamam",
+      "ageSeconds": 25
+     }
+    }
+   },
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-010",
+   "text": "Bunu aç lütfen",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": {
+    "referents": {
+     "application": {
+      "label": "Safari",
+      "ageSeconds": 20
+     },
+     "project": {
+      "label": "Hamam",
+      "ageSeconds": 25
+     }
+    }
+   },
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-011",
+   "text": "Şunu kapatsana",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": {
+    "referents": {
+     "application": {
+      "label": "Safari",
+      "ageSeconds": 20
+     },
+     "project": {
+      "label": "Hamam",
+      "ageSeconds": 25
+     }
+    }
+   },
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-012",
+   "text": "Aynısını bir daha yap",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-referent-013",
+   "text": "Devam et",
+   "lang": "tr",
+   "source": "typed",
+   "category": "referent",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-project-001",
+   "text": "Projeyi aç",
+   "lang": "tr",
+   "source": "typed",
+   "category": "project",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-project-002",
+   "text": "Oyuna dönelim",
+   "lang": "tr",
+   "source": "typed",
+   "category": "project",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-project-003",
+   "text": "Devam edelim oyunda",
+   "lang": "tr",
+   "source": "typed",
+   "category": "project",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-project-004",
+   "text": "Open the project",
+   "lang": "mixed",
+   "source": "typed",
+   "category": "project",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-project-005",
+   "text": "Geçen uğraştığımız oyuna dönelim",
+   "lang": "tr",
+   "source": "typed",
+   "category": "project",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-provider-001",
+   "text": "Bunu Claude'a yaptır",
+   "lang": "tr",
+   "source": "typed",
+   "category": "provider",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-provider-002",
+   "text": "Şunu Codex'e ver",
+   "lang": "tr",
+   "source": "typed",
+   "category": "provider",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-provider-003",
+   "text": "Bu işi birine yaptır",
+   "lang": "tr",
+   "source": "typed",
+   "category": "provider",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-media-001",
+   "text": "Şunu oynat",
+   "lang": "tr",
+   "source": "typed",
+   "category": "media",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-media-002",
+   "text": "Devam ettir şunu",
+   "lang": "tr",
+   "source": "typed",
+   "category": "media",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-media-003",
+   "text": "Videoyu aç",
+   "lang": "tr",
+   "source": "typed",
+   "category": "media",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-misc-001",
+   "text": "Şunu yap",
+   "lang": "tr",
+   "source": "typed",
+   "category": "misc",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-misc-002",
+   "text": "Hallet işte",
+   "lang": "tr",
+   "source": "typed",
+   "category": "misc",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-misc-003",
+   "text": "Do the thing",
+   "lang": "en",
+   "source": "typed",
+   "category": "misc",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-misc-004",
+   "text": "Evet",
+   "lang": "en",
+   "source": "typed",
+   "category": "misc",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-misc-005",
+   "text": "Tamam yap",
+   "lang": "tr",
+   "source": "typed",
+   "category": "misc",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-misc-006",
+   "text": "Ayarı değiştir",
+   "lang": "tr",
+   "source": "typed",
+   "category": "misc",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  },
+  {
+   "id": "jeva-misc-007",
+   "text": "Sesi ayarla",
+   "lang": "tr",
+   "source": "typed",
+   "category": "misc",
+   "intent": "unknown",
+   "action": null,
+   "target": null,
+   "requiresExecution": false,
+   "requiresComputerUse": false,
+   "requiresProjectResolution": false,
+   "gate": "none",
+   "risk": "low",
+   "deterministic": true,
+   "tags": [
+    "ambiguous"
+   ],
+   "context": null,
+   "note": null,
+   "ambiguous": true
+  }
+ ]
+}
