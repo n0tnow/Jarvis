@@ -652,3 +652,28 @@ See docs/V1_DECISION_INTELLIGENCE_PHASE_B.md "Phase B results". Not done: anythi
 ### Evidence
 docs/V1_RELIABILITY_PASS.md §1 (tables), §2 (what was built), §3 (TaskEngine audit), §4 (what stays manual). Linux harness: 156 tests / 1 957 checks passed in the decision, lexicon, reliability, discovery, soak and voice-guard suites; guard runner: all source guards pass (7 new). NOT run: `scripts/verify.sh`, anything on a Mac.
 
+## 2026-10-18 — V1.0 background intelligence, task reliability & efficiency (Cloud / headless pass)
+
+### Goal
+Make a long unattended task survivable: checkpoint, recover, stop for approval, avoid wasted model calls, report exactly what happened — without a new orchestrator, state, table or scheduler, and without voice / GUI / Hamam.
+
+### Changes
+- Repository truth first (docs/V1_BACKGROUND_RELIABILITY.md §1): nine task / ten step states with explicit tables, event-driven scheduler, atomic checkpoints, restart reconciliation → interrupted, explicit resume; gaps G1–G9 recorded (approval reuse had no age; no task-level retry/budget; stuck detection only the 600 s timeout; an undecodable row is silently skipped).
+- New pure policies in `Sources/Jarvis/Reliability/`: `TaskStatusDeriver`, `StepReadiness`, `RetryPolicy`, `TaskBudget`, `StepReplayPolicy`, `ApprovalBinding`, `ProjectDrift`, `TaskEventLog`, `UsageLedger`, `ContextSelector`, `WorkerAdmission`, `TaskDigest`; `Decision/DecisionQuality.swift` (confusion report + gate).
+- Engine hooks (2): approval reuse only while fresh (`TaskEngine+Execution`), `readySteps` → `StepReadiness.ready` (`TaskEngine`). Syntax-checked only (`swiftc -parse`); NOT compiled against the full module.
+- Tests (5 files): `TaskReliabilityCoreTests`, `OvernightSimulationTests` (+ scaling), `DatabaseReliabilityTests` (real SQLite, temp dir), `DecisionQualityTests`, `CompletionClaimPropertyTests`. `scripts/guards_background.sh` (sourced by `verify.sh`).
+- docs: DEC-287…293, JARVIS-V1BG-1…7, README 1315–1321, AGENTS rule, `Benchmarks/decision_confusion_report.json` (generated).
+
+### Tests
+Linux harness only (real task model + persistence closure; plain-function `#expect` shim): core + simulation + scaling + database 53 tests / 1 419 checks / 0 failures; quality + completion-claim 11 / 1 941 / 0; guards 274 / 0. `scripts/test.sh`, `scripts/verify.sh`, the engine tests and every live test were NOT run.
+
+### Problems Found
+- The simulation exposed that a replay policy which "revalidates then replays" a GUI action that may already have happened would repeat it: `StepReplayPolicy` now asks a person for a non-idempotent write that may have happened.
+- The confusion report was not byte-deterministic (dictionary order broke ties) — fixed with a total order; a test pins it.
+- The context compaction line was outside the budget — its room is now reserved.
+- An existing guard rejected command strings ("git reset" …) even in a deny-list — the list became typed cases; the guard was not weakened.
+- Open: JARVIS-V1BG-1…7.
+
+### Decisions
+DEC-287…293.
+

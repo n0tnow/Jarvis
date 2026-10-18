@@ -894,3 +894,26 @@ Status: OPEN. `Jarvis --discover-projects <folder>…` prints candidates (read-o
 * JARVIS-V1D-6 (phrases the grammar does not take): the held-out abstentions were reduced from 32 to 21 and the adversarial / blind sets were added; the remaining misses are conversation-like or belong to other grammars.
 * JARVIS-V1PB-5 (Jev evidence is small): shadow now asks only about abstentions, so the evidence that accumulates is the evidence that matters; gated stays off.
 
+
+## V1.0 background pass (policy layer for long unattended tasks)
+
+### JARVIS-V1BG-1 — The new reliability policies are tested but mostly not wired into the TaskEngine
+Status: OPEN · DOCUMENTED. `RetryLedger`, `TaskBudgetLedger`, `StuckTaskDetector`, `StepReplayPolicy`, `ApprovalBinding` digests, `TaskEventLog`, `UsageLedger`, `ContextSelector`, `WorkerAdmission`, `TaskDigest` have no engine call site; only the approval age rule and `StepReadiness` are wired (docs/V1_BACKGROUND_RELIABILITY.md §7 lists each seam). Until they are, the engine's own bounds (repair ≤ 1, escalation ≤ 1, capacity waits ≤ 40, provider timeout 600 s, graph timeout) are the real protection on an unattended night. Wiring touches `TaskEngine+Execution` and needs a macOS build + the engine tests.
+
+### JARVIS-V1BG-2 — The new test files were never compiled or run by `scripts/test.sh` on macOS
+Status: OPEN · MANUAL TEST REQUIRED. They ran in a Linux harness (real task model + SQLite persistence code, plain-function `#expect` shim). Expect small compile adjustments (access levels, `@MainActor`, Swift Testing traits) on macOS; do not weaken an assertion to make one compile.
+
+### JARVIS-V1BG-3 — An undecodable task row is silently skipped
+Status: OPEN · PINNED BY A TEST. `TaskRepository.engineTasks` uses `compactMap`: a row with an unknown status / kind disappears from every list (the raw row is kept, nothing is deleted). A diagnostics count ("N unreadable tasks") would make it visible; adding it touches persistence and was left for a macOS session.
+
+### JARVIS-V1BG-4 — No battery level, no real process-level stuck detection
+Status: OPEN. The engine has no battery fraction (`PowerContext.batteryFraction` is optional and unused); `StuckTaskDetector` uses state / output / observed-change timestamps the engine does not feed yet. A hung child process is bounded today only by the provider timeout and the graph timeout.
+
+### JARVIS-V1BG-5 — Provider circuit state is in memory in `ProviderResilienceBook`
+Status: OPEN. The engine's persisted cooldown (`ProviderSupervisor`) is the durable record; the book is not fed by it, so a restart forgets the book's counters (not the cooldown).
+
+### JARVIS-V1BG-6 — The morning questions are not routed from the conversation
+Status: OPEN. `MorningBrief.recognize/answer` and `TaskDigest.report` exist; `ConversationService` (deliberately not edited in this pass) does not call them, so "Gece ne yaptın?" still reaches the generic path.
+
+### JARVIS-V1BG-7 — A routing-confusion floor can only be as good as its spent sets
+Status: OPEN · DOCUMENTED. The quality gate's coverage floors use the checked-in corpora; held-out and blind B are spent (report-only). Write a new blind set before believing a new coverage number (DEC-286).

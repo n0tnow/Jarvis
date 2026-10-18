@@ -1609,3 +1609,12 @@ Report anything odd and I'll add it to `docs/KNOWN_ISSUES.md`.
 1313. Jev (only if you want it): with `shadow` on, check `DecisionEngine.audit.shadowReport` after a normal day — requests happen only for sentences JARVIS did not understand; gated stays off.
 1314. Voice: with a TV on / a cough / silence, nothing reaches the conversation (as 1303); "dur dur dur", "hayır hayır hayır" arrive as ordinary turns and "dur dur dur" stops speech.
 
+**V1.0 background reliability pass (Cloud, branch `claude/laughing-albattani-uzdlr6`) — manual checks (you; nothing is marked verified until you did it; first run `scripts/test.sh` and `scripts/verify.sh`, which have NOT been run on this branch — JARVIS-V1BG-2):**
+1315. Start a 30–60 minute development task on a DISPOSABLE fixture project, quit JARVIS in the middle, relaunch: the task shows **interrupted** (never "running"), passed steps are still passed, "resume" continues from the first step that did not pass and repeats none that passed.
+1316. Leave an approval waiting for hours, relaunch: it is still pending. Approve it after more than 2 h (a HIGH-risk action) and restart the step: a NEW approval request appears (an old approval is not a new permission). A LOW/MEDIUM one within 12 h is reused.
+1317. Switch the network off mid-task (OpenCode FREE): the step fails with a typed reason, the engine's own bounded retry applies, the task never spins; switch it back on and resume explicitly.
+1318. Kill the local model worker mid-task: exactly one restart, then a clear failure — no loop.
+1319. After a cancelled task and after quitting JARVIS, Activity Monitor shows no orphan process started by JARVIS; a user-owned process (your own Unity editor) is never terminated.
+1320. With a task waiting for approval, idle CPU stays ≈ 0 (no polling) and the Mac may sleep normally.
+1321. Ask "Gece ne yaptın?" / "Nerede kaldın?" after a task: today it reaches the generic path (JARVIS-V1BG-6) — confirm `scripts/verify.sh` is green, then wire `MorningBrief` only with explicit approval.
+
