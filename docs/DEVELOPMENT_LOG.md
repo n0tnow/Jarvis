@@ -639,3 +639,16 @@ Context: build 110 passed its automated tests, then real use showed the remainin
 
 ### Evidence
 See docs/V1_DECISION_INTELLIGENCE_PHASE_B.md "Phase B results". Not done: anything needing a microphone, a speaker, a granted permission, or the real Hamam project.
+
+## 2026-10-18 — V1.0 intelligence & reliability optimization (overnight Cloud pass)
+
+### What happened
+* Based the work on `origin/main` e9dfd5f (my Phase A branch was a strict ancestor: nothing to merge, nothing overwritten). Re-read the Phase B documents, DEC-275…279 and the Decision sources; reproduced the Phase B numbers before trusting them (main 296/353, held-out 46/78 — both reproduced exactly).
+* Wrote adversarial set A (322 cases, hand-labelled, BEFORE any implementation) and measured the old grammar against it: coverage 52 %, five real executing false positives that no earlier corpus had found ("Is Safari open?" → launch Safari, "Görevi nasıl iptal ederim" → cancel, "Safari'nin ayarlarını nasıl açarım" → Settings, "aç aç aç aç" → launch, bare "devam et").
+* Built the lexicon, morphology, referents and planner changes; corpus A 52 → 81 % coverage. Then wrote the blind set B (199) AFTER freezing, measured ONCE (73 % coverage, 1 executing false positive: "Görevi iptal etme"), recorded that first measurement, and only then fixed what it found (negation guard on the closed grammar, English aux questions, stop-word sets, softened "gid-", "konuşmamı duyabiliyor musun").
+* Policies and contract: confidence policy, Jev routing / retry / cache / shadow scope, presentation contract, claim firewall, Turkish directive, freshness policy, telemetry; project discovery + alias resolver; reliability policies; voice guard hardening; seeded soak (≈ 105 900 cases). The soak found one real bug (a suffix-tolerant registry predicate let "Hamam'daa" through as hamam + da + a) and one wrong invariant in my own test; the guard runner found my own audio-extension literals and the word "pendingApproval" in a field name — renamed, not exempted.
+* Process: no macOS, no Xcode, no model, no network, no key: a SwiftWasm toolchain's native `swiftc` compiled slices of the real sources; a converter ran the Swift Testing files as plain functions; the source-text guards of `verify.sh` ran through a bash runner. Everything that imports AppKit / SwiftUI / AVFoundation was only syntax-reviewed.
+
+### Evidence
+docs/V1_RELIABILITY_PASS.md §1 (tables), §2 (what was built), §3 (TaskEngine audit), §4 (what stays manual). Linux harness: 156 tests / 1 957 checks passed in the decision, lexicon, reliability, discovery, soak and voice-guard suites; guard runner: all source guards pass (7 new). NOT run: `scripts/verify.sh`, anything on a Mac.
+

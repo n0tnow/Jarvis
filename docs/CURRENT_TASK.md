@@ -24,7 +24,12 @@ V1.0 decision milestone, Phase A (DEC-267…274): typed Decision layer in front 
 
 V1.0 decision milestone Phase B (DEC-275…279): Cloud Phase A integrated and verified on macOS; Jev transport + Keychain credential; Unity project open; held-out and Jev benchmarks; local model benchmark; installed build — AUTOMATED TESTED / REAL TESTED (parts) / MANUAL TEST REQUIRED (README 1295–1305, see docs/V1_DECISION_INTELLIGENCE_PHASE_B.md "Phase B results").
 
+V1.0 intelligence & reliability pass (Cloud, DEC-280…286): semantic lexicon + typed referents + confidence/Jev routing + presentation contract/claim firewall + project discovery + pure reliability policies + seeded soak — AUTOMATED TESTED (Linux harness) / macOS glue UNCOMPILED (JARVIS-V1RP-1) / MANUAL TEST REQUIRED (README 1306–1314). Branch `claude/laughing-albattani-uzdlr6`, not merged. See `docs/V1_RELIABILITY_PASS.md`.
+
 Next Step:
+FIRST (local Mac): check out `claude/laughing-albattani-uzdlr6`, run `scripts/verify.sh`, fix any compile error in the macOS glue (JARVIS-V1RP-1 lists the files) — do not weaken a guard; then README 1306–1314; then decide whether to merge to `main` (fast-forward is possible: the branch is `origin/main` + commits). The Phase B items still open stay open: re-grant permissions, point JARVIS at the real Hamam folder (JARVIS-V1PB-1; `Jarvis --discover-projects` helps), README 1295–1305 and 1268–1277. Wiring the reliability policies into the TaskEngine is a separate, explicitly approved step (JARVIS-V1RP-2). No V1.1, no Hamam development, no tag.
+
+Phase B next step (still valid):
 Wait for Bilal: re-grant the permissions for the new build, point JARVIS at the real Hamam folder (JARVIS-V1PB-1), then README 1295–1305 and the still-open fix 4 checks (1268–1277). Only after "Jarvis, Hamam projesini aç." opens the real project and the voice tests pass may controlled Hamam work be discussed. No V1.1, no Hamam development, no Higgsfield without approval. No tag. No tag.
 
 Blocked By:

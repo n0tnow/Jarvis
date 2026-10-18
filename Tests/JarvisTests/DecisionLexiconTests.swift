@@ -338,6 +338,17 @@ struct AdversarialCorpusTests {
         #expect(r.mustNotExecuteHeld == r.mustNotExecuteCases)
     }
 
+    @Test("deterministic decisions are immediate: the mean over the corpora stays far under the latency a person can feel")
+    func latency() throws {
+        let c = try DecisionCorpus.load(from: corpusURL("decision_adversarial.json"))
+        let r = recognizer()
+        let started = Date()
+        var answered = 0
+        for _ in 0..<3 { for k in c.cases where r.recognize(k.text, context: k.decisionContext) != nil { answered += 1 } }
+        let perDecisionMs = Date().timeIntervalSince(started) / Double(c.cases.count * 3) * 1000
+        #expect(answered > 0 && perDecisionMs < 5, "mean \(perDecisionMs) ms per decision")           // measured ≈ 0.5 ms on the Linux harness; the bound only catches an accidental blow-up
+    }
+
     @Test("the older corpora do not regress")
     func older() throws {
         let main = try DecisionCorpus.load(from: corpusURL("decision_corpus.json"))

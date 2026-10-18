@@ -860,3 +860,37 @@ Status: RESOLVED · AUTOMATED TESTED + REAL TESTED. macOS 26.4 names an unnamed 
 * JARVIS-V1D-3 (Jev has no transport/credential): transport + Keychain store implemented (DEC-275/276), REAL TESTED; still disabled by default.
 * JARVIS-V1D-4 (open project does not launch Unity): RESOLVED for Unity projects (DEC-277), REAL TESTED on a fixture.
 * JARVIS-V1D-6 (phrases the grammar does not take): "Hamam'ı aç" and "Chrome açık mı?" are taken now (DEC-278).
+
+## V1.0 reliability pass (Cloud, branch `claude/laughing-albattani-uzdlr6`)
+
+### JARVIS-V1RP-1 — macOS glue of the reliability pass is UNCOMPILED; `verify.sh` has not been run
+Status: OPEN · BLOCKS MERGE until `scripts/verify.sh` passes on a Mac. The pure logic (lexicon, referents, policies, discovery, firewall, soak, corpora) compiled and ran in a Linux harness (156 tests / 1 957+ checks, 0 failures; the same 7 new guards + all older source guards pass in a Linux guard runner). Not compiled: the edits in `ConversationService` (referent tracker, `freshPreviousUserText`, the firewall call), `IntelligenceRequest.providerPrompt`, `DecisionTools` (`--discover-projects`, `--adversarial/--blind/--project-names`), and the six new test files as Swift Testing (non-literal messages were wrapped in `Comment(rawValue:)` by script). Expected: 106 new tests / 25 new suites → ≈ 2022 tests / 322 suites; this number is NOT measured.
+
+### JARVIS-V1RP-2 — The reliability policies are not wired into the TaskEngine
+Status: OPEN · by design for an unattended Cloud pass. Stuck detection, provider circuit / fallback, resource budget, overnight policy, derived progress and resume revalidation exist as tested pure types; the hook points are listed in docs/V1_RELIABILITY_PASS.md §3. Until then a stalled provider is still cut only by the 600 s job timeout and a resume still trusts the checkpoint more than it should.
+
+### JARVIS-V1RP-3 — "devam et" alone is a recorded executing disagreement
+Status: OPEN · DOCUMENTED. The benchmark counts it (A-referent-019). The planner hands it to Project Continuity, which picks the current project or asks — no action is taken by the decision layer. Replacing it with a referent question would bypass that logic.
+
+### JARVIS-V1RP-4 — The presentation contract's fact block is not fed yet
+Status: OPEN. `PresentationContract.block` and `StructuredFact` are tested; no call site hands a model a fact block, so today the firewall (claims need a verified fact) is the active half and always has an empty fact list for a model reply. Feeding receipts / snapshots into model requests is a local step.
+
+### JARVIS-V1RP-5 — The Turkish directive changes every Turkish engine prompt
+Status: OPEN · MANUAL TEST REQUIRED. `IntelligenceRequest.providerPrompt` prefixes one instruction for `language == .tr`. All existing tests use English; confirm that Turkish answers stay Turkish and that Claude Code / Codex / OpenCode / the local model do not echo or mention the instruction.
+
+### JARVIS-V1RP-6 — The state / perception claim firewall can remove a harmless model sentence
+Status: OPEN · NON-BLOCKING. It is structural (subject + state word within a few words, first-person perception verbs, percentages about tasks) and tuned to over-block rather than under-block; a benign sentence like "Safari şu an açık olmalı" is replaced by a true notice. Watch the activity log ("claimed a perception, state or result that no verified fact backs").
+
+### JARVIS-V1RP-7 — Classification without a handler
+Status: OPEN · NON-BLOCKING. "Sesini biraz kıs" is classified as `settings_change` but there is no output-volume setting: the settings assistant does not recognise it and the sentence continues to the router. "Safari'yi kapat" is classified `macos_application_action/quit` (asks first) but there is no typed quit action: it keeps its old route. Both are honest classifications, not capabilities.
+
+### JARVIS-V1RP-8 — Label disagreements and spent sets
+Status: OPEN · DOCUMENTED. The Phase B held-out set and blind B are spent; adversarial A had two labels corrected after its baseline (recorded); four label disagreements stand (docs/V1_RELIABILITY_PASS.md §1). Write a new blind set before believing a new coverage figure.
+
+### JARVIS-V1RP-9 — Project discovery is not wired to any user action
+Status: OPEN. `Jarvis --discover-projects <folder>…` prints candidates (read-only); there is no HUD button and nothing registers a project. The real Hamam folder is still not known to JARVIS (JARVIS-V1PB-1).
+
+### Updates (reliability pass)
+* JARVIS-V1D-6 (phrases the grammar does not take): the held-out abstentions were reduced from 32 to 21 and the adversarial / blind sets were added; the remaining misses are conversation-like or belong to other grammars.
+* JARVIS-V1PB-5 (Jev evidence is small): shadow now asks only about abstentions, so the evidence that accumulates is the evidence that matters; gated stays off.
+

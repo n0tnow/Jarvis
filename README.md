@@ -1597,3 +1597,15 @@ Report anything odd and I'll add it to `docs/KNOWN_ISSUES.md`.
 1303. Hold the key in silence, cough, or put a TV on: no "YOU" message may appear ("Kutu, Kutu …" must never reach the conversation). Then "hayır hayır hayır", "dur dur dur", "çok çok önemli" must arrive as normal turns.
 1304. Jev (optional): `"/Applications/JARVIS.app/Contents/MacOS/Jarvis" --store-jev-credential` in a terminal, then `defaults write dev.jarvis.Jarvis prefs.decision.jev.mode shadow`; relaunch. Do nothing else — gated stays off.
 1305. Local model: ask the same ten Turkish questions to Qwen3.5-4B and Gemma 4 E4B (`~/AI/models`) and decide which one sounds right; the production model changes only on your decision.
+
+**V1.0 reliability pass (Cloud, branch `claude/laughing-albattani-uzdlr6`) — manual checks (you; nothing is marked verified until you did it; first run `scripts/verify.sh` on this branch — it has NOT been run):**
+1306. Type or say: "Safariyi bi açsana", "Safari'ye geç", "Unityyi öne getir", "Systeme geç", "Ayarlara bakar mısın", "Hamamı aç", "Hamamda devam edelim" — each does the right thing (the app is opened and verified, the page really changes, the project opens / continues by NAME). Then "Safari'yi açma" and "Safari'yi neden açtın?" — NOTHING is opened.
+1307. "Safari'yi kapat" asks / does not silently quit; "Safari ekranda mı?" without an observation is NOT a yes; "Safari açık mı?" answers from the application list.
+1308. References: say "Safari'yi aç", then "onu kapat" (must ask or confirm — never close another app); open an app and a project, then "onu aç" (must ASK which); wait ten minutes, then "onu aç" (must ASK); "aynısını yap" after a harmless request repeats it, after "Dosyayı sil" refuses.
+1309. "Hayır onu yapma" does nothing and does not claim to have undone anything; "evet", "onaylıyorum" never approve anything (approvals are HUD buttons).
+1310. Turkish: ask three conversation questions in Turkish to each engine you use — answers stay Turkish, product / model / file / code names are not translated, the instruction is never mentioned (JARVIS-V1RP-5).
+1311. Ask a model something that tempts a claim ("ekranımda ne var?", "projeyi açtın mı?") — JARVIS answers from its own state; a model sentence like "Ekranı görüyorum" or "Görev %80 tamamlandı" must never be shown as fact (JARVIS-V1RP-6).
+1312. `Jarvis --discover-projects ~/Projects` (or wherever your games live) lists candidates and says which are registered; it registers and writes nothing. Register Hamam yourself, then repeat 1306.
+1313. Jev (only if you want it): with `shadow` on, check `DecisionEngine.audit.shadowReport` after a normal day — requests happen only for sentences JARVIS did not understand; gated stays off.
+1314. Voice: with a TV on / a cough / silence, nothing reaches the conversation (as 1303); "dur dur dur", "hayır hayır hayır" arrive as ordinary turns and "dur dur dur" stops speech.
+
