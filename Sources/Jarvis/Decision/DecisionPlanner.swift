@@ -45,6 +45,10 @@ struct DecisionFacts {
     var computerAvailable: Bool = true
     /// The action grammar (application names resolved against installed apps), for correcting “open X”.
     var actionLookup: (String) -> ActionIntent? = { _ in nil }
+    /// The typed referent slots at the time of the utterance (labels used to word a clarifying question; never a source of authority).
+    var referents = DecisionReferents()
+    /// Classifies a previous sentence with the closed grammar only (to refuse repeating something that needs approval).
+    var classify: (String) -> Decision? = { DeterministicCommandRecognizer().recognize($0) }
     var pathExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     var isKind: (String, String) -> Bool = { ProjectOpenResolver.markerExists(root: $0, kind: $1) }
 }
@@ -56,6 +60,8 @@ enum DecisionPlanner {
         let l = f.language
         // Policy outranks confidence: a blocked request is refused here, whatever produced the decision.
         if d.gate == .blocked { return .answer(refusal(d, l), tone: .notice) }
+        // an elliptical request that cannot be resolved (“onu aç” with two fresh candidates, “aç” alone, “aynısını yap” with nothing to repeat): ask — never guess
+        if d.action == "ask_referent" || (d.action == "repeat_previous" && d.ambiguity != .none) { return .answer(referentQuestion(d, f), tone: .notice) }
         switch d.intent {
         case .voiceStatus:
             return .answer(VoiceStatusComposer.compose(f.voice, language: l), tone: .normal)
@@ -64,6 +70,10 @@ enum DecisionPlanner {
         case .jarvisNavigation:
             return .action(typedHUDAction(d))
         case .macosApplicationAction:
+            // closing / quitting an application has no typed action here: it keeps its normal route (Computer Use asks first); opening is a typed launch — also for the lexicon's forms
+            // (“Safari'ye geç”, “onu aç”) which the action grammar alone does not parse
+            if d.action == "quit" { return .passThrough }
+            if d.provenance == .semanticLexicon, d.action == "launch", let app = d.target, !app.isEmpty { return .action(f.actionLookup(text) ?? f.actionLookup("open \(app)")) }
             return .action(nil)
         case .stopSpeech: return .stopSpeech
         case .cancelTask: return .cancelTask
@@ -106,6 +116,25 @@ enum DecisionPlanner {
     }
 
     // MARK: pieces
+
+    /// The clarifying question for an unresolved reference: names the fresh candidates when there are several, otherwise says what is missing.
+    static func referentQuestion(_ d: Decision, _ f: DecisionFacts) -> String {
+        let l = f.language
+        guard case .ambiguous(let code) = d.ambiguity, code.hasPrefix("referent:") else { return t(l, "Which one do you mean?", "Hangisini kastediyorsunuz?") }
+        let kinds = code.dropFirst("referent:".count).split(separator: ",").compactMap { DecisionReferentKind(rawValue: String($0)) }
+        let labels = kinds.compactMap { f.referents.fresh($0)?.label }
+        let verb = d.target ?? ""
+        switch verb {
+        case "repeat": return t(l, "There is nothing recent for me to repeat. What would you like me to do?", "Tekrar edebileceğim yakın zamanlı bir şey yok. Ne yapmamı istersiniz?")
+        case "continue": return t(l, "Which task should I continue? There is no recent one I could be sure of.", "Hangi göreve devam edeyim? Emin olabileceğim yakın zamanlı bir görev yok.")
+        case "close":
+            return labels.count > 1 ? t(l, "Which one should I close: \(labels.joined(separator: " or "))?", "Hangisini kapatayım: \(labels.joined(separator: " mı yoksa ")) mı?")
+                                    : t(l, "Which one should I close? Tell me the application's name.", "Hangisini kapatayım? Uygulamanın adını söyleyin.")
+        default:
+            return labels.count > 1 ? t(l, "Which one should I open: \(labels.joined(separator: " or "))?", "Hangisini açayım: \(labels.joined(separator: " mı yoksa ")) mı?")
+                                    : t(l, "Which one should I open? Tell me the name of the application, project or page.", "Hangisini açayım? Uygulama, proje ya da sayfanın adını söyleyin.")
+        }
+    }
 
     private static func scope(_ target: String?) -> StatusScope {
         switch target { case "running": .running; case "features": .features; case "wake": .wake; default: .all }
@@ -155,6 +184,22 @@ enum DecisionPlanner {
     /// Spoken corrections. They only ever produce a sentence to route again, a clarifying question, or the existing action grammar — never an action of their own.
     private static func planCorrection(_ d: Decision, text: String, _ f: DecisionFacts) -> DecisionPlan {
         let l = f.language
+        switch d.action ?? "" {
+        case "negate_last":
+            // “Hayır onu yapma”: nothing more is done. JARVIS does not claim to have undone anything — it cannot undo what already happened.
+            return .answer(t(l, "Understood — I will not do that. If something already happened I cannot undo it automatically; tell me what you want instead.", "Anlaşıldı, bunu yapmayacağım. Zaten gerçekleşmiş bir şeyi kendiliğimden geri alamam; bunun yerine ne istediğinizi söyleyin."), tone: .notice)
+        case "ask_what_meant":
+            return .answer(t(l, "Sorry, I got that wrong. What did you mean? Say it once more and I will handle it from scratch.", "Pardon, yanlış anladım. Ne demek istediniz? Bir kez daha söyleyin, baştan ele alayım."), tone: .notice)
+        case "repeat_previous":
+            let previous = f.previousUserText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !previous.isEmpty else { return .answer(referentQuestion(d, f), tone: .notice) }
+            // the previous request is routed again through the NORMAL pipeline; one that needs approval or is blocked is not repeated on a pronoun
+            if let before = f.classify(previous), before.gate != .none || before.riskClass >= .high {
+                return .answer(t(l, "That request needs your approval, so I will not repeat it on “the same again”. Please say it in full.", "O istek onay gerektiriyor; bu yüzden “aynısı” demenizle tekrarlamam. Lütfen tam olarak söyleyin."), tone: .notice)
+            }
+            return .reroute(sentence: previous)
+        default: break
+        }
         guard d.action == "restate" || d.action == "restate_replacing", let right = d.target, let r = SpokenRestatement.parse(text) else { return .passThrough }   // “Hayır, demek istediğim …” is resolved by the correction flow itself
         // 1. the mis-heard word is in the previous sentence: correct that sentence and route it again (“Sofany'yi aç” → “Safari'yi aç”)
         if let wrong = r.wrong, !f.previousUserText.isEmpty, let fixed = SpokenRestatement.apply(wrong: wrong, right: right, to: f.previousUserText) { return .reroute(sentence: fixed) }

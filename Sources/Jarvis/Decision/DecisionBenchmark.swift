@@ -10,6 +10,8 @@ struct DecisionCorpusCase: Codable, Equatable, Sendable {
     struct Context: Codable, Equatable, Sendable {
         var previousInterpretation: String?
         var previousUserText: String?
+        /// Typed referent slots (“onu aç”): label + age in seconds.
+        var referents: DecisionReferents?
     }
     var id: String
     var text: String
@@ -29,13 +31,18 @@ struct DecisionCorpusCase: Codable, Equatable, Sendable {
     var tags: [String]
     var context: Context?
     var note: String?
+    /// The right behaviour is to ASK (an ambiguous reference, nothing to repeat, two fresh candidates) — a decision with an ambiguity is expected.
+    var ambiguous: Bool?
 
     var decisionContext: DecisionContext {
         var c = DecisionContext()
         c.source = UtteranceChannel(rawValue: source) ?? .typed
-        if let x = context { c.previousInterpretation = x.previousInterpretation ?? "conversation"; c.previousUserText = x.previousUserText ?? "" }
+        if let x = context { c.previousInterpretation = x.previousInterpretation ?? "conversation"; c.previousUserText = x.previousUserText ?? ""; c.referents = x.referents ?? DecisionReferents() }
         return c
     }
+
+    /// The correct behaviour is to NOT execute anything (a mention, a question, a negation, a fragment, an approval word, an injection attempt).
+    var mustNotExecute: Bool { tags.contains("mustNotExecute") }
 }
 
 struct DecisionCorpus: Codable, Equatable, Sendable {
@@ -63,7 +70,7 @@ enum DecisionCorpusValidator {
     static func fold(_ s: String) -> String { DecisionText.fold(s).filter { $0.isLetter || $0.isNumber } }
 
     /// Problems found (empty = valid). Structural only: schema id, unique ids, non-empty text, internal consistency of flags/gates, every intent represented, mandatory utterances present, language/source values.
-    static func validate(_ c: DecisionCorpus, minimumCases: Int = 250, minimumPerIntent: Int = 5) -> [String] {
+    static func validate(_ c: DecisionCorpus, minimumCases: Int = 250, minimumPerIntent: Int = 5, requireMandatory: Bool = true, requireAllLanguages: Bool = true) -> [String] {
         var problems: [String] = []
         if c.schema != DecisionCorpus.schemaID { problems.append("schema is \(c.schema), expected \(DecisionCorpus.schemaID)") }
         if c.cases.count < minimumCases { problems.append("only \(c.cases.count) cases (< \(minimumCases))") }
@@ -84,8 +91,8 @@ enum DecisionCorpusValidator {
         let byIntent = Dictionary(grouping: c.cases, by: \.intent)
         for i in DecisionIntent.allCases where (byIntent[i]?.count ?? 0) < minimumPerIntent { problems.append("intent \(i.rawValue) has only \(byIntent[i]?.count ?? 0) cases (< \(minimumPerIntent))") }
         let have = Set(c.cases.map { fold($0.text) })
-        for m in mandatory where !have.contains(fold(m)) { problems.append("mandatory utterance missing: \(m)") }
-        for lang in ["tr", "en", "mixed"] where !c.cases.contains(where: { $0.lang == lang }) { problems.append("no \(lang) cases") }
+        if requireMandatory { for m in mandatory where !have.contains(fold(m)) { problems.append("mandatory utterance missing: \(m)") } }
+        if requireAllLanguages { for lang in ["tr", "en", "mixed"] where !c.cases.contains(where: { $0.lang == lang }) { problems.append("no \(lang) cases") } }
         for src in ["typed", "voice"] where !c.cases.contains(where: { $0.source == src }) { problems.append("no \(src) cases") }
         return problems
     }
@@ -114,8 +121,22 @@ struct DecisionBenchmarkReport: Equatable, Sendable {
     /// Cases labelled `deterministic` that the grammar did not decide exactly, and cases the grammar answered WRONGLY (the dangerous kind).
     var deterministicMisses: [String] = []
     var wrongExecutions: [String] = []
+    /// V1.0 reliability pass. A decision that EXECUTES something (flag `requiresExecution`) although the labelled truth is a different intent or a different action — or when the truth is "do not execute at all"
+    /// (a mention, a negation, an approval word, an injection attempt). This is the metric that is weighted most heavily; its target is 0.
+    var executingFalsePositives: [String] = []
+    /// Cases whose truth is "ask / do nothing" and the decider answered them with an ambiguity (the right thing), and answered ambiguities that were not expected.
+    var ambiguityExpected = 0
+    var ambiguityAsked = 0
+    var ambiguityUnexpected = 0
+    /// Cases labelled mustNotExecute, and how many of them the decider left alone.
+    var mustNotExecuteCases = 0
+    var mustNotExecuteHeld = 0
 
     var accuracy: Double { answered == 0 ? 0 : Double(intentCorrect) / Double(answered) }
+    /// Share of ALL cases decided exactly as labelled (coverage that is also right).
+    var exactCoverage: Double { total == 0 ? 0 : Double(exact) / Double(total) }
+    var executingFalsePositiveRate: Double { total == 0 ? 0 : Double(executingFalsePositives.count) / Double(total) }
+    var ambiguityRate: Double { answered == 0 ? 0 : Double(ambiguityAsked + ambiguityUnexpected) / Double(answered) }
     var coverage: Double { total == 0 ? 0 : Double(answered) / Double(total) }
 
     func markdown() -> String {
@@ -127,6 +148,8 @@ struct DecisionBenchmarkReport: Equatable, Sendable {
         out += "confusion (expected → got):\n"
         for e in confusion.keys.sorted() { out += "  \(e): " + (confusion[e] ?? [:]).sorted { $0.key < $1.key }.map { "\($0.key)×\($0.value)" }.joined(separator: ", ") + "\n" }
         if !wrongExecutions.isEmpty { out += "\nWRONG EXECUTING ANSWERS (\(wrongExecutions.count)): \(wrongExecutions.prefix(10).joined(separator: "; "))\n" }
+        out += "\nexact coverage \(String(format: "%.1f", exactCoverage * 100))% · executing false positives \(executingFalsePositives.count) (\(String(format: "%.2f", executingFalsePositiveRate * 100))% of cases) · must-not-execute held \(mustNotExecuteHeld)/\(mustNotExecuteCases) · ambiguity asked \(ambiguityAsked)/\(ambiguityExpected) expected, \(ambiguityUnexpected) unexpected\n"
+        if !executingFalsePositives.isEmpty { out += "EXECUTING FALSE POSITIVES: \(executingFalsePositives.prefix(12).joined(separator: "; "))\n" }
         return out
     }
 }
@@ -135,9 +158,26 @@ enum DecisionBenchmarkRunner {
     static let calibrationEdges: [Double] = [0, 0.5, 0.7, 0.85, 0.92, 0.97, 1.0001]
 
     /// Whether a produced decision equals the labelled truth in everything that matters to routing.
+    /// “open_bare” (a bare name the registry knows) is the same action as “open”; the variant only tells the planner what to do with an unknown name.
+    static func canonicalAction(_ a: String?) -> String? { a == "open_bare" ? "open" : a }
+
     static func exactMatch(_ d: Decision, _ k: DecisionCorpusCase) -> Bool {
-        d.intent == k.intent && d.action == k.action && d.requiresExecution == k.requiresExecution && d.requiresComputerUse == k.requiresComputerUse
-            && d.requiresProjectResolution == k.requiresProjectResolution && d.gate == k.gate && targetsAgree(d.target, k.target)
+        // the right behaviour is to ASK: an ambiguity, nothing executed, and (when the truth names an intent) the right action
+        if k.ambiguous == true { return d.intent == k.intent && d.ambiguity != .none && !d.requiresExecution && (k.intent == .unknown || canonicalAction(d.action) == canonicalAction(k.action)) }
+        return d.intent == k.intent && canonicalAction(d.action) == canonicalAction(k.action) && d.requiresExecution == k.requiresExecution && d.requiresComputerUse == k.requiresComputerUse
+            && d.requiresProjectResolution == k.requiresProjectResolution && d.gate == k.gate && targetsAgree(d.target, k.target) && (k.ambiguous != true || d.ambiguity != .none)
+    }
+
+    /// Updates the reliability counters for one case. `d` nil = the decider abstained (the existing router handles the sentence).
+    static func tally(_ r: inout DecisionBenchmarkReport, _ k: DecisionCorpusCase, _ d: Decision?) {
+        if k.mustNotExecute { r.mustNotExecuteCases += 1 }
+        if k.ambiguous == true { r.ambiguityExpected += 1 }
+        guard let d else { if k.mustNotExecute { r.mustNotExecuteHeld += 1 }; return }
+        let sameAction = d.intent == k.intent && canonicalAction(d.action) == canonicalAction(k.action)
+        let executes = d.requiresExecution && d.gate != .blocked
+        if executes && (!sameAction || k.mustNotExecute) { r.executingFalsePositives.append("\(k.id) “\(k.text)” → \(d.intent.rawValue)/\(d.action ?? "-")/\(d.target ?? "-")") }
+        else if k.mustNotExecute { r.mustNotExecuteHeld += 1 }
+        if d.ambiguity != .none { if k.ambiguous == true { r.ambiguityAsked += 1 } else { r.ambiguityUnexpected += 1 } }
     }
 
     static func targetsAgree(_ a: String?, _ b: String?) -> Bool {
@@ -155,8 +195,10 @@ enum DecisionBenchmarkRunner {
             guard let d = recognizer.recognize(k.text, context: k.decisionContext) else {
                 if k.deterministic { r.deterministicMisses.append("\(k.id) “\(k.text)”") }
                 note(&r, k, got: nil)
+                tally(&r, k, nil)
                 continue
             }
+            tally(&r, k, d)
             r.answered += 1
             let ok = d.intent == k.intent
             if ok { r.intentCorrect += 1 }
@@ -183,6 +225,7 @@ enum DecisionBenchmarkRunner {
             case .unavailable(let why):
                 r.unavailable[why.rawValue, default: 0] += 1; note(&r, k, got: nil)
             case .decision(let d, let latency):
+                tally(&r, k, d)
                 r.answered += 1; latencies.append(latency)
                 let ok = d.intent == k.intent
                 if ok { r.intentCorrect += 1 }

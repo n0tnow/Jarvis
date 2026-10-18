@@ -177,7 +177,7 @@ final class ConversationService {
         if let engine = decisionEngine {
             var rewrites = 0
             while true {
-                let outcome = engine.decide(text, context: DecisionContext(source: source == .voice ? .voice : .typed, previousInterpretation: interpretedBefore, previousUserText: previousTurn?.user ?? "", hasPendingDecision: store.pendingApproval != nil || hasPendingDecision()), language: inputLanguage)
+                let outcome = engine.decide(text, context: DecisionContext(source: source == .voice ? .voice : .typed, previousInterpretation: interpretedBefore, previousUserText: previousTurn?.user ?? "", hasPendingDecision: store.pendingApproval != nil || hasPendingDecision(), referents: currentReferents()), language: inputLanguage)
                 decisionOutcome = outcome
                 switch routeByDecision(outcome, text: text, language: inputLanguage, source: source, origin: origin) {
                 case .handled(let r): return r
@@ -295,7 +295,27 @@ final class ConversationService {
         f.actionLookup = { [weak self] text in self?.actionService?.recognizes(text) }
         f.pathExists = projectPathExists
         f.isKind = projectIsKind
+        f.referents = currentReferents()
         return f
+    }
+
+    // MARK: Typed referents for “onu aç”, “o projeyi kapat” (V1.0 reliability pass): written only from validated records, read only by the decision layer.
+
+    @ObservationIgnored private var recentReferents = RecentReferentTracker()
+
+    private func currentReferents() -> DecisionReferents {
+        var r = recentReferents.snapshot()
+        if let t = workingContext.items.last(where: { $0.kind == .task }) { r.task = ReferentSlot(label: t.label, ageSeconds: Date().timeIntervalSince(t.createdAt)) }
+        return r
+    }
+
+    private func noteReferent(for intent: ActionIntent) {
+        switch intent {
+        case .launchApp(let app): recentReferents.note(.application, label: app.display)
+        case .navigate(let section): recentReferents.note(.jarvisPage, label: section.rawValue)
+        case .openProject(let name, _): recentReferents.note(.project, label: name)
+        default: break
+        }
     }
 
     private enum DecisionRouting { case handled(RouteDecision), rewrite(String), next }
@@ -303,7 +323,7 @@ final class ConversationService {
     /// `.next` = the existing pipeline continues. `.handled` = the Decision layer routed the utterance to an existing capability. `.rewrite` = a spoken correction produced a sentence to route again.
     private func routeByDecision(_ outcome: DecisionEngine.Outcome, text: String, language: ReplyLanguage, source: InputSource, origin: InputOrigin) -> DecisionRouting {
         let d = outcome.decision
-        guard d.isDeterministic || (d.provider == .deterministic && d.gate == .blocked) else { return .next }          // a blocked request is refused even when it has no other intent
+        guard d.isDeterministic || (d.provider == .deterministic && (d.gate == .blocked || d.action == "ask_referent")) else { return .next }          // a blocked request is refused even when it has no other intent
         let previous = capturePreviousTurnForDecision()
         if d.intent == .projectOpen, knownProjects != nil {
             currentInterpretation = "project"
@@ -387,6 +407,7 @@ final class ConversationService {
                 var line = ActionPhrasebook.render(receipt, language: language)
                 if receipt.successIsClaimable {
                     self.workingContext.projectChanged(to: project.key)
+                    self.recentReferents.note(.project, label: project.name)
                     self.workingContext.note(kind: .project, refID: project.key, label: project.name, source: .userStated, evidence: "user-request")
                     if !receipt.executor.hasPrefix("Unity") {          // a folder reveal never started an editor — say so; a Unity open did
                         line += language == .tr ? " Unity Editor'ünü açmadım; Unity işleri gerektiğinde ayrı ve izinli çalışır." : " I did not launch the Unity Editor; Unity work runs separately when a task needs it."
@@ -438,6 +459,7 @@ final class ConversationService {
             if let decisionID { self.decisionEngine?.record(decisionID, route: "action", executor: receipt.executor, verification: receipt.verification.map { "\($0.method): \($0.detail)" }, outcome: receipt.successIsClaimable ? "verified success" : "\(receipt.status.rawValue)\(receipt.error.map { ": " + $0 } ?? "")") }
             var text = ActionPhrasebook.render(receipt, language: language)
             let ok = receipt.successIsClaimable
+            if ok { self.noteReferent(for: intent) }
             // A sound-shape match is a guess: say what was understood (only when it worked; a wrong guess is then visible and one sentence from being corrected).
             if ok, case .launchApp(let app) = intent, let heard = app.heardAs, ComputerText.fold(heard) != ComputerText.fold(app.display) {
                 let prefix = language == .tr ? "“\(heard)” için \(app.display) uygulamasını anladım. " : "I took “\(heard)” to mean \(app.display). "

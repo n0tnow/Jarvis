@@ -134,7 +134,9 @@ struct DecisionGrammarTests {
 
     @Test("what the grammar does not understand it leaves alone (nil), so the existing router decides")
     func abstains() {
-        for s in ["Bana bir fıkra anlat", "Fransa'nın başkenti neresi?", "hmm", "Bunu yap", "Onu aç", "Why is the sky blue?"] { #expect(decide(s) == nil, "“\(s)”") }
+        for s in ["Bana bir fıkra anlat", "Fransa'nın başkenti neresi?", "hmm", "Bunu yap", "Why is the sky blue?"] { #expect(decide(s) == nil, "“\(s)”") }
+        // “Onu aç” with nothing recent to point at is no longer left to the router: the lexicon ASKS (DEC-281, ReferentTests); it still executes nothing
+        #expect(decide("Onu aç")?.requiresExecution == false && decide("Onu aç")?.action == "ask_referent")
     }
 
     @Test("a decision has no authority: no approval, capability or execution surface exists in the decision layer")
@@ -388,7 +390,7 @@ struct DecisionJevTests {
         #expect(JevConfig().mode == .disabled)
         let provider = MockProvider { _ in jevDecision(.systemStatus, confidence: 1) }
         let e = engine(.disabled, provider: provider)
-        let out = e.decide("Bunu aç", context: DecisionContext())
+        let out = e.decide("Bu konuyu biraz düşünür müsün", context: DecisionContext())
         await e.awaitShadow()
         #expect(provider.calls == 0)
         #expect(out.decision.intent == .unknown && out.decision.provider == .router)

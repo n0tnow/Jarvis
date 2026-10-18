@@ -54,7 +54,7 @@ V09_WRITE='^Sources/Jarvis/Research/Acquisition/(Downloader|ArchiveInspector)\.s
 # V0.11 narrow exemptions (DEC-127…): the Computer layer's DENY lists contain the words they refuse ("sudo", "curl", "push", "Safari", "osascript"…); AXBackend/ScreenCapture are the ONLY
 # files that touch Accessibility, CGEvent, CGWindowList and the screen-capture permission; ComputerClipboard is the only pasteboard code; the live test acts as the user's clipboard.
 # V1.0 decision milestone narrow exemption: the Decision grammar and policy table NAME the things JARVIS refuses or recognises (a git push request is BLOCKED, a media noun, the word "web" as a target) — they are word lists, not capabilities.
-DEC_DENY='^Sources/Jarvis/Decision/(DeterministicCommandRecognizer|JevDecisionProvider)\.swift'
+DEC_DENY='^Sources/Jarvis/Decision/(DeterministicCommandRecognizer|JevDecisionProvider|CommandLexicon)\.swift'
 V11_DENY='^Sources/Jarvis/Computer/(ComputerPolicy|ComputerPlanner|CapabilityResolver|ComputerGoalParser)\.swift'
 V11_CLIP='^Sources/Jarvis/Computer/ComputerClipboard\.swift|^Sources/Jarvis/App/ComputerLiveTest\.swift'
 # V0.12 narrow exemptions (DEC-157…): the orchestration DENY list (forbidden delegate intents), the role-benchmark trap texts, the live test's adversarial fixtures and the memory authority patterns CONTAIN the words they refuse ("sudo", "curl", "terminal", "install"…).

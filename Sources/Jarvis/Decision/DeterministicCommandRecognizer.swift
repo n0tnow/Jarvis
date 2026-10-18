@@ -50,6 +50,23 @@ struct DecisionParsers {
     var research: (String) -> Bool = { ResearchIntake.isResearchRequest($0) }
     var correction: (String) -> Correction? = { CorrectionParser.parse($0) }
     var knownApp: ([String]) -> String? = { AppCatalog.match(tokens: $0)?.app.display }
+    /// The application named in the tokens with the range it covers — only when the last token carries nothing but a CLOSED Turkish suffix chain (“safariyi”, “unityyi”, never “safarixyz”).
+    var appMatch: ([String]) -> (display: String, range: Range<Int>)? = { tokens in
+        guard let m = AppCatalog.match(tokens: tokens) else { return nil }
+        let slice = Array(tokens[m.range])
+        let exact = m.app.aliases.contains { alias in
+            let a = alias.split(separator: " ").map(String.init)
+            guard a.count == slice.count else { return false }
+            for (k, w) in a.enumerated() {
+                let tok = slice[k]
+                if tok == w { continue }
+                if k == a.count - 1, tok.hasPrefix(w), TurkishMorphology.isClosedChain(String(tok.dropFirst(w.count))) { continue }
+                return false
+            }
+            return true
+        }
+        return exact ? (m.app.display, m.range) : nil
+    }
     /// Does the project registry know a project (or alias) by this spoken name (closed case suffixes only)? Default: none — a bare “X'ı aç” is then NOT claimed as a project.
     var isKnownProjectName: (String) -> Bool = { _ in false }
 }
@@ -63,6 +80,36 @@ struct DeterministicCommandRecognizer {
         guard !text.isEmpty, text.count <= 400 else { return nil }
         let w = W(text)
         guard !w.t.isEmpty, w.t.count <= 24 else { return nil }
+        // Narrow, exact correction forms (“hayır onu yapma”, “No, don't do that”, “aynısını yap”) come before the general correction parser, which would read “No, <rest>” as a sentence to route again.
+        if let d = SemanticLexicon(parsers: parsers).metaCorrection(w.t, context: context) { return d }
+        // Level 0: the closed grammar. A decision it produces for an EXECUTING intent is first checked for a stutter / a how-to question (“Görevi nasıl iptal ederim”, “aç aç aç aç”).
+        if let d = recognizeClosed(text, context: context) { return Self.guarded(d, w) }
+        // Level 0b: the typed semantic lexicon (closed morphology, concept × target slots, referents) …
+        if let d = SemanticLexicon(parsers: parsers).decide(text, tokens: w.t, context: context) { return d }
+        // … and the polite / colloquial verb forms rewritten to the imperative the existing typed parsers were written for (the same parsers, the same gates).
+        if let canon = PoliteCanonicalizer.canonical(text), canon != text, !canon.isEmpty, var d = recognizeClosed(canon, context: context) {
+            d.provenance = .semanticLexicon
+            d.confidence = min(d.confidence, 0.9)
+            return Self.guarded(d, W(canon))
+        }
+        return nil
+    }
+
+    /// Executing decisions are dropped (the sentence keeps its normal route) when the transcript is a stutter or a how-to / why question. Blocked requests, stop commands and read-only answers are untouched.
+    private static func guarded(_ d: Decision, _ w: W) -> Decision? {
+        guard d.requiresExecution, d.gate != .blocked, d.intent != .correction else { return d }
+        // a request NOT to do it (“Görevi iptal etme”, “Don't open Notes”) or a stutter / how-to question is never an action
+        if w.t.contains(where: { VerbMorphology.isNegativeImperative($0) || LexiconVocabulary.negationWords.contains($0) }) { return nil }
+        guard d.intent != .stopSpeech else { return d }
+        var run = 1
+        for i in 1..<max(w.t.count, 1) where i < w.t.count { run = w.t[i] == w.t[i - 1] ? run + 1 : 1; if run >= 3, d.intent != .cancelTask { return nil } }
+        if w.has("nasil", "how", "neden", "why", "niye", "nicin", "zaman", "when") { return nil }
+        return d
+    }
+
+    private func recognizeClosed(_ text: String, context: DecisionContext) -> Decision? {
+        let w = W(text)
+        guard !w.t.isEmpty, w.t.count <= 24 else { return nil }
         let question = DecisionText.isQuestion(text, w.t)
         let core = DecisionText.core(text)
 
@@ -74,20 +121,20 @@ struct DeterministicCommandRecognizer {
         if let d = voiceStatus(w, question: question) { return d }
         if let d = systemStatus(text, w, question: question) { return d }
         if let d = visibilityQuestion(w, question: question) { return d }
+        if let d = appRunningQuestion(w, question: question) { return d }
         if let d = projectOpen(w) { return d }
         if let d = continuation(text, w) { return d }
         if let d = projectStatus(w) { return d }
         if let d = settingsChange(text) { return d }
         if let d = mediaOrObserve(w, question: question) { return d }
         if let d = selfAndApplications(text) { return d }
-        if let d = appRunningQuestion(w, question: question) { return d }
         if let d = bareProjectOpen(w) { return d }
         if let d = bareContinuation(w) { return d }
         if let d = providerChoice(w, question: question) { return d }
         if let d = capabilityQuestion(text, w) { return d }
         // “Araştırma sayfasına geçelim” names JARVIS' own Research PAGE: a page noun means navigation territory, never a web research request
         if parsers.research(text), !w.pre("sayfa", "ekran", "panel", "sekme", "page", "screen", "tab ") { return Decision(intent: .research, confidence: 0.95, normalized: "Research this topic on the web", action: "web_research", execution: true, provenance: .existingParser) }
-        if let d = projectQuery(text) { return d }
+        if let d = projectQuery(text, w) { return d }
         if let d = smallTalk(w) { return d }
         return nil
     }
@@ -125,7 +172,11 @@ struct DeterministicCommandRecognizer {
         let exact: [[String]] = [["sus"], ["dur"], ["stop"], ["yeter"], ["kes"], ["quiet"], ["enough"], ["sessiz", "ol"], ["be", "quiet"], ["shut", "up"], ["sus", "artik"], ["yeter", "artik"], ["dur", "dur"], ["sus", "sus"], ["dur", "artik"], ["sus", "biraz"]]
         let speaks = w.pre("konus", "talk", "speak", "reading", "oku", "anlat")
         let stopWord = w.has("kes", "kesin", "kesebilir", "birak", "birakir", "durdur", "durdurur", "dur", "stop", "quit", "cut", "yeter", "artik", "pause") || w.pre("durdurab", "kesebil", "birakab")
-        if exact.contains(where: { $0 == core }) || (speaks && stopWord) || w.pre("susar", "susab", "susalim", "susun") {
+        // “dur dur dur”, “biraz sus”, “artık yeter”: only stop words and softeners, in any order
+        let stopWords: Set<String> = ["sus", "dur", "stop", "yeter", "kes", "quiet", "enough"]
+        let softeners: Set<String> = ["biraz", "artik", "simdi", "lutfen", "please", "now", "bir", "dakika", "saniye", "ya", "hadi"]
+        let setRule = core.count <= 5 && core.contains(where: { stopWords.contains($0) }) && core.allSatisfy { stopWords.contains($0) || softeners.contains($0) } && !core.contains("dakika") && !core.contains("saniye")
+        if exact.contains(where: { $0 == core }) || setRule || (speaks && stopWord) || w.pre("susar", "susab", "susalim", "susun") {
             return Decision(intent: .stopSpeech, confidence: 1.0, normalized: "Stop speaking now", action: "stop", execution: true, provenance: .deterministicGrammar)
         }
         return nil
@@ -156,9 +207,9 @@ struct DeterministicCommandRecognizer {
     private func voiceStatus(_ w: W, question: Bool) -> Decision? {
         guard question, w.t.count <= 9 else { return nil }
         let subject = w.pre("mikrofon", "microphone", "sesim", "sesimi", "sesimiz", "sesin", "konusmam", "konusmami") || w.has("mic", "ses", "voice", "audio", "sound", "beni", "me", "mikrofonum", "mikrofonumu")
-        let aboutVoice = w.pre("mikrofon", "microphone") || w.has("mic", "ses", "sesim", "sesimi", "voice", "audio", "sound") || ((w.has("beni") || w.has("me")) && w.pre("duy", "hear", "dinl", "listen", "anl"))
+        let aboutVoice = w.pre("mikrofon", "microphone") || w.has("mic", "ses", "sesim", "sesimi", "voice", "audio", "sound") || ((w.has("beni") || w.has("me") || w.pre("konusmam")) && w.pre("duy", "hear", "dinl", "listen", "anl"))
         guard subject, aboutVoice else { return nil }
-        let state = w.pre("duy", "hear", "geli", "gelm", "calis", "work", "acik", "aktif", "dinl", "listen", "alg", "yakal", "capture", "ulas", "hazir", "ready", "saglikli", "ok", "okay", "active", "picking", "alin", "gidiyor", "gitmiy") || w.has("on", "off", "kapali", "var", "yok")
+        let state = w.pre("duy", "hear", "geli", "gelm", "calis", "work", "acik", "aktif", "dinl", "listen", "alg", "aliyor", "alabil", "yakal", "capture", "ulas", "hazir", "ready", "saglikli", "ok", "okay", "active", "picking", "alin", "gidiyor", "gitmiy") || w.has("on", "off", "kapali", "var", "yok")
         guard state else { return nil }
         // “Ses seviyesini aç”, “mikrofonu aç/kapat” are settings or controls, not status questions.
         if w.t.contains(where: { ["ac", "kapat", "ayarla", "arttir", "azalt", "yukselt", "alcalt", "enable", "disable"].contains($0) }) { return nil }
@@ -182,7 +233,7 @@ struct DeterministicCommandRecognizer {
         let status = w.pre("durum", "status", "state", "health", "saglik", "saglig") || w.has("hal", "halde") || ((question || w.t.count <= 4) && (w.has("ok", "okay", "healthy", "fine", "hazir", "ready", "iyi", "doing", "going", "gidiyor", "nasil", "how")))
         let uiNoun = w.pre("panel", "sayfa", "page", "ekran", "screen", "sekme", "tab", "pencere", "window", "hud", "gorunum", "view")
         let openVerb = w.t.contains { ["ac", "acar", "acabilir", "acin", "open", "launch", "git", "gec", "don", "back", "goto"].contains($0) } || w.pre("acab", "acar")
-        let projectish = w.pre("gorev", "task", "proje", "project", "unity", "hamam", "agent", "ajan")
+        let projectish = w.pre("gorev", "task", "proje", "project", "unity", "hamam", "agent", "ajan") || w.has("acarim", "acayim", "acabilirim", "acilir", "acilmiyor", "acmak", "open", "opens")
         guard system, status, !projectish, !(uiNoun && openVerb), !(w.has("jarvis") && !w.pre("sistem", "system") && !question && w.t.count > 4) else { return nil }
         let scope: StatusScope = (w.has("wake") || w.pre("uyandirma")) ? .wake : .all
         return Decision(intent: .systemStatus, confidence: 0.9, normalized: "Tell me the current system status", target: Self.scopeName(scope), action: "query", provenance: .deterministicGrammar)
@@ -194,7 +245,7 @@ struct DeterministicCommandRecognizer {
 
     private func visibilityQuestion(_ w: W, question: Bool) -> Decision? {
         guard question, w.t.count <= 10 else { return nil }
-        let seeVerb = w.pre("gorebil", "goruyor", "gorunuyor", "gorunur", "gorur", "gorun") || w.phrase("can you see", "do you see", "is it visible", "is visible", "visible", "can you tell if", "see the")
+        let seeVerb = w.pre("gorebil", "goruyor", "gorunuyor", "gorunur", "gorur", "gorun", "ekranda") || w.phrase("can you see", "do you see", "is it visible", "is visible", "visible", "can you tell if", "see the", "on screen", "on the screen")
         guard seeVerb else { return nil }
         let appName = parsers.knownApp(w.t)
         let object: String? = appName ?? (w.pre("tarayici", "browser") ? "browser" : (w.pre("pencere", "window") ? "window" : (w.pre("video") ? "video" : nil)))
@@ -210,7 +261,7 @@ struct DeterministicCommandRecognizer {
 
     /// “Chrome açık mı?” / “Is Safari open?”: a question about the application LIST (is it running). Answered as exactly that — never as visibility.
     private func appRunningQuestion(_ w: W, question: Bool) -> Decision? {
-        guard question, w.t.count <= 6 else { return nil }
+        guard question, w.t.count <= 6, !["can", "could", "would", "will", "shall", "may", "do", "does", "did", "dont"].contains(w.t.first ?? "") else { return nil }       // “Can you open Safari?” is a request, “Is Safari open?” a state question
         let runWord = w.t.contains { ["acik", "calisiyor", "calisir", "running", "open", "opened", "calismakta"].contains($0) } || w.pre("calisiy")
         guard runWord, let app = parsers.knownApp(w.t) else { return nil }
         return Decision(intent: .computerUse, confidence: 0.9, normalized: "Is \(app) running right now?", target: app, action: "running_query", execution: false, computerUse: true, provenance: .deterministicGrammar)
@@ -224,7 +275,8 @@ struct DeterministicCommandRecognizer {
         guard (1...2).contains(rest.count), !rest.contains(where: { Self.projectWords.contains($0) || DecisionVocabulary.pages.contains($0) }), parsers.knownApp(w.t) == nil else { return nil }
         let name = rest.joined(separator: " ")
         guard parsers.isKnownProjectName(name) else { return nil }          // an unknown bare name may be an application (“Spotify'ı aç”): the application grammar owns it
-        return Decision(intent: .projectOpen, confidence: 0.6, normalized: "Open the \(name) project, if there is a project of that name", target: name, action: "open_bare", execution: true, projectResolution: true, provenance: .deterministicGrammar)
+        let stem = canonicalName(name)
+        return Decision(intent: .projectOpen, confidence: 0.6, normalized: "Open the \(stem) project, if there is a project of that name", target: stem, action: "open_bare", execution: true, projectResolution: true, provenance: .deterministicGrammar)
     }
 
     /// “Hamam'da devam et” / “Hamam'a devam edelim”: continue the NAMED project (the name is never dropped).
@@ -232,13 +284,22 @@ struct DeterministicCommandRecognizer {
         guard w.t.count <= 5, w.t.contains(where: { ["devam", "continue", "resume"].contains($0) }), w.t.contains(where: { ["et", "edelim", "ettir", "edin", "edebilir", "edebilirmisin"].contains($0) }) || w.has("continue", "resume") else { return nil }
         let rest = w.t.filter { !["devam", "et", "edelim", "ettir", "edin", "edebilir", "edebilirmisin", "misin", "musun", "mi", "mu", "continue", "resume", "on", "with", "lutfen", "please"].contains($0) && !DecisionText.noise.contains($0) && !Self.bareStop.contains($0) }
         guard rest.count == 1, !Self.projectWords.contains(where: { rest[0].hasPrefix($0) }), !DecisionVocabulary.pages.contains(rest[0]), parsers.knownApp(w.t) == nil, rest[0].count >= 3, parsers.isKnownProjectName(rest[0]) else { return nil }
-        return Decision(intent: .projectTask, confidence: 0.7, normalized: "Continue the work in \(rest[0])", target: rest[0], action: "continue", execution: true, projectResolution: true, provenance: .deterministicGrammar)
+        let stem = canonicalName(rest[0])
+        return Decision(intent: .projectTask, confidence: 0.7, normalized: "Continue the work in \(stem)", target: stem, action: "continue", execution: true, projectResolution: true, provenance: .deterministicGrammar)
+    }
+
+    /// The registry name without its case suffix (“hamami” → “hamam”): the shortest suffix chain that leaves a name the registry still knows. A name with no such stem is returned unchanged.
+    private func canonicalName(_ spoken: String) -> String {
+        let parts = spoken.split(separator: " ").map(String.init)
+        guard let last = parts.last else { return spoken }
+        if let stem = TurkishMorphology.stem(of: last, where: { parsers.isKnownProjectName((parts.dropLast() + [$0]).joined(separator: " ")) }) { return (parts.dropLast() + [stem]).joined(separator: " ") }
+        return spoken
     }
 
     // MARK: Projects
 
     private static let projectWords = ["proje", "project", "oyun", "game"]
-    private static let nameStop: Set<String> = ["bu", "bizim", "the", "our", "my", "this", "that", "su", "benim", "son", "en", "last", "latest", "recent", "bir", "onceki", "previous", "calistigimiz", "yaptigimiz", "working", "worked", "we", "ben", "biz", "ac", "open", "projeyi", "projesini", "oyunu", "oyunumuzu", "on", "ilk", "yeni", "new"]
+    private static let nameStop: Set<String> = ["bu", "bizim", "the", "our", "my", "this", "that", "su", "benim", "son", "en", "last", "latest", "recent", "bir", "onceki", "previous", "calistigimiz", "yaptigimiz", "working", "worked", "we", "ben", "biz", "ac", "open", "projeyi", "projesini", "oyunu", "oyunumuzu", "on", "ilk", "yeni", "new", "o", "onu", "bunu", "sunu", "that"]
 
     private func projectOpen(_ w: W) -> Decision? {
         guard w.t.count <= 10 else { return nil }
@@ -255,6 +316,8 @@ struct DeterministicCommandRecognizer {
             if i + 1 < w.t.count, tok == "project" || tok == "game", !Self.nameStop.contains(w.t[i + 1]), !DecisionText.noise.contains(w.t[i + 1]) { name = w.t[i + 1]; break }
         }
         if wantsLast { name = nil }
+        // “o projeyi aç” / “onu aç”: a reference to something just handled — the lexicon resolves it from typed referents (or asks)
+        if name == nil, !wantsLast, w.has("o", "onu", "bunu", "sunu", "that") { return nil }
         let amb: DecisionAmbiguity = (name == nil && !wantsLast) ? .ambiguous(question: "Which project?") : .none
         return Decision(intent: .projectOpen, confidence: name != nil || wantsLast ? 0.95 : 0.6, normalized: wantsLast ? "Open the project we worked on most recently" : "Open the \(name ?? "current") project",
                         target: name, action: wantsLast ? "open_last" : "open", execution: true, projectResolution: true, ambiguity: amb, provenance: .deterministicGrammar)
@@ -304,13 +367,15 @@ struct DeterministicCommandRecognizer {
         return cand.count >= 3 ? cand : nil
     }
 
-    private func projectQuery(_ raw: String) -> Decision? {
+    private func projectQuery(_ raw: String, _ w: W) -> Decision? {
         guard let intent = parsers.continuity(raw) else { return nil }
+        // the registry NAME in the sentence (“Hamam'da en son ne yaptık”) is kept even when the continuity grammar did not extract it
+        let named = SemanticLexicon(parsers: parsers).projectName(in: w.t)
         switch intent {
-        case .status(let p, _): return Decision(intent: .projectQuery, confidence: 0.9, normalized: "Tell me the project status", target: p, action: "status", projectResolution: true, provenance: .existingParser)
-        case .lastDone(let p): return Decision(intent: .projectQuery, confidence: 0.9, normalized: "What did we do last in the project?", target: p, action: "last_done", projectResolution: true, provenance: .existingParser)
-        case .lastReport(let p, _): return Decision(intent: .projectQuery, confidence: 0.9, normalized: "Show the last task report", target: p, action: "last_report", projectResolution: true, provenance: .existingParser)
-        case .next(let p): return Decision(intent: .projectQuery, confidence: 0.9, normalized: "What is next in the project?", target: p, action: "next", projectResolution: true, provenance: .existingParser)
+        case .status(let p, _): return Decision(intent: .projectQuery, confidence: 0.9, normalized: "Tell me the project status", target: (p ?? named).map(canonicalName), action: "status", projectResolution: true, provenance: .existingParser)
+        case .lastDone(let p): return Decision(intent: .projectQuery, confidence: 0.9, normalized: "What did we do last in the project?", target: (p ?? named).map(canonicalName), action: "last_done", projectResolution: true, provenance: .existingParser)
+        case .lastReport(let p, _): return Decision(intent: .projectQuery, confidence: 0.9, normalized: "Show the last task report", target: (p ?? named).map(canonicalName), action: "last_report", projectResolution: true, provenance: .existingParser)
+        case .next(let p): return Decision(intent: .projectQuery, confidence: 0.9, normalized: "What is next in the project?", target: (p ?? named).map(canonicalName), action: "next", projectResolution: true, provenance: .existingParser)
         default: return nil
         }
     }
@@ -441,7 +506,10 @@ struct SpokenRestatement: Equatable, Sendable {
         var wrong: String?
         var rightWords: [String] = words
         var rightFolded = folded
-        if let n = negIdx, hasSaid || hayirLead {
+        if let n = negIdx, hasSaid, let sIdx = folded.firstIndex(where: { saidTokens.contains($0) }), sIdx > 0, sIdx + 1 < n {
+            // “Safari dedim, Sofany değil”: the restated word comes FIRST, the mis-heard one between “dedim” and “değil”
+            wrong = words[(sIdx + 1)..<n].joined(separator: " "); rightWords = Array(words[..<sIdx]); rightFolded = Array(folded[..<sIdx])
+        } else if let n = negIdx, hasSaid || hayirLead {
             if n > 0, folded[0] != "i" {
                 wrong = words[0..<n].joined(separator: " "); rightWords = Array(words[(n + 1)...]); rightFolded = Array(folded[(n + 1)...])
             } else if n > 0 || folded.first == "i" {

@@ -45,6 +45,8 @@ enum DecisionProvenance: String, Codable, Sendable {
     case routerFallback
     /// A remote classifier's answer in shadow mode (recorded, never used) or gated mode (accepted under `GatedPolicy`).
     case jevShadow, jevGated
+    /// The bounded semantic lexicon (concept × target slots, closed Turkish morphology, referents) — Level 0b, after the closed grammar.
+    case semanticLexicon
 }
 
 enum DecisionAmbiguity: Equatable, Codable, Sendable {
@@ -104,6 +106,8 @@ struct DecisionContext: Equatable, Sendable {
     /// The previous user sentence (bounded), used only to apply a correction ("Sofany değil, Safari dedim") to it.
     var previousUserText: String = ""
     var hasPendingDecision: Bool = false
+    /// The five typed slots (last application / project / page / setting / task) with their ages — facts for resolving “onu”, “o proje”, “devam et”; never authority.
+    var referents = DecisionReferents()
 }
 
 enum UtteranceChannel: String, Codable, Sendable { case typed, voice }
