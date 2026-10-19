@@ -139,6 +139,12 @@ extension AppContext {
         engine.jev = JevDecisionProvider()
         engine.config = { JevConfig(mode: JevMode(rawValue: prefs.decisionJevMode) ?? .disabled, gatedMinimumConfidence: prefs.decisionJevMinConfidence, modelAlias: prefs.decisionJevModel) }
         engine.projectNames = { [weak self] in (try? self?.repository?.memoryProjects())?.map(\.name) ?? [] }
+        // V1.0 final integration (JARVIS-V1JV-6): a project-bound remote answer is accepted only when the sentence names exactly ONE project of the registry the app already has.
+        engine.projectResolver = { [weak self] raw in
+            guard let self else { return .unresolved }
+            let rows = ((try? self.repository?.memoryProjects()) ?? []).map { KnownProject(key: $0.key, name: $0.name, rootPath: $0.rootPath, kind: $0.identityKind, lastSeen: $0.lastSeen, aliases: $0.aliases) }
+            return JevTargetResolver.resolve(raw: raw, projects: rows)
+        }
         engine.onActivity = { [weak self] message in self?.store.log(message, kind: .info, persist: false) }
         service.decisionEngine = engine
         service.voiceFacts = { [weak self] heard in

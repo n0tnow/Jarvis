@@ -37,6 +37,10 @@ struct TaskReport: Codable, Equatable, Sendable {
     /// V0.12: the graph in words (roles, providers, routing reasons, artifacts, optional gaps) and the derived outcome (SUCCESS / PARTIAL / FAILED / BLOCKED …). Optional so older reports still decode.
     var orchestration: [String]?
     var outcome: String?
+    /// V1.0 final integration (software-engineering tasks only): the observable facts of the engineering run, and the completion claim JARVIS may make: "verified" · "unverified" · "refused". Optional so older reports decode.
+    var engineering: [String]?
+    var verification: String?
+    var verificationNote: String?
 
     // MARK: Build
 
@@ -135,8 +139,14 @@ struct TaskReport: Codable, Equatable, Sendable {
         case TaskState.failed.rawValue where outcome == TaskOutcome.blocked.rawValue:
             let f = failure
             return "\(title) — BLOCKED after \(stepsPassed)/\(stepsTotal) steps: \(f?.reason ?? "stopped by policy"). \(f?.suggestedNext ?? "")"
+        case TaskState.completed.rawValue where verification == "unverified":
+            // NO VERIFIED ACTION → NO COMPLETION CLAIM: the changes exist, nothing was established about them.
+            var s = "\(title) — changes applied, NOT VERIFIED: \(verificationNote ?? "no verification could be run")."
+            if !filesChanged.isEmpty { s += " \(filesChanged.count) file\(filesChanged.count == 1 ? "" : "s") changed." }
+            return s
         case TaskState.completed.rawValue:
             var s = "\(title) — completed. \(stepsPassed)/\(stepsTotal) steps validated."
+            if verification == "verified" { s += " Verified by JARVIS' own runs at the final revision." + (verificationNote.map { " \($0)." } ?? "") }
             if !filesChanged.isEmpty { s += " \(filesChanged.count) file\(filesChanged.count == 1 ? "" : "s") changed." }
             for v in validations where v.hasPrefix("Build:") || v.hasPrefix("Tests:") { s += " " + v.replacingOccurrences(of: #"\s*\([\d.]+ s\)"#, with: "", options: .regularExpression) + "." }
             if !providers.isEmpty { s += " " + providers.map { "\($0.name) \($0.role)" }.joined(separator: "; ") + "." }
@@ -164,6 +174,7 @@ struct TaskReport: Codable, Equatable, Sendable {
         if let u = unity, !u.isEmpty { l += ["", "## Unity"] + u.map { "- \($0)" } }
         if let c = computer, !c.isEmpty { l += ["", "## Computer Use"] + c.map { "- \($0)" } }
         if let o = orchestration, !o.isEmpty { l += ["", "## Orchestration" + (outcome.map { " — outcome: \($0.uppercased())" } ?? "")] + o.map { "- \($0)" } }
+        if let e = engineering, !e.isEmpty { l += ["", "## Engineering (observed facts)"] + e.map { "- \($0)" } }
         if let a = advisories, !a.isEmpty { l += ["", "## Reviewer advice (did not change the validated result)"] + a.map { "- \($0)" } }
         if !warnings.isEmpty { l += ["", "## Warnings"] + warnings.map { "- \($0)" } }
         if let f = failure { l += ["", "## Failure", "- \(f.category): \(f.reason)", f.failedStep.map { "- Failed step: \($0)" } ?? "", "- Next: \(f.suggestedNext)"] }

@@ -168,6 +168,9 @@ final class TaskEngine {
         var revisionRequests: [String: String] = [:]          // node key → what knowledge a specialist asked for (the ORCHESTRATOR decides whether to insert research)
         /// V0.13: a continuation session is a bounded piece of work (wall clock, nodes, revisions, correction rounds); nil for every other task.
         var continuation: ContinuationBounds?
+        /// V1.0 final integration: the engineering run of a software-engineering task (nil for every other task), and what a checkpoint stored for it before a restart.
+        var engineering: EngineeringRunState?
+        var engineeringRestored: EngineeringRestore?
 
         init(record: TaskRecord, steps: [TaskStepRecord], workspace: WorkspaceGuard, tools: ProjectTools, profiles: ProjectProfiles) {
             self.record = record; self.steps = steps; self.workspace = workspace; self.tools = tools; self.profiles = profiles
@@ -285,6 +288,9 @@ final class TaskEngine {
                 note("Workspace already has \((b.dirtyPaths + b.untrackedPaths).count) uncommitted change(s) — they will not be overwritten", .warning, taskID: ctx.record.id)
             }
         }
+        // 2b. V1.0 final integration: the engineering assignment and the workspace snapshot BEFORE any write (after a restart: the revalidated stored run; an unprovable one fails safe, nothing is written).
+        await engineeringBegin(ctx)
+        if ctx.hardFailure != nil { await finalizeFailure(ctx); return }
         if ctx.record.state == .planning { guard transition(ctx, to: .ready, activity: "Plan accepted") else { return } }
         if ctx.record.state != .running { guard transition(ctx, to: .running, activity: "Running") else { return } }
         await checkpoint(ctx, reason: "plan accepted")
@@ -295,7 +301,11 @@ final class TaskEngine {
         if ctx.cancelRequested || Task.isCancelled { await finalizeCancelled(ctx); return }
         if ctx.hardFailure != nil { await finalizeFailure(ctx); return }
         let counted = ctx.steps.filter { $0.state != .skipped && !$0.optional }
-        if !counted.isEmpty, counted.allSatisfy({ $0.state == .passed }) { await finalizeSuccess(ctx) }
+        if !counted.isEmpty, counted.allSatisfy({ $0.state == .passed }) {
+            // V1.0 final integration: for software-engineering work, "every step passed" is not yet a completion — the verdict from the real diff and the real evidence at the final revision is.
+            if let refusal = await engineeringCompletionGate(ctx) { ctx.hardFailure = refusal; await finalizeFailure(ctx) }
+            else { await finalizeSuccess(ctx) }
+        }
         else {
             ctx.hardFailure = (.validationFailed, "The plan stopped before every step passed.")
             await finalizeFailure(ctx)

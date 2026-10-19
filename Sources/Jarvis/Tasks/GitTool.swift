@@ -46,6 +46,34 @@ enum GitTool {
                            dirtyPaths: dirty.sorted(), untrackedPaths: untracked.sorted(), capturedAt: now)
     }
 
+    /// V1.0 final integration: the engineering pipeline's Git facts (HEAD, branch, modified / untracked / STAGED / CONFLICTED paths) through the same read-only `status`, parsed by the pure `GitStatusParser`
+    /// (JARVIS-V1EP-4). Paths are relative to the workspace root even when the workspace is a subdirectory of the repository. nil = not a Git repository (or no Git).
+    static func facts(workspace: WorkspaceGuard) async -> GitFacts? {
+        guard let inside = await run(["rev-parse", "--is-inside-work-tree"], in: workspace.root), inside.exitCode == 0, inside.output.trimmingCharacters(in: .whitespacesAndNewlines) == "true" else { return nil }
+        func out(_ r: ManagedProcess.RunResult?) -> String? { (r?.exitCode == 0) ? r?.output.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").first.map(String.init) : nil }
+        let prefix = (await run(["rev-parse", "--show-prefix"], in: workspace.root))?.output.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let status = await run(["status", "--porcelain=v1", "--untracked-files=all"], in: workspace.root)
+        let scoped = (status?.output ?? "").split(separator: "\n").compactMap { line -> String? in
+            guard line.count > 3 else { return nil }
+            if prefix.isEmpty { return String(line) }
+            let head = line.prefix(3)
+            var path = String(line.dropFirst(3))
+            if let arrow = path.range(of: " -> ") { path = String(path[arrow.upperBound...]) }
+            let unquoted = path.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            guard unquoted.hasPrefix(prefix) else { return nil }
+            return head + String(unquoted.dropFirst(prefix.count))
+        }.joined(separator: "\n")
+        return GitStatusParser.parse(scoped, head: out(await run(["rev-parse", "HEAD"], in: workspace.root)), branch: out(await run(["rev-parse", "--abbrev-ref", "HEAD"], in: workspace.root)))
+    }
+
+    /// The content of `path` at `commit` (read-only `git show`), for the "before" side of a diff when the file was clean at the baseline. nil = not available.
+    static func contents(of path: String, at commit: String, workspace: WorkspaceGuard) async -> String? {
+        guard commit.range(of: "^[0-9a-f]{7,40}$", options: .regularExpression) != nil else { return nil }
+        guard let prefix = await run(["rev-parse", "--show-prefix"], in: workspace.root)?.output.trimmingCharacters(in: .whitespacesAndNewlines),
+              let r = await run(["show", "\(commit):\(prefix)\(path)"], in: workspace.root), r.exitCode == 0 else { return nil }
+        return r.output
+    }
+
     /// V0.13 project continuity: the same read-only facts as the baseline plus the HEAD commit subject, as one value. Nothing is changed.
     static func continuity(at dir: String) async -> ContinuityGit {
         guard let inside = await run(["rev-parse", "--is-inside-work-tree"], in: dir), inside.exitCode == 0, inside.output.trimmingCharacters(in: .whitespacesAndNewlines) == "true" else { return .none }

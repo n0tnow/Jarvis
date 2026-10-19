@@ -212,9 +212,12 @@ extension TaskEngine {
         case .completed(let text, let runID, let cand, _):
             out.runID = runID; out.candidate = cand
             ctx.candidates[step.key, default: []].append(cand)
+            // V1.0 final integration: a worker result that raced with someone else's change in its scope is stale — not applied, never verified.
+            if let stale = await engineeringStaleness(ctx) { out.failure = stale; return out }
             return await applyEdits(ctx, step, text: text, runID: runID, candidate: cand)
         case .failed(let rid, _, let validationFailed, let cand):
             out.runID = rid; out.candidate = cand; if let cand { ctx.candidates[step.key, default: []].append(cand) }
+            engineeringNoteProviderFailure(ctx)
             out.failure = self.failure(from: result)
             // A rejected edit that violated the workspace/capability policy is a policy failure, not something to re-ask about.
             if validationFailed, let note = verdictBox.detail.last, let bar = note.firstIndex(of: "|"),
@@ -229,6 +232,8 @@ extension TaskEngine {
 
     func applyEdits(_ ctx: TaskContext, _ step: TaskStepRecord, text: String, runID: UUID, candidate: RoutingCandidate) async -> CodeAttempt {
         var out = CodeAttempt(); out.runID = runID; out.candidate = candidate
+        // A worker result that arrives after a cancel (or in a terminal state) is never applied.
+        if ctx.engineering != nil, !AssignmentGate.mayApplyResult(TaskLifecycleView(cancelRequested: ctx.cancelRequested || Task.isCancelled, terminal: ctx.record.state.isTerminal)) { out.cancelled = true; return out }
         let tools = ctx.tools
         let blocks = EditParser.parse(text).blocks
         var prepared: [ProjectTools.PreparedFile]
@@ -239,6 +244,9 @@ extension TaskEngine {
             let over = scope.editViolations(prepared.map(\.path), alreadyChanged: Set(ctx.changes.map(\.path)).count)
             if !over.isEmpty { out.failure = (.scopeExceeded, over.joined(separator: "; ")); return out }
         }
+
+        // V1.0 final integration: the deterministic engineering review of what these edits WOULD change (scope, forbidden / protected paths, tampering, secrets, dependencies) — before anything is written.
+        if let refusal = engineeringGate(ctx, prepared: prepared) { out.failure = refusal; return out }
 
         // User's own uncommitted work is never overwritten silently: touching such a file needs an explicit approval.
         let dirty = Set((ctx.record.gitBaseline?.dirtyPaths ?? []) + (ctx.record.gitBaseline?.untrackedPaths ?? []))
@@ -272,6 +280,7 @@ extension TaskEngine {
             }
             audit.update(runID) { $0.filesChanged = changes.map(\.path); $0.toolsUsed = Array(Set($0.toolsUsed + ["ApplyEdits"])).sorted() }
             ctx.changes.append(contentsOf: changes)
+            await engineeringAfterApply(ctx, step: step, changes: changes, providerText: text, candidate: candidate)
             // Verify what is on disk (the `changedFiles` validation): content hash must equal what we wrote.
             for c in changes {
                 let onDisk = try? tools.fileHash(c.path)
@@ -352,6 +361,7 @@ extension TaskEngine {
         hub?.emit(runID, .toolStarted, source: "JARVIS", summary: "Started \(profile.display)", detail: "in \(ctx.workspace.root)")
         let sink = SafeToolOutput(runID: runID, hub: hub)
         let result: CommandResult
+        let digest = await engineeringDigest(ctx)                                  // the revision this run is evidence for
         do { result = try await CommandRunner.run(profile, workspace: ctx.workspace, sink: sink) }
         catch {
             sink.finish()
@@ -362,6 +372,7 @@ extension TaskEngine {
             updateStep(ctx, step.key) { $0.agentRunID = runID }
             return CommandResult(exitCode: -1, timedOut: false, cancelled: false, durationSeconds: 0, tail: why, testCounts: nil)
         }
+        engineeringRecordEvidence(ctx, step: step, profile: profile, result: result, digest: digest)
         hub?.emit(runID, .toolFinished, source: "JARVIS", summary: result.timedOut ? "Timed out after \(profile.timeoutSeconds) s" : "Finished with exit code \(result.exitCode)",
                   severity: result.succeeded ? .success : .warning)
         audit.recordTool(runID, tool: profile.label, summary: profile.display, status: result.succeeded ? "ok" : (result.cancelled ? "cancelled" : "failed"), exitCode: Int(result.exitCode))
@@ -393,6 +404,8 @@ extension TaskEngine {
         for kind in kinds {
             if ctx.cancelRequested || Task.isCancelled { return nil }
             if (ctx.step(code.key)?.attempts ?? 0) >= Self.maxStepAttempts { return nil }
+            // V1.0 final integration: the semantic repair policy (same failure repeating, exhausted budgets, security findings) may stop what the engine's own counters would allow.
+            if !(await engineeringRepairGate(ctx, failure: last.tail)) { return nil }
             ctx.repairCount += 1
             if kind == .escalation { ctx.escalationCount += 1 }
             mutate(ctx) { $0.activity = kind == .repair ? "Repairing: \(code.title)" : "Escalating the fix to another provider" }

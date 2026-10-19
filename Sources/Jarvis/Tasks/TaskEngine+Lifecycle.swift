@@ -63,6 +63,9 @@ extension TaskEngine {
         var r = TaskReport.build(task: t, steps: ctx.steps, attempts: attempts, changes: ctx.changes, approvals: approvals, cleanup: cleanup)
         if t.kind == .computer { r.computer = computerReportLines(taskID: t.id) }
         if ctx.orchestrated { r.orchestration = orchestrationReportLines(ctx.record.id, task: t, steps: ctx.steps); r.outcome = TaskOutcome.derive(state: state, failure: t.failureCategory, steps: ctx.steps).rawValue }
+        // V1.0 final integration: software-engineering work reports what was OBSERVED (files really changed, checks really run at the final revision) and whether it is verified.
+        if let lines = engineeringReportLines(ctx) { r.engineering = lines }
+        if let v = engineeringVerificationState(ctx) { r.verification = v.state; r.verificationNote = v.note }
         return r
     }
 
@@ -95,6 +98,11 @@ extension TaskEngine {
         var diff: String
         /// V0.6: bounded Unity evidence (never a hierarchy dump): the Console baseline, what the editor looked like, the facts gathered so far.
         var unity: UnityCheckpoint?
+        /// V1.0 final integration: the structured, resumable engineering run (assignment, observed revisions, applied edits, evidence, findings, bounded events) — never reasoning, never a transcript, never a
+        /// credential. `engineering.checkpointDigest` is the workspace digest at the time of writing; a mismatch on resume means the record is not truth.
+        var engineering: EngineeringRunRecord?
+        var engineeringBefore: WorkspaceSnapshot?
+        var engineeringObserved: WorkspaceSnapshot?
     }
 
     struct UnityCheckpoint: Codable {
@@ -124,10 +132,14 @@ extension TaskEngine {
     func writeCheckpoint(_ ctx: TaskContext, reason: String) {
         guard let artifacts else { return }
         let pending = ((try? repository?.approvals(taskID: ctx.record.id)) ?? []).filter { $0.state == .pending }.map(\.id)
-        let cp = Checkpoint(taskID: ctx.record.id, reason: reason, at: Date(), state: ctx.record.state.rawValue, planVersion: ctx.record.planVersion,
+        var cp = Checkpoint(taskID: ctx.record.id, reason: reason, at: Date(), state: ctx.record.state.rawValue, planVersion: ctx.record.planVersion,
                             steps: ctx.steps.map { .init(key: $0.key, state: $0.state.rawValue, attempts: $0.attempts, evidence: $0.validationEvidence.map { OutputSanitizer.sanitize(String($0.prefix(400))) }) },
                             changes: ctx.changes, gitBaseline: ctx.record.gitBaseline, leases: leases.leases(forTask: ctx.record.id).map(\.path), pendingApprovals: pending,
                             failure: ctx.record.failureReason.map { OutputSanitizer.sanitize($0) }, diff: diffText(ctx, limit: 20_000), unity: unityCheckpoint(ctx))
+        if let e = ctx.engineering {
+            var record = e.record; record.checkpointDigest = e.observed.digest
+            cp.engineering = record; cp.engineeringBefore = e.before; cp.engineeringObserved = e.observed
+        }
         guard let data = try? JSONEncoder.pretty.encode(cp),
               let a = try? artifacts.store(data, type: "task-checkpoint", folder: .checkpoints, fileExtension: "json", taskID: ctx.record.id, meta: reason) else { return }
         ctx.record.checkpointArtifactID = a.id
@@ -189,6 +201,8 @@ extension TaskEngine {
         if let id = t.checkpointArtifactID, let art = try? artifacts?.artifact(id), let data = try? artifacts?.read(art), let cp = try? JSONDecoder.iso.decode(Checkpoint.self, from: data) {
             ctx.restoredDiff = cp.diff
             if let u = cp.unity { ctx.unityBaseline = u.baseline; ctx.unityFacts = u.facts; ctx.unityApprovedDirty = Set(u.approvedDirtyScenes) }
+            // V1.0 final integration: the engineering run is trusted only from a checkpoint whose bytes still match their recorded hash (a torn or altered file is not truth).
+            if let e = cp.engineering, artifacts?.verify(art) == true { ctx.engineeringRestored = EngineeringRestore(record: e, before: cp.engineeringBefore, observed: cp.engineeringObserved) }
         }
         ctx.evidence = steps.filter { $0.state == .passed }.compactMap { $0.validationEvidence }
         if t.constraints.contains(ContinuationMarker.constraint) { ctx.continuation = .standard }          // V0.13: a resumed continuation session keeps its bounds
