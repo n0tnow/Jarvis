@@ -86,7 +86,7 @@ struct EngineeringIntegrationTests {
         let report = try #require(h.engine.report(for: view.id))
         #expect(report.verification != "verified" && !report.userSummary.contains("completed"))
         // and at the policy level: a verdict over an unchanged repository can never be a completion
-        let o = EngineeringSeam.completion(verdict: VerificationVerdict(status: .inconclusive, findings: [], mismatches: [], unmetCriteria: [], missingStages: [], revision: "x", attribution: AttributionReport(changes: []), diffStats: DiffStats(files: 0, linesAdded: 0, linesRemoved: 0, binaryFiles: 0)),
+        let o = EngineeringSeam.completion(verdict: VerificationVerdict(status: .inconclusive, findings: [], mismatches: [], unmetCriteria: [], missingStages: [], revision: "x", attribution: AttributionReport(changes: [], lostEdits: [], preexistingUntouched: []), diffStats: DiffStats(files: 0, linesAdded: 0, linesRemoved: 0)),
                                            plan: VerificationPlan(stages: [], manualRequired: [], elevatedReview: false, reasons: []), profilesAvailable: true)
         if case .failed = o {} else { Issue.record("an unchanged repository must refuse the completion: \(o)") }
     }
@@ -170,7 +170,8 @@ struct EngineeringIntegrationTests {
         h.runner.script = { job, i in job.type == "CodingAgent" ? .block : await base(job, i) }
         let project = TaskFixtures.calculatorProject()
         let id = await h.submit(project: project)
-        #expect(await h.waitUntil { h.runner.jobs("CodingAgent").count == 1 })
+        let reached = await h.waitUntil { h.runner.jobs("CodingAgent").count == 1 }
+        #expect(reached)
         h.engine.cancel(id)
         await h.engine.waitUntilFinished(id)
         #expect(h.task(id).state == .cancelled)
@@ -188,7 +189,8 @@ struct EngineeringIntegrationTests {
         TaskFixtures.write("slow.py", "import time\ntime.sleep(60)\n", in: project)
         TaskFixtures.write(".jarvis/project.json", "{\"test\":{\"label\":\"python slow\",\"executable\":\"python3\",\"arguments\":[\"slow.py\"],\"timeoutSeconds\":120}}", in: project)
         let id = await h.submit(project: project)
-        #expect(await h.waitUntil(20) { !h.hub.runs.values.filter { $0.engine == .tool && !$0.phase.isTerminal }.isEmpty })
+        let reached = await h.waitUntil(20) { !h.hub.runs.values.filter { $0.engine == .tool && !$0.phase.isTerminal }.isEmpty }
+        #expect(reached)
         h.engine.cancel(id)
         await h.engine.waitUntilFinished(id)
         #expect(h.task(id).state == .cancelled)
@@ -207,7 +209,8 @@ struct EngineeringIntegrationTests {
         h.runner.script = { job, i in job.type == "ReviewAgent" ? .block : await base(job, i) }
         let project = TaskFixtures.calculatorProject()
         let id = await h.submit(project: project)
-        #expect(await h.waitUntil { h.runner.jobs("ReviewAgent").count == 1 && h.engine.view(id)?.steps[4].state == .running })
+        let reached = await h.waitUntil { h.runner.jobs("ReviewAgent").count == 1 && h.engine.view(id)?.steps[4].state == .running }
+        #expect(reached)
         h.engine.prepareForTermination()
         await h.engine.waitUntilIdle()
         let stored = try #require(checkpointEngineering(h, id), "the checkpoint carries the engineering run")
@@ -227,7 +230,8 @@ struct EngineeringIntegrationTests {
         h.runner.script = { job, i in job.type == "ReviewAgent" ? .block : await base(job, i) }
         let project = TaskFixtures.calculatorProject()
         let id = await h.submit(project: project)
-        #expect(await h.waitUntil { h.runner.jobs("ReviewAgent").count == 1 && h.engine.view(id)?.steps[4].state == .running })
+        let reached = await h.waitUntil { h.runner.jobs("ReviewAgent").count == 1 && h.engine.view(id)?.steps[4].state == .running }
+        #expect(reached)
         h.engine.prepareForTermination()
         await h.engine.waitUntilIdle()
         TaskFixtures.write("calc.py", TaskFixtures.read("calc.py", in: project)! + "\n# edited while JARVIS was not running\n", in: project)
@@ -248,7 +252,8 @@ struct EngineeringIntegrationTests {
         h.runner.script = { job, i in job.type == "ReviewAgent" ? .block : await base(job, i) }
         let project = TaskFixtures.calculatorProject()
         let id = await h.submit(project: project)
-        #expect(await h.waitUntil { h.runner.jobs("ReviewAgent").count == 1 && h.engine.view(id)?.steps[4].state == .running })
+        let reached = await h.waitUntil { h.runner.jobs("ReviewAgent").count == 1 && h.engine.view(id)?.steps[4].state == .running }
+        #expect(reached)
         h.engine.prepareForTermination()
         await h.engine.waitUntilIdle()
         let art = try #require(h.task(id).checkpointArtifactID.flatMap { try? h.artifacts.artifact($0) ?? nil })
@@ -401,7 +406,7 @@ struct EngineeringSeamTests {
     @Test("completion: blockers, failed or stale required stages and an unchanged repository refuse; no profile means NOT VERIFIED, never verified")
     func completionRule() {
         func verdict(_ status: WorkVerificationStatus, findings: [EngineeringFinding] = [], missing: [VerificationStage] = [], files: Int = 1, manual: [String] = []) -> VerificationVerdict {
-            var v = VerificationVerdict(status: status, findings: findings, mismatches: [], unmetCriteria: [], missingStages: missing, revision: "r", attribution: AttributionReport(changes: []), diffStats: DiffStats(files: files, linesAdded: 1, linesRemoved: 1, binaryFiles: 0))
+            var v = VerificationVerdict(status: status, findings: findings, mismatches: [], unmetCriteria: [], missingStages: missing, revision: "r", attribution: AttributionReport(changes: [], lostEdits: [], preexistingUntouched: []), diffStats: DiffStats(files: files, linesAdded: 1, linesRemoved: 1))
             v.manualRequired = manual; return v
         }
         let planOK = VerificationPlan(stages: [PlannedStage(stage: .unitTests, profile: "t", required: true, reason: "", status: .passed)], manualRequired: [], elevatedReview: false, reasons: [])

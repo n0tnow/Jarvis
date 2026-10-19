@@ -57,7 +57,8 @@ struct EngineeringFinalSoakTests {
                 if t == .dirty { TaskFixtures.write("README.md", "# my uncommitted notes \(round)\n", in: project) }
                 let id = await h.submit("Fix the failing calculation test [\(tag)]", project: project)
                 if t == .cancelled {
-                    #expect(await h.waitUntil { h.runner.jobs.contains { $0.job.taskID == id && $0.job.type == "CodingAgent" } })
+                    let reached = await h.waitUntil { h.runner.jobs.contains { $0.job.taskID == id && $0.job.type == "CodingAgent" } }
+                    #expect(reached)
                     h.engine.cancel(id)
                     let jobsAtCancel = h.runner.jobs.filter { $0.job.taskID == id }.count
                     await h.engine.waitUntilFinished(id)
