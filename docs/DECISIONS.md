@@ -1488,3 +1488,53 @@ Status: Accepted (V1.0 Jev gating pass)
 Decision: quoted / translated / meta sentences, reported negation ("demedim", "istemiyorum"), an ability question ("açabiliyor musun"), a pronoun-only research topic (→ ask), a bare English "go" and settings "up / down" outside speed phrases no longer produce executing decisions. H1, N1 and A1 are spent for the grammar; a new blind set is needed before a new coverage claim.
 Rationale: first measurement on the new sets: executing false positives 2 / 8 / 8; after the class-wide fixes 0 / 0 / 5 (the five are resolver or gate hand-offs; labels not edited).
 
+
+## DEC-309 — The engineering policy layer is wired into the ONE TaskEngine through a process-free seam
+Status: Accepted (V1.0 final integration); closes the "not wired" half of DEC-294…300
+Decision: `Tasks/EngineeringSeam.swift` (pure glue, no process / approval / network / credential API) and `Tasks/TaskEngine+Engineering.swift` (hooks) connect `Sources/Jarvis/Engineering/` to the existing engine for software-engineering tasks only (`TaskKind.development` with a `.codeChange` step; research, Unity, computer, experiment and chat tasks never enter it). There is no second orchestrator, router, provider manager, scheduler, table or state store; the typed assignment is derived from the task record (allowed scope = the TaskScope prefixes or `**`, forbidden `.git/**` and `.jarvis/**`, authority for tests / build scripts / dependencies from the goal's own words, `mayModifyGuards` always false, acceptance = one `.profile(label)` per approved build / test profile, budget from `TaskEngine.maxStepAttempts`). `scripts/guards_integration.sh` pins the hooks (begin · gate before apply · after apply · evidence · repair gate · completion gate before the single `finalizeSuccess` · checkpoint · resume).
+Rationale: the pipeline was only simulated (DEC-300); a gate that no code path calls protects nothing.
+
+## DEC-310 — Completion for engineering tasks needs evidence of the FINAL revision; worker output is a claim
+Status: Accepted (V1.0 final integration)
+Decision: the terminal step of an engineering task asks `engineeringCompletionGate`. Verified (every required profile green at the final snapshot digest, no blocker, repository actually changed) → `completed`, summary "Verified by JARVIS' own runs at the final revision", manual requirements listed as such. NOT VERIFIED (no approved build / test profile exists) → `completed` with the honest summary "changes applied, NOT VERIFIED: …" (non-engineering semantics unchanged; nothing is claimed). A blocker, a failing run at the final revision, stale evidence, a missing required stage or an unchanged repository → the task FAILS with a coded category. A provider's JSON status or prose is parsed into `WorkerClaims` and only compared with observed state; it never constructs or replaces `VerificationEvidence`.
+Rationale: golden invariant NO VERIFIED ACTION → NO COMPLETION CLAIM.
+
+## DEC-311 — One production `VerificationEvidence` constructor, from `CommandRunner` results (narrow exception to DEC-295)
+Status: Accepted (V1.0 final integration); amends a guard of DEC-294…300, not a rule
+Decision: evidence is built in exactly one place, `EngineeringSeam.evidence(step:profile:result:digest:now:)`, from the real `CommandRunner.run` result of an approved profile (argv, no shell, bounded output, timeout, cancel) and the workspace digest taken BEFORE the run. A cancelled run yields no evidence; a timeout is exit 124 / failed; exit 0 with failing counts is not passed; tool caches (`.pytest_cache`, `__pycache__`, `.mypy_cache`, …) are ignored by the snapshot so a verification run cannot make its own evidence stale. `guards_engineering.sh` `geng_claims` now allows that single constructor in that single file and pins its signature and the cancel rule; any other `VerificationEvidence(` still fails the guard. The user explicitly asked for the production runner.
+Rationale: DEC-295 forbade evidence from claims; a production runner is the legitimate source it left open.
+
+## DEC-312 — The review runs on the PROSPECTIVE diff, before anything is written
+Status: Accepted (V1.0 final integration)
+Decision: `applyEdits` prepares before / after texts, runs the deterministic review (scope, tampering, placeholders, dependencies, secrets, destructive commands, doc claims; user-dirty touches are handled by the existing approval instead) and writes nothing when a blocker is found. After a write the observed snapshot (and, in a Git repository, `GitTool.facts` — staged / conflicted — and `GitTool.contents` for the clean "before" side) is the truth; a user's dirty work is never attributed to the worker and never reset.
+Rationale: a tampered test must not exist on disk even for one step.
+
+## DEC-313 — Retry budgets do not multiply
+Status: Accepted (V1.0 final integration)
+Decision: the engineering repair gate (`RepairLoop.decide`) sits INSIDE the existing `repairLoop`; the engine's own bounds (≤ `maxStepAttempts` coding attempts, one repair, one escalation) stay the ceiling, the semantic loop can only stop earlier (same failure twice → one escalation → stop). An integrated test pins the total provider jobs of a failing task.
+Rationale: stacked retries (attempts × repairs × escalations) are the classic overnight cost explosion.
+
+## DEC-314 — The engineering run state lives in the existing checkpoint; resume revalidates; corruption fails safe
+Status: Accepted (V1.0 final integration)
+Decision: `Checkpoint` (a `task-checkpoint` artifact, hash-verified on load) gained optional `engineering` / `engineeringBefore` / `engineeringObserved`; no second database, no chain-of-thought, no raw secrets. On resume `EngineeringCheckpointer.resume` compares the stored snapshot with the workspace: unchanged → continue; drift → replan / ask the person; corrupt, unverifiable or missing (changes recorded but no engineering state) → the task fails safe with `workspaceChanged`. A legacy task that already has changes and no engineering checkpoint therefore fails on resume instead of guessing.
+Rationale: resume is explicit user action and must never apply a stale result.
+
+## DEC-315 — Rollback stays a PLAN; JARVIS still never resets, cleans, checks out, commits or pushes
+Status: Accepted (V1.0 final integration)
+Decision: `RollbackPlanner` stays a pure plan and the engine does NOT call it (rollback is not wired, nothing is restored automatically); a failed task leaves its files in place and its report lists the observed changes; user-dirty or unexplained files are never touched. The existing "no git reset / clean / checkout / commit / push" source guard is unchanged.
+Rationale: automatic rollback of a real workspace is a destructive action that a failed test never authorises.
+
+## DEC-316 — Ownership: the engine's file leases remain the runtime authority
+Status: Accepted (V1.0 final integration)
+Decision: `OwnershipRegistry` is not wired as a second lock. The engine's `FileLeaseManager` and the scheduler rule "a writer runs alone" (`ConcurrencyPolicy`) are the real runtime protection; concurrent engineering tasks keep separate runs and checkpoints and the integrated test proves two tasks never interleave writes. Same-task independent work during an approval wait is NOT implemented (KNOWN_ISSUES).
+Rationale: two lock systems disagree; the one that already works wins.
+
+## DEC-317 — Class names that collided were renamed, not shadowed (real macOS build breaks)
+Status: Accepted (V1.0 final integration)
+Decision: the reliability `TaskDigest` became `NightTaskDigest` (an older `TaskDigest` exists in the task model) and the response firewall's `ClaimKind` became `ResponseClaimKind` (the engineering `ClaimKind` exists). Both were duplicate-type compile errors that the whole-module Linux compile surfaced; no behaviour changed and no test expectation was edited beyond the type names.
+Rationale: a package with two types of one name does not build.
+
+## DEC-318 — Jev project registry hook is wired (read-only, exact name + one closed suffix)
+Status: Accepted (V1.0 final integration); closes JARVIS-V1JV-6
+Decision: `AppContext+Daily` connects `DecisionEngine.projectResolver` to the registered memory projects through `JevTargetResolver.resolve`: exactly one project named by an exact name / alias plus at most one closed suffix chain (`ProjectOpenResolver.nameMatches`), else ambiguous / unresolved. Targets still come from JARVIS, never from Jev's text. Jev stays `disabled` by default; shadow is allowed; gated execution stays impossible (`executionIsEnabledInProduction = false`).
+Rationale: the safe default ("unresolved") made a project-bound remote answer unusable; resolving it locally keeps authority local.

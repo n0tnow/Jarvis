@@ -35,7 +35,7 @@ the repository really does, then add only PURE, tested policies around the one e
 | G5 | no single answer for "what would replaying this interrupted step do?" | `StepReplayPolicy` + `VerificationPolicy` — IMPLEMENTED, AUTOMATED TESTED, NOT WIRED (the engine's `recoverSteps` keeps its own, compatible rules). |
 | G6 | an undecodable task row disappears silently | pinned by a test as current behaviour; OPEN (`JARVIS-V1BG-3`). |
 | G7 | "paused", "retrying", "waiting for a dependency", "blocked" are not states and must not become states | `TaskStatusDeriver` derives them from persisted state — no new transitions to prove. |
-| G8 | the morning questions had no single structured source | `TaskDigest` + `MorningBrief` — IMPLEMENTED, AUTOMATED TESTED, NOT WIRED to the conversation (that file is out of scope for this pass). |
+| G8 | the morning questions had no single structured source | `NightTaskDigest` + `MorningBrief` — IMPLEMENTED, AUTOMATED TESTED, NOT WIRED to the conversation (that file is out of scope for this pass). |
 | G9 | readiness duplicated inside the engine | **engine hook (1 line)**: `readySteps` delegates to `StepReadiness.ready` (identical rule, now tested, also used for "what can continue while a branch waits"). |
 
 ## 2. Modules added (all pure value logic; no timer, log, persistence, process, network, approval or capability API — `scripts/guards_background.sh`)
@@ -84,7 +84,7 @@ Hand-written corpora, ids only; `Benchmarks/decision_confusion_report.json` is g
 
 ## 5. Overnight simulation (policy composition, NOT the TaskEngine)
 
-`Tests/JarvisTests/OvernightSimulationTests.swift`: a seeded, fake-clock driver over 50–200 steps (mixed read-only / write / critical / non-idempotent) composing the REAL task model, `StepReadiness`, `RetryLedger`, `TaskBudgetLedger`, `StepReplayPolicy`, `VerificationPolicy`, `ProviderResilienceBook` + `FallbackPolicy`, `TaskEventLog`, `NotificationPolicy`, `TaskStatusDeriver`, `TaskDigest`. It injects transient provider failures, a mid-night outage window, permanent failures, inconclusive verifications and restarts (before and after a step's effect). Invariants checked on every run: zero illegal transitions; no critical step ever runs unattended; no paid provider; retries within budgets; the event log never loses an event without counting it; a non-idempotent step applies its effect at most once; completion is claimed only when every step passed or was skipped; the same seed reproduces the same night. What it does NOT prove: that the engine wires these policies (see §7).
+`Tests/JarvisTests/OvernightSimulationTests.swift`: a seeded, fake-clock driver over 50–200 steps (mixed read-only / write / critical / non-idempotent) composing the REAL task model, `StepReadiness`, `RetryLedger`, `TaskBudgetLedger`, `StepReplayPolicy`, `VerificationPolicy`, `ProviderResilienceBook` + `FallbackPolicy`, `TaskEventLog`, `NotificationPolicy`, `TaskStatusDeriver`, `NightTaskDigest`. It injects transient provider failures, a mid-night outage window, permanent failures, inconclusive verifications and restarts (before and after a step's effect). Invariants checked on every run: zero illegal transitions; no critical step ever runs unattended; no paid provider; retries within budgets; the event log never loses an event without counting it; a non-idempotent step applies its effect at most once; completion is claimed only when every step passed or was skipped; the same seed reproduces the same night. What it does NOT prove: that the engine wires these policies (see §7).
 
 ## 6. Results (Linux harness; nothing here is a macOS or real-engine result)
 
@@ -118,7 +118,7 @@ Overnight simulation (seeded, fake clock, the real task model and policies compo
 2. `StepReplayPolicy` is not called by `recoverSteps`; the engine's own recovery is compatible (inspect-first steps re-check file hashes) but does not consult the typed policy.
 3. `ApprovalBinding` digests are not stored in `approvals` (no migration was added to avoid a schema conflict); only the age rule is wired (G1).
 4. `TaskEventLog` is not persisted by the engine; the engine's `activity_events` (2 000 rows, redacted) remains the durable log.
-5. `TaskDigest` / `MorningBrief` are not routed from `ConversationService` (out of scope for this pass); a HUD or voice front-end has to call them.
+5. `NightTaskDigest` / `MorningBrief` are not routed from `ConversationService` (out of scope for this pass); a HUD or voice front-end has to call them.
 6. `ContextSelector` is not used by `ProjectContextBuilder` / the providers' prompt assembly (the per-role `ContextBudget` still bounds those).
 7. `WorkerAdmission` is not called by `ResourceManager` / `TaskEngine` admission; the engine keeps `ConcurrencyPolicy`.
 8. `UsageLedger` is not fed by `ProviderSupervisor`.
