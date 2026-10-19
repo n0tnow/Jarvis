@@ -32,7 +32,9 @@ extension TaskEngine {
         let labels = EngineeringSeam.profileLabels(ctx.profiles)
         if let restored = ctx.engineeringRestored {
             ctx.engineeringRestored = nil
-            switch EngineeringCheckpointer.resume(restored.record, checkpointSnapshot: restored.observed, now: now) {
+            // The stored snapshot is taken AFTER every one of this task's own writes, so any difference from it is somebody else's change — even in a file the task also edited.
+            var stored = restored.record; stored.changedFiles = []
+            switch EngineeringCheckpointer.resume(stored, checkpointSnapshot: restored.observed, now: now) {
             case .resume:
                 let before = restored.before ?? now
                 var beforeTexts: [String: String] = [:]
@@ -77,7 +79,7 @@ extension TaskEngine {
         if let why = s.resumeBlock { return (.workspaceChanged, why) }
         let git = await GitTool.facts(workspace: ctx.workspace) ?? s.observed.git
         let (now, _) = (await engineeringCapture(root: ctx.workspace.root, git: git, withContents: false))
-        switch StalenessCheck.assess(startedAt: s.observed, now: now, scope: s.record.assignment.scope, readSet: [], ownChanges: Set(s.record.changedFiles)) {
+        switch StalenessCheck.assess(startedAt: s.observed, now: now, scope: s.record.assignment.scope, readSet: [], ownChanges: []) {
         case .fresh: return nil
         case .stale(let changed, _):
             s.record.log(.inspect, "stale", changed.prefix(6).joined(separator: ", "))

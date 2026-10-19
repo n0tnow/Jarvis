@@ -77,6 +77,11 @@ extension TaskEngine {
                                  approvals: (try? repository.approvals(taskID: id)) ?? [])
         if t.kind == .computer { r.computer = computerReportLines(taskID: id) }
         if (try? repository.taskGraph(id)) != nil { r.orchestration = orchestrationReportLines(id, task: t, steps: steps); r.outcome = TaskOutcome.derive(state: t.state, failure: t.failureCategory, steps: steps).rawValue }
+        // V1.0 final integration: the engineering facts and the verification state were computed once, at completion, and persisted with the final report; they are read back only from an artifact whose hash still matches.
+        if let rid = t.reportArtifactID, let art = try? artifacts?.artifact(rid), artifacts?.verify(art) == true, let data = try? artifacts?.read(art),
+           let saved = try? JSONDecoder.iso.decode(TaskReport.self, from: data) {
+            r.engineering = saved.engineering; r.verification = saved.verification; r.verificationNote = saved.verificationNote
+        }
         return r
     }
 
