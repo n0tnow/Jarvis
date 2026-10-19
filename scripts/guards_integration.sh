@@ -38,7 +38,7 @@ gin_hooks() {
   # persistence: the run is inside the existing checkpoint, trusted only when the artifact still matches its hash
   hasre $TK/TaskEngine+Lifecycle.swift 'var engineering: EngineeringRunRecord\?'
   hasre $TK/TaskEngine+Lifecycle.swift 'artifacts\?\.verify\(art\) == true'
-  hasre $TK/TaskEngine+Engineering.swift 'EngineeringCheckpointer\.resume\(restored\.record'
+  hasre $TK/TaskEngine+Engineering.swift 'EngineeringCheckpointer\.resume\(stored, checkpointSnapshot: restored\.observed'
   hasre $TK/TaskEngine+Engineering.swift 'case \.corrupt:'
 }
 v09_none "final integration: the engineering hooks are in the engine — completion gate before success, review before the write, evidence from the real run, repair gate, checkpoint + revalidated resume" "$(gin_hooks)"

@@ -921,16 +921,16 @@ Status: OPEN · DOCUMENTED. The quality gate's coverage floors use the checked-i
 ## V1.0 autonomous engineering pipeline
 
 ### JARVIS-V1EP-1 — The engineering pipeline is tested but NOT WIRED into the TaskEngine
-Status: OPEN · DOCUMENTED. No engine call site builds an assignment, snapshots the workspace, runs `EngineeringVerifier`, consults `RepairLoop` / `OwnershipRegistry` / `StalenessCheck` / `WorkerSelector` (docs/AUTONOMOUS_ENGINEERING_PIPELINE.md §8). Until it is, the engine's own protections (capabilities, workspace guard, leases, hash checks, dirty-file approval, `ReviewAuthority`) are the real ones, and a worker's claims are judged by the existing step validations only.
+Status: RESOLVED (V1.0 final integration, DEC-309…316) · AUTOMATED TESTED on a Linux harness · MANUAL TEST REQUIRED on macOS. The engineering policies are wired into the one TaskEngine through `Tasks/EngineeringSeam.swift` + `TaskEngine+Engineering.swift` (assignment, snapshot, pre-write review, evidence, repair gate, completion gate, checkpoint, revalidated resume). Still NOT wired: `OwnershipRegistry` (the engine's file leases stay the runtime authority, DEC-316), `WorkerSelector` (the existing router stays the only router) and `RollbackPlanner` (plan only, DEC-315).
 
 ### JARVIS-V1EP-2 — The new tests were never compiled or run by `scripts/test.sh` on macOS
 Status: OPEN · MANUAL TEST REQUIRED. They ran in a Linux harness over real Git / Python fixtures. Expect small macOS compile adjustments (access levels, Swift Testing traits, `Foundation.Process` use in the fixture helper); do not weaken an assertion to make one compile.
 
 ### JARVIS-V1EP-3 — No production runner produces `VerificationEvidence`; no pre-task backup store exists
-Status: OPEN. Evidence is constructed from real fixture processes in tests; the engine's `ManagedProcess` results must be mapped (profile label, exit status, workspace digest). Without a stored pre-task copy of a file, a rollback of a MODIFIED file is planned as "a person decides".
+Status: RESOLVED for evidence (DEC-311): `EngineeringSeam.evidence` is the single production `VerificationEvidence` constructor, fed by `CommandRunner` results bound to the workspace digest taken before the run. STILL OPEN: no pre-task backup store exists, so a rollback of a MODIFIED file remains "a person decides".
 
 ### JARVIS-V1EP-4 — `GitTool` has no staged / conflicted facts
-Status: OPEN. The pure `GitStatusParser` reports them; `GitTool.baseline` only distinguishes dirty and untracked. The parser would replace the duplicated porcelain parsing there.
+Status: RESOLVED for facts: `GitTool.facts` reports staged / conflicted paths through the pure `GitStatusParser`, and `GitTool.contents` gives the clean "before" text. STILL OPEN (cosmetic): `GitTool.baseline` / `continuity` keep their own porcelain parsing; replacing it would touch working code.
 
 ### JARVIS-V1EP-5 — Content checks are structural, not a compiler
 Status: OPEN · NON-BLOCKING. Tampering / placeholder / suppression detection is language-aware only for comments and a few handler shapes; a worker can still write a hollow function that no pattern recognises (the build and tests at the final revision, and the review for risky changes, are the backstop). Test-assertion counting is line-based: a rewritten test file that keeps the same number of assertions with different expectations is reported as a MAJOR "assertionChanged", not a blocker.
@@ -959,7 +959,7 @@ Status: OPEN · NON-BLOCKING. A legitimate indirect phrasing without any anchor 
 Status: OPEN · DOCUMENTED. `devam et`, `Projeyi aç`, `Open the project`, `Sesi ayarla` and `Şunu kapatsana` (with a referent) are decided by the grammar as executing intents that the planner / resolver / ask-first gate turn into questions. Labels were not edited; H1, N1 and A1 are spent for the grammar.
 
 ### JARVIS-V1JV-6 — The project registry is not wired into the gate
-Status: OPEN · NEEDS A macOS BUILD AND APPROVAL. `DecisionEngine.projectResolver` defaults to "unresolved" and `capabilityAvailable` to "available", so a project-bound remote answer is never accepted until the real registry is connected (the safe default). Wiring it in `AppContext+Daily` was not done in Cloud.
+Status: RESOLVED (DEC-318): `AppContext+Daily` connects `DecisionEngine.projectResolver` to the registered memory projects through `JevTargetResolver` (exact name + one closed suffix chain; ambiguous / unresolved otherwise). `capabilityAvailable` still defaults to "available" (provider SELECTION is never a capability question). Jev stays `disabled` by default.
 
 ### JARVIS-V1JV-7 — The own-UI level can switch to a wrong page
 Status: OPEN · BY DESIGN. At level `ownUI` the simulated always-wrong classifier gets 2 wrong page switches through with corroboration (21 without). Harmless and visible, not zero; therefore not the default.
@@ -967,3 +967,22 @@ Status: OPEN · BY DESIGN. At level `ownUI` the simulated always-wrong classifie
 ### JARVIS-V1JV-8 — An existing test expectation changed
 Status: RESOLVED · RECORDED. "confidence is clamped" (`JevResponseParser`, confidence 7) now expects nil (DEC-304).
 
+## V1.0 final integration (Cloud, headless)
+
+### JARVIS-V1FI-1 — Nothing in this milestone was compiled or run by `scripts/test.sh` / `scripts/verify.sh` on macOS
+Status: OPEN · BLOCKS MERGE until `scripts/verify.sh` passes on a Mac. Cloud has no Swift package manager, no Xcode, no zsh. The real TaskEngine closure (262 source files) was type-checked and the engine suites were RUN in a Linux harness with Apple-only frameworks stubbed at prep time (AppKit, AVFoundation, Vision, Security, ServiceManagement, UserNotifications, CoreGraphics pixel work, Accelerate, Compression, Keychain; none of those stubs is in the repository). Expect small macOS adjustments; do not weaken an assertion to make one compile.
+
+### JARVIS-V1FI-2 — The Linux harness crashes intermittently inside Foundation's `Process`
+Status: OPEN · HARNESS ONLY. swift-corelibs-foundation's `findMaximumOpenFromProcSelfFD` segfaults sometimes when processes are spawned while other threads touch files (about half of the runs of the long suites). A harness-side lock around the spawns did not remove it; the harness reruns the binary until it finishes. A finished run is a complete run (every test executes in order); a crashed run is discarded, never counted.
+
+### JARVIS-V1FI-3 — Same-task independent work during an approval wait is not implemented
+Status: OPEN · BY DESIGN. While a task waits for a HUD decision its other steps wait too; `OwnershipRegistry` is not a second lock (DEC-316). Two writers never run together (`ConcurrencyPolicy`), proven by the concurrent-task test.
+
+### JARVIS-V1FI-4 — A legacy task with changes but no engineering checkpoint fails on resume
+Status: OPEN · BY DESIGN (DEC-314). A task that recorded file changes before this feature existed cannot prove its baseline; resuming it fails safe with `workspaceChanged` and asks the person to start again.
+
+### JARVIS-V1FI-5 — Reverting a file to its pre-edit content on resume is treated as a lost edit
+Status: OPEN · BY DESIGN, PINNED BY AN EXISTING TEST. A file back at the hash it had before the task's own edit is redone, not reported as outside drift (the engine's replay rule); any other change to a file the task also edited fails the resume.
+
+### JARVIS-V1FI-6 — Two type renames fixed real build breaks
+Status: RESOLVED · RECORDED (DEC-317). `TaskDigest` (reliability) → `NightTaskDigest`; `ClaimKind` (response firewall) → `ResponseClaimKind`. Both were duplicate-type errors; the doc mentions were updated, the old names remain only in history.
