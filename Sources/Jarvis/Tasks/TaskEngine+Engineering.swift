@@ -33,7 +33,10 @@ extension TaskEngine {
         if let restored = ctx.engineeringRestored {
             ctx.engineeringRestored = nil
             // The stored snapshot is taken AFTER every one of this task's own writes, so any difference from it is somebody else's change — even in a file the task also edited.
-            var stored = restored.record; stored.changedFiles = []
+            // The one exception is an edit that never reached the disk: a file that is back at the hash it had BEFORE the task's edit is a lost edit (the step is redone, as the engine's own replay rule does),
+            // not somebody's change.
+            var stored = restored.record
+            stored.changedFiles = stored.applied.filter { e in e.beforeHash != nil && now.files[e.path]?.hash == e.beforeHash }.map(\.path)
             switch EngineeringCheckpointer.resume(stored, checkpointSnapshot: restored.observed, now: now) {
             case .resume:
                 let before = restored.before ?? now
