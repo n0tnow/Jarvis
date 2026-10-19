@@ -9,7 +9,7 @@ import Testing
 private func pythonTestsPass(in dir: String) -> Bool {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    p.arguments = ["python3", "-m", "unittest", "discover"]
+    p.arguments = ["python3", "-B", "-m", "unittest", "discover"]   // -B: no stale bytecode (an edit within the same second and size would otherwise keep the old .pyc)
     p.currentDirectoryURL = URL(fileURLWithPath: dir)
     p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
     try! p.run(); p.waitUntilExit()
