@@ -248,7 +248,7 @@ struct ResponseContractTests {
 
     @Test("structural claim patterns, Turkish and English: actions, perception, state, task results")
     func patterns() {
-        let claims: [(String, ClaimKind)] = [("Safari'yi açıyorum.", .action), ("Projeyi açtım.", .action), ("Dosyayı sildim.", .action), ("I opened Safari for you.", .action), ("I've deleted the file.", .action),
+        let claims: [(String, ResponseClaimKind)] = [("Safari'yi açıyorum.", .action), ("Projeyi açtım.", .action), ("Dosyayı sildim.", .action), ("I opened Safari for you.", .action), ("I've deleted the file.", .action),
                                              ("Ekranı görüyorum.", .visibility), ("Safari ekranda görünüyor.", .visibility), ("I can see your screen.", .visibility), ("Your screen shows a video.", .visibility),
                                              ("Safari şu an açık.", .state), ("The microphone is active.", .state), ("Görev tamamlandı.", .task), ("The task is complete.", .task)]
         for (text, kind) in claims {

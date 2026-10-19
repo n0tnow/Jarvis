@@ -3,7 +3,7 @@ import Foundation
 // MARK: - What happened, from structured state only (V1.0 background pass)
 //
 // "Gece ne yaptın?", "Nerede kaldın?", "Ne başarısız oldu?", "Benden ne bekliyorsun?", "Devam edebilir misin?" must be answerable after hours WITHOUT reconstructing anything from a model's memory.
-// `TaskDigest` folds the durable records the engine already keeps — the task, its steps, the attempts (provider, outcome), the approvals, the changed files and, when kept, the event log — into one value; the
+// `NightTaskDigest` folds the durable records the engine already keeps — the task, its steps, the attempts (provider, outcome), the approvals, the changed files and, when kept, the event log — into one value; the
 // report and every answer are rendered from it. No chain-of-thought exists to leak, no narrative is invented: counts, titles, states, the stored (already sanitised) validation evidence, and the machine
 // reason of a failure. "Can you continue?" is a QUESTION about state: answering it starts nothing.
 
@@ -22,7 +22,7 @@ struct DigestApproval: Equatable, Sendable {
     var state: ApprovalState
 }
 
-struct TaskDigest: Equatable, Sendable {
+struct NightTaskDigest: Equatable, Sendable {
     var taskID: UUID
     var objective: String
     var taskState: TaskState
@@ -42,7 +42,7 @@ struct TaskDigest: Equatable, Sendable {
     var remaining: [DigestStep] { steps.filter { !$0.state.isTerminal } }
     var pendingApprovals: [DigestApproval] { approvals.filter { $0.state == .pending } }
 
-    static func build(task: TaskRecord, steps: [TaskStepRecord], attempts: [StepAttemptRecord] = [], approvals: [ApprovalRecord] = [], changes: [TaskFileChange] = [], events: TaskEventLog? = nil, language: ReplyLanguage = .en) -> TaskDigest {
+    static func build(task: TaskRecord, steps: [TaskStepRecord], attempts: [StepAttemptRecord] = [], approvals: [ApprovalRecord] = [], changes: [TaskFileChange] = [], events: TaskEventLog? = nil, language: ReplyLanguage = .en) -> NightTaskDigest {
         var providers: [String: Int] = [:]
         var retries = 0, fallbacks = 0
         var lastEngineByStep: [UUID: String] = [:]
@@ -55,7 +55,7 @@ struct TaskDigest: Equatable, Sendable {
             lastEngineByStep[a.stepID] = name
         }
         let digestSteps = steps.sorted { $0.index < $1.index }.map { DigestStep(key: $0.key, title: $0.title, state: $0.state, evidence: $0.validationEvidence.map { String($0.prefix(200)) }, failureReason: $0.failureReason.map { String($0.prefix(200)) }, optional: $0.optional) }
-        return TaskDigest(taskID: task.id, objective: String(task.goal.prefix(240)), taskState: task.state, derived: TaskStatusDeriver.derive(task: task.state, steps: steps, failure: task.failureCategory), steps: digestSteps,
+        return NightTaskDigest(taskID: task.id, objective: String(task.goal.prefix(240)), taskState: task.state, derived: TaskStatusDeriver.derive(task: task.state, steps: steps, failure: task.failureCategory), steps: digestSteps,
                           approvals: approvals.map { DigestApproval(action: String($0.action.prefix(160)), risk: $0.risk, state: $0.state) }, changedFiles: changes.map(\.path).uniqued().sorted(), providersUsed: providers,
                           retries: retries, fallbacks: fallbacks, failureCategory: task.failureCategory, failureReason: task.failureReason.map { String($0.prefix(200)) }, eventSummary: events?.summaryLines(language: language) ?? [])
     }
@@ -101,7 +101,7 @@ enum MorningBrief {
     }
 
     /// Answers from the digests (newest task first). Reading state starts, approves and changes nothing.
-    static func answer(_ q: MorningQuestion, digests: [TaskDigest], language l: ReplyLanguage) -> String {
+    static func answer(_ q: MorningQuestion, digests: [NightTaskDigest], language l: ReplyLanguage) -> String {
         func t(_ en: String, _ tr: String) -> String { l == .tr ? tr : en }
         guard let d = digests.first else { return t("There is no task on record.", "Kayıtlı bir görev yok.") }
         switch q {

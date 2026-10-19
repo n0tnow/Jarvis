@@ -488,7 +488,7 @@ struct WorkerAdmissionTests {
 
 @Suite("V1.0 background · the report and the morning questions come from structured state")
 struct TaskDigestTests {
-    private func digest() -> TaskDigest {
+    private func digest() -> NightTaskDigest {
         var task = TaskRecord(id: UUID(), title: "t", goal: "Fix the shader bug and update the menu scene", kind: .development)
         task.state = .running
         let s1 = step("s1", .analysis, state: .passed, index: 0, title: "Analyse shader"), s2 = step("s2", .codeChange, state: .passed, index: 1, title: "Patch shader"),
@@ -500,7 +500,7 @@ struct TaskDigestTests {
         let change = TaskFileChange(path: "Assets/shader.shader", changeType: "modified", beforeHash: "a", afterHash: "b", stepKey: "s2", preexistingUserChange: false)
         var log = TaskEventLog()
         for _ in 0..<5 { log.record(.failure, step: "s4", code: "tests-failed", at: t0) }
-        return TaskDigest.build(task: task, steps: [s1, s2e, s3, s4f], attempts: attempts, approvals: [approval], changes: [change], events: log, language: .en)
+        return NightTaskDigest.build(task: task, steps: [s1, s2e, s3, s4f], attempts: attempts, approvals: [approval], changes: [change], events: log, language: .en)
     }
 
     @Test("the report lists what was completed, changed, failed, waiting and remaining, the providers used and the retries — and nothing else")
@@ -536,7 +536,7 @@ struct TaskDigestTests {
     @Test("an empty digest answers honestly: nothing failed, nothing waits")
     func quiet() {
         var task = TaskRecord(id: UUID(), title: "t", goal: "g", kind: .readOnlyAnalysis); task.state = .completed
-        let d = TaskDigest.build(task: task, steps: [step("a", state: .passed)])
+        let d = NightTaskDigest.build(task: task, steps: [step("a", state: .passed)])
         #expect(MorningBrief.answer(.whatFailed, digests: [d], language: .en).contains("Nothing failed") && MorningBrief.answer(.whatDoYouNeedFromMe, digests: [d], language: .en).contains("Nothing is waiting"))
     }
 }

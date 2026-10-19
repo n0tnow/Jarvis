@@ -63,10 +63,10 @@ enum PresentationContract {
 
 // MARK: - The claim firewall
 
-enum ClaimKind: String, CaseIterable, Sendable { case action, visibility, state, task }
+enum ResponseClaimKind: String, CaseIterable, Sendable { case action, visibility, state, task }
 
 struct ClaimFinding: Equatable, Sendable {
-    var kind: ClaimKind
+    var kind: ResponseClaimKind
     var sentence: String
 }
 

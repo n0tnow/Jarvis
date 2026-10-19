@@ -5,7 +5,7 @@ import Testing
 // V1.0 background-intelligence pass — a deterministic, seeded, fake-clock SIMULATION of a long unattended task.
 //
 // HONEST SCOPE: this is NOT the TaskEngine. It composes the real task model (TaskStateMachine, TaskStepRecord, StepType idempotency, FailureCategory) with the real reliability policies
-// (StepReadiness, RetryLedger, TaskBudgetLedger, StepReplayPolicy, VerificationPolicy, ProviderResilienceBook, FallbackPolicy, TaskEventLog, NotificationPolicy, TaskDigest) in a small driver
+// (StepReadiness, RetryLedger, TaskBudgetLedger, StepReplayPolicy, VerificationPolicy, ProviderResilienceBook, FallbackPolicy, TaskEventLog, NotificationPolicy, NightTaskDigest) in a small driver
 // written for the test. What it proves: the POLICIES hold together over 50–200 steps, hours of simulated time, crashes, outages and faults; it does not prove the engine wires them (that is listed
 // in docs/V1_BACKGROUND_RELIABILITY.md as the integration seam). No real provider, process, database, timer, microphone or GUI is involved; the clock never sleeps.
 
@@ -330,7 +330,7 @@ struct OvernightSimulationTests {
         let r = Sim.run(seed: 21, count: 60, faults: FaultProfile(transient: 0.1, permanent: 0.05, crashEvery: 19))
         var task = TaskRecord(id: UUID(), title: "night", goal: "Refactor the menu system", kind: .development)
         task.state = r.finalDerived.status == .paused ? .interrupted : (r.finalDerived.status == .waitingForApproval ? .waitingForApproval : .running)
-        let d = TaskDigest.build(task: task, steps: r.steps, events: r.log, language: .en)
+        let d = NightTaskDigest.build(task: task, steps: r.steps, events: r.log, language: .en)
         for q in MorningQuestion.allCases {
             let en = MorningBrief.answer(q, digests: [d], language: .en)
             let tr = MorningBrief.answer(q, digests: [d], language: .tr)
