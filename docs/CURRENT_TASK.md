@@ -1,5 +1,15 @@
 # Current Task
 
+Version (latest pass):
+V1.0 FINAL CLOUD INTEGRATION — production wiring, consolidation, automated verification — **AUTOMATED TESTED on a Linux harness (real TaskEngine) · macOS UNCOMPILED · NOT MERGED · NOT TAGGED**. See `docs/V1_FINAL_INTEGRATION.md`, DEC-309…318, JARVIS-V1FI-1…6.
+
+State: engineering seam IMPLEMENTED and AUTOMATED TESTED (68 engine tests / 6 621 checks / 0 failures; Decision + Jev 149 / 2 205 / 0; guards 293 / 0). NOT RUN: `scripts/test.sh`, `scripts/verify.sh` (no Swift package manager / zsh in Cloud), any real provider, any live Jev call.
+
+Next (for the user, not for an agent): run `scripts/verify.sh` on the Mac and fix compile differences without weakening assertions; README manual checks 1331+; the local Jev evidence benchmark (docs/JEV_DECISION_POLICY.md §13); then decide about merging. Do NOT start V1.1 without approval.
+
+---
+
+Previous pass:
 Version:
 V0.15 — Daily JARVIS Experience, Final Voice Integration, Conversational Context, Product Packaging & First-Run Setup — **READY FOR MANUAL TEST** (not complete, not tagged). Base: V0.14 (20579ab). The LAST feature milestone; NOT V1.0.
 

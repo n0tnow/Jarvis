@@ -726,3 +726,28 @@ Linux harness only: `JevGateTests` 39 tests / 1 186 checks; Decision suites 107 
 ### Decisions
 DEC-301…308.
 
+## 2026-10-19 — V1.0 final cloud integration: production wiring, consolidation, automated verification (Cloud / headless pass)
+
+### Goal
+Connect the pure engineering policy layer to the existing TaskEngine for software-engineering tasks (no second orchestrator), make completion require evidence of the final revision, persist and revalidate the run, wire the Jev project-registry hook, and prove it by running the real engine.
+
+### Done
+- `Tasks/EngineeringSeam.swift` + `TaskEngine+Engineering.swift` and small hooks in `TaskEngine`, `+Execution`, `+Lifecycle`, `TaskReport`, `GitTool` (`facts`, `contents`); `Decision/JevTargetResolver.swift` + `AppContext+Daily` registry hook.
+- `scripts/guards_integration.sh` (seam authority, one engine, hooks present, completion truth) sourced by `verify.sh`; `guards_engineering.sh` allows the single pinned `VerificationEvidence(` constructor (DEC-311).
+- Renamed colliding types (`TaskDigest` → `NightTaskDigest`, `ClaimKind` → `ResponseClaimKind`).
+- New tests: `EngineeringIntegrationTests` (16 + 5 seam), `EngineeringFinalSoakTests`, `JevRegistryHookTests`.
+- Docs: `docs/V1_FINAL_INTEGRATION.md`, DEC-309…318, KNOWN_ISSUES (V1EP-1/3/4 and V1JV-6 resolved; V1FI-1…6), README 1331+, AGENTS rule.
+
+### Tests
+Linux harness only (real TaskEngine, real SQLite / Git / Python fixtures, scripted provider): engine suites 68 tests / 6 621 checks / 0 failures (completed run; a Foundation `Process` crash on Linux discarded other runs — V1FI-2); Decision + Jev 149 / 2 205 / 0; source guards 293 / 0. `scripts/test.sh` and `scripts/verify.sh` could not run in Cloud.
+
+### Problems Found
+- `report(for:)` rebuilds from the database and dropped the engineering verification state (fixed: read from the hash-verified persisted report).
+- Resume excluded the task's own files from drift detection (a user edit to such a file went unnoticed); fixed, keeping the engine's lost-edit replay rule.
+- A stale `.pyc` could mask a same-second fix in the fixture (now `python3 -B`).
+- Two duplicate type names that would not have built on macOS.
+- A guard pinned the old resume call text; updated to the new call.
+
+### Decisions
+DEC-309…318.
+
