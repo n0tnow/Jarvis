@@ -22,7 +22,11 @@ v09_none "engineering pipeline: no second orchestrator exists and no engineering
 
 geng_claims() {
   # worker claims never become evidence: evidence is constructed only where it is defined, claims are compared in the verifier, and no engineering file turns a claim into a pass
-  grep -rn 'VerificationEvidence(' Sources | grep -v "^$EN/EngineeringVerification.swift" | nonc
+  # V1.0 final integration: the ONE production runner (`EngineeringSeam.evidence`, in Tasks/) may construct it — and only from a `CommandResult` of an approved profile; a cancelled run yields none.
+  grep -rn 'VerificationEvidence(' Sources | grep -v "^$EN/EngineeringVerification.swift" | grep -v "^Sources/Jarvis/Tasks/EngineeringSeam.swift" | nonc
+  [ "$(grep -c 'VerificationEvidence(' Sources/Jarvis/Tasks/EngineeringSeam.swift)" = "1" ] || echo 'EngineeringSeam must construct VerificationEvidence in exactly one place'
+  hasre Sources/Jarvis/Tasks/EngineeringSeam.swift 'static func evidence\(step: StepType, profile: CommandProfile, result: CommandResult, digest: String'
+  hasre Sources/Jarvis/Tasks/EngineeringSeam.swift 'if result\.cancelled \{ return nil \}'
   hasre $EN/EngineeringVerification.swift 'struct VerificationEvidence'
   hasre $EN/EngineeringVerification.swift 'e\.snapshotDigest == currentDigest'
   hasre $EN/EngineeringVerification.swift 'stale evidence leaves the stage open|stale evidence'
