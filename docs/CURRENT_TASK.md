@@ -36,3 +36,10 @@ Notes:
 * Known issues: `docs/KNOWN_ISSUES.md` JARVIS-V15-1…10.
 
 Previous task (V0.14) summary: READY FOR MANUAL TEST (README 1000–1152).
+
+## Development infrastructure checkpoint — 2026-11-04
+
+Bounded GitHub/Claude handoff IMPLEMENTED; 12 isolated policy/controller tests passed.
+GitHub activation and actual Claude smoke run are not yet verified. Details and
+one-time prerequisites: `../agent-workflow/README.md`. Product/manual-test state above
+is unchanged. This user-authorized infrastructure task does not begin Hamam or V1.1.

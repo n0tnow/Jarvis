@@ -1,0 +1,22 @@
+name: Automation policy checks
+on:
+  pull_request:
+    paths: ['.github/**', 'agent-workflow/**', 'CLAUDE.md']
+  push:
+    branches: [main, automation/bounded-claude-handoff]
+    paths: ['.github/**', 'agent-workflow/**', 'CLAUDE.md']
+permissions:
+  contents: read
+concurrency:
+  group: automation-checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s .github/automation -p 'test_*.py'
+      - run: node --test .github/automation/test_control.cjs

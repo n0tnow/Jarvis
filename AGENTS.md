@@ -69,3 +69,11 @@ Then run `git status` and `git log --oneline -10` (always, before editing), and 
 - Do not push unrelated or unverified work. After an approved milestone/checkpoint: commit, push to `origin/main`, and report the commit hash.
 - Tags only for USER-APPROVED milestones (e.g. `v0.1` after the user's manual test passes). No tags or GitHub releases for ordinary checkpoints. Do not configure GitHub features (Actions, Issues, Pages, protection) unless asked.
 - If a push fails on authentication, do not retry in a loop — report the exact command/action needed.
+
+## Authorized development automation (2026-11-04)
+
+The user explicitly requested GitHub Actions, bounded Claude Sonnet tasks, reports
+and draft PRs. For this development-infrastructure scope, branches and PRs are
+authorized despite the default main-only rule above. See `agent-workflow/README.md`.
+This does not change JARVIS runtime capabilities, authorize a new milestone, waive
+manual acceptance, or permit automatic merge/deployment. No API-key fallback.

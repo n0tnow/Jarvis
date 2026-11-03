@@ -399,3 +399,9 @@ None.
 Previous: 2026-10-13 — V0.10 implemented, AUTOMATED TESTED, REAL TESTED with the real embedding helper on the actual repository, verified. READY FOR MANUAL TEST.
 
 Previous: 2026-10-12 — V0.9 implemented, AUTOMATED TESTED, REAL TESTED on the live public web (research, a real CC0 download into the quarantine, security fixtures, cancellation, idle), verified. READY FOR MANUAL TEST.
+
+## Development infrastructure — 2026-11-04
+
+Bounded Claude/GitHub handoff IMPLEMENTED; isolated policy/controller tests passed.
+Activation and end-to-end run NOT YET VERIFIED. See `agent-workflow/README.md`.
+No application source change, product milestone completion, merge or deployment.

@@ -1355,3 +1355,11 @@ Decision: "Hamam'ı aç", "Hamamı aç", "Hamam'da devam et" become `project_ope
 ## DEC-279 — The conversational local model stays Qwen3.5-4B until a person judges the alternative
 Status: Accepted (V1.0 decision milestone, Phase B)
 Decision: measured on this MacBook Air M5 (16 GB) with the production worker: Qwen3.5-4B 4-bit (baseline), Qwen3.5-9B 4-bit and Gemma 4 E4B-it 4-bit (docs/V1_DECISION_INTELLIGENCE_PHASE_B.md has the table). No candidate is adopted because the rubric is string-level, the Turkish-naturalness / tone fields are a human judgement nobody has made, and the best candidate (Gemma 4 E4B) answered two Turkish prompts in English and costs +1.9 GB. Switching is a one-line preference change and a user decision; the router, the claim guard and the decision layer do not depend on which model answers.
+
+## DEC-280 — Bounded repository development automation
+Status: IMPLEMENTED; activation/end-to-end verification pending.
+Decision: per the user’s 2026-11-04 request, development automation uses owner-approved
+main-branch task manifests, Claude Sonnet with a subscription secret, one attempt,
+two triggers/day, isolated validation and a separate draft-PR publisher. No merge
+or deployment. This narrowly supersedes main-only/no-Actions development defaults;
+it does not change application runtime policy. See `../agent-workflow/README.md`.

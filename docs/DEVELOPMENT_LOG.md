@@ -639,3 +639,13 @@ Context: build 110 passed its automated tests, then real use showed the remainin
 
 ### Evidence
 See docs/V1_DECISION_INTELLIGENCE_PHASE_B.md "Phase B results". Not done: anything needing a microphone, a speaker, a granted permission, or the real Hamam project.
+
+## 2026-11-04 — Bounded development handoff (DEC-280)
+
+Added owner-gated issue workflow, trusted manifests, Sonnet proposal-only worker,
+isolated scope/unit-test validation, draft PR publisher and fixed run reports.
+One attempt, two triggers per UTC day, one concurrent workflow; no merge/deploy.
+Added CLAUDE.md forwarding to existing AGENTS rules and an initial docs-only smoke
+task. Twelve policy/controller tests passed locally; workflow syntax validated.
+No application tests or real model calls were made for this infrastructure change.
+GitHub activation and actual Claude execution remain unverified.
