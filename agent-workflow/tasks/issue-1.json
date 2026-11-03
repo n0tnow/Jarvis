@@ -1,0 +1,6 @@
+{
+  "issue": 1,
+  "goal": "Write a short repository automation readiness report from actual repository evidence. This is an infrastructure smoke test, not permission to change the application or begin a milestone.",
+  "allowed_paths": ["agent-workflow/reports/readiness.md"],
+  "acceptance": ["Name the current application manual-test blockers without claiming them resolved", "Explain the approval, one-attempt, daily limit, draft PR and no-deploy boundaries", "Distinguish implemented workflow from end-to-end tested automation; do not invent secret or runtime status"]
+}
